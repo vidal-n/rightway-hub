@@ -1,0 +1,67 @@
+// Rightway Hub API. Static files in /public are served by Cloudflare before this runs;
+// anything under /api/ lands here.
+import { searchBusinesses, rankAtPoint } from './dataforseo.js';
+import { pageSpeed } from './pagespeed.js';
+import { mockSearch, mockRank, mockPageSpeed } from './mock.js';
+import { HttpError, json, validateGridPoint, validateSearch, validateUrl, keyMatches } from './util.js';
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith('/api/')) {
+      return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404 });
+    }
+    try {
+      return await handleApi(request, env, url);
+    } catch (err) {
+      const status = err instanceof HttpError ? err.status : 500;
+      if (status === 500) console.error(err);
+      return json({ error: err.message || 'Server error' }, status);
+    }
+  },
+};
+
+export function isDemo(env) {
+  return !env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD;
+}
+
+async function handleApi(request, env, url) {
+  const demo = isDemo(env);
+
+  if (url.pathname === '/api/health') {
+    return json({ ok: true, demo, keyRequired: Boolean(env.ACCESS_KEY) });
+  }
+
+  // Real scans spend money, so they never run without an access key.
+  if (!demo && !env.ACCESS_KEY) {
+    throw new HttpError('Server is missing ACCESS_KEY. Add it in Cloudflare before running real scans.', 503);
+  }
+  if (env.ACCESS_KEY && !keyMatches(request.headers.get('x-access-key'), env.ACCESS_KEY)) {
+    throw new HttpError('Wrong or missing access key.', 401);
+  }
+  if (request.method !== 'POST') throw new HttpError('Use POST.', 405);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    throw new HttpError('Request body must be JSON.', 400);
+  }
+
+  switch (url.pathname) {
+    case '/api/business-search': {
+      const q = validateSearch(body);
+      return json({ demo, ...(demo ? mockSearch(q) : await searchBusinesses(env, q)) });
+    }
+    case '/api/grid-point': {
+      const q = validateGridPoint(body);
+      return json({ demo, ...(demo ? mockRank(q) : await rankAtPoint(env, q)) });
+    }
+    case '/api/pagespeed': {
+      const target = validateUrl(body.url);
+      return json({ demo, ...(demo ? mockPageSpeed(target) : await pageSpeed(env, target)) });
+    }
+    default:
+      throw new HttpError('Not found.', 404);
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "rightway-hub",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Rightway Growth internal hub: scan tool (Phase 1), agency dashboard and client portal (later phases).",
+  "scripts": {
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy",
+    "test": "node --test test/*.test.js",
+    "local": "node test/devserver.mjs"
+  }
+}

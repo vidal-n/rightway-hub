@@ -1,0 +1,14 @@
+{
+  // Cloudflare Worker that serves the static app in /public and the API in /src.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rightway-hub",
+  "main": "src/worker.js",
+  "compatibility_date": "2024-11-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": true }
+  // Secrets (set in the Cloudflare dashboard, never in this file):
+  //   DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD, ACCESS_KEY, PAGESPEED_KEY (optional)
+}
