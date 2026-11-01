@@ -8,7 +8,11 @@ const post = (path, body, headers = {}) =>
 
 test('health reports demo mode without credentials', async () => {
   const res = await worker.fetch(new Request('http://x/api/health'), {});
-  assert.deepEqual(await res.json(), { ok: true, demo: true, keyRequired: false });
+  const h = await res.json();
+  assert.equal(h.ok, true);
+  assert.equal(h.demo, true);
+  assert.equal(h.keyRequired, false);
+  assert.deepEqual(h.secrets, { DATAFORSEO_LOGIN: false, DATAFORSEO_PASSWORD: false, ACCESS_KEY: false });
 });
 
 test('demo search and grid point work end to end', async () => {

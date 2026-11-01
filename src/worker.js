@@ -29,7 +29,18 @@ async function handleApi(request, env, url) {
   const demo = isDemo(env);
 
   if (url.pathname === '/api/health') {
-    return json({ ok: true, demo, keyRequired: Boolean(env.ACCESS_KEY) });
+    // Booleans only, never the values. Shows which secrets the running app can see.
+    return json({
+      ok: true,
+      demo,
+      keyRequired: Boolean(env.ACCESS_KEY),
+      secrets: {
+        DATAFORSEO_LOGIN: Boolean(env.DATAFORSEO_LOGIN),
+        DATAFORSEO_PASSWORD: Boolean(env.DATAFORSEO_PASSWORD),
+        ACCESS_KEY: Boolean(env.ACCESS_KEY),
+      },
+      seen: Object.keys(env).filter((k) => k !== 'ASSETS'),
+    });
   }
 
   // Real scans spend money, so they never run without an access key.
