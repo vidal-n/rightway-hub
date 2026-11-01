@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "npx wrangler dev",
     "deploy": "npx wrangler deploy",
-    "test": "node --test test/*.test.js",
-    "local": "node test/devserver.mjs"
+    "test": "node --no-warnings --test test/*.test.js",
+    "local": "node --no-warnings test/devserver.mjs"
   }
 }

@@ -2,125 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="color-scheme" content="light dark">
-  <title>Rightway Hub: Scan Tool</title>
+  <meta name="theme-color" content="#0F1B17">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Rightway">
+  <title>Rightway Hub</title>
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@500;600;700&display=swap">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/hub.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="wrap topbar-in">
-      <a class="brand" href="/" aria-label="Rightway Hub home">
-        <img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="148" height="24">
-        <span class="brand-tag">Hub</span>
-      </a>
-      <nav class="topnav" aria-label="Sections">
-        <span class="topnav-item is-active">Scan tool</span>
-        <span class="topnav-item is-soon" title="Phase 2">Clients</span>
-        <span class="topnav-item is-soon" title="Phase 3">Reviews</span>
-      </nav>
-    </div>
-  </header>
-
-  <div id="demo-banner" class="banner" hidden>
-    <div class="wrap">Demo mode: DataForSEO isn't connected yet, so every result below is sample data. Nothing is being charged.</div>
-  </div>
-
-  <main class="wrap main">
-    <section id="key-card" class="card" hidden>
-      <h2>Enter the access key</h2>
-      <p class="muted">This tool spends DataForSEO credit, so it's locked. The key is the ACCESS_KEY you set in Cloudflare. It's saved in this browser only.</p>
-      <form id="key-form" class="row">
-        <label class="field grow"><span>Access key</span><input id="key-input" type="password" autocomplete="current-password" required></label>
-        <button class="btn btn-primary" type="submit">Unlock</button>
-      </form>
-      <p id="key-status" class="status" role="status"></p>
-    </section>
-
-    <section id="step-find" class="card">
-      <div class="card-head">
-        <h2><span class="step">1</span> Find the business</h2>
-        <label class="btn btn-ghost btn-sm file-btn">Open a saved scan<input id="load-file" type="file" accept="application/json,.json" hidden></label>
-      </div>
-      <form id="find-form" class="row">
-        <label class="field grow"><span>Business name</span><input id="find-name" required maxlength="120" placeholder="e.g. Summit Roofing"></label>
-        <label class="field"><span>City and state</span><input id="find-location" required maxlength="80" placeholder="e.g. Hollywood, FL"></label>
-        <button class="btn btn-primary" type="submit" id="find-btn">Search</button>
-      </form>
-      <p class="hint">Costs about $0.002 per search.</p>
-      <div id="find-status" class="status" role="status"></div>
-      <ul id="find-results" class="results"></ul>
-    </section>
-
-    <section id="step-scan" class="card" hidden>
-      <h2><span class="step">2</span> Set up the scan</h2>
-      <div id="picked" class="picked"></div>
-      <form id="scan-form">
-        <div class="row">
-          <label class="field grow"><span>Keyword customers search</span><input id="scan-keyword" required maxlength="80" placeholder="e.g. roofer"></label>
-          <label class="field"><span>Grid</span>
-            <select id="scan-size">
-              <option value="3">3 x 3 (9 points)</option>
-              <option value="5" selected>5 x 5 (25 points)</option>
-              <option value="7">7 x 7 (49 points)</option>
-              <option value="9">9 x 9 (81 points)</option>
-            </select>
-          </label>
-          <label class="field"><span>Radius</span>
-            <select id="scan-radius">
-              <option value="0.5">0.5 mile</option>
-              <option value="1">1 mile</option>
-              <option value="1.5">1.5 miles</option>
-              <option value="2" selected>2 miles</option>
-              <option value="3">3 miles</option>
-              <option value="5">5 miles</option>
-              <option value="8">8 miles</option>
-              <option value="10">10 miles</option>
-              <option value="15">15 miles</option>
-            </select>
-          </label>
-          <button class="btn btn-primary" type="submit" id="scan-btn">Run scan</button>
-        </div>
-        <p class="hint">Radius guide: restaurants and shops 1 to 2 miles. Trades that drive to customers (roofers, plumbers, HVAC) 5 to 10 miles.</p>
-        <p class="hint" id="scan-cost"></p>
-        <details class="adv">
-          <summary>Advanced</summary>
-          <div class="row">
-            <label class="field"><span>Google results to check</span>
-              <select id="scan-source">
-                <option value="local" selected>Google local results (matches BrightLocal)</option>
-                <option value="maps">Google Maps app</option>
-              </select>
-            </label>
-            <label class="field"><span>Device</span>
-              <select id="scan-device">
-                <option value="desktop" selected>Desktop</option>
-                <option value="mobile">Mobile</option>
-              </select>
-            </label>
-            <label class="field" id="zoom-field" hidden><span>Map zoom per point</span>
-              <select id="scan-zoom">
-                <option value="12">12 (wide)</option>
-                <option value="13" selected>13 (default)</option>
-                <option value="14">14</option>
-                <option value="15">15 (tight)</option>
-              </select>
-            </label>
-          </div>
-          <p class="hint">Keep these the same from month to month so scans compare fairly.</p>
-        </details>
-      </form>
-    </section>
-
-    <section id="report" class="report" hidden></section>
-  </main>
-
-  <footer class="wrap foot">Rightway Hub, internal tool. Not for public use.</footer>
-  <script type="module" src="/app.js"></script>
+  <div id="app"><div class="auth"><div class="spin" aria-label="Loading"></div></div></div>
+  <noscript>Rightway Hub needs JavaScript turned on.</noscript>
+  <script type="module" src="/hub/app.js"></script>
 </body>
 </html>

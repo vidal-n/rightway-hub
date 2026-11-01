@@ -5,26 +5,32 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import worker from '../src/worker.js';
+import { d1, r2 } from './shims.mjs';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url));
 const port = Number(process.argv[2] || 8787);
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 
 const env = {
   DATAFORSEO_LOGIN: process.env.DATAFORSEO_LOGIN,
   DATAFORSEO_PASSWORD: process.env.DATAFORSEO_PASSWORD,
   ACCESS_KEY: process.env.ACCESS_KEY,
   PAGESPEED_KEY: process.env.PAGESPEED_KEY,
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  // Local stand-ins for Cloudflare D1 and R2 (data lives in memory until the server stops).
+  DB: process.env.NO_DB ? undefined : d1(process.env.DB_FILE || ':memory:'),
+  MEDIA: process.env.NO_DB ? undefined : r2(),
 };
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
-  if (url.pathname.startsWith('/api/')) {
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/r/')) {
     const chunks = [];
     for await (const c of req) chunks.push(c);
     const request = new Request(url, { method: req.method, headers: req.headers, body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks) });
     const response = await worker.fetch(request, env);
-    res.writeHead(response.status, Object.fromEntries(response.headers));
+    const headers = Object.fromEntries(response.headers);
+    res.writeHead(response.status, headers);
     res.end(Buffer.from(await response.arrayBuffer()));
     return;
   }

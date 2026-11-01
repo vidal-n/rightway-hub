@@ -59,7 +59,8 @@ a { color: var(--accent); }
 .brand img { height: 24px; width: auto; display: block; }
 .brand-tag { font: 600 12px var(--font-mono); background: var(--mint); color: #0F1B17; padding: 2px 8px; border-radius: 999px; }
 .topnav { display: flex; gap: 6px; flex-wrap: wrap; }
-.topnav-item { font-size: 13px; padding: 6px 12px; border-radius: 999px; color: #cfdcd6; }
+.topnav-item { font-size: 13px; padding: 6px 12px; border-radius: 999px; color: #cfdcd6; text-decoration: none; }
+a.topnav-item:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
 .topnav-item.is-active { background: rgba(157, 235, 203, 0.16); color: var(--mint); }
 .topnav-item.is-soon { opacity: 0.45; }
 .banner { background: #FFF5DD; border-bottom: 1px solid #F0DCA4; color: #6B4E00; font-size: 14px; padding: 10px 0; }

@@ -4,7 +4,7 @@
 // The output file lives only inside the deployed Worker; it is never served to browsers.
 import { writeFileSync } from 'node:fs';
 
-const KEYS = ['DATAFORSEO_LOGIN', 'DATAFORSEO_PASSWORD', 'ACCESS_KEY', 'PAGESPEED_KEY'];
+const KEYS = ['DATAFORSEO_LOGIN', 'DATAFORSEO_PASSWORD', 'ACCESS_KEY', 'PAGESPEED_KEY', 'ANTHROPIC_API_KEY', 'ANTHROPIC_MODEL', 'RESEND_API_KEY', 'EMAIL_FROM'];
 const found = {};
 for (const k of KEYS) {
   const v = process.env[k];

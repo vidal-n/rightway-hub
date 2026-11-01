@@ -17,7 +17,7 @@ const SOURCE_LABEL = { local: 'Google local results', maps: 'Google Maps' };
 const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 const $ = (sel) => document.querySelector(sel);
-const state = { demo: false, keyRequired: false, target: null, scan: null, map: null, runToken: 0, searchCost: 0, view: null };
+const state = { demo: false, keyRequired: false, target: null, scan: null, map: null, runToken: 0, searchCost: 0, view: null, staff: null, clientId: null, clientName: '' };
 
 // ---------- helpers ----------
 function esc(value) {
@@ -318,6 +318,7 @@ function renderReport(scan, live) {
       <button class="btn btn-ghost btn-sm" type="button" id="r-download">Download scan file</button>
       <button class="btn btn-ghost btn-sm" type="button" id="r-new">New scan</button>
       <span class="cost-note" id="r-cost"></span>
+      <span id="r-save" class="row-inline"></span>
     </div>
     <header class="r-hero">
       <div class="r-hero-top">
@@ -379,6 +380,7 @@ function renderReport(scan, live) {
     $('#step-find').scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth' });
   });
   $('#r-heat').addEventListener('change', (e) => state.map?.setHeat(e.target.checked));
+  setupSave(scan);
 
   drawMap(scan);
   updateLive(scan);
@@ -687,6 +689,78 @@ window.addEventListener('resize', () => {
 window.addEventListener('beforeprint', () => state.scan && drawMap(state.scan, { size: 430 }));
 window.addEventListener('afterprint', () => state.scan && drawMap(state.scan));
 
+// ---------- Rightway Hub link: logged-in team members skip the key and can save scans to a client ----------
+async function hubApi(path, opts = {}) {
+  const res = await fetch(path, { method: opts.method || 'GET', headers: { 'x-rw': '1', ...(opts.body ? { 'content-type': 'application/json' } : {}) },
+    body: opts.body ? JSON.stringify(opts.body) : undefined, credentials: 'same-origin' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+function setupSave(scan) {
+  const box = $('#r-save');
+  if (!box || !state.staff) return;
+  const save = async (clientId, name, btn) => {
+    if (!scan.completedAt) return setStatus($('#r-progress-label'), 'Wait for the scan to finish, then save it.', true);
+    btn.disabled = true;
+    try {
+      await hubApi(`/api/clients/${clientId}/scans`, { method: 'POST', body: { scan } });
+      btn.textContent = `Saved to ${name}`;
+    } catch (err) { btn.disabled = false; setStatus($('#r-progress-label'), err.message, true); }
+  };
+  if (state.clientId) {
+    box.innerHTML = `<button class="btn btn-ghost btn-sm" type="button">Save to ${esc(state.clientName)}</button>`;
+    box.firstElementChild.addEventListener('click', (e) => save(state.clientId, state.clientName, e.currentTarget));
+    return;
+  }
+  box.innerHTML = '<button class="btn btn-ghost btn-sm" type="button">Save to a client</button>';
+  box.firstElementChild.addEventListener('click', async () => {
+    try {
+      const { clients } = await hubApi('/api/clients');
+      if (!clients.length) return setStatus($('#r-progress-label'), 'Add a client in the Hub first.', true);
+      box.innerHTML = `<select class="btn-sm" style="min-height:36px;width:auto">${clients.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select> <button class="btn btn-primary btn-sm" type="button">Save</button>`;
+      box.querySelector('button').addEventListener('click', (e) => {
+        const sel = box.querySelector('select');
+        save(sel.value, sel.options[sel.selectedIndex].text, e.currentTarget);
+      });
+    } catch (err) { setStatus($('#r-progress-label'), err.message, true); }
+  });
+}
+
+async function hubSession() {
+  try {
+    const s = await hubApi('/api/auth/state');
+    if (s.user && (s.user.role === 'admin' || s.user.role === 'team')) state.staff = s.user;
+  } catch { /* hub not connected yet */ }
+  const clientId = new URLSearchParams(location.search).get('client');
+  if (!state.staff || !clientId) return;
+  try {
+    const { client: c } = await hubApi(`/api/clients/${encodeURIComponent(clientId)}`);
+    state.clientId = c.id;
+    state.clientName = c.name;
+    const kw = (c.keywords || '').split(/[\n,]+/).map((x) => x.trim()).filter(Boolean)[0];
+    if (kw) $('#scan-keyword').value = kw;
+    const loc = (c.address || '').split(',').slice(1).join(',').trim();
+    if (loc && (c.cid || c.place_id)) {
+      // Pull the live profile (rating, reviews, photos) so the report's checks have real numbers.
+      try {
+        const r = await api('/api/business-search', { name: c.name, location: loc });
+        state.searchCost += r.cost || 0;
+        const hit = r.results.find((b) => (c.cid && b.cid === c.cid) || (c.place_id && b.place_id === c.place_id));
+        if (hit && typeof hit.lat === 'number') { pickBusiness(hit); return; }
+      } catch { /* fall back to the saved profile */ }
+    }
+    if (typeof c.lat === 'number' && typeof c.lng === 'number' && (c.cid || c.place_id)) {
+      pickBusiness({ title: c.name, cid: c.cid || '', place_id: c.place_id || '', lat: c.lat, lng: c.lng, address: c.address || '', category: c.category || '',
+        url: c.website || '', domain: '', phone: c.phone || '', additional_categories: [], rating: null, reviews: null, claimed: null, photos: null, hours: false });
+    } else {
+      $('#find-name').value = c.name;
+      setStatus($('#find-status'), `Find ${c.name} on Google once, and add its place ID in the Hub to skip this step next time.`);
+    }
+  } catch (err) { setStatus($('#find-status'), err.message, true); }
+}
+
 // ---------- start ----------
 async function init() {
   try {
@@ -694,7 +768,8 @@ async function init() {
     const h = await res.json();
     setDemo(Boolean(h.demo));
     state.keyRequired = Boolean(h.keyRequired);
-    if (h.keyRequired && !load(KEY_STORE)) showKeyCard(true);
+    await hubSession();
+    if (h.keyRequired && !load(KEY_STORE) && !state.staff) showKeyCard(true);
   } catch {
     setStatus($('#find-status'), 'Could not reach the server.', true);
   }

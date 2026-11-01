@@ -5,31 +5,38 @@ The full plan lives in the Claude Doc "Rightway Hub: Build Plan" (https://claude
 Its "Package build-out" tab maps every package item to a Hub module and phase (2 to 9); follow that order.
 
 ## Status
-- Phase 1, scan tool: built (v2). Grid ranks from Google Local Finder by default (matches BrightLocal's Local Search Grid),
-  Google Maps optional. Report: hero stats, clickable points ("from this spot" top 10), competitor map view, heat map,
-  findings + fix-first list, share-of-local-voice leaderboard, head-to-head (details via Maps lookup), profile checklist,
-  category gap, mobile speed, plan math, print to PDF, save/load scan JSON. Light and dark themes.
-- Next: Phase 2, agency dashboard and client portal (Supabase for database, logins, uploads). Then review engine (email),
-  rank tracking + monthly report, analytics + call tracking, Google profile manager, citations/links/social.
-- GoHighLevel stays for sales (pipeline, dialer, prospect emails). BrightLocal Citation Builder stays pay-as-you-go.
+- Phase 1, scan tool (`/scan.html`): built (v2). Grid ranks from Google Local Finder by default (matches BrightLocal's Local Search
+  Grid), Google Maps optional. Logged-in staff skip the access key, and `?client=<id>` pre-loads a client and enables "Save to client".
+- Phases 2 and 3 core (`/`, the Hub app): built. Logins (owner setup with ACCESS_KEY, invites by link, roles admin/team/client),
+  agency dashboard (all clients, MRR, work done), client pages (overview + work log, monthly task engine from plan quotas, reviews,
+  posts, rankings, profile, client logins), team page. Client app (phone-first PWA): home stats, review requests sent from the
+  client's own phone (sms:/mailto:/share, tracked `/r/<token>` links), counter QR code (`/r/k/<clientId>`), photo-to-post with
+  Google/Facebook/Instagram captions (Claude if ANTHROPIC_API_KEY, templates otherwise), approve flow, rankings view.
+- Not built yet: publishing to Google and Meta (needs Google Business Profile API approval and Meta app review; until then posts
+  are copied and marked posted), scheduled monthly scans and reports (Phase 4), Google data connections (Phase 5), content engine
+  (6), call tracking (7), citations/links tracker (8), Market Leader extras (9). Follow the Package build-out tab.
+- We do not build automated posting for backlinks (Google link-scheme policy). GoHighLevel stays for sales.
 
 ## Stack
-- Cloudflare Worker (`src/worker.js`) serves `/api/*`; static app in `public/` (plain ES modules, no build step, no dependencies).
-- Deployed by Cloudflare Workers Builds from this GitHub repo with `npx wrangler deploy`. Config: `wrangler.jsonc`.
-- Data: DataForSEO live/advanced. Grid: Local Finder ($0.002 per 10 results, we read 20) or Maps ($0.002). Business search and
-  competitor details: Maps. PageSpeed Insights for speed. Local Finder response field names are handled defensively
-  (`organicListings`, name-match fallback); verify against real responses if ranks look wrong.
-- Map: our own tile renderer in `public/js/map.js` (OpenStreetMap tiles, attribution required). No Leaflet.
-- Secrets (Cloudflare dashboard only): `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD`, `ACCESS_KEY`, optional `PAGESPEED_KEY`.
-  Without DataForSEO secrets the API returns demo data (`src/mock.js`) and the UI shows a banner.
-  With DataForSEO secrets the API refuses to run unless `ACCESS_KEY` is set, and every call must send `x-access-key`.
-  V's secrets live in Cloudflare's Build "Variables and secrets". `scripts/bake-secrets.mjs` (wrangler custom build) copies them
-  into `src/runtime-secrets.js` inside the deployed Worker; runtime dashboard secrets override them. Keep the committed file empty.
-  `/api/health` reports which secrets exist (booleans only).
+- Cloudflare Worker (`src/worker.js`) serves `/api/*` and `/r/*`; static app in `public/` (plain ES modules, no build step, no deps).
+  Hub API in `src/hub.js` (small regex router), auth in `src/auth.js` (PBKDF2 100k, SHA-256 hashed session tokens in an HttpOnly
+  cookie, every write must send header `x-rw: 1` as the CSRF guard), plans and quotas in `src/plans.js`, captions in `src/captions.js`.
+- Data: Cloudflare D1 (`DB`, database rightway-hub) with tables created on first use (`src/db.js`); photos in R2 (`MEDIA`, bucket
+  rightway-media). Both bound in `wrangler.jsonc`.
+- Deployed by Cloudflare Workers Builds from this GitHub repo with `npx wrangler deploy`.
+- DataForSEO live/advanced. Grid: Local Finder ($0.002 per 10 results, we read 20) or Maps ($0.002). Business search and
+  competitor details: Maps. Local Finder field names are handled defensively (`organicListings`, name-match fallback).
+- Map: our own tile renderer in `public/js/map.js` (OpenStreetMap tiles, attribution required). QR codes: `public/js/qr.js`
+  (own encoder, verified with OpenCV).
+- Secrets live in Cloudflare's Build "Variables and secrets" (V's setup). `scripts/bake-secrets.mjs` copies them into the deployed
+  Worker; runtime dashboard secrets override. Keys: DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD, ACCESS_KEY, PAGESPEED_KEY,
+  ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-haiku-4-5-20251001), RESEND_API_KEY, EMAIL_FROM. Keep `src/runtime-secrets.js`
+  committed empty. `/api/health` reports what is connected (booleans only).
 
 ## Commands
 - `npm test` runs unit tests (node:test, no installs needed).
-- `npm run local` serves the app at http://localhost:8787 in demo mode (Node only, no wrangler needed).
+- `npm run local` serves the app at http://localhost:8787 with in-memory D1/R2 stand-ins (`test/shims.mjs`, node:sqlite) and demo
+  scan data. Set ACCESS_KEY=... to test owner setup.
 
 ## Conventions
 - User-facing copy: plain, short, no em dashes or en dashes. Brand: ink #0F1B17, mint #9DEBCB, mint strong #23B07E,

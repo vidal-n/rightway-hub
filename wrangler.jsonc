@@ -9,6 +9,14 @@
     "binding": "ASSETS"
   },
   "observability": { "enabled": true },
+  // Database (Cloudflare D1). Tables are created by the app on first use.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "rightway-hub", "database_id": "914f7329-05da-4550-82f1-53e9026fbeb0" }
+  ],
+  // Photo storage (Cloudflare R2).
+  "r2_buckets": [
+    { "binding": "MEDIA", "bucket_name": "rightway-media" }
+  ],
   // Keep variables and secrets added in the Cloudflare dashboard when deploying from GitHub.
   "keep_vars": true,
   // Copies Build secrets into the Worker (see scripts/bake-secrets.mjs).
