@@ -1,7 +1,7 @@
 // Service worker: makes the Hub installable and keeps the app shell available on a weak connection.
 // API calls always go to the network, so data is never stale.
-const CACHE = 'rw-hub-v1';
-const SHELL = ['/', '/index.html', '/hub.css', '/hub/app.js', '/hub/core.js', '/hub/shared.js', '/hub/staff.js', '/hub/portal.js',
+const CACHE = 'rw-hub-v2';
+const SHELL = ['/', '/index.html', '/hub.css', '/hub/app.js', '/hub/core.js', '/hub/shared.js', '/hub/staff.js', '/hub/portal.js', '/hub/crm.js',
   '/js/qr.js', '/js/map.js', '/js/grid.js', '/js/analysis.js', '/brand/rightway-logo-dark.svg', '/brand/rightway-logo-light.svg', '/favicon.svg'];
 
 self.addEventListener('install', (e) => {

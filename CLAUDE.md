@@ -12,14 +12,22 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   posts, rankings, profile, client logins), team page. Client app (phone-first PWA): home stats, review requests sent from the
   client's own phone (sms:/mailto:/share, tracked `/r/<token>` links), counter QR code (`/r/k/<clientId>`), photo-to-post with
   Google/Facebook/Instagram captions (Claude if ANTHROPIC_API_KEY, templates otherwise), approve flow, rankings view.
+- CRM and sales (built): pipeline board (`#/pipeline`, drag and drop stages), lead details with call outcomes that apply the
+  playbook cadence (`applyOutcome` in `src/crm.js`), CSV import with header matching and phone dedupe, power dialer (`#/dialer`,
+  queue limited to 8am to 8pm in the lead's time zone, keys 1 to 9 log outcomes, "Call from my phone" tel: links, optional
+  Twilio bridge in `src/calls.js` that rings the rep then the lead, recording off), website form endpoint `/api/public/lead`
+  (CORS for rightwaygrowth.com, honeypot), e-signed work orders (`src/workorders.js`, public `/sign.html#<token>`), Stripe
+  (`src/billing.js`: signed webhook auto-wins the lead, creates the client, sets billing status and MRR; payment links per plan
+  in Settings tagged with client_reference_id; client Billing tab; Stripe customer portal from the client app).
+- GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.
 - Not built yet: publishing to Google and Meta (needs Google Business Profile API approval and Meta app review; until then posts
   are copied and marked posted), scheduled monthly scans and reports (Phase 4), Google data connections (Phase 5), content engine
   (6), call tracking (7), citations/links tracker (8), Market Leader extras (9). Follow the Package build-out tab.
-- We do not build automated posting for backlinks (Google link-scheme policy). GoHighLevel stays for sales.
+- We do not build automated posting for backlinks (Google link-scheme policy).
 
 ## Stack
 - Cloudflare Worker (`src/worker.js`) serves `/api/*` and `/r/*`; static app in `public/` (plain ES modules, no build step, no deps).
-  Hub API in `src/hub.js` (small regex router), auth in `src/auth.js` (PBKDF2 100k, SHA-256 hashed session tokens in an HttpOnly
+  Hub API in `src/hub.js` plus feature modules that register routes in `src/router.js` (public routes skip the x-rw check), auth in `src/auth.js` (PBKDF2 100k, SHA-256 hashed session tokens in an HttpOnly
   cookie, every write must send header `x-rw: 1` as the CSRF guard), plans and quotas in `src/plans.js`, captions in `src/captions.js`.
 - Data: Cloudflare D1 (`DB`, database rightway-hub) with tables created on first use (`src/db.js`); photos in R2 (`MEDIA`, bucket
   rightway-media). Both bound in `wrangler.jsonc`.
@@ -30,7 +38,8 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   (own encoder, verified with OpenCV).
 - Secrets live in Cloudflare's Build "Variables and secrets" (V's setup). `scripts/bake-secrets.mjs` copies them into the deployed
   Worker; runtime dashboard secrets override. Keys: DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD, ACCESS_KEY, PAGESPEED_KEY,
-  ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-haiku-4-5-20251001), RESEND_API_KEY, EMAIL_FROM. Keep `src/runtime-secrets.js`
+  ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-haiku-4-5-20251001), RESEND_API_KEY, EMAIL_FROM, STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM. Keep `src/runtime-secrets.js`
   committed empty. `/api/health` reports what is connected (booleans only).
 
 ## Commands

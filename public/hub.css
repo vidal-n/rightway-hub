@@ -223,13 +223,29 @@ tr.is-you td { background: var(--mint-soft); font-weight: 600; }
 .logo-dark { display: none; }
 @media (prefers-color-scheme: dark) { .logo-light { display: none; } .logo-dark { display: block; } }
 
+/* CRM */
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(260px, 1fr); gap: 14px; overflow-x: auto; padding-bottom: 10px; }
+.col { background: var(--surface-2); border: 1px solid var(--line); border-radius: 18px; padding: 12px; min-height: 160px; display: flex; flex-direction: column; gap: 10px; transition: border-color .2s, background .2s; }
+.col.drop-on { border-color: var(--mint-strong); background: var(--mint-soft); }
+.col-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px; }
+.col-body { display: grid; gap: 10px; align-content: start; max-height: 70vh; overflow-y: auto; }
+.lead-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; cursor: grab; box-shadow: var(--shadow); transition: transform .15s var(--ease), border-color .15s; animation: rise .3s var(--ease) both; }
+.lead-card:hover { transform: translateY(-2px); border-color: var(--mint-mid); }
+.lead-card.dragging { opacity: .5; }
+.outcomes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.outcomes.big .btn { min-height: 58px; justify-content: flex-start; white-space: normal; text-align: left; }
+.kbd { font: 600 12px var(--mono); background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; margin-right: 4px; }
+.dial-phone { font: 700 clamp(30px, 5vw, 44px) var(--display); letter-spacing: .01em; }
+.dial-card { border-color: var(--mint-mid); }
+@media (max-width: 640px) { .outcomes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 /* Feedback */
 .toasts { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 100; display: grid; gap: 8px; width: min(92vw, 440px); }
 .toast { background: #0F1B17; color: #fff; border: 1px solid rgba(157, 235, 203, .3); border-radius: 14px; padding: 14px 18px; box-shadow: var(--shadow); animation: rise .3s var(--ease) both; font-weight: 600; }
 .toast.err { border-color: rgba(214, 69, 69, .6); }
 .err-text { color: var(--bad); font-size: 14px; }
 .modal-bg { position: fixed; inset: 0; background: rgba(5, 10, 8, .55); z-index: 90; display: grid; place-items: center; padding: 16px; animation: fade .2s both; }
-.modal { width: min(760px, 100%); max-height: 92vh; overflow: auto; background: var(--surface); border-radius: 24px; padding: 28px; box-shadow: 0 30px 80px rgba(0, 0, 0, .35); animation: rise .35s var(--ease) both; }
+.modal { width: min(1000px, 100%); max-height: 92vh; overflow: auto; background: var(--surface); border-radius: 24px; padding: 28px; box-shadow: 0 30px 80px rgba(0, 0, 0, .35); animation: rise .35s var(--ease) both; }
 .skeleton { background: linear-gradient(90deg, var(--surface-2), var(--mint-soft), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; border-radius: 14px; min-height: 120px; }
 .spin { width: 22px; height: 22px; border: 3px solid var(--mint-mid); border-top-color: var(--mint-strong); border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; }
 

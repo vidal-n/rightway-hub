@@ -28,6 +28,16 @@ Open the site, enter the ACCESS_KEY, and create the owner login. Then add Kiron 
 - `ANTHROPIC_API_KEY`: AI captions that look at the photo. Without it, captions come from templates.
 - `RESEND_API_KEY` and `EMAIL_FROM`: send review request emails from the Hub. Without it, the client's own email app opens.
 
+## Stripe (billing, auto-win on payment)
+
+1. Stripe, Developers, API keys, **Create restricted key** with: Customers read, Subscriptions read, Invoices read, Customer portal write. Add it as Build secret `STRIPE_SECRET_KEY`.
+2. Stripe, Developers, Webhooks, **Add endpoint**: `https://<your hub address>/api/stripe/webhook` with events `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`. Add its signing secret as `STRIPE_WEBHOOK_SECRET`.
+3. In the Hub, Settings, paste each plan's payment link.
+
+## Twilio (optional: call through the Hub)
+
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` (a Twilio number). The Hub rings your phone, then connects you to the lead from that number. Without Twilio, "Call from my phone" works for free.
+
 ## Costs
 
 Each grid point is one DataForSEO request at about $0.002. A 7 x 7 scan is 49 points, about $0.10. A business search is about $0.002.

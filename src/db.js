@@ -36,6 +36,30 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS scans (
     id TEXT PRIMARY KEY, client_id TEXT NOT NULL, keyword TEXT, created_at INTEGER NOT NULL, summary TEXT, data TEXT)`,
   `CREATE INDEX IF NOT EXISTS scans_client ON scans (client_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
+  `CREATE TABLE IF NOT EXISTS leads (
+    id TEXT PRIMARY KEY, business TEXT NOT NULL, contact_name TEXT, phone TEXT, phone_digits TEXT, email TEXT, website TEXT,
+    city TEXT, state TEXT, timezone TEXT, industry TEXT, source TEXT, stage TEXT NOT NULL DEFAULT 'new', plan TEXT,
+    next_action_at INTEGER, next_action TEXT, notes TEXT, owner_id TEXT, attempts INTEGER NOT NULL DEFAULT 0, last_call_at INTEGER,
+    dnc INTEGER NOT NULL DEFAULT 0, sms_consent INTEGER NOT NULL DEFAULT 0, client_id TEXT, place_id TEXT, cid TEXT, lat REAL, lng REAL,
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS leads_stage ON leads (stage, next_action_at)`,
+  `CREATE INDEX IF NOT EXISTS leads_phone ON leads (phone_digits)`,
+  `CREATE TABLE IF NOT EXISTS activities (
+    id TEXT PRIMARY KEY, lead_id TEXT, client_id TEXT, type TEXT NOT NULL, outcome TEXT, body TEXT, duration INTEGER,
+    call_sid TEXT, status TEXT, at INTEGER NOT NULL, by TEXT)`,
+  `CREATE INDEX IF NOT EXISTS act_lead ON activities (lead_id, at)`,
+  `CREATE TABLE IF NOT EXISTS work_orders (
+    id TEXT PRIMARY KEY, token TEXT UNIQUE NOT NULL, lead_id TEXT, client_id TEXT, plan TEXT NOT NULL, monthly_cents INTEGER NOT NULL,
+    setup_cents INTEGER NOT NULL, business TEXT, contact_name TEXT, email TEXT, terms TEXT, pay_url TEXT, status TEXT NOT NULL DEFAULT 'sent',
+    signed_name TEXT, signed_at INTEGER, signed_ip TEXT, signed_ua TEXT, paid_at INTEGER, created_at INTEGER NOT NULL, created_by TEXT)`,
+  `CREATE TABLE IF NOT EXISTS stripe_events (id TEXT PRIMARY KEY, type TEXT, at INTEGER NOT NULL)`,
+];
+
+// Columns added after the first release. SQLite has no ADD COLUMN IF NOT EXISTS, so duplicates are ignored.
+const ADD_COLUMNS = [
+  ['clients', 'stripe_customer_id TEXT'], ['clients', 'stripe_subscription_id TEXT'], ['clients', 'billing_status TEXT'],
+  ['clients', 'mrr_cents INTEGER'], ['clients', 'lead_id TEXT'], ['users', 'phone TEXT'],
 ];
 
 let ready = null;
@@ -47,7 +71,14 @@ export function hasDb(env) {
 export async function ensureSchema(env) {
   if (!env.DB) throw new HttpError('The database is not connected yet. Create the D1 database in Cloudflare and send Claude its ID.', 503);
   if (!ready) {
-    ready = env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s))).catch((err) => { ready = null; throw err; });
+    ready = (async () => {
+      await env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s)));
+      for (const [table, col] of ADD_COLUMNS) {
+        try { await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${col}`).run(); } catch (e) {
+          if (!/duplicate column/i.test(String(e?.message || e))) throw e;
+        }
+      }
+    })().catch((err) => { ready = null; throw err; });
   }
   await ready;
 }
@@ -85,3 +116,11 @@ export function token(bytes = 24) {
 }
 
 export const now = () => Date.now();
+
+export async function getSettings(env) {
+  const rows = await all(env, 'SELECT k, v FROM settings');
+  return Object.fromEntries(rows.map((r) => [r.k, r.v]));
+}
+export async function setSetting(env, k, v) {
+  await run(env, 'INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', k, v);
+}

@@ -53,6 +53,12 @@ export async function portal(app, user, tab, state) {
       <div class="progress" style="margin-top:8px"><span data-w="${pct}"></span></div>
     </div>
     <div class="card"><div class="card-head"><h2>What we did</h2></div>${feedHtml(data.activity, 'Your first updates show up here as we work.')}</div>
+    ${c.stripe_customer_id ? '<button class="btn btn-ghost btn-xl" id="pbill">Billing and invoices</button>' : ''}
     <p class="small" style="text-align:center">Tip: add this app to your home screen. On iPhone tap Share, then Add to Home Screen. On Android tap the menu, then Install app.</p>`;
   animateNumbers(v);
+  $('#pbill', v)?.addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    try { const r = await api(`/api/clients/${c.id}/billing/portal`, { method: 'POST' }); location.href = r.url; }
+    catch (err) { e.target.disabled = false; (await import('./core.js')).toast(err.message, true); }
+  });
 }

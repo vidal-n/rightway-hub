@@ -9,6 +9,7 @@ import { PLANS, planOf, tasksForMonth, monthKey } from './plans.js';
 import { generateCaptions } from './captions.js';
 import { canEmail, sendEmail } from './email.js';
 import { gridStats } from '../public/js/grid.js';
+import { routes, route } from './router.js';
 
 const CLIENT_FIELDS = ['name', 'plan', 'status', 'start_date', 'contact_name', 'contact_email', 'phone', 'website', 'address',
   'place_id', 'cid', 'lat', 'lng', 'category', 'services', 'cities', 'keywords', 'brand_voice', 'review_url', 'notes'];
@@ -100,8 +101,6 @@ function reviewMessage(client, name, link) {
 }
 
 // ---------- router ----------
-const routes = [];
-const route = (method, pattern, fn) => routes.push({ method, re: new RegExp(`^${pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)')}$`), fn });
 
 export async function handleHub(request, env, url) {
   for (const r of routes) {
@@ -110,7 +109,7 @@ export async function handleHub(request, env, url) {
     if (!m) continue;
     await ensureSchema(env);
     // Cross-site forms can't set custom headers, so this blocks CSRF on every write.
-    if (request.method !== 'GET' && request.headers.get('x-rw') !== '1') throw new HttpError('Missing request header.', 400);
+    if (!r.public && request.method !== 'GET' && request.headers.get('x-rw') !== '1') throw new HttpError('Missing request header.', 400);
     const user = await currentUser(env, request);
     const ctx = { request, env, url, user, params: m.groups || {}, body: () => request.json().catch(() => ({})) };
     return r.fn(ctx);
@@ -496,3 +495,9 @@ route('DELETE', '/api/scans/:id', async ({ env, user, params }) => {
   await run(env, 'DELETE FROM scans WHERE id = ?', params.id);
   return json({ ok: true });
 });
+
+// Feature modules register their routes on import.
+import './crm.js';
+import './billing.js';
+import './workorders.js';
+import './calls.js';

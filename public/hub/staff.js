@@ -1,6 +1,7 @@
 // Team views: all clients, one client (overview, tasks, reviews, posts, rankings, profile, access), team.
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, animateNumbers, monthKey, shiftMonth, PLAN_NAMES, PLAN_PRICE, KIND_LABEL } from './core.js';
 import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.js';
+import { billingTab } from './crm.js';
 
 export function staffShell(app, user, active, inner) {
   app.innerHTML = `
@@ -8,9 +9,12 @@ export function staffShell(app, user, active, inner) {
       <aside class="side">
         <a class="side-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="150" height="26"><span class="tag">Hub</span></a>
         <nav aria-label="Main">
+          <a href="#/pipeline" class="${active === 'pipeline' ? 'is-active' : ''}">${icon.chart}<span>Pipeline</span></a>
+          <a href="#/dialer" class="${active === 'dialer' ? 'is-active' : ''}">${icon.phone}<span>Dialer</span></a>
           <a href="#/" class="${active === 'clients' ? 'is-active' : ''}">${icon.users}<span>Clients</span></a>
           <a href="/scan.html">${icon.grid}<span>Scan tool</span></a>
           <a href="#/team" class="${active === 'team' ? 'is-active' : ''}">${icon.star}<span>Team</span></a>
+          <a href="#/settings" class="${active === 'settings' ? 'is-active' : ''}">${icon.note}<span>Settings</span></a>
         </nav>
         <div class="side-foot"><span class="who">${esc(user.name || user.email)}</span><button type="button" id="logout">Log out</button></div>
       </aside>
@@ -27,7 +31,8 @@ export async function dashboard(app, user) {
   let data;
   try { data = await api(`/api/clients?month=${month}`); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const active = data.clients.filter((c) => c.status === 'active');
-  const mrr = active.reduce((s, c) => s + (PLAN_PRICE[c.plan] || 0), 0);
+  // Real Stripe amounts when billing is linked, plan price otherwise.
+  const mrr = active.reduce((s, c) => s + (c.mrr_cents != null && c.billing_status ? c.mrr_cents / 100 : (PLAN_PRICE[c.plan] || 0)), 0);
   const tot = data.clients.reduce((a, c) => ({ done: a.done + c.overview.tasks.done, total: a.total + c.overview.tasks.total, rr: a.rr + c.overview.reviews.sent, pend: a.pend + c.overview.posts.pending }), { done: 0, total: 0, rr: 0, pend: 0 });
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow">${esc(fmt.month(month))}</p><h1>Clients</h1></div>
@@ -49,7 +54,7 @@ function clientCard(c, i) {
   const o = c.overview;
   const pct = o.tasks.total ? Math.round((100 * o.tasks.done) / o.tasks.total) : 0;
   return `<a class="client-card" href="#/client/${esc(c.id)}/overview" style="animation-delay:${i * 40}ms">
-    <div class="row"><h3>${esc(c.name)}</h3><span class="spacer"></span><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(PLAN_NAMES[c.plan] || c.plan)}</span></div>
+    <div class="row"><h3>${esc(c.name)}</h3><span class="spacer"></span>${c.billing_status === 'past_due' ? '<span class="badge bad">Past due</span>' : ''}<span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(PLAN_NAMES[c.plan] || c.plan)}</span></div>
     <div><div class="row small"><span>This month's work</span><span class="spacer"></span><b>${o.tasks.done} of ${o.tasks.total}</b></div>
       <div class="progress" style="margin-top:6px"><span data-w="${pct}"></span></div></div>
     <div class="mini">
@@ -120,7 +125,7 @@ export function clientForm(client, onSaved) {
 }
 
 // ---------- one client ----------
-const TABS = [['overview', 'Overview'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['profile', 'Profile'], ['access', 'Client logins']];
+const TABS = [['overview', 'Overview'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
 
 export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   const view = staffShell(app, user, 'clients');
@@ -141,6 +146,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   if (tab === 'rankings') return renderRankings(el, c.id, { staff: true });
   if (tab === 'profile') return profileTab(el, c);
   if (tab === 'access') return accessTab(el, c);
+  if (tab === 'billing') return billingTab(el, c);
 }
 
 function overviewTab(el, { client: c, overview: o, activity }) {

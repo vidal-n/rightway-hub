@@ -133,6 +133,7 @@ export const icon = {
   trash: P('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'),
   plus: P('<path d="M12 5v14M5 12h14"/>'),
   msg: P('<path d="M4 5h16v11H8l-4 4z"/>'),
+  phone: P('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/>'),
   mail: P('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'),
   share: P('<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v7h14v-7"/>'),
   note: P('<path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h6"/>'),
