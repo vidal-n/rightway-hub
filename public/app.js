@@ -65,13 +65,24 @@ function showKeyCard(show) {
 }
 
 // ---------- step 1: find ----------
-$('#key-form').addEventListener('submit', (e) => {
+$('#key-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const v = $('#key-input').value.trim();
+  const msg = $('#key-status');
   if (!v) return;
   store(KEY_STORE, v);
-  $('#key-input').value = '';
-  showKeyCard(false);
+  setStatus(msg, 'Checking...');
+  try {
+    await api('/api/check-key', {});
+    $('#key-input').value = '';
+    setStatus(msg, '');
+    showKeyCard(false);
+    setStatus($('#find-status'), 'Unlocked. You can search now.');
+  } catch (err) {
+    setStatus(msg, err instanceof AuthError
+      ? "That key doesn't match the ACCESS_KEY the app was built with. If you changed it in Cloudflare, the app needs a rebuild first."
+      : err.message, true);
+  }
 });
 
 $('#find-form').addEventListener('submit', async (e) => {

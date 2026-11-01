@@ -21,7 +21,8 @@ export default {
       return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404 });
     }
     try {
-      return await handleApi(request, env, url);
+      const runtimeKeys = Object.keys(rawEnv || {}).filter((k) => k !== 'ASSETS');
+      return await handleApi(request, env, url, runtimeKeys);
     } catch (err) {
       const status = err instanceof HttpError ? err.status : 500;
       if (status === 500) console.error(err);
@@ -34,7 +35,7 @@ export function isDemo(env) {
   return !env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD;
 }
 
-async function handleApi(request, env, url) {
+async function handleApi(request, env, url, runtimeKeys = []) {
   const demo = isDemo(env);
 
   if (url.pathname === '/api/health') {
@@ -49,7 +50,7 @@ async function handleApi(request, env, url) {
         ACCESS_KEY: Boolean(env.ACCESS_KEY),
       },
       fromBuild: Object.keys(baked),
-      seen: Object.keys(env).filter((k) => k !== 'ASSETS'),
+      fromRuntime: runtimeKeys,
     });
   }
 
@@ -61,6 +62,7 @@ async function handleApi(request, env, url) {
     throw new HttpError('Wrong or missing access key.', 401);
   }
   if (request.method !== 'POST') throw new HttpError('Use POST.', 405);
+  if (url.pathname === '/api/check-key') return json({ ok: true, demo });
 
   let body;
   try {

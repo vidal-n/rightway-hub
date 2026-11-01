@@ -107,3 +107,11 @@ test('build-time secrets fill gaps but runtime secrets win', async () => {
   assert.equal(e.ACCESS_KEY, 'runtime');
   assert.equal(e.DATAFORSEO_LOGIN, 'l');
 });
+
+test('check-key accepts the right key and rejects the wrong one', async () => {
+  const env = { DATAFORSEO_LOGIN: 'l', DATAFORSEO_PASSWORD: 'p', ACCESS_KEY: 'secret' };
+  assert.equal((await worker.fetch(post('/api/check-key', {}, { 'x-access-key': 'secret' }), env)).status, 200);
+  assert.equal((await worker.fetch(post('/api/check-key', {}, { 'x-access-key': 'nope' }), env)).status, 401);
+  const h = await (await worker.fetch(new Request('http://x/api/health'), env)).json();
+  assert.deepEqual(h.fromRuntime, ['DATAFORSEO_LOGIN', 'DATAFORSEO_PASSWORD', 'ACCESS_KEY']);
+});
