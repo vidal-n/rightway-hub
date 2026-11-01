@@ -1,6 +1,8 @@
 // CRM screens: pipeline board, lead details, CSV import, power dialer, settings.
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, PLAN_NAMES, PLAN_PRICE } from './core.js';
 import { staffShell } from './staff.js';
+import { prepPanel, gradeBadge, bookModal, clearScriptCache } from './prep.js';
+import { filterLeads } from '/js/leadfilter.js';
 
 export const STAGE_LABEL = {
   new: 'New lead', attempting: 'Attempting', callback: 'Callback set', audit_requested: 'Audit requested', audit_booked: 'Audit booked',
@@ -19,66 +21,247 @@ const dueText = (ms) => {
   const h = Math.round(d / 3600e3);
   return h < 24 ? `in ${h} h` : `in ${Math.round(h / 24)} d`;
 };
+let REP = '';
+export const setRep = (user) => { REP = (user?.name || '').split(' ')[0] || ''; };
 const telHref = (p) => `tel:${String(p || '').replace(/[^\d+]/g, '')}`;
 
 // ---------- pipeline ----------
-export async function pipelinePage(app, user, q = '') {
+const TZS = [['ET', 'Eastern'], ['CT', 'Central'], ['MT', 'Mountain'], ['AZ', 'Arizona'], ['PT', 'Pacific'], ['AK', 'Alaska'], ['HI', 'Hawaii'], ['?', 'Unknown']];
+const GRADES = ['A', 'B', 'C', 'D'];
+const GROUPS = [['', 'No grouping'], ['tz_short', 'Time zone'], ['state', 'State'], ['city', 'City'], ['industry', 'Industry'], ['grade', 'Grade'], ['stage', 'Stage'], ['source', 'Source'], ['tags', 'Tag']];
+const PIPE_KEY = 'rw-pipe-v2';
+const loadPipe = () => { try { return { view: 'board', tz: '', group: '', sort: '-score', f: {}, ...JSON.parse(localStorage.getItem(PIPE_KEY) || '{}') }; } catch { return { view: 'board', tz: '', group: '', sort: '-score', f: {} }; } };
+const savePipe = (p) => { try { localStorage.setItem(PIPE_KEY, JSON.stringify(p)); } catch { /* private mode */ } };
+
+function sortLeads(rows, sort) {
+  const desc = sort.startsWith('-');
+  const k = sort.replace(/^-/, '');
+  return rows.slice().sort((a, b) => {
+    const x = a[k] ?? (typeof b[k] === 'number' ? -1 : ''), y = b[k] ?? (typeof a[k] === 'number' ? -1 : '');
+    const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y));
+    return desc ? -c : c;
+  });
+}
+
+export async function pipelinePage(app, user) {
+  setRep(user);
   const view = staffShell(app, user, 'pipeline');
   let data;
-  try { data = await api(`/api/leads${q ? `?q=${encodeURIComponent(q)}` : ''}`); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
-  const by = {};
-  data.leads.forEach((l) => { (by[l.stage] ||= []).push(l); });
-  const total = data.leads.length;
-  const open = data.leads.filter((l) => !['won', 'lost', 'dnc'].includes(l.stage)).length;
-  view.innerHTML = `
-    <div class="page-head"><div><p class="eyebrow">CRM</p><h1>Pipeline</h1></div>
-      <div class="row"><a class="btn btn-mint" href="#/dialer">${icon.phone}Start dialing</a><button class="btn btn-ghost" id="imp">${icon.upload}Import CSV</button><button class="btn btn-primary" id="addl">${icon.plus}Add lead</button></div></div>
-    <div class="stats">
-      <div class="stat hero"><div class="stat-num" data-count="${open}">0</div><div class="stat-label">open leads (${total} total)</div></div>
-      <div class="stat"><div class="stat-num" data-count="${(by.audit_booked || []).length}">0</div><div class="stat-label">audits booked</div></div>
-      <div class="stat"><div class="stat-num" data-count="${(by.audit_requested || []).length}">0</div><div class="stat-label">website audit requests</div></div>
-      <div class="stat"><div class="stat-num" data-count="${(by.won || []).length}">0</div><div class="stat-label">won</div></div>
-    </div>
-    <form id="lsearch" class="row" style="margin-bottom:16px"><input name="q" value="${esc(q)}" placeholder="Search business, name, phone, city, industry" style="flex:1 1 260px"><button class="btn btn-ghost" type="submit">${icon.scan}Search</button></form>
-    <div class="board">${BOARD.map((s) => column(s, by[s] || [])).join('')}</div>
-    <details class="card" style="margin-top:18px"><summary style="cursor:pointer;font-weight:600">Closed: not now, lost, do not call (${CLOSED.reduce((n, s) => n + (by[s] || []).length, 0)})</summary>
-      <div class="board" style="margin-top:14px">${CLOSED.map((s) => column(s, by[s] || [])).join('')}</div></details>`;
-  const { animateNumbers } = await import('./core.js');
-  animateNumbers(view);
-  $('#lsearch', view).addEventListener('submit', (e) => { e.preventDefault(); pipelinePage(app, user, e.target.q.value.trim()); });
-  $('#addl', view).addEventListener('click', () => leadForm(null, () => pipelinePage(app, user, q)));
-  $('#imp', view).addEventListener('click', () => importModal(() => pipelinePage(app, user, q)));
-  $$('.lead-card', view).forEach((c) => {
-    c.addEventListener('click', () => leadModal(c.dataset.id, () => pipelinePage(app, user, q)));
-    c.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', c.dataset.id); c.classList.add('dragging'); });
-    c.addEventListener('dragend', () => c.classList.remove('dragging'));
-  });
-  $$('.col', view).forEach((col) => {
-    col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('drop-on'); });
-    col.addEventListener('dragleave', () => col.classList.remove('drop-on'));
-    col.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      col.classList.remove('drop-on');
-      const id = e.dataTransfer.getData('text/plain');
-      const card = $(`.lead-card[data-id="${CSS.escape(id)}"]`, view);
-      if (!card || card.closest('.col') === col) return;
-      $('.col-body', col).prepend(card);
-      try { await api(`/api/leads/${id}`, { method: 'PATCH', body: { stage: col.dataset.stage } }); toast(`Moved to ${STAGE_LABEL[col.dataset.stage]}`); }
-      catch (err) { toast(err.message, true); pipelinePage(app, user, q); }
+  try { data = await api('/api/leads'); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  const p = loadPipe();
+  p.f ||= {};
+  const all = data.leads;
+  const states = [...new Set(all.map((l) => l.state).filter(Boolean))].sort();
+  const sources = [...new Set(all.map((l) => l.source).filter(Boolean))].sort();
+  const industries = [...new Set(all.map((l) => l.industry).filter(Boolean))].sort();
+  const selected = new Set();
+  const reload = () => pipelinePage(app, user);
+
+  const render = () => {
+    savePipe(p);
+    const rows = filterLeads(all, p);
+    const tzCount = (tz) => all.filter((l) => (tz === '?' ? !l.tz_short : l.tz_short === tz)).length;
+    const tzNow = (tz) => all.some((l) => l.tz_short === tz && l.callable_now && !['won', 'lost', 'dnc'].includes(l.stage));
+    const by = {};
+    rows.forEach((l) => { (by[l.stage] ||= []).push(l); });
+    const open = rows.filter((l) => !['won', 'lost', 'dnc'].includes(l.stage));
+    const f = p.f;
+    const activeFilters = Object.entries(f).filter(([k, v]) => k !== 'q' && (Array.isArray(v) ? v.length : v !== '' && v != null && v !== false)).length;
+    view.innerHTML = `
+      <div class="page-head"><div><p class="eyebrow">CRM</p><h1>Pipeline</h1></div>
+        <div class="row"><a class="btn btn-mint" href="#/dialer" id="godial">${icon.phone}Dial this list</a><button class="btn btn-ghost" id="imp">${icon.upload}Import</button>
+          <button class="btn btn-ghost" id="dups">Duplicates</button><button class="btn btn-primary" id="addl">${icon.plus}Add lead</button></div></div>
+      <div class="stats">
+        <div class="stat hero"><div class="stat-num">${open.length}</div><div class="stat-label">open leads in view (${all.length} total)</div></div>
+        <div class="stat"><div class="stat-num">${open.filter((l) => l.grade === 'A').length}</div><div class="stat-label">A leads</div></div>
+        <div class="stat"><div class="stat-num">${open.filter((l) => l.callable_now).length}</div><div class="stat-label">callable right now</div></div>
+        <div class="stat"><div class="stat-num">${(by.audit_booked || []).length}</div><div class="stat-label">audits booked</div></div>
+        <div class="stat"><div class="stat-num">${(by.won || []).length}</div><div class="stat-label">won</div></div>
+      </div>
+      <div class="tz-tabs"><button class="tz ${!p.tz ? 'is-on' : ''}" data-tz="">All <b>${all.length}</b></button>${TZS.map(([k, n]) => {
+        const c = tzCount(k);
+        return c ? `<button class="tz ${p.tz === k ? 'is-on' : ''}" data-tz="${k}" title="${n}">${tzNow(k) ? '<i class="live"></i>' : ''}${k === '?' ? 'Unknown' : k} <b>${c}</b></button>` : '';
+      }).join('')}</div>
+      <div class="filterbar">
+        <input id="fq" value="${esc(f.q || '')}" placeholder="Search name, phone, city, industry, zip, tag" style="flex:1 1 240px">
+        <div class="chips">${GRADES.map((g) => `<button class="chip ${f.grades?.includes(g) ? 'on' : ''}" data-grade="${g}">${g}</button>`).join('')}</div>
+        <button class="btn btn-ghost btn-sm" id="fmore">Filters${activeFilters ? ` (${activeFilters})` : ''}</button>
+        <div class="seg"><button class="${p.view === 'board' ? 'is-on' : ''}" data-view="board">Board</button><button class="${p.view === 'list' ? 'is-on' : ''}" data-view="list">List</button></div>
+      </div>
+      <div class="card filters" id="fpanel" ${p.open ? '' : 'hidden'}>
+        <div class="form-grid filt">
+          <label class="field"><span>State</span><select data-f="state"><option value="">Any</option>${states.map((s) => `<option${f.state === s ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
+          <label class="field"><span>City</span><input data-f="city" value="${esc(f.city || '')}" placeholder="Any"></label>
+          <label class="field"><span>Industry</span><input data-f="industry" list="indlist" value="${esc(f.industry || '')}" placeholder="Any"><datalist id="indlist">${industries.map((i) => `<option value="${esc(i)}">`).join('')}</datalist></label>
+          <label class="field"><span>Source</span><select data-f="source"><option value="">Any</option>${sources.map((s) => `<option${f.source === s ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
+          <label class="field"><span>Stage</span><select data-f="stage"><option value="">Any</option>${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}"${f.stage === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+          <label class="field"><span>Tag</span><input data-f="tag" value="${esc(f.tag || '')}" placeholder="Any"></label>
+          <label class="field"><span>Website</span><select data-f="site"><option value="">Any</option><option value="yes"${f.site === 'yes' ? ' selected' : ''}>Has a website</option><option value="no"${f.site === 'no' ? ' selected' : ''}>No website</option></select></label>
+          <label class="field"><span>Researched</span><select data-f="researched"><option value="">Any</option><option value="yes"${f.researched === 'yes' ? ' selected' : ''}>Yes</option><option value="no"${f.researched === 'no' ? ' selected' : ''}>Not yet</option></select></label>
+          <label class="field"><span>Reviews from</span><input type="number" min="0" data-f="minReviews" value="${esc(f.minReviews ?? '')}"></label>
+          <label class="field"><span>Reviews up to</span><input type="number" min="0" data-f="maxReviews" value="${esc(f.maxReviews ?? '')}"></label>
+          <label class="field"><span>Rating up to</span><input type="number" min="1" max="5" step="0.1" data-f="maxRating" value="${esc(f.maxRating ?? '')}"></label>
+          <label class="field"><span>Score at least</span><input type="number" min="0" max="100" data-f="minScore" value="${esc(f.minScore ?? '')}"></label>
+        </div>
+        <div class="row" style="margin-top:10px"><label class="row small" style="gap:6px"><input type="checkbox" data-f="callable"${f.callable ? ' checked' : ''}> Callable right now</label>
+          <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop3"${f.notTop3 ? ' checked' : ''}> Not in the top 3</label>
+          <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
+      </div>
+      <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)</button></div>
+      <div id="pbody"></div>`;
+    const body = $('#pbody', view);
+    if (p.view === 'list') renderList(body, rows); else renderBoard(body, by);
+    wire();
+  };
+
+  const renderBoard = (el, by) => {
+    el.innerHTML = `<div class="board">${BOARD.map((s) => column(s, sortLeads(by[s] || [], '-score'))).join('')}</div>
+      <details class="card" style="margin-top:18px"><summary style="cursor:pointer;font-weight:600">Closed: not now, lost, do not call (${CLOSED.reduce((n, s) => n + (by[s] || []).length, 0)})</summary>
+        <div class="board" style="margin-top:14px">${CLOSED.map((s) => column(s, by[s] || [])).join('')}</div></details>`;
+    $$('.lead-card', el).forEach((c) => {
+      c.addEventListener('click', () => leadModal(c.dataset.id, reload));
+      c.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', c.dataset.id); c.classList.add('dragging'); });
+      c.addEventListener('dragend', () => c.classList.remove('dragging'));
     });
+    $$('.col', el).forEach((col) => {
+      col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('drop-on'); });
+      col.addEventListener('dragleave', () => col.classList.remove('drop-on'));
+      col.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        col.classList.remove('drop-on');
+        const id = e.dataTransfer.getData('text/plain');
+        const card = $(`.lead-card[data-id="${CSS.escape(id)}"]`, el);
+        if (!card || card.closest('.col') === col) return;
+        $('.col-body', col).prepend(card);
+        const l = all.find((x) => x.id === id);
+        try { await api(`/api/leads/${id}`, { method: 'PATCH', body: { stage: col.dataset.stage } }); if (l) l.stage = col.dataset.stage; toast(`Moved to ${STAGE_LABEL[col.dataset.stage]}`); }
+        catch (err) { toast(err.message, true); reload(); }
+      });
+    });
+  };
+
+  const COLS = [['grade', 'Grade', '-score'], ['business', 'Business', 'business'], ['city', 'Area', 'city'], ['tz_short', 'TZ', 'tz_short'], ['industry', 'Industry', 'industry'],
+    ['reviews', 'Reviews', '-reviews'], ['rating', 'Rating', 'rating'], ['map_rank', 'Map rank', 'map_rank'], ['stage', 'Stage', 'stage'], ['next', 'Next', 'next_action_at']];
+  const renderList = (el, rows) => {
+    const sorted = sortLeads(rows, p.sort);
+    const groups = new Map();
+    if (p.group) for (const l of sorted) { const k = String(l[p.group] ?? '') || 'None'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(l); }
+    else groups.set('', sorted);
+    const row = (l) => `<tr data-id="${esc(l.id)}"><td><input type="checkbox" class="sel" data-id="${esc(l.id)}"${selected.has(l.id) ? ' checked' : ''}></td>
+      <td>${gradeBadge(l.grade, l.score)}</td><td><b>${esc(l.business)}</b><div class="small">${esc([l.contact_name, l.phone].filter(Boolean).join(' · '))}</div></td>
+      <td>${esc([l.city, l.state].filter(Boolean).join(', '))}${l.zip ? ` <span class="small">${esc(l.zip)}</span>` : ''}</td>
+      <td>${l.tz_short ? `<span class="badge ${l.callable_now ? '' : 'gray'}">${esc(l.tz_short)} ${esc(l.local_time)}</span>` : '<span class="small">?</span>'}</td>
+      <td>${esc(l.industry || l.category || '')}</td><td>${l.reviews ?? ''}</td><td>${l.rating ?? ''}</td><td>${l.map_rank == null ? '' : l.map_rank > 20 ? '20+' : `#${l.map_rank}`}</td>
+      <td><span class="badge gray">${esc(STAGE_LABEL[l.stage])}</span></td><td class="small">${esc(dueText(l.next_action_at))}</td></tr>`;
+    el.innerHTML = `
+      <div class="row" style="margin-bottom:10px"><label class="field" style="flex:0 1 220px"><select id="grp">${GROUPS.map(([k, n]) => `<option value="${k}"${p.group === k ? ' selected' : ''}>Group: ${n}</option>`).join('')}</select></label>
+        <div class="bulk" id="bulk" ${selected.size ? '' : 'hidden'}><b id="selc">${selected.size} selected</b>
+          <button class="btn btn-ghost btn-sm" data-bulk="research">Research</button><button class="btn btn-ghost btn-sm" data-bulk="callnow">Call next</button>
+          <select id="bstage"><option value="">Move to...</option>${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
+          <button class="btn btn-ghost btn-sm" data-bulk="tag">Tag</button><button class="btn btn-danger btn-sm" data-bulk="delete">Delete</button></div></div>
+      <div class="table-wrap"><table class="leads-table"><thead><tr><th><input type="checkbox" id="selall"></th>${COLS.map(([k, n, s]) => `<th><button class="th" data-sort="${s}">${n}${p.sort.replace('-', '') === s.replace('-', '') ? (p.sort.startsWith('-') ? ' ↓' : ' ↑') : ''}</button></th>`).join('')}</tr></thead>
+      <tbody>${[...groups.entries()].map(([g, ls]) => `${p.group ? `<tr class="grp"><td colspan="${COLS.length + 1}">${esc(g)} <span class="small">${ls.length}</span></td></tr>` : ''}${ls.slice(0, 1500).map(row).join('')}`).join('') || `<tr><td colspan="${COLS.length + 1}" class="muted">No leads match.</td></tr>`}</tbody></table></div>`;
+    const syncBulk = () => { $('#bulk', el).hidden = !selected.size; $('#selc', el).textContent = `${selected.size} selected`; };
+    $('#grp', el).addEventListener('change', (e) => { p.group = e.target.value; render(); });
+    $$('[data-sort]', el).forEach((b) => b.addEventListener('click', () => { const s = b.dataset.sort; const base = s.replace('-', ''); p.sort = p.sort.replace('-', '') === base ? (p.sort.startsWith('-') ? base : `-${base}`) : s; render(); }));
+    $$('tbody tr[data-id]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (e.target.classList.contains('sel')) return; leadModal(tr.dataset.id, reload); }));
+    $$('.sel', el).forEach((c) => c.addEventListener('change', () => { if (c.checked) selected.add(c.dataset.id); else selected.delete(c.dataset.id); syncBulk(); }));
+    $('#selall', el).addEventListener('change', (e) => { sorted.forEach((l) => (e.target.checked ? selected.add(l.id) : selected.delete(l.id))); $$('.sel', el).forEach((c) => { c.checked = e.target.checked; }); syncBulk(); });
+    const bulk = async (action, value) => {
+      try { const r = await api('/api/leads/bulk', { method: 'POST', body: { ids: [...selected], action, value } }); toast(`${r.count} updated`); selected.clear(); reload(); } catch (err) { toast(err.message, true); }
+    };
+    $('#bstage', el).addEventListener('change', (e) => { if (e.target.value) bulk('stage', e.target.value); });
+    $$('[data-bulk]', el).forEach((b) => b.addEventListener('click', () => {
+      const a = b.dataset.bulk;
+      if (a === 'research') return researchMany(all.filter((l) => selected.has(l.id)), reload);
+      if (a === 'tag') { const t = prompt('Tag to add'); if (t) bulk('tag', t); return; }
+      if (a === 'delete' && !confirm(`Delete ${selected.size} leads and their history?`)) return;
+      bulk(a);
+    }));
+  };
+
+  const wire = () => {
+    $('#addl', view).addEventListener('click', () => leadForm(null, reload));
+    $('#imp', view).addEventListener('click', () => importModal(reload));
+    $('#dups', view).addEventListener('click', () => duplicatesModal(reload));
+    $('#godial', view).addEventListener('click', () => { try { localStorage.setItem('rw-dial-filter', JSON.stringify({ tz: p.tz === '?' ? '' : p.tz, grade: (p.f.grades || []).join(','), state: p.f.state || '', industry: p.f.industry || '', tag: p.f.tag || '', city: p.f.city || '' })); } catch { /* ignore */ } });
+    $$('[data-tz]', view).forEach((b) => b.addEventListener('click', () => { p.tz = b.dataset.tz; render(); }));
+    $$('[data-grade]', view).forEach((b) => b.addEventListener('click', () => { const g = b.dataset.grade; const s = new Set(p.f.grades || []); if (s.has(g)) s.delete(g); else s.add(g); p.f.grades = [...s]; render(); }));
+    $$('[data-view]', view).forEach((b) => b.addEventListener('click', () => { p.view = b.dataset.view; render(); }));
+    $('#fmore', view).addEventListener('click', () => { p.open = !p.open; $('#fpanel', view).hidden = !p.open; savePipe(p); });
+    let t;
+    $('#fq', view).addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { p.f.q = e.target.value; render(); const i = $('#fq', view); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); });
+    $$('[data-f]', view).forEach((i) => i.addEventListener('change', () => { p.f[i.dataset.f] = i.type === 'checkbox' ? i.checked : i.value; render(); }));
+    $('#fclear', view).addEventListener('click', () => { p.f = {}; p.tz = ''; render(); });
+    $('#resall', view).addEventListener('click', () => researchMany(filterLeads(all, p).filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).slice(0, 50), reload));
+  };
+  render();
+}
+
+// Research several leads, three at a time, with a progress bar and a stop button.
+export function researchMany(leads, onDone) {
+  if (!leads.length) return toast('Nothing to research in this view.');
+  let stop = false;
+  const m = modal(`<div class="card-head"><h2>Researching ${leads.length} leads</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+    <p class="muted">Each lead: find the Google profile, rank check at 9 points around them, website read, mobile speed. About 4 cents each, ${esc(fmt.money(leads.length * 0.04))} max.</p>
+    <div class="progress"><span id="rmbar" style="width:0%"></span></div><p class="small" id="rmtxt">Starting...</p>
+    <div class="row end"><button class="btn btn-ghost btn-sm" id="rmstop">Stop</button></div>`, { onClose: () => { stop = true; onDone?.(); } });
+  let done = 0, failed = 0, cost = 0;
+  const queue = leads.slice();
+  $('#rmstop', m.el).addEventListener('click', () => { stop = true; });
+  const tick = (l, err) => {
+    done++;
+    $('#rmbar', m.el).style.width = `${Math.round((done / leads.length) * 100)}%`;
+    $('#rmtxt', m.el).textContent = `${done} of ${leads.length} done${failed ? `, ${failed} could not be researched` : ''}. ${err ? `Last issue: ${l.business}: ${err}` : `Last: ${l.business}`}. Spent about $${cost.toFixed(2)}.`;
+  };
+  const worker = async () => {
+    while (queue.length && !stop) {
+      const l = queue.shift();
+      try { const r = await api(`/api/leads/${l.id}/research`, { method: 'POST', body: {} }); cost += r.intel?.cost || 0; tick(l); }
+      catch (err) { failed++; tick(l, err.message); }
+    }
+  };
+  Promise.all([worker(), worker(), worker()]).then(() => { $('#rmtxt', m.el).textContent += stop ? ' Stopped.' : ' All done.'; $('#rmstop', m.el).textContent = 'Done'; $('#rmstop', m.el).onclick = () => m.close(); });
+}
+
+async function duplicatesModal(onDone) {
+  let merged = 0;
+  const m = modal('<div class="skeleton"></div>', { onClose: () => { if (merged) onDone?.(); } });
+  let d;
+  try { d = await api('/api/leads/duplicates'); } catch (e) { m.el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  m.el.innerHTML = `<div class="card-head"><h2>Duplicates (${d.groups.length} groups)</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+    <p class="muted">Matched by phone, website, or business name plus city or zip. Pick the one to keep. Its blanks get filled from the others and their call history moves over.</p>
+    ${d.groups.length ? `<div class="row end" style="margin-bottom:10px"><button class="btn btn-primary btn-sm" id="mergeall">Merge all, keep the top pick</button></div>` : '<p>No duplicates found.</p>'}
+    <div class="dup-groups">${d.groups.map((g, gi) => `<div class="card" style="box-shadow:none" data-g="${gi}">${g.map((l, i) => `<label class="row" style="gap:10px;margin:4px 0"><input type="radio" name="keep${gi}" value="${esc(l.id)}"${i === 0 ? ' checked' : ''}>
+      <span><b>${esc(l.business)}</b> <span class="small">${esc([l.phone, l.website, l.city, STAGE_LABEL[l.stage]].filter(Boolean).join(' · '))}</span></span></label>`).join('')}
+      <div class="row end"><button class="btn btn-ghost btn-sm" data-merge="${gi}">Merge</button></div></div>`).join('')}</div>`;
+  const merge = async (gi) => {
+    const g = d.groups[gi];
+    const keep = $(`input[name="keep${gi}"]:checked`, m.el).value;
+    await api('/api/leads/merge', { method: 'POST', body: { keep, remove: g.map((l) => l.id).filter((id) => id !== keep) } });
+    $(`[data-g="${gi}"]`, m.el).remove();
+    merged++;
+  };
+  $$('[data-merge]', m.el).forEach((b) => b.addEventListener('click', async () => { try { await merge(Number(b.dataset.merge)); toast('Merged'); } catch (err) { toast(err.message, true); } }));
+  $('#mergeall', m.el)?.addEventListener('click', async (e) => {
+    busy(e.target, true);
+    let n = 0;
+    for (let gi = 0; gi < d.groups.length; gi++) { if ($(`[data-g="${gi}"]`, m.el)) { try { await merge(gi); n++; } catch { /* keep going */ } } }
+    toast(`${n} groups merged`); m.close();
   });
 }
 
 function column(stage, leads) {
   return `<section class="col" data-stage="${stage}"><header class="col-head"><b>${STAGE_LABEL[stage]}</b><span class="badge gray">${leads.length}</span></header>
-    <div class="col-body">${leads.slice(0, 200).map(card).join('')}</div></section>`;
+    <div class="col-body">${leads.slice(0, 200).map(card).join('')}${leads.length > 200 ? `<p class="small">${leads.length - 200} more. Use List view.</p>` : ''}</div></section>`;
 }
 function card(l) {
   return `<article class="lead-card" draggable="true" data-id="${esc(l.id)}">
-    <div class="item-title">${esc(l.business)}</div>
-    <div class="item-sub">${esc([l.contact_name, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div>
-    <div class="row small" style="margin-top:6px">${l.next_action_at ? `<span class="badge ${l.next_action_at <= Date.now() ? 'warn' : 'gray'}">${esc(dueText(l.next_action_at))}</span>` : ''}
-      ${l.plan ? `<span class="badge">${esc(PLAN_NAMES[l.plan] || l.plan)}</span>` : ''}${l.tz_known ? `<span>${esc(l.local_time)}</span>` : ''}</div></article>`;
+    <div class="row" style="gap:8px;flex-wrap:nowrap">${gradeBadge(l.grade, l.score)}<div style="min-width:0"><div class="item-title ellip">${esc(l.business)}</div>
+    <div class="item-sub ellip">${esc([l.industry || l.category, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div></div></div>
+    <div class="row small" style="margin-top:6px;gap:6px">${l.next_action_at ? `<span class="badge ${l.next_action_at <= Date.now() ? 'warn' : 'gray'}">${esc(dueText(l.next_action_at))}</span>` : ''}
+      ${l.meet_at && l.meet_at > Date.now() - 3600e3 ? `<span class="badge">Meet ${esc(new Date(l.meet_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</span>` : ''}
+      ${l.reviews != null ? `<span>${l.reviews} rev</span>` : ''}${l.map_rank ? `<span>${l.map_rank > 20 ? '20+' : `#${l.map_rank}`}</span>` : ''}${l.tz_known ? `<span class="${l.callable_now ? 'ok-dot' : ''}">${esc(l.tz_short)} ${esc(l.local_time)}</span>` : ''}</div></article>`;
 }
 
 // ---------- lead form ----------
@@ -102,7 +285,8 @@ export function leadForm(lead, onSaved) {
 
 // ---------- lead details ----------
 export async function leadModal(id, onChange) {
-  const m = modal('<div class="skeleton"></div>');
+  let changed = false;
+  const m = modal('<div class="skeleton"></div>', { onClose: () => { if (changed) onChange?.(); } });
   let data;
   try { data = await api(`/api/leads/${id}`); } catch (e) { m.el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const l = data.lead;
@@ -118,6 +302,9 @@ export async function leadModal(id, onChange) {
       <button class="btn btn-ghost" id="ledit">Edit</button>
     </div>
     ${l.dnc ? '<p class="badge bad" style="margin-bottom:12px">Do not call</p>' : ''}
+    ${l.meet_at && l.meet_at > Date.now() - 2 * 3600e3 ? `<div class="card meet-card"><b>Audit meeting ${esc(new Date(l.meet_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b>
+      ${l.meet_link ? `<a class="btn btn-mint btn-sm" href="${esc(l.meet_link)}" target="_blank" rel="noopener">Join Google Meet</a>` : ''}<a class="btn btn-primary btn-sm" href="/present.html#${esc(l.id)}" target="_blank" rel="noopener">Open presentation</a></div>` : ''}
+    <div class="card" id="lprep" style="box-shadow:none;margin-bottom:16px"></div>
     <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
       <div>
         <h3>Log a call</h3>
@@ -150,6 +337,7 @@ export async function leadModal(id, onChange) {
       </div>
     </div>`;
   const done = () => { m.close(); onChange?.(); };
+  prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, onResearched: () => { changed = true; } });
   $('#ledit', m.el).addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); });
   $$('[data-out]', m.el).forEach((b) => b.addEventListener('click', async () => {
     const outcome = b.dataset.out;
@@ -230,6 +418,8 @@ export function parseCsv(textIn) {
 }
 
 const MAP = [
+  ['zip', /^(zip|zip ?code|postal|postal ?code|postcode)$/i], ['rating', /^(rating|stars|google rating|avg\.? rating|average rating|review rating)$/i],
+  ['reviews', /(reviews?( count)?|# ?of reviews|num(ber)? of reviews|ratings? count|review_count|user_ratings_total)$/i], ['category', /^(category|main category|google category|primary category)$/i],
   ['business', /^(business|company|business name|company name|account|organization|organisation|title|name of business)$/i],
   ['contact_name', /(contact|owner|full name|first name|^name$|decision)/i], ['phone', /(phone|mobile|cell|tel)/i], ['email', /e-?mail/i],
   ['website', /(website|url|domain|site)/i], ['city', /^city$/i], ['state', /^(state|province|region|st)$/i], ['industry', /(industry|category|niche|type|vertical)/i],
@@ -254,10 +444,12 @@ export function mapRows(rows) {
 
 function importModal(onDone) {
   const m = modal(`<div class="card-head"><h2>Import leads</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
-    <p class="muted">Upload a CSV or paste it below. Columns are matched by their headers: business, contact, phone, email, website, city, state, industry. Duplicate phone numbers are skipped. Only use lists you have the right to call.</p>
+    <p class="muted">Upload a CSV or paste it below. Columns are matched by their headers: business, contact, phone, email, website, address, city, state, zip, industry, category, rating, reviews. Duplicates are skipped by phone, website, and name plus city or zip, including leads marked Do not call. Only use lists you have the right to call.</p>
     <input type="file" id="csvf" accept=".csv,text/csv,text/plain" style="margin:10px 0">
     <textarea id="csvt" rows="8" placeholder="business,contact,phone,city,state,industry&#10;Summit Roofing,Bob,954-555-0101,Hollywood,FL,Roofing"></textarea>
     <p id="csvp" class="small"></p>
+    <div class="row"><label class="field" style="flex:1 1 220px"><span>Tag this batch (optional)</span><input id="csvtag" placeholder="e.g. Broward roofers Nov"></label>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="csvres"> Research the A and B leads after import</label></div>
     <div class="row end"><button class="btn btn-primary" id="csvgo" disabled>Import</button></div>`);
   let mapped = [];
   const preview = () => {
@@ -269,60 +461,119 @@ function importModal(onDone) {
   $('#csvf', m.el).addEventListener('change', async (e) => { const f = e.target.files[0]; if (f) { $('#csvt', m.el).value = await f.text(); preview(); } });
   $('#csvgo', m.el).addEventListener('click', async (e) => {
     busy(e.target, true);
-    try { const r = await api('/api/leads/import', { method: 'POST', body: { rows: mapped.slice(0, 2000), source: 'import' } }); toast(`${r.imported} imported, ${r.skipped} skipped`); m.close(); onDone?.(); }
+    const wantRes = $('#csvres', m.el).checked;
+    const startedAt = Date.now() - 5000;
+    try {
+      const r = await api('/api/leads/import', { method: 'POST', body: { rows: mapped.slice(0, 5000), source: 'import', tags: $('#csvtag', m.el).value } });
+      const sb = r.skippedBy || {};
+      const why = [['phone', 'same phone'], ['website', 'same website'], ['name', 'same name and area'], ['dnc', 'do not call'], ['invalid', 'no phone or email']].filter(([k]) => sb[k]).map(([k, n]) => `${sb[k]} ${n}`).join(', ');
+      m.el.innerHTML = `<div class="card-head"><h2>Import done</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div><p><b>${r.imported}</b> new leads added. ${r.skipped ? `${r.skipped} skipped: ${esc(why)}.` : 'Nothing skipped.'}</p>
+        <p class="small">Every lead is scored. Open the List view and sort by grade, or research them for full scores and pitch notes.</p>`;
+      onDone?.();
+      if (wantRes && r.imported) {
+        const fresh = (await api('/api/leads')).leads.filter((l) => l.created_at >= startedAt && !l.researched && ['A', 'B'].includes(l.grade)).slice(0, 100);
+        m.close();
+        researchMany(fresh, onDone);
+      }
+    }
     catch (err) { toast(err.message, true); busy(e.target, false); }
   });
 }
 
 // ---------- power dialer ----------
+const DIAL_KEY = 'rw-dial-filter';
 export async function dialerPage(app, user) {
+  setRep(user);
   const view = staffShell(app, user, 'dialer');
-  let me, q;
-  try { [me, q] = await Promise.all([api('/api/me'), api('/api/dialer/queue?limit=100')]); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  let flt = {};
+  try { flt = JSON.parse(localStorage.getItem(DIAL_KEY) || '{}'); } catch { flt = {}; }
+  let auto = true;
+  try { auto = localStorage.getItem('rw-dial-auto') !== '0'; } catch { /* ignore */ }
+  const qs = new URLSearchParams(Object.entries(flt).filter(([, v]) => v)).toString();
+  let me, q, cal;
+  try { [me, q, cal] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] }))]); }
+  catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   let idx = 0;
-  const first = (user.name || '').split(' ')[0] || '(your name)';
+  const intelCache = new Map();
+  const researching = new Set();
+  const prefetch = async (l) => {
+    if (!l || intelCache.has(l.id) || researching.has(l.id)) return;
+    researching.add(l.id);
+    try {
+      const d = await api(`/api/leads/${l.id}`);
+      let intel = d.intel;
+      if (!intel && auto) { const r = await api(`/api/leads/${l.id}/research`, { method: 'POST', body: {} }); intel = r.intel; Object.assign(l, { score: r.score, grade: r.grade, plan: l.plan || r.plan }); }
+      intelCache.set(l.id, intel || null);
+    } catch { intelCache.set(l.id, null); } finally { researching.delete(l.id); }
+    if (q.queue[idx]?.id === l.id) showPrep();
+  };
+  const showPrep = () => {
+    const l = q.queue[idx];
+    const el = $('#dprep', view);
+    if (!l || !el) return;
+    if (!intelCache.has(l.id)) { el.innerHTML = `<div class="skeleton"></div><p class="small">${auto ? 'Researching this lead: Google profile, map ranks, website, speed...' : 'Loading...'}</p>`; return; }
+    const g = $('#dgrade', view);
+    if (g) g.innerHTML = gradeBadge(l.grade, l.score);
+    prepPanel(el, l, intelCache.get(l.id), { rep: REP, onResearched: (next, intel) => { Object.assign(l, next); intelCache.set(l.id, intel); const gg = $('#dgrade', view); if (gg) gg.innerHTML = gradeBadge(l.grade, l.score); } });
+  };
+  const upcoming = (cal.meetings || []).filter((m) => m.meet_at > Date.now() - 3600e3).slice(0, 4);
+  const filterText = Object.entries(flt).filter(([, v]) => v).map(([k, v]) => `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`).join(' · ');
   const render = () => {
     const l = q.queue[idx];
     view.innerHTML = `
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
-        <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}<a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a></div></div>
+        <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
+          <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead</label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a></div></div>
+      ${filterText ? `<div class="row small" style="margin:-6px 0 14px">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}
       <div class="stats">
         <div class="stat hero"><div class="stat-num">${q.stats.dials}</div><div class="stat-label">dials today (target 60)</div></div>
         <div class="stat"><div class="stat-num">${q.stats.talks}</div><div class="stat-label">owner conversations</div></div>
         <div class="stat"><div class="stat-num">${q.stats.booked}</div><div class="stat-label">audits booked</div></div>
+        <div class="stat"><div class="stat-num">${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</div><div class="stat-label">contact rate</div></div>
       </div>
-      ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
-      <div class="split" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)">
-        <div class="card dial-card">
-          <p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · attempt ${l.attempts + 1}` : ''}${l.next_action ? ` · ${esc(l.next_action)}` : ''}</p>
-          <h2 style="font-size:30px">${esc(l.business)}</h2>
-          <div class="muted">${esc([l.contact_name, l.industry, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div>
-          <div class="row" style="margin:14px 0"><span class="badge">${l.tz_known ? `Their time: ${esc(l.local_time)}` : 'Time zone unknown: add the state'}</span>${l.sms_consent ? '<span class="badge">Agreed to texts</span>' : ''}</div>
-          <div class="dial-phone">${esc(l.phone || '')}</div>
-          <div class="row" style="margin-top:14px">
-            <a class="btn btn-mint btn-xl" style="width:auto;flex:1 1 220px" href="${telHref(l.phone)}" id="dtel">${icon.phone}Call from my phone</a>
-            ${me.twilio ? `<button class="btn btn-primary btn-xl" style="width:auto;flex:1 1 220px" id="dhub">Call through the Hub</button>` : ''}
+      ${upcoming.length ? `<div class="card upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(new Date(m.meet_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }))} ${esc(m.business)}</span>
+        ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>`).join('')}</div>` : ''}
+      ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
+      <div class="dial-grid">
+        <div class="dial-left">
+          <div class="card dial-card">
+            <p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · attempt ${l.attempts + 1}` : ''}${l.next_action ? ` · ${esc(l.next_action)}` : ''}</p>
+            <div class="row" style="gap:12px;flex-wrap:nowrap"><span id="dgrade">${gradeBadge(l.grade, l.score)}</span><h2 style="font-size:28px;margin:0;min-width:0">${esc(l.business)}</h2></div>
+            <div class="muted" style="margin-top:6px">${esc([l.contact_name, l.industry || l.category, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div>
+            <div class="row" style="margin:12px 0"><span class="badge">${l.tz_known ? `Their time: ${esc(l.local_time)}` : 'Time zone unknown: add the state'}</span>${l.sms_consent ? '<span class="badge">Agreed to texts</span>' : ''}${l.reviews != null ? `<span class="badge gray">${l.reviews} reviews${l.rating ? ` · ${l.rating}★` : ''}</span>` : ''}</div>
+            <div class="dial-phone">${esc(l.phone || '')}</div>
+            <div class="row" style="margin-top:14px">
+              <a class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" href="${telHref(l.phone)}" id="dtel">${icon.phone}Call from my phone</a>
+              ${me.twilio ? `<button class="btn btn-primary btn-xl" style="width:auto;flex:1 1 200px" id="dhub">Call through the Hub</button>` : ''}
+            </div>
+            ${me.twilio && !me.user.phone ? '<form id="dphone" class="row" style="margin-top:10px"><input name="phone" placeholder="Your mobile, so the Hub can ring you" style="flex:1 1 200px"><button class="btn btn-ghost btn-sm">Save</button></form>' : ''}
+            <div class="row" style="margin-top:12px">
+              <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.industry || l.category || ''} ${l.city || ''} ${l.state || ''}`)}">Map pack</a>
+              <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''}`)}">Their profile</a>
+              ${l.website ? `<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}">Website</a>` : ''}
+              <button class="btn btn-ghost btn-sm" id="dopen">Full details</button>
+            </div>
           </div>
-          ${me.twilio && !me.user.phone ? '<form id="dphone" class="row" style="margin-top:10px"><input name="phone" placeholder="Your mobile, so the Hub can ring you" style="flex:1 1 200px"><button class="btn btn-ghost btn-sm">Save</button></form>' : ''}
-          <div class="caption" style="margin-top:16px"><b>Opener:</b> Hey ${esc(l.contact_name ? l.contact_name.split(' ')[0] : '[Name]')}, this is ${esc(first)} with Rightway Growth. I'll be honest, this is a cold call. Can I take 30 seconds to tell you why I called, and you tell me if it's worth talking?</div>
-          <div class="row" style="margin-top:10px">
-            <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.industry || ''} ${l.city || ''} ${l.state || ''}`)}">Prep: map pack</a>
-            <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''}`)}">Their profile</a>
-            <button class="btn btn-ghost btn-sm" id="dopen">Full details</button>
+          <div class="card">
+            <h3>How did it go?</h3>
+            <div class="outcomes big">${OUTCOMES.map(([k, n, key]) => `<button class="btn btn-ghost" data-out="${k}"><span class="kbd">${key}</span>${n}</button>`).join('')}</div>
+            <label class="field" style="margin-top:12px"><span>Callback or audit time</span><input type="datetime-local" id="dwhen"></label>
+            <label class="field" style="margin-top:10px"><span>Note</span><textarea id="dnote" rows="3" placeholder="Job value, capacity, who handles marketing, what they said"></textarea></label>
+            <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" id="dskip">Skip for now</button><button class="btn btn-ghost btn-sm" id="dbook">Booked: send Meet invite</button><span class="small">Keys 1 to 9 log an outcome.</span></div>
+            ${l.notes ? `<h3 style="margin-top:18px">Notes</h3><div class="caption">${esc(l.notes)}</div>` : ''}
           </div>
         </div>
-        <div class="card">
-          <h3>How did it go?</h3>
-          <div class="outcomes big">${OUTCOMES.map(([k, n, key]) => `<button class="btn btn-ghost" data-out="${k}"><span class="kbd">${key}</span>${n}</button>`).join('')}</div>
-          <label class="field" style="margin-top:12px"><span>Callback or audit time</span><input type="datetime-local" id="dwhen"></label>
-          <label class="field" style="margin-top:10px"><span>Note</span><textarea id="dnote" rows="3" placeholder="Job value, capacity, what they said"></textarea></label>
-          <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" id="dskip">Skip for now</button><span class="small">Keys 1 to 9 log an outcome.</span></div>
-          ${l.notes ? `<h3 style="margin-top:18px">Notes</h3><div class="caption">${esc(l.notes)}</div>` : ''}
-        </div>
+        <div class="card dial-prep" id="dprep"></div>
       </div>`}`;
+    $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
+    $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
     if (!l) return;
+    showPrep();
+    prefetch(l);
+    prefetch(q.queue[idx + 1]);
     $('#dskip', view).addEventListener('click', () => { idx++; render(); });
     $('#dopen', view).addEventListener('click', () => leadModal(l.id, () => {}));
+    $('#dbook', view).addEventListener('click', () => bookModal(l, () => logOutcome('booked', $('[data-out="booked"]', view), true)));
     $('#dhub', view)?.addEventListener('click', async (e) => {
       busy(e.target, true, 'Ringing you...');
       try { await api('/api/dialer/call', { method: 'POST', body: { leadId: l.id } }); toast('Your phone is ringing. Answer to connect.'); }
@@ -334,22 +585,24 @@ export async function dialerPage(app, user) {
     });
     $$('[data-out]', view).forEach((b) => b.addEventListener('click', () => logOutcome(b.dataset.out, b)));
   };
-  const logOutcome = async (outcome, btn) => {
+  const logOutcome = async (outcome, btn, alreadyBooked = false) => {
     const l = q.queue[idx];
     const when = $('#dwhen', view)?.value;
-    if ((outcome === 'callback' || outcome === 'booked') && !when) return toast('Pick the date and time first.', true);
+    if (outcome === 'callback' && !when) return toast('Pick the date and time first.', true);
+    if (outcome === 'booked' && !when && !alreadyBooked) return bookModal(l, () => logOutcome('booked', btn, true));
     busy(btn, true);
     try {
-      await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { outcome, note: $('#dnote', view).value, callbackAt: when || null } });
+      if (!(alreadyBooked && outcome === 'booked')) await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { outcome, note: $('#dnote', view).value, callbackAt: when || null } });
+      else if ($('#dnote', view).value) await api(`/api/leads/${l.id}/note`, { method: 'POST', body: { text: $('#dnote', view).value } });
       q.stats.dials++;
       if (['conversation', 'booked', 'callback', 'not_interested'].includes(outcome)) q.stats.talks++;
-      if (outcome === 'booked') { q.stats.booked++; toast('Audit booked. Send the invite and confirmation email.'); }
+      if (outcome === 'booked') { q.stats.booked++; toast('Audit booked'); }
       idx++;
       render();
     } catch (err) { toast(err.message, true); busy(btn, false); }
   };
   const onKey = (e) => {
-    if (!document.body.contains(view) || /input|textarea|select/i.test(e.target.tagName)) return;
+    if (!document.body.contains(view) || /input|textarea|select/i.test(e.target.tagName) || document.querySelector('.modal-bg')) return;
     const o = OUTCOMES.find(([, , k]) => k === e.key);
     if (o) { const b = $(`[data-out="${o[0]}"]`, view); if (b) logOutcome(o[0], b); }
   };
@@ -361,8 +614,16 @@ export async function dialerPage(app, user) {
 // ---------- settings ----------
 export async function settingsPage(app, user) {
   const view = staffShell(app, user, 'settings');
-  let s, me;
-  try { [s, me] = await Promise.all([api('/api/settings'), api('/api/me')]); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  let s, me, g;
+  try { [s, me, g] = await Promise.all([api('/api/settings'), api('/api/me'), api('/api/google/status').catch(() => null)]); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  const gmsg = new URLSearchParams(location.search).get('google');
+  if (gmsg) { toast(gmsg === 'ok' ? 'Google connected' : gmsg, gmsg !== 'ok'); history.replaceState(null, '', `${location.pathname}${location.hash}`); }
+  const { DEFAULT_SCRIPT, DEFAULT_OBJECTIONS } = await import('/js/leadintel.js');
+  const sc = { ...DEFAULT_SCRIPT, ...(s.script || {}) };
+  const obs = s.objections || DEFAULT_OBJECTIONS;
+  const bk = g?.booking || {};
+  const bookUrl = `${location.origin}/book.html`;
+  const isAdmin = user.role === 'admin';
   const c = s.connected;
   const pill = (on) => `<span class="badge ${on ? '' : 'gray'}">${on ? 'Connected' : 'Not connected'}</span>`;
   const formUrl = `${location.origin}/api/public/lead`;
@@ -377,12 +638,42 @@ export async function settingsPage(app, user) {
       </form></div>
     <div class="card"><div class="card-head"><h2>Connections</h2></div>
       <ul class="list">
-        ${[['DataForSEO (scans)', c.dataforseo, 'DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD'], ['Stripe (billing status)', c.stripe, 'STRIPE_SECRET_KEY (restricted key)'],
+        ${[['DataForSEO (scans and lead research)', c.dataforseo, 'DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD'], ['Google Calendar and Meet', c.google, 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET'], ['Stripe (billing status)', c.stripe, 'STRIPE_SECRET_KEY (restricted key)'],
           ['Stripe webhook (auto-win on payment)', c.stripeWebhook, `STRIPE_WEBHOOK_SECRET. Endpoint: ${location.origin}/api/stripe/webhook`],
           ['Twilio (call through the Hub)', c.twilio, 'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM'], ['AI captions', c.ai, 'ANTHROPIC_API_KEY'],
           ['Email sending', c.email, 'RESEND_API_KEY, EMAIL_FROM'], ['Photo storage', c.media, 'R2 bucket rightway-media']]
           .map(([n, on, keys]) => `<li class="item">${pill(on)}<div><div class="item-title">${esc(n)}</div><div class="item-sub mono">${esc(keys)}</div></div><span></span></li>`).join('')}
       </ul><p class="small" style="margin-top:12px">Add keys in Cloudflare under Build variables and secrets, then ask Claude to rebuild.</p></div>
+    <div class="card"><div class="card-head"><h2>Google Calendar and Meet</h2>${pill(g?.connected)}</div>
+      ${!g?.ready ? `<p class="muted">Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloudflare Build secrets first. In Google Cloud, the OAuth redirect address is:</p><div class="copybox"><code>${esc(location.origin)}/api/google/callback</code><button class="btn btn-ghost btn-sm" data-copy="${esc(location.origin)}/api/google/callback">Copy</button></div>`
+        : g.connected ? `<p>Connected as <b>${esc(g.email || 'your Google account')}</b>. Meetings you book from a lead go on this calendar with a Meet link and the lead gets the invite.</p><div class="row"><button class="btn btn-ghost btn-sm" id="gdisc">Disconnect</button></div>`
+        : `<p class="muted">Connect the Google account whose calendar you use for audits.</p><a class="btn btn-primary" href="/api/google/connect">Connect Google</a>`}
+      ${g?.ready ? `<h3 style="margin-top:20px">Public booking page</h3>
+        <p class="muted">Leads pick an open time from ${esc(bk.ownerEmail || 'the connected calendar')} and get a Meet invite. Link it from your site, emails, and texts.</p>
+        <div class="copybox"><code>${esc(bookUrl)}</code><button class="btn btn-ghost btn-sm" data-copy="${esc(bookUrl)}">Copy</button></div>
+        <form id="bkset" class="form-grid" style="margin-top:12px">
+          <label class="field"><span>Meeting name</span><input name="title" value="${esc(bk.title || '')}"${isAdmin ? '' : ' disabled'}></label>
+          <label class="field"><span>Length (minutes)</span><input name="minutes" type="number" min="15" max="120" value="${esc(bk.minutes ?? 30)}"${isAdmin ? '' : ' disabled'}></label>
+          <label class="field"><span>First slot (hour, 24h)</span><input name="start" type="number" min="0" max="23" value="${esc(bk.startHour ?? 9)}"${isAdmin ? '' : ' disabled'}></label>
+          <label class="field"><span>Last end time (hour, 24h)</span><input name="end" type="number" min="1" max="24" value="${esc(bk.endHour ?? 17)}"${isAdmin ? '' : ' disabled'}></label>
+          <label class="field"><span>Days (0 Sun to 6 Sat)</span><input name="days" value="${esc((bk.weekdays || [1, 2, 3, 4, 5]).join(','))}"${isAdmin ? '' : ' disabled'}></label>
+          <label class="field"><span>Buffer between (minutes)</span><input name="buffer" type="number" min="0" max="120" value="${esc(bk.buffer ?? 15)}"${isAdmin ? '' : ' disabled'}></label>
+          <label class="field"><span>Minimum notice (hours)</span><input name="notice" type="number" min="0" max="168" value="${esc(bk.noticeHours ?? 4)}"${isAdmin ? '' : ' disabled'}></label>
+          <label class="field"><span>Time zone</span><input name="tz" value="${esc(bk.tz || 'America/New_York')}"${isAdmin ? '' : ' disabled'}></label>
+          ${isAdmin ? `<div class="span-all row end">${g.connected ? '<label class="row small" style="gap:6px"><input type="checkbox" name="ownerSelf"> Book on my calendar</label>' : ''}<button class="btn btn-primary" type="submit">Save booking settings</button></div>` : ''}
+        </form>` : ''}
+    </div>
+    <div class="card"><div class="card-head"><h2>Call script</h2></div>
+      <p class="muted">The dialer fills these in for each lead. Placeholders: {first} {rep} {business} {city} {industry} {keyword} {rank} {top_name} {top_reviews} {reviews} {rating} {plan} {price} {setup} {ticket} {breakeven} {hook} {problems} {slot1} {slot2} {email_or_phone}. {hook} and {problems} come from the research.</p>
+      <form id="scf" class="form-grid" style="grid-template-columns:1fr">
+        ${[['opener', 'Opener'], ['reason', 'Reason for the call'], ['discovery', 'Discovery questions (one per line)'], ['pitch', 'What we found'], ['book', 'Book the audit'], ['close', 'Close']].map(([k, n]) => `<label class="field"><span>${n}</span><textarea name="${k}" rows="${k === 'discovery' ? 6 : 3}"${isAdmin ? '' : ' disabled'}>${esc(Array.isArray(sc[k]) ? sc[k].join('\n') : sc[k])}</textarea></label>`).join('')}
+        <label class="field"><span>Objections (one per block: the objection on the first line, the answer below, blank line between)</span><textarea name="objections" rows="14"${isAdmin ? '' : ' disabled'}>${esc(obs.map(([q, a]) => `${q}\n${a}`).join('\n\n'))}</textarea></label>
+        ${isAdmin ? '<div class="row end"><button class="btn btn-ghost" type="button" id="screset">Reset to default</button><button class="btn btn-primary" type="submit">Save script</button></div>' : ''}
+      </form></div>
+    <div class="card"><div class="card-head"><h2>Lead research</h2></div>
+      <form id="resf" class="row"><label class="field" style="flex:0 1 260px"><span>Rank check radius (miles)</span><input name="research_radius" type="number" min="0.5" max="10" step="0.5" value="${esc(s.research_radius || 2)}"${isAdmin ? '' : ' disabled'}></label>
+        ${isAdmin ? '<button class="btn btn-ghost" type="submit">Save</button>' : ''}</form>
+      <p class="small" style="margin-top:8px">Research checks 9 points around the business. Use 1 to 2 miles in dense cities, 3 to 5 for suburbs and service area businesses.</p></div>
     <div class="card"><div class="card-head"><h2>Your phone for the dialer</h2></div>
       <form id="myphone" class="row"><input name="phone" value="${esc(me.user.phone || '')}" placeholder="Your mobile number" style="flex:1 1 220px"><button class="btn btn-primary" type="submit">Save</button></form>
       <p class="small" style="margin-top:8px">With Twilio connected, "Call through the Hub" rings this phone first, then connects you to the lead from the business number. Recording stays off.</p></div>
@@ -390,6 +681,28 @@ export async function settingsPage(app, user) {
       <p class="muted">Point the audit form on rightwaygrowth.com here and requests land in the pipeline as "Audit requested", at the top of the call queue.</p>
       <div class="copybox"><code>${esc(formUrl)}</code><button class="btn btn-ghost btn-sm" id="cpf">Copy</button></div></div>`;
   $('#cpf', view).addEventListener('click', () => copy(formUrl, 'Form address copied'));
+  $$('[data-copy]', view).forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, 'Copied')));
+  $('#gdisc', view)?.addEventListener('click', async () => { try { await api('/api/google/disconnect', { method: 'POST' }); toast('Disconnected'); settingsPage(app, user); } catch (err) { toast(err.message, true); } });
+  $('#bkset', view)?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    try { await api('/api/google/booking', { method: 'PUT', body: { ...f, ownerSelf: Boolean(f.ownerSelf) } }); toast('Booking settings saved'); } catch (err) { toast(err.message, true); }
+  });
+  $('#scf', view)?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target).entries());
+    const objections = String(f.objections || '').split(/\n\s*\n/).map((b) => b.trim().split('\n')).filter((x) => x.length >= 2).map(([q, ...a]) => [q.trim(), a.join(' ').trim()]);
+    const script = Object.fromEntries(['opener', 'reason', 'pitch', 'book', 'close', 'discovery'].map((k) => [k, f[k] || '']));
+    try { await api('/api/settings', { method: 'PUT', body: { script, objections } }); clearScriptCache(); toast('Script saved'); } catch (err) { toast(err.message, true); }
+  });
+  $('#screset', view)?.addEventListener('click', async () => {
+    if (!confirm('Reset the script and objections to the default?')) return;
+    try { await api('/api/settings', { method: 'PUT', body: { script: null, objections: [] } }); clearScriptCache(); settingsPage(app, user); } catch (err) { toast(err.message, true); }
+  });
+  $('#resf', view)?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { await api('/api/settings', { method: 'PUT', body: { research_radius: e.target.research_radius.value } }); toast('Saved'); } catch (err) { toast(err.message, true); }
+  });
   $('#plinks', view).addEventListener('submit', async (e) => {
     e.preventDefault();
     try { await api('/api/settings', { method: 'PUT', body: { links: Object.fromEntries(new FormData(e.target).entries()) } }); toast('Links saved'); } catch (err) { toast(err.message, true); }

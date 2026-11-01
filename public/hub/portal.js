@@ -1,6 +1,7 @@
 // The client app: home, reviews, post a photo, results. Built phone-first and installable.
 import { $, esc, api, fmt, icon, animateNumbers, PLAN_NAMES } from './core.js';
 import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.js';
+import { clientStart } from './onboarding.js';
 
 const TABS = [['home', 'Home', icon.home], ['reviews', 'Reviews', icon.star], ['post', 'Post', icon.camera], ['results', 'Results', icon.chart]];
 
@@ -31,6 +32,10 @@ export async function portal(app, user, tab, state) {
     const v = shell(app, c, user, 'post', 'Post a photo', 'Snap a job, send it, and we handle the captions and posting.');
     return renderPosts(v, c.id, { staff: false, ai: state.ai });
   }
+  if (tab === 'start') {
+    const v = shell(app, c, user, 'home', 'Get started', 'A few details so we can get to work.');
+    return clientStart(v, c);
+  }
   if (tab === 'results') {
     const v = shell(app, c, user, 'results', 'Your results', 'Where you show up on Google across your area.');
     return renderRankings(v, c.id, { staff: false });
@@ -45,6 +50,7 @@ export async function portal(app, user, tab, state) {
       <div class="stat"><div class="stat-num" data-count="${o.reviews.sent}">0</div><div class="stat-label">review requests sent (${o.reviews.clicked} opened)</div></div>
       <div class="stat"><div class="stat-num" data-count="${o.posts.posted}">0</div><div class="stat-label">posts published this month</div></div>
     </div>
+    ${!c.intake_at ? `<a class="card start-card" href="#/start"><b>Get started: 3 quick steps</b><span>Tell us about your business, give us Google access, and upload photos.</span></a>` : ''}
     <a class="btn btn-mint btn-xl" href="#/reviews">${icon.star}Ask a customer for a review</a>
     <a class="btn btn-ghost btn-xl" href="#/post">${icon.camera}Send us a photo to post</a>
     <div class="card">

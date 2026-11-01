@@ -116,7 +116,11 @@ route('GET', '/api/settings', async ({ env, user }) => {
   return json({
     links: Object.fromEntries(PLAN_LINK_KEYS.map((k) => [k, s[`pay_link_${k}`] || ''])),
     company_phone: s.company_phone || '',
+    script: s.script ? JSON.parse(s.script) : null,
+    objections: s.objections ? JSON.parse(s.objections) : null,
+    research_radius: Number(s.research_radius) || 2,
     connected: {
+      google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
       dataforseo: Boolean(env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD), stripe: Boolean(env.STRIPE_SECRET_KEY), stripeWebhook: Boolean(env.STRIPE_WEBHOOK_SECRET),
       twilio: Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM), ai: Boolean(env.ANTHROPIC_API_KEY), email: Boolean(env.RESEND_API_KEY),
       media: Boolean(env.MEDIA),
@@ -134,6 +138,16 @@ route('PUT', '/api/settings', async ({ env, user, body }) => {
     await setSetting(env, `pay_link_${k}`, v);
   }
   if ('company_phone' in b) await setSetting(env, 'company_phone', String(b.company_phone || '').slice(0, 30));
+  if ('script' in b) {
+    const keys = ['opener', 'reason', 'discovery', 'pitch', 'book', 'close'];
+    const sc = b.script && typeof b.script === 'object' ? Object.fromEntries(keys.filter((k) => typeof b.script[k] === 'string' && b.script[k].trim()).map((k) => [k, b.script[k].slice(0, 3000)])) : null;
+    await setSetting(env, 'script', sc && Object.keys(sc).length ? JSON.stringify(sc) : '');
+  }
+  if ('objections' in b) {
+    const ob = Array.isArray(b.objections) ? b.objections.filter((o) => Array.isArray(o) && o[0] && o[1]).slice(0, 40).map(([q, a]) => [String(q).slice(0, 120), String(a).slice(0, 1500)]) : [];
+    await setSetting(env, 'objections', ob.length ? JSON.stringify(ob) : '');
+  }
+  if ('research_radius' in b) await setSetting(env, 'research_radius', String(Math.min(10, Math.max(0.5, Number(b.research_radius) || 2))));
   return json({ ok: true });
 });
 

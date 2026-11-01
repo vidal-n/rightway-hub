@@ -81,7 +81,10 @@ test('leads: create, dedupe, import, outcome, queue, convert', async () => {
     { business: 'Ace Plumbing', phone: '305-555-0102', state: 'FL' }, { business: 'Dupe again', phone: '9545550101' },
     { business: '', phone: '1' }, { business: 'Lone Star HVAC', phone: '512-555-0103', state: 'TX' },
   ] });
-  assert.deepEqual(r.data, { imported: 2, skipped: 2 });
+  assert.equal(r.data.imported, 2);
+  assert.equal(r.data.skipped, 2);
+  assert.equal(r.data.skippedBy.phone, 1);
+  assert.equal(r.data.skippedBy.invalid, 1);
   r = await t.call('GET', '/api/leads?q=hvac');
   assert.equal(r.data.leads.length, 1);
   assert.equal(r.data.counts.new, 3);

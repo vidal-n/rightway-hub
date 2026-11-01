@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Book your free audit | Rightway Growth</title>
+  <meta name="description" content="Pick a time for a free local visibility audit with Rightway Growth. We show you where you rank on Google Maps and what to fix.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="/hub.css">
+  <style>
+    .bk { max-width: 960px; margin: 0 auto; padding: 28px 16px 64px; display: grid; gap: 18px; }
+    .bk-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .bk-head img { height: 30px; width: auto; }
+    .bk-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+    .days { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+    .day { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 10px 14px; cursor: pointer; text-align: center; font: 600 14px var(--body); color: var(--ink); min-width: 74px; }
+    .day b { display: block; font: 700 22px var(--display); }
+    .day.on { background: var(--btn); color: var(--btn-ink); border-color: transparent; }
+    .times { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 14px; }
+    .time { border: 1px solid var(--line); background: var(--surface-2); border-radius: 12px; padding: 12px; cursor: pointer; font: 600 15px var(--body); color: var(--ink); }
+    .time.on { background: var(--mint); color: #0F1B17; border-color: var(--mint-strong); }
+    .hp { position: absolute; left: -9999px; }
+    @media (max-width: 760px) { .bk-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="bk" id="bk">
+    <div class="bk-head"><a href="https://rightwaygrowth.com"><img class="logo-light" src="/brand/rightway-logo-light.svg" alt="Rightway Growth" width="185" height="30"><img class="logo-dark" src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="185" height="30"></a></div>
+    <div class="skeleton"></div>
+  </main>
+  <script type="module" src="/js/book.js"></script>
+</body>
+</html>

@@ -2,8 +2,9 @@
 import { HttpError, json } from './util.js';
 import { all, first, run, batch, newId, now } from './db.js';
 import { requireStaff } from './auth.js';
-import { PLANS } from './plans.js';
+import { PLANS, tasksForMonth, monthKey } from './plans.js';
 import { route } from './router.js';
+import { scoreLead, dupKeys } from '../public/js/leadintel.js';
 
 export const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won', 'not_now', 'lost', 'dnc'];
 const CALLABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
@@ -105,19 +106,30 @@ export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, not
 }
 
 const text = (v, max = 300) => (v == null ? null : String(v).replace(/\u0000/g, '').trim().slice(0, max) || null);
-const LEAD_FIELDS = ['business', 'contact_name', 'phone', 'email', 'website', 'city', 'state', 'industry', 'source', 'plan', 'next_action', 'notes', 'place_id', 'cid'];
+const LEAD_FIELDS = ['business', 'contact_name', 'phone', 'email', 'website', 'city', 'state', 'zip', 'address', 'industry', 'category', 'tags', 'source', 'plan', 'next_action', 'notes', 'place_id', 'cid'];
 
 export function cleanLead(b, partial = false) {
   const out = {};
   for (const f of LEAD_FIELDS) if (f in b) out[f] = text(b[f], f === 'notes' ? 5000 : 300);
-  for (const f of ['lat', 'lng']) if (f in b) { const n = Number(b[f]); out[f] = b[f] === '' || b[f] == null || !Number.isFinite(n) ? null : n; }
+  for (const f of ['lat', 'lng', 'rating', 'reviews', 'locations']) if (f in b) { const n = Number(b[f]); out[f] = b[f] === '' || b[f] == null || !Number.isFinite(n) ? null : n; }
   if ('next_action_at' in b) out.next_action_at = b.next_action_at ? Number(new Date(b.next_action_at)) || null : null;
   if ('stage' in b) { if (!STAGES.includes(b.stage)) throw new HttpError('Unknown stage.'); out.stage = b.stage; if (b.stage === 'dnc') out.dnc = 1; }
   if ('plan' in out && out.plan && !PLANS[out.plan]) out.plan = null;
   if (!partial && !out.business) throw new HttpError('Business name is required.');
   if ('phone' in out) out.phone_digits = digits(out.phone) || null;
   if ('state' in out) { out.state = stateCode(out.state) || out.state; out.timezone = timezoneFor(out.state); }
+  if ('zip' in out && out.zip) out.zip = String(out.zip).replace(/[^\d-]/g, '').slice(0, 10) || null;
+  if ('reviews' in out && out.reviews != null) out.reviews = Math.round(out.reviews);
+  if ('rating' in out && out.rating != null && (out.rating < 0 || out.rating > 5)) out.rating = null;
   return out;
+}
+
+// Score from whatever is known about the lead, including saved research.
+export function rescore(lead) {
+  let intel = null;
+  try { intel = lead.intel ? JSON.parse(lead.intel) : null; } catch { intel = null; }
+  const { score, grade } = scoreLead(lead, intel);
+  return { score, grade };
 }
 
 async function leadOr404(env, id) {
@@ -129,6 +141,7 @@ async function leadOr404(env, id) {
 export async function insertLead(env, data, by = null) {
   const l = { ...data, id: newId('ld_'), created_at: now(), updated_at: now(), owner_id: by };
   if (!l.stage) l.stage = 'new';
+  Object.assign(l, rescore(l));
   const cols = Object.keys(l);
   await run(env, `INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...cols.map((k) => l[k]));
   return l.id;
@@ -141,9 +154,24 @@ export async function logActivity(env, a) {
   return id;
 }
 
+const TZ_SHORT = { 'America/New_York': 'ET', 'America/Chicago': 'CT', 'America/Denver': 'MT', 'America/Phoenix': 'AZ', 'America/Los_Angeles': 'PT', 'America/Anchorage': 'AK', 'Pacific/Honolulu': 'HI' };
 function decorate(l) {
   const tz = l.timezone || null;
-  return { ...l, local_time: localTime(tz), callable_now: !l.dnc && inCallingHours(tz), tz_known: Boolean(tz) };
+  const { intel, ...rest } = l;
+  return { ...rest, researched: Boolean(l.intel_at), tz_short: TZ_SHORT[tz] || null, local_time: localTime(tz), callable_now: !l.dnc && inCallingHours(tz), tz_known: Boolean(tz) };
+}
+const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, website, city, state, zip, timezone, industry, category, tags, source, stage, plan,
+  next_action_at, next_action, owner_id, attempts, last_call_at, dnc, sms_consent, client_id, score, grade, rating, reviews, map_rank, problems,
+  intel_at, meet_at, meet_link, created_at, updated_at`;
+
+async function updateLead(env, id, set) {
+  const cols = Object.keys(set);
+  if (!cols.length) return;
+  await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), id);
+}
+async function refreshScore(env, id) {
+  const l = await first(env, 'SELECT * FROM leads WHERE id = ?', id);
+  if (l) await updateLead(env, id, rescore(l));
 }
 
 // ---------- routes ----------
@@ -151,8 +179,8 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
   requireStaff(user);
   const q = (url.searchParams.get('q') || '').trim().toLowerCase();
   const stage = url.searchParams.get('stage');
-  let rows = await all(env, `SELECT * FROM leads ${stage ? 'WHERE stage = ?' : ''} ORDER BY updated_at DESC LIMIT 2000`, ...(stage ? [stage] : []));
-  if (q) rows = rows.filter((l) => [l.business, l.contact_name, l.phone, l.email, l.city, l.industry].some((v) => String(v || '').toLowerCase().includes(q)));
+  let rows = await all(env, `SELECT ${LIST_COLS} FROM leads ${stage ? 'WHERE stage = ?' : ''} ORDER BY updated_at DESC LIMIT 5000`, ...(stage ? [stage] : []));
+  if (q) rows = rows.filter((l) => [l.business, l.contact_name, l.phone, l.email, l.city, l.industry, l.category, l.zip, l.tags].some((v) => String(v || '').toLowerCase().includes(q)));
   const counts = await all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage');
   return json({ leads: rows.map(decorate), counts: Object.fromEntries(counts.map((c) => [c.stage, c.n])) });
 });
@@ -160,31 +188,112 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
 route('POST', '/api/leads', async ({ env, user, body }) => {
   requireStaff(user);
   const data = cleanLead(await body());
-  if (data.phone_digits && (await first(env, 'SELECT id FROM leads WHERE phone_digits = ?', data.phone_digits))) throw new HttpError('A lead with that phone number already exists.', 409);
+  const dup = await findDuplicate(env, data);
+  if (dup) throw new HttpError(`This looks like a lead you already have: ${dup.business}.`, 409);
   const id = await insertLead(env, data, user.id);
   await logActivity(env, { lead_id: id, type: 'stage', body: 'Lead created', by: user.id });
   return json({ lead: decorate(await leadOr404(env, id)) });
 });
 
+// Existing dedupe keys: phone, website domain, and name plus city or zip.
+async function existingKeys(env) {
+  const rows = await all(env, 'SELECT id, business, phone_digits, website, city, zip, dnc FROM leads');
+  const keys = new Map();
+  for (const r of rows) for (const k of dupKeys(r)) if (!keys.has(k)) keys.set(k, r);
+  return keys;
+}
+async function findDuplicate(env, data) {
+  const keys = await existingKeys(env);
+  for (const k of dupKeys(data)) if (keys.has(k)) return keys.get(k);
+  return null;
+}
+
 route('POST', '/api/leads/import', async ({ env, user, body }) => {
   requireStaff(user);
-  const { rows, source } = await body();
+  const { rows, source, tags } = await body();
   if (!Array.isArray(rows) || !rows.length) throw new HttpError('No rows to import.');
-  if (rows.length > 2000) throw new HttpError('Import up to 2,000 leads at a time.');
-  const existing = new Set((await all(env, 'SELECT phone_digits FROM leads WHERE phone_digits IS NOT NULL')).map((r) => r.phone_digits));
+  if (rows.length > 5000) throw new HttpError('Import up to 5,000 leads at a time.');
+  const keys = await existingKeys(env);
   const items = [];
-  let skipped = 0;
+  const skipped = { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0 };
+  const reason = { p: 'phone', d: 'website', n: 'name' };
+  const tagText = text(tags, 200);
   for (const r of rows) {
     let d;
-    try { d = cleanLead({ ...r, source: r.source || source || 'import' }); } catch { skipped++; continue; }
-    if (d.phone_digits && existing.has(d.phone_digits)) { skipped++; continue; }
-    if (d.phone_digits) existing.add(d.phone_digits);
+    try { d = cleanLead({ ...r, source: r.source || source || 'import' }); } catch { skipped.invalid++; continue; }
+    if (!d.phone_digits && !d.email) { skipped.invalid++; continue; }
+    const ks = dupKeys(d);
+    const hit = ks.find((k) => keys.has(k));
+    if (hit) { const prev = keys.get(hit); skipped[prev?.dnc ? 'dnc' : reason[hit[0]]]++; continue; }
+    if (tagText) d.tags = [d.tags, tagText].filter(Boolean).join(', ');
     const l = { ...d, id: newId('ld_'), stage: 'new', created_at: now(), updated_at: now(), owner_id: user.id };
+    Object.assign(l, rescore(l));
+    for (const k of ks) keys.set(k, l);
     const cols = Object.keys(l);
     items.push([`INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...cols.map((k) => l[k])]);
   }
   for (let i = 0; i < items.length; i += 100) await batch(env, items.slice(i, i + 100));
-  return json({ imported: items.length, skipped });
+  const total = Object.values(skipped).reduce((a, b) => a + b, 0);
+  return json({ imported: items.length, skipped: total, skippedBy: skipped });
+});
+
+// Duplicate groups among leads already in the Hub.
+route('GET', '/api/leads/duplicates', async ({ env, user }) => {
+  requireStaff(user);
+  const rows = await all(env, 'SELECT id, business, contact_name, phone, phone_digits, website, city, zip, stage, score, created_at FROM leads');
+  const parent = new Map(rows.map((r) => [r.id, r.id]));
+  const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const seen = new Map();
+  for (const r of rows) for (const k of dupKeys(r)) { if (seen.has(k)) parent.set(find(r.id), find(seen.get(k))); else seen.set(k, r.id); }
+  const groups = new Map();
+  for (const r of rows) { const g = find(r.id); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(r); }
+  return json({ groups: [...groups.values()].filter((g) => g.length > 1).map((g) => g.sort((a, b) => (b.score || 0) - (a.score || 0) || a.created_at - b.created_at)) });
+});
+
+// Merge: keep one lead, fill its blanks from the others, move their history, delete them.
+route('POST', '/api/leads/merge', async ({ env, user, body }) => {
+  requireStaff(user);
+  const { keep, remove } = await body();
+  if (!keep || !Array.isArray(remove) || !remove.length) throw new HttpError('Pick the lead to keep and the ones to merge.');
+  const k = await leadOr404(env, keep);
+  const others = (await Promise.all(remove.filter((id) => id !== keep).map((id) => first(env, 'SELECT * FROM leads WHERE id = ?', id)))).filter(Boolean);
+  const set = {};
+  for (const o of others) {
+    for (const f of [...LEAD_FIELDS, 'phone_digits', 'timezone', 'rating', 'reviews', 'intel', 'intel_at', 'lat', 'lng']) if ((k[f] == null || k[f] === '') && o[f] != null && o[f] !== '' && set[f] == null) set[f] = o[f];
+    if (o.notes && o.notes !== k.notes) set.notes = [set.notes || k.notes, o.notes].filter(Boolean).join('\n');
+    if (o.dnc) { set.dnc = 1; set.stage = 'dnc'; }
+  }
+  set.updated_at = now();
+  await updateLead(env, k.id, set);
+  const ids = others.map((o) => o.id);
+  if (ids.length) {
+    const ph = ids.map(() => '?').join(',');
+    await batch(env, [[`UPDATE activities SET lead_id = ? WHERE lead_id IN (${ph})`, k.id, ...ids], [`UPDATE work_orders SET lead_id = ? WHERE lead_id IN (${ph})`, k.id, ...ids], [`DELETE FROM leads WHERE id IN (${ph})`, ...ids]]);
+  }
+  await refreshScore(env, k.id);
+  await logActivity(env, { lead_id: k.id, type: 'stage', body: `Merged ${ids.length} duplicate${ids.length === 1 ? '' : 's'}`, by: user.id });
+  return json({ ok: true, merged: ids.length });
+});
+
+// Bulk actions from the list view.
+route('POST', '/api/leads/bulk', async ({ env, user, body }) => {
+  requireStaff(user);
+  const { ids, action, value } = await body();
+  if (!Array.isArray(ids) || !ids.length || ids.length > 5000) throw new HttpError('Select some leads first.');
+  const ph = ids.map(() => '?').join(',');
+  if (action === 'stage') {
+    if (!STAGES.includes(value)) throw new HttpError('Unknown stage.');
+    await run(env, `UPDATE leads SET stage = ?, dnc = CASE WHEN ? = 'dnc' THEN 1 ELSE dnc END, updated_at = ? WHERE id IN (${ph})`, value, value, now(), ...ids);
+  } else if (action === 'tag') {
+    const t = text(value, 60);
+    if (!t) throw new HttpError('Type a tag.');
+    await run(env, `UPDATE leads SET tags = CASE WHEN tags IS NULL OR tags = '' THEN ? ELSE tags || ', ' || ? END, updated_at = ? WHERE id IN (${ph})`, t, t, now(), ...ids);
+  } else if (action === 'delete') {
+    await batch(env, [[`DELETE FROM activities WHERE lead_id IN (${ph})`, ...ids], [`DELETE FROM leads WHERE id IN (${ph})`, ...ids]]);
+  } else if (action === 'callnow') {
+    await run(env, `UPDATE leads SET next_action_at = ?, updated_at = ? WHERE id IN (${ph}) AND dnc = 0`, now(), now(), ...ids);
+  } else throw new HttpError('Unknown action.');
+  return json({ ok: true, count: ids.length });
 });
 
 route('GET', '/api/leads/:id', async ({ env, user, params }) => {
@@ -192,7 +301,9 @@ route('GET', '/api/leads/:id', async ({ env, user, params }) => {
   const l = await leadOr404(env, params.id);
   const activities = await all(env, 'SELECT * FROM activities WHERE lead_id = ? ORDER BY at DESC LIMIT 200', l.id);
   const orders = await all(env, 'SELECT id, token, plan, status, signed_name, signed_at, paid_at, created_at FROM work_orders WHERE lead_id = ? ORDER BY created_at DESC', l.id);
-  return json({ lead: decorate(l), activities, orders });
+  let intel = null;
+  try { intel = l.intel ? JSON.parse(l.intel) : null; } catch { intel = null; }
+  return json({ lead: decorate(l), intel, activities, orders });
 });
 
 route('PATCH', '/api/leads/:id', async ({ env, user, params, body }) => {
@@ -200,8 +311,8 @@ route('PATCH', '/api/leads/:id', async ({ env, user, params, body }) => {
   const l = await leadOr404(env, params.id);
   const set = cleanLead(await body(), true);
   set.updated_at = now();
-  const cols = Object.keys(set);
-  await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), l.id);
+  Object.assign(set, rescore({ ...l, ...set }));
+  await updateLead(env, l.id, set);
   if (set.stage && set.stage !== l.stage) await logActivity(env, { lead_id: l.id, type: 'stage', body: `Moved to ${set.stage.replace('_', ' ')}`, by: user.id });
   return json({ lead: decorate(await leadOr404(env, l.id)) });
 });
@@ -218,8 +329,8 @@ route('POST', '/api/leads/:id/outcome', async ({ env, user, params, body }) => {
   const b = await body();
   const callbackAt = b.callbackAt ? Number(new Date(b.callbackAt)) || null : null;
   const set = applyOutcome(l, b.outcome, { callbackAt, note: text(b.note, 2000) || '' });
-  const cols = Object.keys(set);
-  await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), l.id);
+  Object.assign(set, rescore({ ...l, ...set }));
+  await updateLead(env, l.id, set);
   // Attach to the most recent call record from the dialer if there is one in the last hour.
   const recent = await first(env, "SELECT id FROM activities WHERE lead_id = ? AND type = 'call' AND outcome IS NULL AND at > ? ORDER BY at DESC LIMIT 1", l.id, now() - 3600e3);
   if (recent) await run(env, 'UPDATE activities SET outcome = ?, body = COALESCE(?, body) WHERE id = ?', b.outcome, text(b.note, 2000), recent.id);
@@ -246,7 +357,21 @@ export async function convertLead(env, lead, plan, by) {
     VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   id, lead.business, PLANS[plan] ? plan : (lead.plan || 'growth'), new Date().toISOString().slice(0, 10), lead.contact_name, lead.email, lead.phone,
   lead.website, address || null, lead.place_id, lead.cid, lead.lat, lead.lng, lead.industry, lead.id, now());
-  await run(env, "UPDATE leads SET client_id = ?, stage = 'won', updated_at = ? WHERE id = ?", id, now(), lead.id);
+  // Carry the sales research over as the client's baseline (the "before" for every report).
+  let intel = null;
+  try { intel = lead.intel ? JSON.parse(lead.intel) : null; } catch { intel = null; }
+  if (intel) {
+    const kw = intel.keyword ? [intel.keyword, lead.city ? `${intel.keyword} ${lead.city}` : null].filter(Boolean).join('\n') : null;
+    await run(env, 'UPDATE clients SET baseline = ?, keywords = COALESCE(keywords, ?), category = COALESCE(?, category), address = COALESCE(?, address), review_url = COALESCE(review_url, ?) WHERE id = ?',
+      lead.intel, kw, intel.listing?.category || null, intel.listing?.address || null,
+      intel.listing?.place_id ? `https://search.google.com/local/writereview?placeid=${intel.listing.place_id}` : null, id);
+  }
+  await run(env, "UPDATE leads SET client_id = ?, stage = 'won', score = 100, grade = 'W', updated_at = ? WHERE id = ?", id, now(), lead.id);
+  // First month's work, including the setup checklist, is ready the moment they sign.
+  const c = await first(env, 'SELECT * FROM clients WHERE id = ?', id);
+  const month = monthKey();
+  const list = tasksForMonth({ ...c, has_setup: false }, month);
+  await batch(env, list.map((t, i) => ['INSERT INTO tasks (id, client_id, month, kind, title, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', newId('t_'), id, month, t.kind, t.title, i, now()]));
   await logActivity(env, { lead_id: lead.id, client_id: id, type: 'stage', body: 'Won: client created', by });
   return id;
 }
@@ -265,10 +390,15 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const rows = await all(env, `SELECT * FROM leads WHERE dnc = 0 AND stage IN (${CALLABLE.map(() => '?').join(',')})
     AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...CALLABLE, t);
   const priority = { callback: 0, audit_requested: 1, no_show: 2, follow_up: 3, new: 4, attempting: 5, not_now: 6 };
+  const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
+  const minScore = Number(url.searchParams.get('minScore')) || 0;
+  const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
   const ready = rows
     .filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3))
     .map(decorate)
-    .sort((a, b) => (priority[a.stage] ?? 9) - (priority[b.stage] ?? 9) || (a.next_action_at || 0) - (b.next_action_at || 0));
+    .filter((l) => (!f.tz || l.tz_short === f.tz) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())
+      && has(`${l.industry} ${l.category}`, f.industry) && has(l.tags, f.tag) && has(l.city, f.city) && (l.score || 0) >= minScore)
+    .sort((a, b) => (priority[a.stage] ?? 9) - (priority[b.stage] ?? 9) || (b.score || 0) - (a.score || 0) || (a.next_action_at || 0) - (b.next_action_at || 0));
   const now_ = ready.filter((l) => l.callable_now);
   const later = ready.length - now_.length;
   const today = new Date(); today.setHours(0, 0, 0, 0);

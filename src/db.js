@@ -54,12 +54,22 @@ const SCHEMA = [
     setup_cents INTEGER NOT NULL, business TEXT, contact_name TEXT, email TEXT, terms TEXT, pay_url TEXT, status TEXT NOT NULL DEFAULT 'sent',
     signed_name TEXT, signed_at INTEGER, signed_ip TEXT, signed_ua TEXT, paid_at INTEGER, created_at INTEGER NOT NULL, created_by TEXT)`,
   `CREATE TABLE IF NOT EXISTS stripe_events (id TEXT PRIMARY KEY, type TEXT, at INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS assets (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, media_key TEXT NOT NULL, media_type TEXT, kind TEXT, name TEXT, created_by TEXT, created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS assets_client ON assets (client_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS oauth_states (state TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL)`,
 ];
 
 // Columns added after the first release. SQLite has no ADD COLUMN IF NOT EXISTS, so duplicates are ignored.
 const ADD_COLUMNS = [
   ['clients', 'stripe_customer_id TEXT'], ['clients', 'stripe_subscription_id TEXT'], ['clients', 'billing_status TEXT'],
   ['clients', 'mrr_cents INTEGER'], ['clients', 'lead_id TEXT'], ['users', 'phone TEXT'],
+  ['leads', 'intel TEXT'], ['leads', 'intel_at INTEGER'], ['leads', 'score INTEGER'], ['leads', 'grade TEXT'], ['leads', 'rating REAL'],
+  ['leads', 'reviews INTEGER'], ['leads', 'category TEXT'], ['leads', 'map_rank INTEGER'], ['leads', 'problems INTEGER'], ['leads', 'address TEXT'],
+  ['leads', 'zip TEXT'], ['leads', 'tags TEXT'], ['leads', 'meet_at INTEGER'], ['leads', 'meet_link TEXT'], ['leads', 'gcal_event_id TEXT'],
+  ['leads', 'locations INTEGER'],
+  ['clients', 'baseline TEXT'], ['clients', 'intake TEXT'], ['clients', 'intake_at INTEGER'], ['clients', 'logo_key TEXT'],
+  ['users', 'google_token TEXT'], ['users', 'google_email TEXT'],
 ];
 
 let ready = null;

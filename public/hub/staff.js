@@ -2,6 +2,7 @@
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, animateNumbers, monthKey, shiftMonth, PLAN_NAMES, PLAN_PRICE, KIND_LABEL } from './core.js';
 import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.js';
 import { billingTab } from './crm.js';
+import { onboardingTab } from './onboarding.js';
 
 export function staffShell(app, user, active, inner) {
   app.innerHTML = `
@@ -125,7 +126,7 @@ export function clientForm(client, onSaved) {
 }
 
 // ---------- one client ----------
-const TABS = [['overview', 'Overview'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
+const TABS = [['overview', 'Overview'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
 
 export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   const view = staffShell(app, user, 'clients');
@@ -147,6 +148,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   if (tab === 'profile') return profileTab(el, c);
   if (tab === 'access') return accessTab(el, c);
   if (tab === 'billing') return billingTab(el, c);
+  if (tab === 'onboarding') return onboardingTab(el, c);
 }
 
 function overviewTab(el, { client: c, overview: o, activity }) {

@@ -95,11 +95,12 @@ export async function resizeImage(file, max = 1600, quality = 0.85) {
   }
 }
 
-export function modal(html) {
+export function modal(html, { onClose } = {}) {
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
-  const close = () => bg.remove();
+  let closed = false;
+  const close = () => { if (closed) return; closed = true; bg.remove(); onClose?.(); };
   bg.addEventListener('click', (e) => { if (e.target === bg || e.target.closest('[data-close]')) close(); });
   document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } });
   document.body.appendChild(bg);

@@ -501,3 +501,6 @@ import './crm.js';
 import './billing.js';
 import './workorders.js';
 import './calls.js';
+import './intel.js';
+import './google.js';
+import './onboarding.js';
