@@ -1,7 +1,8 @@
 // Grid math and rank statistics. Pure functions, shared by the app and the tests.
 
 export const UNRANKED = 21; // "not in the top 20" counts as 21 for averages
-export const COST_PER_POINT = 0.002; // DataForSEO live Maps SERP, USD per request
+// DataForSEO live pricing, USD per grid point: Local Finder bills per 10 results (we read 20); Maps bills per 100.
+export const COST_PER_POINT = { local: 0.004, maps: 0.002 };
 
 const MILES_PER_DEG_LAT = 69.0;
 const MILES_PER_DEG_LNG_EQUATOR = 69.172;
@@ -74,6 +75,6 @@ export function gridStats(points) {
   };
 }
 
-export function estimateCost(size) {
-  return size * size * COST_PER_POINT;
+export function estimateCost(size, source = 'local') {
+  return size * size * (COST_PER_POINT[source] ?? COST_PER_POINT.local);
 }

@@ -22,7 +22,7 @@ test('demo search and grid point work end to end', async () => {
   assert.equal(t.title, 'Test Roofing');
   const g = await (await worker.fetch(post('/api/grid-point', { keyword: 'roofer', lat: t.lat, lng: t.lng, zoom: 13, cid: t.cid }), {})).json();
   assert.ok(g.rank === null || (g.rank >= 1 && g.rank <= 20));
-  assert.equal(g.top.length, 5);
+  assert.equal(g.top.length, 20);
 });
 
 test('real mode refuses to run without ACCESS_KEY', async () => {
@@ -61,21 +61,40 @@ const item = (rank, cid, extra = {}) => ({
   ...extra,
 });
 
-test('rankAtPoint sends the documented request and finds the target by cid', async () => {
+test('rankAtPoint uses Local Finder by default, skips ads, and finds the target by cid', async () => {
   const env = { DATAFORSEO_LOGIN: 'user', DATAFORSEO_PASSWORD: 'pass' };
   let sent;
-  const items = [item(1, '111'), item(2, '222'), { type: 'maps_paid_item' }, item(3, '333'), item(4, '444')];
-  const out = await rankAtPoint(env, { keyword: 'roofer', lat: 26.0112, lng: -80.1495, zoom: 13, cid: '333', place_id: '' },
+  const items = [item(1, '111'), { type: 'local_pack', is_paid: true, title: 'Ad', cid: '999' }, item(2, '222'), item(3, '333'), item(4, '444')];
+  const out = await rankAtPoint(env, { keyword: 'roofer', lat: 26.0112, lng: -80.1495, zoom: 13, cid: '333', place_id: '', source: 'local', device: 'desktop' },
     fakeFetch(items, (url, init) => { sent = { url, init }; }));
   assert.equal(out.rank, 3);
   assert.equal(out.top.length, 4);
+  assert.ok(!out.top.some((t) => t.cid === '999'));
   assert.equal(out.cost, 0.002);
   const body = JSON.parse(sent.init.body);
   assert.equal(body.length, 1);
-  assert.equal(body[0].location_coordinate, '26.0112000,-80.1495000,13z');
+  assert.equal(body[0].location_coordinate, '26.0112000,-80.1495000');
   assert.equal(body[0].depth, 20);
   assert.equal(sent.init.headers.Authorization, `Basic ${btoa('user:pass')}`);
-  assert.match(sent.url, /serp\/google\/maps\/live\/advanced$/);
+  assert.match(sent.url, /serp\/google\/local_finder\/live\/advanced$/);
+});
+
+test('rankAtPoint can use Google Maps with zoom', async () => {
+  const env = { DATAFORSEO_LOGIN: 'u', DATAFORSEO_PASSWORD: 'p' };
+  let sent;
+  await rankAtPoint(env, { keyword: 'roofer', lat: 1, lng: 2, zoom: 14, cid: 'x', source: 'maps', device: 'mobile' },
+    fakeFetch([item(1, 'x')], (url, init) => { sent = { url, init }; }));
+  assert.match(sent.url, /maps\/live\/advanced$/);
+  const body = JSON.parse(sent.init.body)[0];
+  assert.equal(body.location_coordinate, '1.0000000,2.0000000,14z');
+  assert.equal(body.device, 'mobile');
+});
+
+test('target without matching ids falls back to exact name', async () => {
+  const env = { DATAFORSEO_LOGIN: 'u', DATAFORSEO_PASSWORD: 'p' };
+  const items = [item(1, 'a'), { type: 'local_pack', title: 'Orale Mexican Restaurant' }];
+  const out = await rankAtPoint(env, { keyword: 'k', lat: 1, lng: 1, zoom: 13, cid: 'zz', title: 'Orale Mexican Restaurant', source: 'local' }, fakeFetch(items));
+  assert.equal(out.rank, 2);
 });
 
 test('rankAtPoint returns null when the target is not in the results', async () => {

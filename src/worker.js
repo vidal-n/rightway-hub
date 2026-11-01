@@ -1,9 +1,9 @@
 // Rightway Hub API. Static files in /public are served by Cloudflare before this runs;
 // anything under /api/ lands here.
-import { searchBusinesses, rankAtPoint } from './dataforseo.js';
+import { searchBusinesses, rankAtPoint, businessDetails } from './dataforseo.js';
 import { pageSpeed } from './pagespeed.js';
-import { mockSearch, mockRank, mockPageSpeed } from './mock.js';
-import { HttpError, json, validateGridPoint, validateSearch, validateUrl, keyMatches } from './util.js';
+import { mockSearch, mockRank, mockPageSpeed, mockDetails } from './mock.js';
+import { HttpError, json, validateGridPoint, validateSearch, validateUrl, validateDetails, keyMatches } from './util.js';
 import baked from './runtime-secrets.js';
 
 // Runtime secrets (dashboard) win; build-time secrets fill any gaps.
@@ -79,6 +79,10 @@ async function handleApi(request, env, url, runtimeKeys = []) {
     case '/api/grid-point': {
       const q = validateGridPoint(body);
       return json({ demo, ...(demo ? mockRank(q) : await rankAtPoint(env, q)) });
+    }
+    case '/api/details': {
+      const q = validateDetails(body);
+      return json({ demo, ...(demo ? mockDetails(q) : await businessDetails(env, q)) });
     }
     case '/api/pagespeed': {
       const target = validateUrl(body.url);

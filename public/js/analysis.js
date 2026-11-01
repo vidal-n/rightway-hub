@@ -130,3 +130,145 @@ export function planMath({ jobValue, closeRatePct, extraCalls, planPrice }) {
   const jobsToCover = jv > 0 ? Math.ceil((Number(planPrice) || 0) / jv) : null;
   return { jobs: Math.round(jobs * 10) / 10, revenue: Math.round(revenue), jobsToCover };
 }
+
+// ---------- Grid insights (v2) ----------
+const UNRANKED_RANK = 21;
+
+// A business's rank at one grid point, from that point's top 20 list (null = not in the list).
+export function rankAt(point, biz) {
+  if (!point || point.status !== 'done') return undefined;
+  if (biz?.isTarget) return point.rank;
+  const hit = (point.top || []).find((b) => sameBusiness(b, biz));
+  return hit ? hit.rank : null;
+}
+
+// Every business seen in the grid, scored like Local Falcon / BrightLocal:
+// share of local voice = share of points where it's in the top 3.
+export function leaderboard(points, target, limit = 8) {
+  const done = points.filter((p) => p.status === 'done');
+  const n = done.length || 1;
+  const seen = new Map();
+  const keyOf = (b) => b.cid || b.place_id || b.title;
+  const tKey = keyOf(target);
+  seen.set(tKey, { biz: { ...target, isTarget: true }, ranks: [] });
+  for (const p of done) {
+    for (const b of p.top || []) {
+      if (sameBusiness(b, target)) continue;
+      const k = keyOf(b);
+      if (!seen.has(k)) seen.set(k, { biz: b, ranks: [] });
+      const e = seen.get(k);
+      if ((b.reviews ?? -1) > (e.biz.reviews ?? -1)) e.biz = { ...e.biz, ...b };
+    }
+  }
+  const rows = [...seen.values()].map((e) => {
+    const ranks = done.map((p) => rankAt(p, e.biz));
+    const top3 = ranks.filter((r) => r != null && r <= 3).length;
+    const top10 = ranks.filter((r) => r != null && r <= 10).length;
+    const found = ranks.filter((r) => r != null).length;
+    const avg = ranks.reduce((s, r) => s + (r ?? UNRANKED_RANK), 0) / n;
+    return { ...e.biz, top3Points: top3, top10Points: top10, found, sov: Math.round((100 * top3) / n), avgRank: Math.round(avg * 10) / 10 };
+  });
+  rows.sort((a, b) => b.top3Points - a.top3Points || a.avgRank - b.avgRank);
+  const out = rows.filter((r) => !r.isTarget).slice(0, limit);
+  const t = rows.find((r) => r.isTarget);
+  return { rows: out, target: t, position: rows.indexOf(t) + 1, total: rows.length };
+}
+
+// How far from the address the business holds a given rank (ring by ring, at least half the ring).
+export function reach(points, size, radiusMiles, threshold) {
+  const half = (size - 1) / 2;
+  const step = half ? radiusMiles / half : 0;
+  let miles = null;
+  for (let ring = 0; ring <= half; ring++) {
+    const ringPts = points.filter((p) => p.status === 'done' && Math.max(Math.abs(p.row - half), Math.abs(p.col - half)) === ring);
+    if (!ringPts.length) break;
+    const hits = ringPts.filter((p) => p.rank != null && p.rank <= threshold).length;
+    if (hits / ringPts.length >= 0.5) miles = ring * step;
+    else break;
+  }
+  return miles; // null = not even at the address
+}
+
+// Average rank by side of the grid.
+export function sides(points, size) {
+  const half = (size - 1) / 2;
+  const groups = { north: [], south: [], east: [], west: [] };
+  for (const p of points) {
+    if (p.status !== 'done') continue;
+    const r = p.rank ?? UNRANKED_RANK;
+    if (p.row < half) groups.north.push(r);
+    if (p.row > half) groups.south.push(r);
+    if (p.col > half) groups.east.push(r);
+    if (p.col < half) groups.west.push(r);
+  }
+  const res = Object.entries(groups)
+    .filter(([, v]) => v.length)
+    .map(([side, v]) => ({ side, avg: Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 10) / 10 }));
+  res.sort((a, b) => a.avg - b.avg);
+  return { strongest: res[0] || null, weakest: res[res.length - 1] || null, all: res };
+}
+
+const reachText = (m) => (m === 0 ? 'only at its own address' : `out to about ${m % 1 ? m.toFixed(1) : m} mile${m === 1 ? '' : 's'}`);
+
+// Plain-English findings for the report. Facts only, from the scan data.
+export function findings({ target, points, size, radius, keyword, board, comps, checks, gaps }) {
+  const out = [];
+  const done = points.filter((p) => p.status === 'done');
+  const n = done.length;
+  if (!n) return out;
+  const top3 = done.filter((p) => p.rank != null && p.rank <= 3).length;
+  const name = target.title;
+
+  if (top3 === 0) out.push(`${name} isn't in Google's top 3 for "${keyword}" anywhere in this ${n}-point area. The top 3 is where most calls go.`);
+  else out.push(`${name} is in the top 3 at ${top3} of ${n} points (${Math.round((100 * top3) / n)}% of the area).`);
+
+  const r3 = reach(points, size, radius, 3);
+  const r10 = reach(points, size, radius, 10);
+  const center = points[Math.floor(points.length / 2)];
+  if (r10 == null) out.push(`Even at its own address it ranks ${center?.rank ? `#${center.rank}` : 'below #20'}, so nearby customers see competitors first.`);
+  else if (r3 != null) out.push(`It holds the top 3 ${reachText(r3)} and the first page (top 10) ${reachText(r10)}.`);
+  else out.push(`It stays on the first page (top 10) ${reachText(r10)} but doesn't hold the top 3 anywhere around its address.`);
+
+  const leader = board?.rows?.[0];
+  if (leader && leader.top3Points > top3) {
+    let line = `${leader.title} owns the area: top 3 at ${leader.top3Points} of ${n} points`;
+    if (leader.reviews != null && target.reviews != null) {
+      line += `, with ${Number(leader.reviews).toLocaleString('en-US')} reviews vs ${Number(target.reviews).toLocaleString('en-US')}`;
+      const ratio = target.reviews ? leader.reviews / target.reviews : Infinity;
+      line += ratio <= 1.25 ? '. Review count is not the gap here, so categories, website relevance, and proximity are.' : '.';
+    } else line += '.';
+    out.push(line);
+  }
+
+  const s = sides(points, size);
+  if (s.weakest && s.strongest && s.weakest.avg - s.strongest.avg >= 3) {
+    out.push(`Weakest to the ${s.weakest.side} (average rank ${s.weakest.avg}), strongest to the ${s.strongest.side} (average ${s.strongest.avg}).`);
+  }
+
+  const common = (gaps || []).filter((g) => comps.length && g.count >= Math.max(2, Math.ceil(comps.length / 2)));
+  if (common.length) {
+    out.push(`${common.length === 1 ? 'A category' : 'Categories'} most top competitors use that ${name} doesn't: ${common.map((g) => `"${g.category}"`).join(', ')}.`);
+  }
+  const rev = (checks || []).find((c) => c.key === 'reviews' && c.status === 'gap');
+  if (rev) out.push(rev.detail);
+  return out;
+}
+
+const FIX = {
+  claimed: { impact: 'High', text: 'Claim and verify the Google profile. Nothing else sticks until the owner controls it.' },
+  primary: { impact: 'High', text: 'Review the primary category. It is the strongest relevance signal Google uses for the map pack.' },
+  categories: { impact: 'High', text: 'Add the secondary categories competitors rank with, where they match real services.' },
+  website: { impact: 'High', text: 'Link a website with a page for the main service and city. Profiles without one rarely hold the top 3.' },
+  reviews: { impact: 'Medium', text: 'Start a steady review request system so new reviews arrive every week, not in bursts.' },
+  rating: { impact: 'Medium', text: 'Reply to every review and fix the issues behind low ratings. Rating affects clicks more than rank.' },
+  photos: { impact: 'Medium', text: 'Upload real photos every month: team, jobs, storefront. It keeps the profile active and earns clicks.' },
+  hours: { impact: 'Medium', text: 'Add business hours. Google can hide businesses that look closed.' },
+  phone: { impact: 'Medium', text: 'Add a local phone number that matches the website and directories.' },
+};
+const ORDER = ['claimed', 'primary', 'categories', 'website', 'reviews', 'rating', 'photos', 'hours', 'phone'];
+
+// Ranked to-do list from the profile gaps.
+export function fixFirst(checks, limit = 5) {
+  const gapKeys = new Set((checks || []).filter((c) => c.status === 'gap').map((c) => c.key));
+  return ORDER.filter((k) => gapKeys.has(k)).slice(0, limit).map((k) => ({ key: k, ...FIX[k] }));
+}

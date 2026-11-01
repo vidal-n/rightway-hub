@@ -40,7 +40,8 @@ test('gridStats counts coverage and averages with unranked as 21', () => {
   assert.equal(s.top3Pct, 33);
   assert.equal(s.avgRank, Math.round(((1 + 2 + 5 + 12 + 3 + 21 + 21 + 9 + 4) / 9) * 10) / 10);
   assert.equal(s.centerRank, 3);
-  assert.equal(estimateCost(7).toFixed(3), '0.098');
+  assert.equal(estimateCost(7, 'maps').toFixed(3), '0.098');
+  assert.equal(estimateCost(5).toFixed(2), '0.10');
 });
 
 const A = { cid: 'a', title: 'Alpha', rank: 1, reviews: 200, rating: 4.8, photos: 100, category: 'Roofing contractor', additional_categories: ['Gutter service', 'Siding contractor'] };
@@ -97,4 +98,53 @@ test('map projection and zoom fit', () => {
   const a = project(pts[0].lat, pts[0].lng, z);
   const b = project(pts[48].lat, pts[48].lng, z);
   assert.ok(b.x - a.x <= 480 - 72 + 1e-6);
+});
+
+import { leaderboard, reach, sides, findings, fixFirst, rankAt } from '../public/js/analysis.js';
+
+function scanGrid(rankFn, compFn) {
+  const pts = gridPoints(26, -80, 5, 2);
+  pts.forEach((p) => {
+    p.status = 'done';
+    p.rank = rankFn(p);
+    const comp = { cid: 'c1', title: 'Leader Co', reviews: 500, rating: 4.8, rank: compFn(p) };
+    const other = { cid: 'c2', title: 'Other Co', reviews: 50, rating: 4.1, rank: 5 };
+    p.top = [comp, other].filter((b) => b.rank != null);
+  });
+  return pts;
+}
+
+test('leaderboard scores share of local voice', () => {
+  const pts = scanGrid((p) => (p.row === 2 && p.col === 2 ? 2 : 12), () => 1);
+  const T = { cid: 't', title: 'Target', reviews: 450 };
+  const b = leaderboard(pts, T, 5);
+  assert.equal(b.rows[0].cid, 'c1');
+  assert.equal(b.rows[0].sov, 100);
+  assert.equal(b.target.top3Points, 1);
+  assert.equal(b.position, 2);
+  assert.equal(rankAt(pts[0], { cid: 'c2' }), 5);
+  assert.equal(rankAt(pts[0], { cid: 'nobody' }), null);
+});
+
+test('reach and sides describe the shape of visibility', () => {
+  const pts = scanGrid((p) => {
+    const ring = Math.max(Math.abs(p.row - 2), Math.abs(p.col - 2));
+    return ring === 0 ? 1 : ring === 1 ? (p.col >= 2 ? 3 : 8) : null;
+  }, () => 1);
+  assert.equal(reach(pts, 5, 2, 3), 1); // 5 of 8 ring-1 points are top 3
+  assert.equal(reach(pts, 5, 2, 10), 1); // ring 1 all top 10, ring 2 none
+  const s = sides(pts, 5);
+  assert.equal(s.strongest.side, 'east');
+  assert.equal(s.weakest.side, 'west');
+});
+
+test('findings and fix list are plain and grounded', () => {
+  const pts = scanGrid(() => null, () => 1);
+  const T = { cid: 't', title: 'Target', reviews: 480 };
+  const board = leaderboard(pts, T, 3);
+  const facts = findings({ target: T, points: pts, size: 5, radius: 2, keyword: 'roofer', board, comps: board.rows, checks: [], gaps: [] });
+  assert.match(facts[0], /isn't in Google's top 3/);
+  assert.ok(facts.some((f) => /Review count is not the gap/.test(f)));
+  const fixes = fixFirst([{ key: 'photos', status: 'gap' }, { key: 'primary', status: 'gap' }, { key: 'phone', status: 'good' }]);
+  assert.deepEqual(fixes.map((f) => f.key), ['primary', 'photos']);
 });

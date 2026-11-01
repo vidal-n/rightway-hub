@@ -71,34 +71,38 @@ export function mockSearch({ name, location }) {
   };
 }
 
+const FILLER = Array.from({ length: 16 }, (_, i) => ({
+  rank: null, title: `Demo Listing ${i + 1}`, cid: `demo-fill-${i + 1}`, place_id: '', category: 'Roofing contractor',
+  additional_categories: [], rating: 4 + ((i * 7) % 10) / 10, reviews: 10 + ((i * 37) % 90), address: '', phone: '', url: '', domain: '',
+  lat: CENTER.lat + (((i * 13) % 11) - 5) * 0.012, lng: CENTER.lng + (((i * 17) % 11) - 5) * 0.012, claimed: true, photos: 5 + i, hours: true,
+}));
+
 export function mockRank(q) {
-  const scored = COMPETITORS.map((c, i) => ({
+  const pool = [...COMPETITORS, ...FILLER].map((c, i) => ({
     biz: c,
-    score: miles(q.lat, q.lng, c.lat, c.lng) * 0.9 - Math.log10(c.reviews + 1) * 1.6 + noise(q.lat, q.lng, i) * 1.5,
+    score: miles(q.lat, q.lng, c.lat, c.lng) * 0.9 - Math.log10((c.reviews || 0) + 1) * 1.6 + noise(q.lat, q.lng, i) * 1.5,
   }));
-  const isTarget = q.cid === 'demo-target' || q.place_id === 'demo-place-target';
-  if (isTarget) {
+  pool.sort((a, b) => a.score - b.score);
+  const list = pool.slice(0, 20).map((s) => s.biz);
+
+  let rank = null;
+  if (q.cid === 'demo-target' || q.place_id === 'demo-place-target') {
     const d = miles(q.lat, q.lng, CENTER.lat, CENTER.lng);
-    scored.push({ biz: target('Demo business', 'Hollywood, FL'), score: d * 1.7 - 1.9 + noise(q.lat, q.lng, 99) * 1.2 });
+    const r = Math.round(1 + d * 2.2 * (0.6 + noise(q.lat, q.lng, 7)) + noise(q.lat, q.lng, 3) * 2);
+    if (r <= 20) {
+      rank = r;
+      list.splice(r - 1, 0, target('Demo business', 'Hollywood, FL'));
+      list.length = 20;
+    }
   }
-  scored.sort((a, b) => a.score - b.score);
-  // Pad the list to 20 with filler listings so ranks beyond the known set exist.
-  const list = scored.map((s, i) => ({ ...s.biz, rank: i + 1 }));
-  const targetPos = list.findIndex((b) => b.cid === 'demo-target');
-  let rank = targetPos >= 0 ? targetPos + 1 : null;
-  if (rank !== null) {
-    // Push the target further down at the edges so the demo grid looks realistic.
-    const d = miles(q.lat, q.lng, CENTER.lat, CENTER.lng);
-    rank = Math.round(rank + d * 1.8 * (0.6 + noise(q.lat, q.lng, 7)));
-    if (rank > 20) rank = null;
-  }
-  const top = list.filter((b) => b.cid !== 'demo-target').slice(0, 5).map((b, i) => ({ ...b, rank: i + 1 }));
-  if (rank !== null && rank <= 5) {
-    top.splice(rank - 1, 0, { ...target('Demo business', 'Hollywood, FL'), rank });
-    top.forEach((b, i) => (b.rank = i + 1));
-    top.length = 5;
-  }
-  return { rank, top, cost: 0 };
+  const top = list.map((b, i) => ({ rank: i + 1, title: b.title, cid: b.cid, place_id: b.place_id, category: b.category,
+    rating: b.rating, reviews: b.reviews, domain: b.domain, lat: b.lat, lng: b.lng }));
+  return { rank, top, count: top.length, types: ['local_pack'], cost: 0 };
+}
+
+export function mockDetails(q) {
+  const hit = [...COMPETITORS, ...FILLER].find((c) => c.cid === q.cid) || null;
+  return { business: hit, cost: 0 };
 }
 
 export function mockPageSpeed(url) {

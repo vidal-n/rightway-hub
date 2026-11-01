@@ -1,5 +1,7 @@
 import { gridPoints, gridStats, estimateCost, UNRANKED } from './js/grid.js';
-import { topCompetitors, profileChecklist, categoryGap, planMath, sameBusiness } from './js/analysis.js';
+import {
+  profileChecklist, categoryGap, planMath, sameBusiness, rankAt, leaderboard, findings, fixFirst,
+} from './js/analysis.js';
 import { createMap } from './js/map.js';
 
 const KEY_STORE = 'rw-hub-key';
@@ -11,9 +13,11 @@ const PLANS = [
   { name: 'Authority', price: 1497 },
   { name: 'Market Leader', price: 2497 },
 ];
+const SOURCE_LABEL = { local: 'Google local results', maps: 'Google Maps' };
+const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 const $ = (sel) => document.querySelector(sel);
-const state = { demo: false, keyRequired: false, target: null, scan: null, map: null, runToken: 0, searchCost: 0 };
+const state = { demo: false, keyRequired: false, target: null, scan: null, map: null, runToken: 0, searchCost: 0, view: null };
 
 // ---------- helpers ----------
 function esc(value) {
@@ -27,8 +31,10 @@ function load(key) {
 }
 const money = (n) => `$${Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 const cents = (n) => `$${Number(n || 0).toFixed(2)}`;
+const fmtInt = (n) => (n == null ? '-' : Number(n).toLocaleString('en-US'));
 const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 const slug = (s) => String(s || 'scan').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+const keyOf = (b) => b.cid || b.place_id || b.title;
 
 class AuthError extends Error {}
 
@@ -50,18 +56,44 @@ async function api(path, body) {
 }
 
 function setStatus(el, msg, isError = false) {
+  if (!el) return;
   el.textContent = msg || '';
   el.classList.toggle('err', Boolean(isError));
 }
-
 function setDemo(on) {
   state.demo = on;
   $('#demo-banner').hidden = !on;
 }
-
 function showKeyCard(show) {
   $('#key-card').hidden = !show;
   if (show) $('#key-input').focus();
+}
+
+// Animated number. Final value is always written, so print and reduced motion are correct.
+function countUp(el, to, { decimals = 0, suffix = '', prefix = '' } = {}) {
+  if (!el) return;
+  const final = `${prefix}${Number(to).toFixed(decimals)}${suffix}`;
+  if (REDUCED || !Number.isFinite(Number(to))) { el.textContent = final; return; }
+  const start = performance.now();
+  const dur = 900;
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / dur);
+    const eased = 1 - (1 - t) ** 3;
+    el.textContent = `${prefix}${(Number(to) * eased).toFixed(decimals)}${suffix}`;
+    if (t < 1) requestAnimationFrame(step);
+    else el.textContent = final;
+  };
+  requestAnimationFrame(step);
+}
+
+// Fade sections in as they scroll into view.
+const revealer = 'IntersectionObserver' in window && !REDUCED
+  ? new IntersectionObserver((entries) => entries.forEach((e) => {
+    if (e.isIntersecting) { e.target.classList.add('is-in'); revealer.unobserve(e.target); }
+  }), { threshold: 0.08 })
+  : null;
+function reveal(root) {
+  root.querySelectorAll('.reveal').forEach((n) => (revealer ? revealer.observe(n) : n.classList.add('is-in')));
 }
 
 // ---------- step 1: find ----------
@@ -92,7 +124,7 @@ $('#find-form').addEventListener('submit', async (e) => {
   const list = $('#find-results');
   list.innerHTML = '';
   btn.disabled = true;
-  setStatus(status, 'Searching Google Maps...');
+  setStatus(status, 'Searching Google...');
   try {
     const data = await api('/api/business-search', { name: $('#find-name').value, location: $('#find-location').value });
     state.searchCost += data.cost || 0;
@@ -101,11 +133,12 @@ $('#find-form').addEventListener('submit', async (e) => {
       return;
     }
     setStatus(status, `${data.results.length} listing${data.results.length > 1 ? 's' : ''} found. Pick the right one.`);
-    data.results.forEach((biz) => {
+    data.results.forEach((biz, i) => {
       const li = document.createElement('li');
       li.className = 'result';
+      li.style.animationDelay = `${i * 50}ms`;
       li.innerHTML = `<div><div class="result-name">${esc(biz.title)}</div>
-        <div class="result-meta">${esc(biz.address)}${biz.category ? ` · ${esc(biz.category)}` : ''}${biz.rating != null ? ` · ${biz.rating.toFixed(1)} stars, ${biz.reviews} reviews` : ''}</div></div>`;
+        <div class="result-meta">${esc(biz.address)}${biz.category ? ` · ${esc(biz.category)}` : ''}${biz.rating != null ? ` · ${biz.rating.toFixed(1)} stars, ${fmtInt(biz.reviews)} reviews` : ''}</div></div>`;
       const pick = document.createElement('button');
       pick.className = 'btn btn-ghost btn-sm';
       pick.type = 'button';
@@ -133,42 +166,43 @@ function pickBusiness(biz) {
   change.type = 'button';
   change.className = 'btn btn-ghost btn-sm';
   change.textContent = 'Change';
-  change.addEventListener('click', () => {
-    $('#step-scan').hidden = true;
-    $('#find-name').focus();
-  });
+  change.addEventListener('click', () => { $('#step-scan').hidden = true; $('#find-name').focus(); });
   picked.appendChild(change);
   const kw = $('#scan-keyword');
   if (!kw.value && biz.category) kw.value = biz.category.toLowerCase();
   $('#step-scan').hidden = false;
   updateCost();
-  $('#step-scan').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('#step-scan').scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'start' });
 }
 
 // ---------- step 2: scan ----------
 function updateCost() {
   const size = Number($('#scan-size').value);
+  const source = $('#scan-source').value;
   const note = state.demo ? ' Demo mode: free.' : '';
-  $('#scan-cost').textContent = `${size * size} checks, about ${cents(estimateCost(size))} in DataForSEO credit.${note}`;
+  $('#scan-cost').textContent = `${size * size} checks, about ${cents(estimateCost(size, source) + 0.006)} in DataForSEO credit.${note}`;
+  $('#zoom-field').hidden = source !== 'maps';
 }
-$('#scan-size').addEventListener('change', updateCost);
+['#scan-size', '#scan-source'].forEach((s) => $(s).addEventListener('change', updateCost));
 
 $('#scan-form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (!state.target) return;
   const size = Number($('#scan-size').value);
   const radius = Number($('#scan-radius').value);
-  const zoom = Number($('#scan-zoom').value);
   const scan = {
-    version: 1,
+    version: 2,
     createdAt: new Date().toISOString(),
     demo: state.demo,
     target: state.target,
     keyword: $('#scan-keyword').value.trim(),
     size,
     radius,
-    zoom,
+    source: $('#scan-source').value,
+    device: $('#scan-device').value,
+    zoom: Number($('#scan-zoom').value),
     points: gridPoints(state.target.lat, state.target.lng, size, radius),
+    details: {},
     cost: state.searchCost,
     pagespeed: null,
     math: { jobValue: '', closeRatePct: 40, extraCalls: 10, plan: 'Growth' },
@@ -180,6 +214,7 @@ $('#scan-form').addEventListener('submit', (e) => {
 async function runScan(scan) {
   const token = ++state.runToken;
   state.scan = scan;
+  state.view = null;
   renderReport(scan, true);
   const btn = $('#scan-btn');
   btn.disabled = true;
@@ -191,17 +226,17 @@ async function runScan(scan) {
       const i = next++;
       const p = scan.points[i];
       p.status = 'running';
-      state.map?.update(i);
       for (let attempt = 1; attempt <= 2; attempt++) {
         try {
           const data = await api('/api/grid-point', {
-            keyword: scan.keyword, lat: p.lat, lng: p.lng, zoom: scan.zoom,
-            cid: scan.target.cid, place_id: scan.target.place_id,
+            keyword: scan.keyword, lat: p.lat, lng: p.lng, zoom: scan.zoom, source: scan.source, device: scan.device,
+            cid: scan.target.cid, place_id: scan.target.place_id, title: scan.target.title,
           });
           if (token !== state.runToken) return;
           p.rank = data.rank;
           p.top = data.top || [];
           p.status = 'done';
+          if (!scan.itemTypes && data.types) scan.itemTypes = data.types;
           scan.cost += data.cost || 0;
           break;
         } catch (err) {
@@ -223,16 +258,48 @@ async function runScan(scan) {
     $('#r-progress-label').textContent = 'Stopped: access key needed. Enter it above and run the scan again.';
     return;
   }
-  finishScan(scan);
+  await finishScan(scan, token);
 }
 
-function finishScan(scan) {
+async function finishScan(scan, token) {
   scan.completedAt = new Date().toISOString();
-  saveLast(scan);
-  renderAnalysis(scan);
   const s = gridStats(scan.points);
+  const label = $('#r-progress-label');
+  const empty = scan.points.filter((p) => p.status === 'done').every((p) => !(p.top || []).length);
+  if (empty && s.done) {
+    label.textContent = `Google returned no listings for "${scan.keyword}". Try a broader keyword. (Debug: ${JSON.stringify(scan.itemTypes || [])})`;
+  } else {
+    label.textContent = 'Getting competitor profile details...';
+  }
+  await loadDetails(scan, token);
+  if (token !== state.runToken) return;
+  saveLast(scan);
+  renderAnalysis(scan, true);
   $('#r-progress').hidden = true;
-  $('#r-progress-label').textContent = s.errors ? `${s.errors} point${s.errors > 1 ? 's' : ''} failed (gray). Run the scan again if it matters.` : '';
+  if (!empty) label.textContent = s.errors ? `${s.errors} point${s.errors > 1 ? 's' : ''} failed (gray). Run the scan again if it matters.` : '';
+}
+
+// Full profile details (categories, photos, claimed) for the top 3 competitors.
+async function loadDetails(scan, token) {
+  const board = leaderboard(scan.points, scan.target, 3);
+  for (const c of board.rows) {
+    const k = keyOf(c);
+    if (scan.details[k] || !c.title) continue;
+    try {
+      const data = await api('/api/details', {
+        title: c.title, cid: c.cid, place_id: c.place_id,
+        lat: c.lat ?? scan.target.lat, lng: c.lng ?? scan.target.lng,
+      });
+      if (token !== state.runToken) return;
+      scan.cost += data.cost || 0;
+      if (data.business) scan.details[k] = data.business;
+    } catch { /* details are optional */ }
+  }
+}
+
+function withDetails(scan, b) {
+  const d = scan.details?.[keyOf(b)];
+  return d ? { ...b, ...d, rank: b.rank } : b;
 }
 
 function saveLast(scan) {
@@ -244,6 +311,7 @@ function renderReport(scan, live) {
   const r = $('#report');
   r.hidden = false;
   const t = scan.target;
+  const source = SOURCE_LABEL[scan.source || 'maps'];
   r.innerHTML = `
     <div class="report-actions no-print">
       <button class="btn btn-primary btn-sm" type="button" id="r-print">Print or save as PDF</button>
@@ -251,37 +319,48 @@ function renderReport(scan, live) {
       <button class="btn btn-ghost btn-sm" type="button" id="r-new">New scan</button>
       <span class="cost-note" id="r-cost"></span>
     </div>
-    <header class="report-head">
-      <div>
-        <img src="/brand/rightway-logo-light.svg" alt="Rightway Growth" width="160" height="26">
-        <p class="eyebrow">Local ranking audit${scan.demo ? ' (demo data)' : ''}</p>
-        <h1 class="report-title">${esc(t.title)}</h1>
-        <div class="report-meta">${esc(t.address)}</div>
+    <header class="r-hero">
+      <div class="r-hero-top">
+        <img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="150" height="24">
+        <span class="r-date">${esc(fmtDate(scan.createdAt))}</span>
       </div>
-      <div class="report-meta">
-        Search: <b>${esc(scan.keyword)}</b><br>
-        Grid: <b>${scan.size} x ${scan.size}</b>, ${scan.radius} mile radius<br>
-        Date: <b>${esc(fmtDate(scan.createdAt))}</b>
-      </div>
+      <p class="eyebrow">Local ranking audit${scan.demo ? ' (demo data)' : ''}</p>
+      <h1 class="r-title">${esc(t.title)}</h1>
+      <p class="r-addr">${esc(t.address)}</p>
+      <ul class="r-chips">
+        <li>Search: <b>${esc(scan.keyword)}</b></li>
+        <li>${scan.size} x ${scan.size} grid, ${scan.radius} mile radius</li>
+        <li>${esc(source)}${scan.device === 'mobile' ? ', mobile' : ''}</li>
+      </ul>
+      <div class="r-stats" id="r-stats"></div>
     </header>
     <div class="no-print">
       <div class="progress" id="r-progress"${live ? '' : ' hidden'}><span></span></div>
       <p class="hint" id="r-progress-label"></p>
     </div>
-    <section class="grid-wrap">
-      <div>
+    <section class="r-mapsec">
+      <div class="r-mapcol">
+        <div class="map-tools no-print">
+          <label class="field inline"><span>Show rankings for</span><select id="r-view" disabled><option>Scanning...</option></select></label>
+          <label class="toggle"><input type="checkbox" id="r-heat"> Heat map</label>
+        </div>
         <div id="r-map"></div>
         <div class="legend">
-          <span><i style="background:var(--top3)"></i>Top 3 (map pack)</span>
+          <span><i style="background:var(--top3)"></i>Top 3</span>
           <span><i style="background:var(--top10)"></i>4 to 10</span>
           <span><i style="background:var(--top20)"></i>11 to 20</span>
           <span><i style="background:var(--none)"></i>Not in top 20</span>
         </div>
-        <p class="hint">Each circle is a Google Maps search for "${esc(scan.keyword)}" from that spot. The center circle is the business address.</p>
+        <p class="hint" id="r-view-caption">Each circle is a Google search for "${esc(scan.keyword)}" from that spot. The center circle is the business address.</p>
       </div>
-      <div class="tiles" id="r-tiles"></div>
+      <aside class="r-side no-print" id="r-point">
+        <h3>From any spot</h3>
+        <p class="muted">Click a circle on the map to see exactly who ranks there.</p>
+      </aside>
     </section>
-    <section id="r-competitors"></section>
+    <section id="r-findings" class="r-findings"></section>
+    <section id="r-board"></section>
+    <section id="r-h2h"></section>
     <section class="two-col page-break">
       <div id="r-checklist"></div>
       <div id="r-gap"></div>
@@ -297,19 +376,62 @@ function renderReport(scan, live) {
     state.runToken++;
     $('#scan-btn').disabled = false;
     r.hidden = true;
-    $('#step-find').scrollIntoView({ behavior: 'smooth' });
+    $('#step-find').scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth' });
   });
+  $('#r-heat').addEventListener('change', (e) => state.map?.setHeat(e.target.checked));
 
   drawMap(scan);
   updateLive(scan);
-  if (!live) renderAnalysis(scan);
-  r.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (!live) renderAnalysis(scan, true);
+  r.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'start' });
 }
 
-function drawMap(scan, opts) {
+function viewRankOf(scan) {
+  const biz = state.view;
+  return (p) => {
+    if (p.status === 'error') return 'error';
+    if (p.status !== 'done') return undefined;
+    return biz ? rankAt(p, biz) : p.rank;
+  };
+}
+
+function drawMap(scan, opts = {}) {
   const el = $('#r-map');
   if (!el) return;
-  state.map = createMap(el, scan.points, null, opts); // grid is centered on the business, so no separate pin
+  state.map = createMap(el, scan.points, {
+    ...opts,
+    rankOf: viewRankOf(scan),
+    heat: $('#r-heat')?.checked,
+    onSelect: (i) => showPoint(scan, i),
+  });
+}
+
+function showPoint(scan, i) {
+  const p = scan.points[i];
+  state.map?.select(i);
+  const box = $('#r-point');
+  if (!p || p.status !== 'done') {
+    box.innerHTML = `<h3>From this spot</h3><p class="muted">${p?.status === 'error' ? esc(p.error || 'This check failed.') : 'Still checking this spot.'}</p>`;
+    return;
+  }
+  const t = scan.target;
+  const focus = state.view;
+  const list = (p.top || []).slice(0, 10);
+  const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(scan.keyword)}/@${p.lat},${p.lng},14z`;
+  box.innerHTML = `
+    <h3>From this spot</h3>
+    <p class="muted">${esc(t.title)} ranks <b>${p.rank ? `#${p.rank}` : 'below #20'}</b> here.</p>
+    <ol class="spot-list">${list.map((b, idx) => {
+      const isT = sameBusiness(b, t);
+      const isF = focus && sameBusiness(b, focus);
+      return `<li style="--i:${idx}" class="${isT ? 'is-target' : ''}${isF ? ' is-focus' : ''}"><span class="spot-rank">${b.rank}</span>
+        <span class="spot-name">${esc(b.title)}</span>${b.reviews != null ? `<span class="spot-meta">${b.rating != null ? `${b.rating.toFixed(1)}, ` : ''}${fmtInt(b.reviews)}</span>` : ''}</li>`;
+    }).join('')}</ol>
+    ${list.length ? '' : '<p class="muted">No listings came back for this spot.</p>'}
+    <a class="btn btn-ghost btn-sm" href="${esc(mapsUrl)}" target="_blank" rel="noopener">Check this spot on Google Maps</a>`;
+  box.classList.remove('is-pulse');
+  void box.offsetWidth;
+  box.classList.add('is-pulse');
 }
 
 function updateLive(scan) {
@@ -319,83 +441,139 @@ function updateLive(scan) {
   const label = $('#r-progress-label');
   if (label && s.done + s.errors < s.total) label.textContent = `Checked ${s.done + s.errors} of ${s.total} points...`;
   const cost = $('#r-cost');
-  if (cost) cost.textContent = scan.demo ? 'Demo data, no charge.' : `DataForSEO cost so far: ${cents(scan.cost)}`;
-
-  const center = s.centerRank === undefined ? '...' : s.centerRank == null ? '20+' : `#${s.centerRank}`;
-  $('#r-tiles').innerHTML = `
-    <div class="tile ${s.top3Pct >= 50 ? 'tile-good' : s.done ? 'tile-bad' : ''}">
-      <div class="tile-num">${s.done ? `${s.top3Pct}%` : '...'}</div>
-      <div class="tile-label">of the area shows them in the top 3 (${s.top3} of ${s.done || s.total} points)</div>
-    </div>
-    <div class="tile">
-      <div class="tile-num">${s.avgRank == null ? '...' : s.avgRank}</div>
-      <div class="tile-label">average rank across the grid (not in the top 20 counts as ${UNRANKED})</div>
-    </div>
-    <div class="tile">
-      <div class="tile-num">${s.done ? `${s.top10Pct}%` : '...'}</div>
-      <div class="tile-label">of the area shows them on the first page (top 10)</div>
-    </div>
-    <div class="tile">
-      <div class="tile-num">${center}</div>
-      <div class="tile-label">rank right at the business address</div>
-    </div>`;
+  if (cost) cost.textContent = scan.demo ? 'Demo data, no charge.' : `DataForSEO cost: ${cents(scan.cost)}`;
+  renderStats(scan, s, false);
 }
 
-function renderAnalysis(scan) {
+function renderStats(scan, s, animate) {
+  const box = $('#r-stats');
+  if (!box) return;
+  const center = s.centerRank === undefined ? null : s.centerRank;
+  const tiles = [
+    { id: 'st-top3', num: s.top3Pct, suffix: '%', label: `of the area sees them in the top 3 (${s.top3} of ${s.done || s.total} points)`, tone: s.done ? (s.top3Pct >= 50 ? 'good' : 'bad') : '' },
+    { id: 'st-avg', num: s.avgRank, decimals: 1, label: `average rank across the grid (not in the top 20 counts as ${UNRANKED})` },
+    { id: 'st-top10', num: s.top10Pct, suffix: '%', label: 'of the area sees them on the first page (top 10)' },
+    { id: 'st-center', num: center, prefix: '#', label: 'rank right at their own address', none: s.centerRank === null ? '20+' : null },
+  ];
+  box.innerHTML = tiles.map((t) => `
+    <div class="stat ${t.tone ? `stat-${t.tone}` : ''}">
+      <div class="stat-num" id="${t.id}">${t.none || (t.num == null || !s.done ? '...' : `${t.prefix || ''}${Number(t.num).toFixed(t.decimals || 0)}${t.suffix || ''}`)}</div>
+      <div class="stat-label">${esc(t.label)}</div>
+    </div>`).join('');
+  if (animate && s.done) {
+    tiles.forEach((t) => { if (!t.none && t.num != null) countUp($(`#${t.id}`), t.num, t); });
+  }
+}
+
+function renderAnalysis(scan, animate) {
   const t = scan.target;
   const s = gridStats(scan.points);
-  const comps = topCompetitors(scan.points, t, 3);
-  scan.competitors = comps;
+  const board = leaderboard(scan.points, t, 8);
+  const comps = board.rows.slice(0, 3).map((c) => withDetails(scan, c));
+  const checks = profileChecklist(t, comps);
+  const gaps = categoryGap(t, comps);
+  renderStats(scan, s, animate);
 
-  // Competitor table
-  const rows = [
-    { ...t, top3Points: s.top3, isTarget: true },
-    ...comps,
-  ];
-  $('#r-competitors').innerHTML = `
-    <h2>Who's beating them</h2>
-    <p class="muted">The businesses that hold the top 3 most often across the grid.</p>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Business</th><th>Top 3 spots</th><th>Rating</th><th>Reviews</th><th>Photos</th><th>Primary category</th></tr></thead>
-      <tbody>${rows.map((b) => `
-        <tr class="${b.isTarget ? 'is-target' : ''}">
-          <td>${esc(b.title)}${b.isTarget ? ' (you)' : ''}</td>
-          <td class="num">${b.top3Points} of ${s.done}</td>
-          <td class="num">${b.rating != null ? b.rating.toFixed(1) : '-'}</td>
-          <td class="num">${b.reviews ?? '-'}</td>
-          <td class="num">${b.photos ?? '-'}</td>
-          <td>${esc(b.category || '-')}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table></div>
-    ${comps.length ? '' : '<p class="hint">No competitor data yet.</p>'}`;
+  // View selector: switch the map to any competitor's grid.
+  const sel = $('#r-view');
+  sel.disabled = false;
+  sel.innerHTML = `<option value="">${esc(t.title)} (you)</option>${board.rows.map((b, i) => `<option value="${i}">${esc(b.title)}</option>`).join('')}`;
+  sel.onchange = () => {
+    state.view = sel.value === '' ? null : board.rows[Number(sel.value)];
+    state.map?.setRankOf(viewRankOf(scan));
+    const v = state.view;
+    $('#r-view-caption').textContent = v
+      ? `Showing ${v.title}: top 3 at ${v.top3Points} of ${s.done} points, average rank ${v.avgRank}.`
+      : `Each circle is a Google search for "${scan.keyword}" from that spot. The center circle is the business address.`;
+  };
+
+  // Findings and fix list
+  const facts = findings({ target: t, points: scan.points, size: scan.size, radius: scan.radius, keyword: scan.keyword, board, comps, checks, gaps });
+  const fixes = fixFirst(checks);
+  $('#r-findings').innerHTML = `
+    <div class="find-col reveal">
+      <h2>What the scan shows</h2>
+      <ul class="facts">${facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+    </div>
+    <div class="find-col reveal">
+      <h2>What we'd fix first</h2>
+      ${fixes.length ? `<ol class="fixes">${fixes.map((f) => `<li><span class="impact impact-${f.impact.toLowerCase()}">${f.impact}</span>${esc(f.text)}</li>`).join('')}</ol>`
+        : '<p class="muted">No profile gaps against the top competitors. The work here is content, links, and steady reviews.</p>'}
+    </div>`;
+
+  // Share of local voice
+  const all = [board.target, ...board.rows].filter(Boolean).sort((a, b) => b.top3Points - a.top3Points || a.avgRank - b.avgRank);
+  $('#r-board').innerHTML = `
+    <div class="reveal">
+      <h2>Who owns this area</h2>
+      <p class="muted">Share of the grid where each business shows in the top 3. ${esc(t.title)} is #${board.position} of ${board.total} businesses seen.</p>
+      <div class="table-wrap"><table class="board">
+        <thead><tr><th>Business</th><th class="w-bar">Top 3 share</th><th>Avg rank</th><th>Top 10 spots</th><th>Rating</th><th>Reviews</th></tr></thead>
+        <tbody>${all.map((b) => `
+          <tr class="${b.isTarget ? 'is-target' : ''}">
+            <td>${esc(b.title)}${b.isTarget ? ' (you)' : ''}</td>
+            <td class="w-bar"><div class="bar"><span style="--w:${b.sov}%"></span></div><span class="bar-num">${b.sov}%</span></td>
+            <td class="num">${b.avgRank}</td>
+            <td class="num">${b.top10Points} of ${s.done}</td>
+            <td class="num">${b.rating != null ? Number(b.rating).toFixed(1) : '-'}</td>
+            <td class="num">${fmtInt(b.reviews)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+
+  // Head to head
+  const rows = [{ ...t, isTarget: true }, ...comps];
+  $('#r-h2h').innerHTML = `
+    <div class="reveal">
+      <h2>Head to head with the top 3</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Business</th><th>Rating</th><th>Reviews</th><th>Photos</th><th>Categories</th><th>Website</th><th>Primary category</th></tr></thead>
+        <tbody>${rows.map((b) => `
+          <tr class="${b.isTarget ? 'is-target' : ''}">
+            <td>${esc(b.title)}${b.isTarget ? ' (you)' : ''}</td>
+            <td class="num">${b.rating != null ? Number(b.rating).toFixed(1) : '-'}</td>
+            <td class="num">${fmtInt(b.reviews)}</td>
+            <td class="num">${fmtInt(b.photos)}</td>
+            <td class="num">${b.additional_categories ? 1 + b.additional_categories.length : '-'}</td>
+            <td>${b.url || b.domain ? 'Yes' : b.additional_categories ? 'No' : '-'}</td>
+            <td>${esc(b.category || '-')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+      <p class="hint">Details come from each business's Google profile. A dash means Google did not report it.</p>
+    </div>`;
 
   // Checklist
-  const checks = profileChecklist(t, comps);
-  const gaps = checks.filter((c) => c.status === 'gap').length;
+  const gapsCount = checks.filter((c) => c.status === 'gap').length;
   $('#r-checklist').innerHTML = `
-    <h2>Google profile check</h2>
-    <p class="muted">${gaps ? `${gaps} gap${gaps > 1 ? 's' : ''} found against the top competitors.` : 'No gaps found against the top competitors.'}</p>
-    <ul class="checklist">${checks.map((c) => `
-      <li class="check ${c.status}">
-        <span class="check-icon" aria-hidden="true">${c.status === 'good' ? '&#10003;' : c.status === 'gap' ? '&#10005;' : '?'}</span>
-        <div><div class="check-label">${esc(c.label)}</div><div class="check-detail">${esc(c.detail)}</div></div>
-      </li>`).join('')}
-    </ul>`;
+    <div class="reveal">
+      <h2>Google profile check</h2>
+      <p class="muted">${gapsCount ? `${gapsCount} gap${gapsCount > 1 ? 's' : ''} against the top competitors.` : 'No gaps against the top competitors.'}</p>
+      <ul class="checklist">${checks.map((c) => `
+        <li class="check ${c.status}">
+          <span class="check-icon" aria-hidden="true">${c.status === 'good' ? '&#10003;' : c.status === 'gap' ? '&#10005;' : '?'}</span>
+          <div><div class="check-label">${esc(c.label)}</div><div class="check-detail">${esc(c.detail)}</div></div>
+        </li>`).join('')}
+      </ul>
+    </div>`;
 
   // Category gap
-  const gap = categoryGap(t, comps);
   $('#r-gap').innerHTML = `
-    <h2>Categories competitors use</h2>
-    <p class="muted">Categories the top ${comps.length || 3} use that this profile doesn't. Add only the ones that match real services.</p>
-    ${gap.length
-      ? `<ul class="chips">${gap.map((g) => `<li class="chip">${esc(g.category)}<b>${g.count}/${comps.length}</b></li>`).join('')}</ul>`
-      : '<p>No category gaps.</p>'}
-    <h3 style="margin-top:20px">Current categories</h3>
-    <ul class="chips">${[t.category, ...(t.additional_categories || [])].filter(Boolean).map((c) => `<li class="chip">${esc(c)}</li>`).join('') || '<li class="chip">None listed</li>'}</ul>`;
+    <div class="reveal">
+      <h2>Categories competitors use</h2>
+      <p class="muted">Used by the top ${comps.length || 3} but not this profile. Add only the ones that match real services.</p>
+      ${gaps.length
+        ? `<ul class="chips">${gaps.map((g) => `<li class="chip">${esc(g.category)}<b>${g.count}/${comps.length}</b></li>`).join('')}</ul>`
+        : '<p>No category gaps.</p>'}
+      <h3 style="margin-top:20px">Current categories</h3>
+      <ul class="chips">${[t.category, ...(t.additional_categories || [])].filter(Boolean).map((c) => `<li class="chip">${esc(c)}</li>`).join('') || '<li class="chip">None listed</li>'}</ul>
+    </div>`;
 
   renderSpeed(scan);
   renderMath(scan);
+  reveal($('#report'));
+  requestAnimationFrame(() => document.querySelectorAll('.bar > span').forEach((n) => n.classList.add('is-grown')));
   saveLast(scan);
 }
 
@@ -428,9 +606,10 @@ function renderSpeed(scan) {
 
 function speedHtml(ps) {
   const verdict = ps.score >= 90 ? 'Good' : ps.score >= 50 ? 'Needs work' : 'Poor';
+  const color = ps.score >= 90 ? 'var(--top3)' : ps.score >= 50 ? 'var(--top20)' : 'var(--none)';
   return `<div class="speed-out">
-    <div><span class="speed-score" style="color:${ps.score >= 90 ? 'var(--top3)' : ps.score >= 50 ? 'var(--top20)' : 'var(--none)'}">${ps.score}</span> / 100, ${verdict}</div>
-    <div>Main content loads in <b>${esc(ps.lcp || '-')}</b>. Layout shift ${esc(ps.cls || '-')}. Blocking time ${esc(ps.tbt || '-')}.</div>
+    <div class="gauge" style="--p:${ps.score};--c:${color}"><span>${ps.score}</span></div>
+    <div><b>${verdict}</b><br>Main content loads in <b>${esc(ps.lcp || '-')}</b>. Layout shift ${esc(ps.cls || '-')}. Blocking time ${esc(ps.tbt || '-')}.</div>
   </div>`;
 }
 
@@ -474,6 +653,15 @@ function downloadScan(scan) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+function openScan(scan) {
+  scan.math ||= { jobValue: '', closeRatePct: 40, extraCalls: 10, plan: 'Growth' };
+  scan.details ||= {};
+  state.runToken++;
+  state.scan = scan;
+  state.view = null;
+  renderReport(scan, false);
+}
+
 $('#load-file').addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
   e.target.value = '';
@@ -481,10 +669,7 @@ $('#load-file').addEventListener('change', async (e) => {
   try {
     const scan = JSON.parse(await file.text());
     if (!scan || !Array.isArray(scan.points) || !scan.target) throw new Error('bad file');
-    scan.math ||= { jobValue: '', closeRatePct: 40, extraCalls: 10, plan: 'Growth' };
-    state.runToken++;
-    state.scan = scan;
-    renderReport(scan, false);
+    openScan(scan);
   } catch {
     setStatus($('#find-status'), 'That file is not a Rightway scan file.', true);
   }
@@ -492,7 +677,10 @@ $('#load-file').addEventListener('change', async (e) => {
 
 // ---------- map redraw on resize and print ----------
 let resizeTimer;
+let lastWidth = window.innerWidth;
 window.addEventListener('resize', () => {
+  if (window.innerWidth === lastWidth) return;
+  lastWidth = window.innerWidth;
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => state.scan && !$('#report').hidden && drawMap(state.scan), 200);
 });
@@ -511,7 +699,6 @@ async function init() {
     setStatus($('#find-status'), 'Could not reach the server.', true);
   }
   updateCost();
-  // Offer the last scan if there is one.
   const last = load(LAST_SCAN);
   if (last) {
     try {
@@ -523,13 +710,12 @@ async function init() {
         btn.type = 'button';
         btn.className = 'btn btn-ghost btn-sm';
         btn.textContent = `Reopen last scan: ${scan.target.title}, "${scan.keyword}"`;
-        btn.addEventListener('click', () => { state.scan = scan; renderReport(scan, false); status.innerHTML = ''; });
+        btn.addEventListener('click', () => { openScan(scan); status.innerHTML = ''; });
         status.appendChild(btn);
       }
     } catch { /* ignore */ }
   }
 }
 
-// Exposed for tests only.
-window.__rw = { state, sameBusiness };
+window.__rw = { state };
 init();

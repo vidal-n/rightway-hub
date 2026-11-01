@@ -52,9 +52,22 @@ export function validateGridPoint(body) {
     zoom,
     cid: typeof body?.cid === 'string' ? body.cid.slice(0, 64) : '',
     place_id: typeof body?.place_id === 'string' ? body.place_id.slice(0, 128) : '',
+    title: typeof body?.title === 'string' ? body.title.slice(0, 160) : '',
+    source: body?.source === 'maps' ? 'maps' : 'local',
+    device: body?.device === 'mobile' ? 'mobile' : 'desktop',
   };
   if (!out.cid && !out.place_id) throw new HttpError('Pick a business first (cid or place_id missing).');
   return out;
+}
+
+export function validateDetails(body) {
+  return {
+    title: cleanText(body?.title, 'Business name', 160),
+    cid: typeof body?.cid === 'string' ? body.cid.slice(0, 64) : '',
+    place_id: typeof body?.place_id === 'string' ? body.place_id.slice(0, 128) : '',
+    lat: num(body?.lat, 'Latitude', -90, 90),
+    lng: num(body?.lng, 'Longitude', -180, 180),
+  };
 }
 
 export function validateUrl(value) {

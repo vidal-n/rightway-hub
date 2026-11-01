@@ -1,15 +1,20 @@
-// DataForSEO Google Maps SERP (live, advanced). One task per request, billed per request.
-// Docs: https://docs.dataforseo.com/v3/serp/google/maps/live/advanced/
+// DataForSEO SERP calls (live, advanced). One task per request.
+// Grid ranks use Google's Local Finder by default (the "More places" list behind the 3-pack),
+// which is what BrightLocal's Local Search Grid reads. Google Maps is available as an option.
+// Docs: https://docs.dataforseo.com/v3/serp/google/local_finder/overview/
+//       https://docs.dataforseo.com/v3/serp/google/maps/live/advanced/
 import { HttpError } from './util.js';
 
-const ENDPOINT = 'https://api.dataforseo.com/v3/serp/google/maps/live/advanced';
+const BASE = 'https://api.dataforseo.com/v3/serp/google';
+const MAPS = `${BASE}/maps/live/advanced`;
+const LOCAL = `${BASE}/local_finder/live/advanced`;
 const US = 2840;
 
-async function liveMaps(env, task, fetchImpl = fetch) {
+async function liveSerp(env, endpoint, task, fetchImpl = fetch) {
   const auth = btoa(`${env.DATAFORSEO_LOGIN}:${env.DATAFORSEO_PASSWORD}`);
   let res;
   try {
-    res = await fetchImpl(ENDPOINT, {
+    res = await fetchImpl(endpoint, {
       method: 'POST',
       headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
       body: JSON.stringify([task]),
@@ -26,11 +31,18 @@ async function liveMaps(env, task, fetchImpl = fetch) {
     // 40200 = payment required (balance empty)
     throw new HttpError(`DataForSEO: ${t?.status_message || 'no result'}`, 502);
   }
-  const items = (t.result?.[0]?.items || []).filter((i) => i && i.type === 'maps_search');
-  return { items, cost: Number(t.cost ?? data.cost ?? 0) };
+  const r = t.result?.[0] || {};
+  return { items: Array.isArray(r.items) ? r.items : [], types: r.item_types || [], cost: Number(t.cost ?? data.cost ?? 0) };
 }
 
-// Keep only what the app uses, with stable names.
+// Unpaid business listings only, in the order Google shows them.
+export function organicListings(items) {
+  return items.filter((i) => i && !i.is_paid && !/paid|ads/i.test(i.type || '') && (i.cid || i.place_id || i.title));
+}
+
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+// Full record, from Google Maps results (has categories, photos, hours, coordinates).
 export function slim(i) {
   return {
     rank: i.rank_group ?? null,
@@ -39,51 +51,80 @@ export function slim(i) {
     place_id: i.place_id || '',
     category: i.category || '',
     additional_categories: Array.isArray(i.additional_categories) ? i.additional_categories : [],
-    rating: typeof i.rating?.value === 'number' ? i.rating.value : null,
-    reviews: typeof i.rating?.votes_count === 'number' ? i.rating.votes_count : 0,
+    rating: num(i.rating?.value),
+    reviews: num(i.rating?.votes_count) ?? 0,
     address: i.address || '',
     phone: i.phone || '',
     url: i.url || '',
     domain: i.domain || '',
-    lat: typeof i.latitude === 'number' ? i.latitude : null,
-    lng: typeof i.longitude === 'number' ? i.longitude : null,
+    lat: num(i.latitude),
+    lng: num(i.longitude),
     claimed: typeof i.is_claimed === 'boolean' ? i.is_claimed : null,
-    photos: typeof i.total_photos === 'number' ? i.total_photos : null,
+    photos: num(i.total_photos),
     hours: Boolean(i.work_hours && i.work_hours.timetable && Object.keys(i.work_hours.timetable).length),
   };
 }
 
+// Compact record for every listing at every grid point.
+export function lite(i, rank) {
+  return {
+    rank,
+    title: i.title || '',
+    cid: i.cid || '',
+    place_id: i.place_id || '',
+    category: i.category || '',
+    rating: num(i.rating?.value),
+    reviews: num(i.rating?.votes_count),
+    domain: i.domain || '',
+    lat: num(i.latitude),
+    lng: num(i.longitude),
+  };
+}
+
+const norm = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').trim();
+
 export function sameBusiness(item, target) {
   if (!item || !target) return false;
-  if (target.cid && item.cid && item.cid === target.cid) return true;
-  if (target.place_id && item.place_id && item.place_id === target.place_id) return true;
-  return false;
+  if (target.cid && item.cid) return item.cid === target.cid;
+  if (target.place_id && item.place_id) return item.place_id === target.place_id;
+  // Fallback when a result has no ids: exact name match.
+  return Boolean(target.title && item.title && norm(item.title) === norm(target.title));
 }
 
 export async function searchBusinesses(env, { name, location }, fetchImpl) {
-  const { items, cost } = await liveMaps(
-    env,
+  const { items, cost } = await liveSerp(
+    env, MAPS,
     { keyword: `${name} ${location}`, location_code: US, language_code: 'en', depth: 10 },
     fetchImpl,
   );
-  return { results: items.slice(0, 8).map(slim), cost };
+  return { results: organicListings(items).filter((i) => i.type === 'maps_search' || !i.type).slice(0, 8).map(slim), cost };
 }
 
 export async function rankAtPoint(env, q, fetchImpl) {
-  const { items, cost } = await liveMaps(
-    env,
-    {
-      keyword: q.keyword,
-      location_coordinate: `${q.lat.toFixed(7)},${q.lng.toFixed(7)},${q.zoom}z`,
-      language_code: 'en',
-      depth: 20,
-    },
-    fetchImpl,
-  );
-  const hit = items.find((i) => sameBusiness(i, q));
+  const maps = q.source === 'maps';
+  const task = maps
+    ? { keyword: q.keyword, location_coordinate: `${q.lat.toFixed(7)},${q.lng.toFixed(7)},${q.zoom}z`, language_code: 'en', depth: 20, device: q.device }
+    : { keyword: q.keyword, location_coordinate: `${q.lat.toFixed(7)},${q.lng.toFixed(7)}`, language_code: 'en', depth: 20, device: q.device };
+  const { items, types, cost } = await liveSerp(env, maps ? MAPS : LOCAL, task, fetchImpl);
+  const list = organicListings(items).slice(0, 20);
+  const pos = list.findIndex((i) => sameBusiness(i, q));
   return {
-    rank: hit ? hit.rank_group : null,
-    top: items.slice(0, 5).map(slim),
+    rank: pos >= 0 ? pos + 1 : null,
+    top: list.map((i, idx) => lite(i, idx + 1)),
+    count: list.length,
+    types,
     cost,
   };
+}
+
+// Full profile details for one business (used for the head-to-head table).
+export async function businessDetails(env, q, fetchImpl) {
+  const { items, cost } = await liveSerp(
+    env, MAPS,
+    { keyword: q.title, location_coordinate: `${q.lat.toFixed(7)},${q.lng.toFixed(7)},14z`, language_code: 'en', depth: 10 },
+    fetchImpl,
+  );
+  const list = organicListings(items);
+  const hit = list.find((i) => sameBusiness(i, q)) || list.find((i) => norm(i.title) === norm(q.title)) || null;
+  return { business: hit ? slim(hit) : null, cost };
 }

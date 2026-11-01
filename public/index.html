@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="light dark">
   <title>Rightway Hub: Scan Tool</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -59,41 +60,61 @@
     <section id="step-scan" class="card" hidden>
       <h2><span class="step">2</span> Set up the scan</h2>
       <div id="picked" class="picked"></div>
-      <form id="scan-form" class="row">
-        <label class="field grow"><span>Keyword customers search</span><input id="scan-keyword" required maxlength="80" placeholder="e.g. roofer"></label>
-        <label class="field"><span>Grid</span>
-          <select id="scan-size">
-            <option value="5">5 x 5 (25 points)</option>
-            <option value="7" selected>7 x 7 (49 points)</option>
-            <option value="9">9 x 9 (81 points)</option>
-          </select>
-        </label>
-        <label class="field"><span>Radius</span>
-          <select id="scan-radius">
-            <option value="1">1 mile</option>
-            <option value="2">2 miles</option>
-            <option value="3">3 miles</option>
-            <option value="5" selected>5 miles</option>
-            <option value="8">8 miles</option>
-            <option value="10">10 miles</option>
-            <option value="15">15 miles</option>
-          </select>
-        </label>
-        <button class="btn btn-primary" type="submit" id="scan-btn">Run scan</button>
+      <form id="scan-form">
+        <div class="row">
+          <label class="field grow"><span>Keyword customers search</span><input id="scan-keyword" required maxlength="80" placeholder="e.g. roofer"></label>
+          <label class="field"><span>Grid</span>
+            <select id="scan-size">
+              <option value="3">3 x 3 (9 points)</option>
+              <option value="5" selected>5 x 5 (25 points)</option>
+              <option value="7">7 x 7 (49 points)</option>
+              <option value="9">9 x 9 (81 points)</option>
+            </select>
+          </label>
+          <label class="field"><span>Radius</span>
+            <select id="scan-radius">
+              <option value="0.5">0.5 mile</option>
+              <option value="1">1 mile</option>
+              <option value="1.5">1.5 miles</option>
+              <option value="2" selected>2 miles</option>
+              <option value="3">3 miles</option>
+              <option value="5">5 miles</option>
+              <option value="8">8 miles</option>
+              <option value="10">10 miles</option>
+              <option value="15">15 miles</option>
+            </select>
+          </label>
+          <button class="btn btn-primary" type="submit" id="scan-btn">Run scan</button>
+        </div>
+        <p class="hint">Radius guide: restaurants and shops 1 to 2 miles. Trades that drive to customers (roofers, plumbers, HVAC) 5 to 10 miles.</p>
+        <p class="hint" id="scan-cost"></p>
+        <details class="adv">
+          <summary>Advanced</summary>
+          <div class="row">
+            <label class="field"><span>Google results to check</span>
+              <select id="scan-source">
+                <option value="local" selected>Google local results (matches BrightLocal)</option>
+                <option value="maps">Google Maps app</option>
+              </select>
+            </label>
+            <label class="field"><span>Device</span>
+              <select id="scan-device">
+                <option value="desktop" selected>Desktop</option>
+                <option value="mobile">Mobile</option>
+              </select>
+            </label>
+            <label class="field" id="zoom-field" hidden><span>Map zoom per point</span>
+              <select id="scan-zoom">
+                <option value="12">12 (wide)</option>
+                <option value="13" selected>13 (default)</option>
+                <option value="14">14</option>
+                <option value="15">15 (tight)</option>
+              </select>
+            </label>
+          </div>
+          <p class="hint">Keep these the same from month to month so scans compare fairly.</p>
+        </details>
       </form>
-      <p class="hint" id="scan-cost"></p>
-      <details class="adv">
-        <summary>Advanced</summary>
-        <label class="field narrow"><span>Map zoom per point</span>
-          <select id="scan-zoom">
-            <option value="12">12 (wide)</option>
-            <option value="13" selected>13 (default)</option>
-            <option value="14">14</option>
-            <option value="15">15 (tight)</option>
-          </select>
-        </label>
-        <p class="hint">Zoom changes how much of the map Google considers at each point. Keep it the same from month to month so scans compare fairly.</p>
-      </details>
     </section>
 
     <section id="report" class="report" hidden></section>
