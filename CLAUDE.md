@@ -2,6 +2,7 @@
 
 Internal software for Rightway Growth LLC (local SEO agency, Hollywood FL). Owner: Vidal Newton (V), non-developer.
 The full plan lives in the Claude Doc "Rightway Hub: Build Plan" (https://claude.ai/artifact/Av9b3D9P7ZosEPatp1ZcJJ).
+Its "Package build-out" tab maps every package item to a Hub module and phase (2 to 9); follow that order.
 
 ## Status
 - Phase 1, scan tool: built (v2). Grid ranks from Google Local Finder by default (matches BrightLocal's Local Search Grid),
