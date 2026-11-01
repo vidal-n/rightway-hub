@@ -100,3 +100,10 @@ test('slim handles missing fields', () => {
   assert.equal(s.hours, false);
   assert.deepEqual(s.additional_categories, []);
 });
+
+test('build-time secrets fill gaps but runtime secrets win', async () => {
+  const { withSecrets } = await import('../src/worker.js');
+  const e = withSecrets({ ACCESS_KEY: 'runtime' }, { ACCESS_KEY: 'build', DATAFORSEO_LOGIN: 'l' });
+  assert.equal(e.ACCESS_KEY, 'runtime');
+  assert.equal(e.DATAFORSEO_LOGIN, 'l');
+});

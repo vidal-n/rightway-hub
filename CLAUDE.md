@@ -18,6 +18,9 @@ The full plan lives in the Claude Doc "Rightway Hub: Build Plan" (https://claude
 - Secrets (Cloudflare dashboard only): `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD`, `ACCESS_KEY`, optional `PAGESPEED_KEY`.
   Without DataForSEO secrets the API returns demo data (`src/mock.js`) and the UI shows a banner.
   With DataForSEO secrets the API refuses to run unless `ACCESS_KEY` is set, and every call must send `x-access-key`.
+  V's secrets live in Cloudflare's Build "Variables and secrets". `scripts/bake-secrets.mjs` (wrangler custom build) copies them
+  into `src/runtime-secrets.js` inside the deployed Worker; runtime dashboard secrets override them. Keep the committed file empty.
+  `/api/health` reports which secrets exist (booleans only).
 
 ## Commands
 - `npm test` runs unit tests (node:test, no installs needed).

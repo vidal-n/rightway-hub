@@ -4,9 +4,18 @@ import { searchBusinesses, rankAtPoint } from './dataforseo.js';
 import { pageSpeed } from './pagespeed.js';
 import { mockSearch, mockRank, mockPageSpeed } from './mock.js';
 import { HttpError, json, validateGridPoint, validateSearch, validateUrl, keyMatches } from './util.js';
+import baked from './runtime-secrets.js';
+
+// Runtime secrets (dashboard) win; build-time secrets fill any gaps.
+export function withSecrets(env, extra = baked) {
+  const out = { ...env };
+  for (const [k, v] of Object.entries(extra || {})) if (!out[k]) out[k] = v;
+  return out;
+}
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, rawEnv) {
+    const env = withSecrets(rawEnv || {});
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) {
       return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404 });
@@ -39,6 +48,7 @@ async function handleApi(request, env, url) {
         DATAFORSEO_PASSWORD: Boolean(env.DATAFORSEO_PASSWORD),
         ACCESS_KEY: Boolean(env.ACCESS_KEY),
       },
+      fromBuild: Object.keys(baked),
       seen: Object.keys(env).filter((k) => k !== 'ASSETS'),
     });
   }
