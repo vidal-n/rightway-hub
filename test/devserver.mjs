@@ -20,6 +20,8 @@ const env = {
   TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
   TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
   TWILIO_FROM: process.env.TWILIO_FROM,
+  STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+  STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
   // Local stand-ins for Cloudflare D1 and R2 (data lives in memory until the server stops).
   DB: process.env.NO_DB ? undefined : d1(process.env.DB_FILE || ':memory:'),
   MEDIA: process.env.NO_DB ? undefined : r2(),

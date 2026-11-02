@@ -7,6 +7,7 @@ import { requireStaff, requireAdmin, requireClientAccess } from './auth.js';
 import { FIRST_CHARGE_CENTS, MONTHLY_CENTS } from './plans.js';
 import { convertLead, logActivity } from './crm.js';
 import { route } from './router.js';
+import { webhookSecret, storedWebhookSecret, readSetup } from './stripekeys.js';
 
 const enc = new TextEncoder();
 const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
@@ -22,17 +23,21 @@ export async function verifyStripeSignature(rawBody, header, secret, toleranceSe
   return sigs.some((s) => s.length === expected.length && [...s].reduce((d, c, i) => d | (c.charCodeAt(0) ^ expected.charCodeAt(i)), 0) === 0);
 }
 
-async function stripe(env, method, path, params, fetchImpl = fetch) {
+export async function stripe(env, method, path, params, fetchImpl = fetch, extraHeaders = {}) {
   if (!env.STRIPE_SECRET_KEY) throw new HttpError('Stripe is not connected yet. Add STRIPE_SECRET_KEY in Cloudflare.', 503);
   const body = params ? new URLSearchParams(params).toString() : undefined;
   const url = `https://api.stripe.com/v1${path}${method === 'GET' && body ? `?${body}` : ''}`;
   const res = await fetchImpl(url, {
     method,
-    headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, ...(method !== 'GET' ? { 'content-type': 'application/x-www-form-urlencoded' } : {}) },
+    headers: { Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, ...(method !== 'GET' ? { 'content-type': 'application/x-www-form-urlencoded' } : {}), ...extraHeaders },
     body: method !== 'GET' ? body : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new HttpError(`Stripe: ${data.error?.message || `HTTP ${res.status}`}`, 502);
+  if (!res.ok) {
+    const msg = data.error?.message || `HTTP ${res.status}`;
+    const perm = /permission|restricted|not allowed/i.test(msg) ? ' Edit the key in Stripe (Developers, API keys) and allow it.' : '';
+    throw new HttpError(`Stripe: ${msg}${perm}`, 502);
+  }
   return data;
 }
 
@@ -104,7 +109,7 @@ export async function handleStripeEvent(env, event) {
 
 route('POST', '/api/stripe/webhook', async ({ env, request }) => {
   const raw = await request.text();
-  const ok = await verifyStripeSignature(raw, request.headers.get('stripe-signature'), env.STRIPE_WEBHOOK_SECRET);
+  const ok = await verifyStripeSignature(raw, request.headers.get('stripe-signature'), await webhookSecret(env));
   if (!ok) throw new HttpError('Bad signature.', 400);
   const result = await handleStripeEvent(env, JSON.parse(raw));
   return json({ received: true, result });
@@ -129,7 +134,7 @@ route('GET', '/api/settings', async ({ env, user }) => {
     research_radius: Number(s.research_radius) || 2,
     connected: {
       google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
-      dataforseo: Boolean(env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD), stripe: Boolean(env.STRIPE_SECRET_KEY), stripeWebhook: Boolean(env.STRIPE_WEBHOOK_SECRET),
+      dataforseo: Boolean(env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD), stripe: Boolean(env.STRIPE_SECRET_KEY), stripeWebhook: Boolean(env.STRIPE_WEBHOOK_SECRET || (await storedWebhookSecret(env))),
       twilio: Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM), ai: Boolean(env.ANTHROPIC_API_KEY), email: Boolean(env.RESEND_API_KEY),
       media: Boolean(env.MEDIA),
     },
@@ -209,7 +214,8 @@ route('POST', '/api/clients/:id/billing/portal', async ({ env, user, params, url
   requireClientAccess(user, params.id);
   const c = await first(env, 'SELECT stripe_customer_id FROM clients WHERE id = ?', params.id);
   if (!c?.stripe_customer_id) throw new HttpError('Billing is not linked yet. Ask the Rightway team.');
-  const s = await stripe(env, 'POST', '/billing_portal/sessions', { customer: c.stripe_customer_id, return_url: `${url.origin}/#/` });
+  const portal = (await readSetup(env)).portal;
+  const s = await stripe(env, 'POST', '/billing_portal/sessions', { customer: c.stripe_customer_id, return_url: `${url.origin}/#/`, ...(portal ? { configuration: portal } : {}) });
   return json({ url: s.url });
 });
 

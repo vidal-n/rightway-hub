@@ -5,6 +5,8 @@ import { resetSchemaCache, run } from '../src/db.js';
 import { seal, grantedApps } from '../src/google.js';
 import { monthlyCents } from '../src/payments.js';
 import { d1, r2 } from './shims.mjs';
+import { LINKS } from '../src/stripesetup.js';
+import { FIRST_CHARGE_CENTS } from '../src/plans.js';
 
 function setup(extra = {}) {
   resetSchemaCache();
@@ -14,7 +16,7 @@ function setup(extra = {}) {
     const h = { 'x-rw': '1', ...headers };
     if (cookie) h.cookie = cookie;
     let payload;
-    if (body !== undefined) { h['content-type'] = 'application/json'; payload = JSON.stringify(body); }
+    if (body !== undefined) { h['content-type'] = headers['content-type'] || 'application/json'; payload = typeof body === 'string' ? body : JSON.stringify(body); }
     const res = await worker.fetch(new Request(`https://hub.test${path}`, { method, headers: h, body: payload, redirect: 'manual' }), env);
     const set = res.headers.get('set-cookie');
     if (set) cookie = set.split(';')[0];
@@ -150,5 +152,111 @@ test('google: per app scopes, Sheets export, client website numbers', async () =
     assert.equal(r.data.gsc.clicks, 120); assert.equal(r.data.gsc.change.clicks, 20); assert.equal(r.data.gsc.queries[0].q, 'plumber near me');
     assert.equal(r.data.ga.users, 400); assert.equal(r.data.ga.change.sessions, 25); assert.equal(r.data.ga.channels[0].name, 'Organic Search');
     assert.equal(r.data.ads.cost, 850); assert.equal(r.data.ads.conversions, 17); assert.equal(Math.round(r.data.ads.costPerConv), 50);
+  } finally { m.restore(); }
+});
+
+// ---------- one click Stripe setup ----------
+function stripeFake(opts = {}) {
+  const st = { n: 0, hooks: opts.hooks || [], products: 0, prices: [], links: [], portals: opts.portals || [], posts: [], idem: [] };
+  const handler = (u, init = {}) => {
+    if (!u.startsWith('https://api.stripe.com/v1')) return null;
+    const path = u.replace('https://api.stripe.com/v1', '').split('?')[0];
+    const method = init.method || 'GET';
+    const params = init.body ? Object.fromEntries(new URLSearchParams(String(init.body))) : {};
+    if (method === 'POST') { st.posts.push({ path, params }); if (init.headers?.['Idempotency-Key']) st.idem.push(init.headers['Idempotency-Key']); }
+    if (path === '/webhook_endpoints' && method === 'GET') return Response.json({ data: st.hooks });
+    if (path === '/webhook_endpoints' && method === 'POST') { const h = { id: 'we_1', url: params.url, enabled_events: Object.entries(params).filter(([k]) => k.startsWith('enabled_events')).map(([, v]) => v), secret: 'whsec_abcdefghijklmnop1234' }; st.hooks.push({ ...h, secret: undefined }); return Response.json(h); }
+    if (path.startsWith('/webhook_endpoints/') && method === 'POST') return Response.json({ id: 'we_1' });
+    if (path === '/products') { st.products++; return Response.json({ id: `prod_${st.products}` }); }
+    if (path === '/prices') { st.prices.push(params); return Response.json({ id: `price_${st.prices.length}` }); }
+    if (path === '/payment_links' && method === 'POST') { st.links.push(params); return Response.json({ id: `plink_${st.links.length}`, url: `https://buy.stripe.com/test_${st.links.length}` }); }
+    if (path.startsWith('/payment_links/')) return Response.json({ id: 'x', active: false });
+    if (path === '/billing_portal/configurations' && method === 'GET') return Response.json({ data: st.portals });
+    if (path === '/billing_portal/configurations' && method === 'POST') { st.portals.push({ id: 'bpc_1' }); return Response.json({ id: 'bpc_1' }); }
+    return Response.json({ error: { message: `unexpected ${method} ${path}` } }, { status: 400 });
+  };
+  return { st, handler };
+}
+
+test('stripe setup: creates webhook, five links and the portal once, then leaves them alone', async () => {
+  const t = setup({ STRIPE_SECRET_KEY: 'rk_test_abcdefgh' });
+  await owner(t);
+  const f = stripeFake();
+  const m = mock(f.handler);
+  try {
+    let r = await t.call('GET', '/api/stripe/setup');
+    assert.equal(r.status, 200);
+    assert.equal(r.data.mode, 'test');
+    assert.equal(r.data.webhook.secret, null);
+    assert.equal(r.data.links.length, 5);
+    r = await t.call('POST', '/api/stripe/setup', {});
+    assert.equal(r.status, 200);
+    assert.ok(r.data.results.every((x) => x.ok), JSON.stringify(r.data.results));
+    assert.equal(r.data.status.webhook.secret, 'hub');
+    assert.ok(r.data.status.links.every((l) => l.url.startsWith('https://buy.stripe.com/')));
+    assert.equal(r.data.status.portal, true);
+    assert.equal(f.st.links.length, 5);
+    assert.equal(f.st.products, 4); // starter and reduced starter share a product
+    // amounts: monthly and setup per plan, first charge matches what the webhook uses to recognize a plan
+    const amounts = f.st.prices.map((p) => Number(p.unit_amount));
+    for (const c of [59700, 39700, 29700, 99700, 149700, 249700]) assert.ok(amounts.includes(c), `missing price ${c}`);
+    for (const l of LINKS) assert.equal(FIRST_CHARGE_CENTS[l.firstCharge] !== undefined, true, l.key);
+    const growth = f.st.links.find((p) => p['metadata[rw_plan]'] === 'growth');
+    assert.ok(growth['line_items[0][price]'] && growth['line_items[1][price]']);
+    assert.ok(f.st.idem.every((k) => k.startsWith('rw-test-')));
+    // the stored signing secret now verifies a Stripe webhook
+    const body = JSON.stringify({ id: 'evt_setup_1', type: 'ping', data: { object: {} } });
+    const tt = Math.floor(Date.now() / 1000);
+    const key = await crypto.subtle.importKey('raw', new TextEncoder().encode('whsec_abcdefghijklmnop1234'), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    const sig = [...new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`${tt}.${body}`)))].map((x) => x.toString(16).padStart(2, '0')).join('');
+    let w = await t.call('POST', '/api/stripe/webhook', body, { 'stripe-signature': `t=${tt},v1=${sig}`, 'content-type': 'application/json' });
+    assert.equal(w.status, 200);
+    w = await t.call('POST', '/api/stripe/webhook', body, { 'stripe-signature': `t=${tt},v1=bad`, 'content-type': 'application/json' });
+    assert.equal(w.status, 400);
+    const set = await t.call('GET', '/api/settings');
+    assert.equal(set.data.connected.stripeWebhook, true);
+    assert.equal(set.data.links.growth, 'https://buy.stripe.com/test_3');
+    assert.equal(JSON.stringify(set.data).includes('whsec_'), false);
+    // second run changes nothing
+    r = await t.call('POST', '/api/stripe/setup', {});
+    assert.ok(r.data.results.every((x) => x.ok));
+    assert.equal(f.st.links.length, 5);
+    assert.equal(f.st.products, 4);
+    assert.equal(f.st.portals.length, 1);
+    // replace makes fresh links without new products or prices
+    const prices = f.st.prices.length;
+    r = await t.call('POST', '/api/stripe/setup', { steps: ['links'], replace: true });
+    assert.equal(f.st.links.length, 10);
+    assert.equal(f.st.prices.length, prices);
+    assert.equal(f.st.products, 4);
+  } finally { m.restore(); }
+  // not for teammates or signed out visitors
+  t.logout();
+  assert.ok([401, 403].includes((await t.call('POST', '/api/stripe/setup', {})).status));
+});
+
+test('stripe setup: an existing webhook needs its secret pasted, bad secrets are refused, one failed step does not stop the rest', async () => {
+  const t = setup({ STRIPE_SECRET_KEY: 'rk_live_abcdefgh' });
+  await owner(t);
+  const f = stripeFake({ hooks: [{ id: 'we_old', url: 'https://hub.test/api/stripe/webhook', enabled_events: ['invoice.paid'] }] });
+  const base = f.handler;
+  const m = mock((u, init) => (u.includes('/v1/products') ? Response.json({ error: { message: 'The provided key does not have the required permissions' } }, { status: 403 }) : base(u, init)));
+  try {
+    let r = await t.call('POST', '/api/stripe/setup', {});
+    const hook = r.data.results.find((x) => x.step === 'webhook');
+    assert.equal(hook.ok, false);
+    assert.equal(hook.needsSecret, true);
+    assert.ok(f.st.posts.some((p) => p.path === '/webhook_endpoints/we_old'), 'adds the events it was missing');
+    const links = r.data.results.filter((x) => x.step === 'links');
+    assert.equal(links.length, 5);
+    assert.ok(links.every((x) => !x.ok && /allow it/.test(x.message)));
+    assert.equal(r.data.results.find((x) => x.step === 'portal').ok, true);
+    assert.equal(r.data.status.mode, 'live');
+    r = await t.call('POST', '/api/stripe/setup', { steps: ['webhook'], webhookSecret: 'nope' });
+    assert.equal(r.data.results[0].ok, false);
+    assert.match(r.data.results[0].message, /whsec_/);
+    r = await t.call('POST', '/api/stripe/setup', { steps: ['webhook'], webhookSecret: 'whsec_zzzzzzzzzzzzzzzzzzzz' });
+    assert.equal(r.data.results[0].ok, true);
+    assert.equal(r.data.status.webhook.secret, 'hub');
   } finally { m.restore(); }
 });

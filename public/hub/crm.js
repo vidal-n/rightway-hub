@@ -5,6 +5,7 @@ import { prepPanel, gradeBadge, bookModal, clearScriptCache } from './prep.js';
 import { textModal } from './texts.js';
 import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
 import { loadDispos, keyed, dispositionModal } from './dispo.js';
+import { stripeSetup } from './stripesetup.js';
 import { placeCall, startPhone, onPhoneState } from './phone.js';
 import { filterLeads } from '/js/leadfilter.js';
 
@@ -656,8 +657,9 @@ export async function settingsPage(app, user) {
   const formUrl = `${location.origin}/api/public/lead`;
   view.innerHTML = `
     <div class="page-head"><h1>Settings</h1></div>
+    <div id="stripesetup"></div>
     <div class="card"><div class="card-head"><h2>Stripe payment links</h2>${pill(c.stripe)}</div>
-      <p class="muted">Paste each plan's payment link from Stripe (Payment Links, Copy link). Work orders and the "Payment link" button use these, tagged with the lead, so payment marks the deal won and creates the client automatically.</p>
+      <p class="muted">The Stripe setup above fills these in for you. You can also paste each plan's payment link from Stripe (Payment Links, Copy link) to use your own. Work orders and the "Payment link" button use these, tagged with the lead, so payment marks the deal won and creates the client automatically.</p>
       <form id="plinks" class="form-grid">
         ${[['starter', 'Starter ($994 first charge)'], ['starter_reduced', 'Starter, reduced setup ($894)'], ['growth', 'Growth ($1,994)'], ['authority', 'Authority ($2,494)'], ['leader', 'Market Leader ($3,994)']]
           .map(([k, n]) => `<label class="field"><span>${n}</span><input name="${k}" value="${esc(s.links[k])}" placeholder="https://buy.stripe.com/..."${user.role === 'admin' ? '' : ' disabled'}></label>`).join('')}
@@ -666,7 +668,7 @@ export async function settingsPage(app, user) {
     <div class="card"><div class="card-head"><h2>Connections</h2></div>
       <ul class="list">
         ${[['DataForSEO (scans and lead research)', c.dataforseo, 'DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD'], ['Google Calendar and Meet', c.google, 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET'], ['Stripe (billing status)', c.stripe, 'STRIPE_SECRET_KEY (restricted key)'],
-          ['Stripe webhook (auto-win on payment)', c.stripeWebhook, `STRIPE_WEBHOOK_SECRET. Endpoint: ${location.origin}/api/stripe/webhook`],
+          ['Stripe webhook (auto-win on payment)', c.stripeWebhook, `Stripe setup above, or STRIPE_WEBHOOK_SECRET. Endpoint: ${location.origin}/api/stripe/webhook`],
           ['Twilio (call through the Hub)', c.twilio, 'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM'], ['AI captions', c.ai, 'ANTHROPIC_API_KEY'],
           ['Email sending', c.email, 'RESEND_API_KEY, EMAIL_FROM'], ['Photo storage', c.media, 'R2 bucket rightway-media']]
           .map(([n, on, keys]) => `<li class="item">${pill(on)}<div><div class="item-title">${esc(n)}</div><div class="item-sub mono">${esc(keys)}</div></div><span></span></li>`).join('')}
@@ -709,6 +711,7 @@ export async function settingsPage(app, user) {
       <p class="muted">Point the audit form on rightwaygrowth.com here and requests land in the pipeline as "Audit requested", at the top of the call queue.</p>
       <div class="copybox"><code>${esc(formUrl)}</code><button class="btn btn-ghost btn-sm" id="cpf">Copy</button></div></div>`;
   $('#cpf', view).addEventListener('click', () => copy(formUrl, 'Form address copied'));
+  stripeSetup($('#stripesetup', view), user);
   $$('[data-copy]', view).forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, 'Copied')));
   $('#gdisc', view)?.addEventListener('click', async () => { try { await api('/api/google/disconnect', { method: 'POST' }); toast('Disconnected'); settingsPage(app, user); } catch (err) { toast(err.message, true); } });
   $('#bkset', view)?.addEventListener('submit', async (e) => {

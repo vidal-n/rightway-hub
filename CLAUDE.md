@@ -61,6 +61,12 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
 - Payments (built, owners only, `src/payments.js`, `public/hub/payments.js`, nav item filtered by role): Stripe MRR from active subscriptions,
   collected this month and per month (6 months, net of refunds), balance, next payout, past due and unpaid invoices, recent payments. Each Stripe
   read is separate so a restricted key missing one permission blanks one section. 60s cache. Snapshot card on the Dashboard for owners.
+- Stripe setup (built, owners only, `src/stripesetup.js`, `src/stripekeys.js`, `public/hub/stripesetup.js`, top of Settings): one click "Set up Stripe" makes the webhook
+  (signing secret returned once, stored sealed in settings `stripe_webhook_secret`, AES-GCM keyed on STRIPE_SECRET_KEY; `STRIPE_WEBHOOK_SECRET` in Cloudflare still wins),
+  five payment links (product per plan, monthly price plus one time setup price, first charge = setup + month so `FIRST_CHARGE_CENTS` recognizes the plan), and the client
+  billing portal (invoices, card and contact updates, no cancelling; its id is stored and passed when opening a portal session). Ids kept in settings `stripe_setup`,
+  Stripe idempotency keys, per step error isolation, existing links left alone unless "replace" is ticked. Needs a restricted key with Write on Products, Prices,
+  Payment Links, Webhook Endpoints, Customer portal. `POST /api/stripe/setup` `{steps?, replace?, webhookSecret?}`, `GET /api/stripe/setup` (status, no Stripe calls).
 - Google apps (built, `src/googleapps.js`, `public/hub/googleapps.js`, page `#/google`): per app scopes added on top of Calendar
   (`APP_SCOPES` in `src/google.js`, granted list stored in `users.google_scopes`): Sheets export (drive.file) of leads, clients, calls,
   payments; Search Console and GA4 (Data + Admin APIs) and Google Ads (GOOGLE_ADS_DEVELOPER_TOKEN, optional GOOGLE_ADS_LOGIN_CUSTOMER_ID,
