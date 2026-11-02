@@ -133,8 +133,10 @@ export async function setupStatus(env, origin) {
     webhook: { url: `${origin}/api/stripe/webhook`, secret, events: EVENTS },
     links: LINKS.map((l) => ({ key: l.key, label: l.label, firstCharge: l.firstCharge, url: s[`pay_link_${l.key}`] || '' })),
     portal: Boolean(state.portal),
+    custom: parseList(s.stripe_custom_links),
   };
 }
+const parseList = (v) => { try { return v ? JSON.parse(v) : []; } catch { return []; } };
 
 route('GET', '/api/stripe/setup', async ({ env, user, url }) => {
   requireAdmin(user);
@@ -155,4 +157,32 @@ route('POST', '/api/stripe/setup', async ({ env, user, url, body }) => {
   if (steps.includes('links')) await attempt('links', () => stepLinks(env, b));
   if (steps.includes('portal')) await attempt('portal', () => stepPortal(env));
   return json({ results, status: await setupStatus(env, url.origin) });
+});
+
+// A one off payment link made from the Hub: any name, a monthly price, a one time fee, or both.
+const dollars = (v, label) => {
+  const n = Math.round(Number(String(v ?? '').replace(/[$,\s]/g, '') || 0) * 100);
+  if (!Number.isFinite(n) || n < 0 || n > 10000000) throw new HttpError(`${label} must be a dollar amount.`);
+  return n;
+};
+route('POST', '/api/stripe/links', async ({ env, user, body }) => {
+  requireAdmin(user);
+  if (!env.STRIPE_SECRET_KEY) throw new HttpError('Add STRIPE_SECRET_KEY in Cloudflare first, then rebuild.', 503);
+  const b = (await body()) || {};
+  const name = String(b.name || '').trim().slice(0, 80);
+  if (!name) throw new HttpError('Give the link a name.');
+  const monthly = dollars(b.monthly, 'Monthly price');
+  const once = dollars(b.setup, 'One time fee');
+  if (!monthly && !once) throw new HttpError('Enter a monthly price, a one time fee, or both.');
+  const product = await stripe(env, 'POST', '/products', { name, 'metadata[rw_custom]': '1' });
+  const items = [];
+  if (monthly) items.push((await stripe(env, 'POST', '/prices', { product: product.id, currency: 'usd', unit_amount: String(monthly), 'recurring[interval]': 'month', nickname: `${name} monthly` })).id);
+  if (once) items.push((await stripe(env, 'POST', '/prices', { product: product.id, currency: 'usd', unit_amount: String(once), nickname: `${name} one time` })).id);
+  const params = { 'metadata[rw_custom]': '1' };
+  items.forEach((id, i) => { params[`line_items[${i}][price]`] = id; params[`line_items[${i}][quantity]`] = '1'; });
+  const link = await stripe(env, 'POST', '/payment_links', params);
+  const s = await getSettings(env);
+  const list = [{ id: link.id, name, monthly, setup: once, url: link.url, at: Date.now() }, ...parseList(s.stripe_custom_links)].slice(0, 30);
+  await setSetting(env, 'stripe_custom_links', JSON.stringify(list));
+  return json({ link: list[0], custom: list });
 });

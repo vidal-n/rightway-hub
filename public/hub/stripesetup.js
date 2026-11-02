@@ -38,7 +38,11 @@ export async function stripeSetup(box, user) {
         ${needSecret || (d.keyed && !d.webhook.secret) ? `<form id="whsec" class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
           <label class="field" style="flex:1;min-width:240px"><span>Already made the webhook in Stripe? Paste its signing secret</span><input name="s" placeholder="whsec_..." autocomplete="off"></label>
           <button class="btn btn-ghost" type="submit" style="align-self:end">Save secret</button></form>` : ''}
+        ${d.custom?.length ? `<h3 style="margin-top:16px">Links you made</h3><ul class="list">${d.custom.map((c) => `<li class="item"><div><div class="item-title">${esc(c.name)}</div>
+          <div class="item-sub">${[c.monthly ? `${money(c.monthly)}/mo` : '', c.setup ? `${money(c.setup)} ${c.monthly ? 'setup' : 'one time'}` : ''].filter(Boolean).join(' + ')}</div></div>
+          <button class="btn btn-ghost btn-sm" data-url="${esc(c.url)}">Copy link</button></li>`).join('')}</ul>` : ''}
         <div class="row end" style="margin-top:14px;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" id="newlink">New payment link</button>
           <button class="btn btn-ghost btn-sm" id="whurl" data-url="${esc(d.webhook.url)}">Copy webhook address</button>
           <button class="btn btn-primary" id="runsetup">${done ? 'Check Stripe again' : 'Set up Stripe'}</button>
         </div>`}
@@ -52,6 +56,8 @@ export async function stripeSetup(box, user) {
       catch (err) { busy(btn, false); toast(err.message, true); }
     });
     $('#runsetup', box)?.addEventListener('click', () => confirmRun(d));
+    $$('[data-url]', box).forEach((b) => { if (b.id !== 'whurl') b.addEventListener('click', () => copy(b.dataset.url, 'Link copied')); });
+    $('#newlink', box)?.addEventListener('click', () => newLink(d));
   };
 
   const confirmRun = (d) => {
@@ -74,6 +80,31 @@ export async function stripeSetup(box, user) {
         await draw(r);
         toast(r.results.every((x) => x.ok) ? 'Stripe is set up' : 'Some steps need attention', !r.results.every((x) => x.ok));
       } catch (err) { busy(e.currentTarget, false); toast(err.message, true); }
+    });
+  };
+
+  const newLink = (d) => {
+    const m = modal(`<h2>New payment link</h2>
+      <p class="muted">${d.mode === 'live' ? 'Made in your live Stripe account. ' : ''}Fill in a monthly price, a one time fee, or both. The client pays on Stripe's page.</p>
+      <form id="nl" class="form-grid" style="grid-template-columns:1fr">
+        <label class="field"><span>What is it for</span><input name="name" placeholder="Rightway Growth, custom plan" required maxlength="80"></label>
+        <label class="field"><span>Monthly price ($)</span><input name="monthly" inputmode="decimal" placeholder="497"></label>
+        <label class="field"><span>One time fee ($)</span><input name="setup" inputmode="decimal" placeholder="297"></label>
+        <div class="row end" style="gap:8px"><button class="btn btn-ghost" type="button" data-close>Cancel</button><button class="btn btn-primary" type="submit">Create link</button></div>
+      </form><div id="nlout"></div>`);
+    $('#nl', m.el).addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.currentTarget, btn = $('button[type=submit]', f);
+      busy(btn, true, 'Creating');
+      try {
+        const r = await api('/api/stripe/links', { method: 'POST', body: { name: f.name.value, monthly: f.monthly.value, setup: f.setup.value } });
+        f.remove();
+        $('#nlout', m.el).innerHTML = `<p style="margin-top:12px"><b>${esc(r.link.name)}</b> is ready.</p><div class="copybox"><code>${esc(r.link.url)}</code><button class="btn btn-ghost btn-sm" id="nlcopy">Copy</button></div>
+          <div class="row end" style="margin-top:12px"><button class="btn btn-primary" data-close>Done</button></div>`;
+        $('#nlcopy', m.el).addEventListener('click', () => copy(r.link.url, 'Link copied'));
+        copy(r.link.url, 'Link copied');
+        draw();
+      } catch (err) { busy(btn, false); toast(err.message, true); }
     });
   };
 

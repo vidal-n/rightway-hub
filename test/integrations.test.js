@@ -260,3 +260,24 @@ test('stripe setup: an existing webhook needs its secret pasted, bad secrets are
     assert.equal(r.data.status.webhook.secret, 'hub');
   } finally { m.restore(); }
 });
+
+test('stripe: owners can create a custom payment link from the Hub', async () => {
+  const t = setup({ STRIPE_SECRET_KEY: 'rk_live_abcdefgh' });
+  await owner(t);
+  const f = stripeFake();
+  const m = mock(f.handler);
+  try {
+    let r = await t.call('POST', '/api/stripe/links', { name: 'Custom plan', monthly: '$497', setup: '297' });
+    assert.equal(r.status, 200);
+    assert.match(r.data.link.url, /buy\.stripe\.com/);
+    assert.deepEqual(f.st.prices.map((p) => p.unit_amount), ['49700', '29700']);
+    assert.equal(f.st.links[0]['line_items[1][price]'], 'price_2');
+    r = await t.call('POST', '/api/stripe/links', { name: 'Audit', setup: '150' });
+    assert.equal(f.st.links[1]['line_items[1][price]'], undefined);
+    assert.equal((await t.call('POST', '/api/stripe/links', { name: 'x' })).status, 400);
+    assert.equal((await t.call('POST', '/api/stripe/links', { monthly: '5' })).status, 400);
+    r = await t.call('GET', '/api/stripe/setup');
+    assert.equal(r.data.custom.length, 2);
+    assert.equal(r.data.custom[0].name, 'Audit');
+  } finally { m.restore(); }
+});
