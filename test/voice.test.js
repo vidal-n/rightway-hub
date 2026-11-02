@@ -216,3 +216,23 @@ test('browser calling: owner token sets up Twilio once, prepared calls dial from
 test('identities are safe for Twilio', () => {
   assert.equal(identityFor('u_ab-c.d'), 'rw_u_abcd');
 });
+
+test('owner can promote a teammate to owner and back, not themselves', async () => {
+  const t = setup();
+  await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  const inv = await t.call('POST', '/api/team/invite', { email: 'kiron@rightwaygrowth.com', name: 'Kiron', role: 'team' });
+  const { users } = (await t.call('GET', '/api/team')).data;
+  const kiron = users.find((u) => u.email === 'kiron@rightwaygrowth.com');
+  const me = users.find((u) => u.email === 'v@rightwaygrowth.com');
+  assert.equal((await t.call('PUT', `/api/users/${me.id}/role`, { role: 'team' })).status, 400);
+  assert.equal((await t.call('PUT', `/api/users/${kiron.id}/role`, { role: 'boss' })).status, 400);
+  assert.equal((await t.call('PUT', `/api/users/${kiron.id}/role`, { role: 'admin' })).status, 200);
+  assert.equal((await t.call('GET', '/api/team')).data.users.find((u) => u.id === kiron.id).role, 'admin');
+  assert.equal((await t.call('PUT', `/api/users/${kiron.id}/role`, { role: 'team' })).status, 200);
+  // a team member cannot change roles
+  await t.call('POST', '/api/auth/logout', {});
+  const acc = await t.call('POST', '/api/auth/invite/accept', { token: inv.data.inviteUrl.split('/#/invite/')[1], password: 'another long password' });
+  assert.equal(acc.status, 200);
+  assert.equal((await t.call('PUT', `/api/users/${me.id}/role`, { role: 'team' })).status, 403);
+  assert.equal((await t.call('PUT', `/api/users/${kiron.id}/role`, { role: 'admin' })).status, 403);
+});

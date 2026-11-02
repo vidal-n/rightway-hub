@@ -193,6 +193,18 @@ route('POST', '/api/users/:id/reset', async ({ env, user, url, params }) => {
   return json({ inviteUrl: `${url.origin}/#/invite/${await issueInvite(env, target.id)}` });
 });
 
+// Owners can promote a teammate to owner, or set an owner back to team. Not yourself, so there is always an owner.
+route('PUT', '/api/users/:id/role', async ({ env, user, params, body }) => {
+  requireAdmin(user);
+  const role = (await body()).role;
+  if (!['admin', 'team'].includes(role)) throw new HttpError('Pick Owner or Team.');
+  if (params.id === user.id) throw new HttpError("You can't change your own role.");
+  const target = await first(env, 'SELECT * FROM users WHERE id = ?', params.id);
+  if (!target || target.role === 'client') throw new HttpError('Teammate not found.', 404);
+  await run(env, 'UPDATE users SET role = ? WHERE id = ?', role, target.id);
+  return json({ ok: true, role });
+});
+
 route('DELETE', '/api/users/:id', async ({ env, user, params }) => {
   requireStaff(user);
   if (params.id === user.id) throw new HttpError("You can't remove yourself.");
