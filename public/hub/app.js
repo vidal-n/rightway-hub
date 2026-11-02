@@ -3,6 +3,7 @@ import { $, esc, api, toast, busy, VIEW } from './core.js';
 import { dashboard, clientPage, teamPage } from './staff.js';
 import { portal } from './portal.js';
 import { pipelinePage, dialerPage, settingsPage } from './crm.js';
+import { dialOutPage } from './dialout.js';
 import { inboxPage } from './texts.js';
 import { homePage, clientViewPage } from './home.js';
 
@@ -107,7 +108,7 @@ async function route() {
   }
   if (parts[0] === 'team') return teamPage(app, u);
   if (parts[0] === 'pipeline') return pipelinePage(app, u);
-  if (parts[0] === 'dialer') return dialerPage(app, u);
+  if (parts[0] === 'dialer') return parts[1] === 'out' ? dialOutPage(app, u) : dialerPage(app, u);
   if (parts[0] === 'inbox') return inboxPage(app, u);
   if (parts[0] === 'settings') return settingsPage(app, u);
   if (parts[0] === 'client' && parts[1]) return clientPage(app, u, parts[1], parts[2] || 'overview', state);

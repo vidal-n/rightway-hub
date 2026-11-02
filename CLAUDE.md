@@ -35,6 +35,9 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   header makes the server treat a staff request as that client, GET only (writes return 403). Sample client (`src/sample.js`, `clients.sample = 1`,
   POST/DELETE `/api/sample-client`) with tasks, reviews, posts, 6 scans, onboarding; left out of revenue and work totals. Phone menu: hamburger
   drawer under 900px with iPhone safe-area padding; the scan tool has its own menu toggle.
+- Dial out (built): `#/dialer/out` tab next to the Call queue. Type any US or Canada number, pick the caller ID from the numbers on the Twilio account
+  (`GET /api/dialer/numbers`, listed from Twilio, cached 5 min), the Hub rings the rep then bridges (`POST /api/dialer/dial`, activity type `manual_call`,
+  not counted in dial stats). DNC numbers blocked, 900/976 blocked. The queue's "Call through the Hub" has the same caller ID picker (remembered per browser).
 - Scan tool v3: up to 5 keywords per run (tabs plus a summary table, save all to a client), grids to 13 x 13, radius to 30 miles, bigger map
   with zoom buttons, drag, pinch, ctrl or trackpad zoom, and double click (`createMap` in `public/js/map.js`). A live feed shows each search as a
   phone result card while scanning, and "Replay the scan" re-runs it spot by spot for clients. Lead research now keeps the top 3 per grid spot,

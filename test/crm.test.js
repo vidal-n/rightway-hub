@@ -211,3 +211,49 @@ test('twilio bridge: signed webhooks only, TwiML dials the lead without recordin
   r = await t.call('PUT', '/api/me/phone', { phone: '954 555 0001' });
   assert.equal(r.data.phone, '+19545550001');
 });
+
+test('dial out: lists Twilio numbers, validates caller ID, blocks DNC, bridges from the chosen number', async () => {
+  const t = setup();
+  await owner(t);
+  t.env.TWILIO_ACCOUNT_SID = 'ACtest'; t.env.TWILIO_AUTH_TOKEN = 'tok'; t.env.TWILIO_FROM = '+13055073393';
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u, init = {}) => {
+    const s = String(u);
+    if (s.includes('IncomingPhoneNumbers')) return Response.json({ incoming_phone_numbers: [
+      { phone_number: '+19547374725', friendly_name: '(954) 737-4725', capabilities: { voice: true } },
+      { phone_number: '+13055073393', friendly_name: '(305) 507-3393', capabilities: { voice: true } },
+      { phone_number: '+13056970181', friendly_name: '(305) 697-0181', capabilities: { voice: true } },
+    ] });
+    if (s.includes('/Calls.json')) { calls.push(new URLSearchParams(init.body)); return Response.json({ sid: 'CA123' }, { status: 201 }); }
+    return realFetch(u, init);
+  };
+  try {
+    let r = await t.call('GET', '/api/dialer/numbers');
+    assert.equal(r.data.numbers.length, 3);
+    assert.equal(r.data.numbers[0].number, '+13055073393');
+    await t.call('PUT', '/api/me/phone', { phone: '954 555 0001' });
+    r = await t.call('POST', '/api/dialer/dial', { to: '(954) 555 0188', from: '+15555550000' });
+    assert.equal(r.status, 400);
+    r = await t.call('POST', '/api/dialer/dial', { to: '(900) 555 0188', from: '+19547374725' });
+    assert.equal(r.status, 400);
+    r = await t.call('POST', '/api/dialer/dial', { to: '(954) 555 0188', from: '+19547374725' });
+    assert.equal(r.status, 200);
+    assert.equal(calls[0].get('From'), '+19547374725');
+    const bridgeUrl = calls[0].get('Url');
+    assert.match(bridgeUrl, /to=%2B19545550188/);
+    const params = { CallSid: 'CA123' };
+    r = await t.call('POST', new URL(bridgeUrl).pathname + new URL(bridgeUrl).search, new URLSearchParams(params).toString(),
+      { 'content-type': 'application/x-www-form-urlencoded', 'x-twilio-signature': await twilioSignature('tok', bridgeUrl, params) });
+    assert.equal(r.status, 200);
+    assert.match(r.data, /callerId="\+19547374725"/);
+    assert.match(r.data, /<Number>\+19545550188<\/Number>/);
+    r = await t.call('GET', '/api/dialer/recent');
+    assert.equal(r.data.calls.length, 1);
+    // Do Not Call blocks a manual dial too
+    const lead = (await t.call('POST', '/api/leads', { business: 'No Calls Inc', phone: '9545550777', state: 'FL' })).data.lead;
+    await t.call('POST', `/api/leads/${lead.id}/outcome`, { outcome: 'dnc' });
+    r = await t.call('POST', '/api/dialer/dial', { to: '954-555-0777', from: '+19547374725' });
+    assert.equal(r.status, 409);
+  } finally { globalThis.fetch = realFetch; }
+});

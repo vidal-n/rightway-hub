@@ -3,6 +3,7 @@ import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, PLAN_NAMES, PLAN_
 import { staffShell } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache } from './prep.js';
 import { textModal } from './texts.js';
+import { dialTabs, callerSelect, bindCaller } from './dialout.js';
 import { filterLeads } from '/js/leadfilter.js';
 
 export const STAGE_LABEL = {
@@ -493,8 +494,8 @@ export async function dialerPage(app, user) {
   let auto = true;
   try { auto = localStorage.getItem('rw-dial-auto') !== '0'; } catch { /* ignore */ }
   const qs = new URLSearchParams(Object.entries(flt).filter(([, v]) => v)).toString();
-  let me, q, cal;
-  try { [me, q, cal] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] }))]); }
+  let me, q, cal, nums = { numbers: [] };
+  try { [me, q, cal, nums] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] })), api('/api/dialer/numbers').catch(() => ({ numbers: [] }))]); }
   catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   let idx = 0;
   const intelCache = new Map();
@@ -527,6 +528,7 @@ export async function dialerPage(app, user) {
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
           <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead</label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a></div></div>
+      ${dialTabs('queue')}
       ${filterText ? `<div class="row small" style="margin:-6px 0 14px">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}
       <div class="stats">
         <div class="stat hero"><div class="stat-num">${q.stats.dials}</div><div class="stat-label">dials today (target 60)</div></div>
@@ -549,6 +551,7 @@ export async function dialerPage(app, user) {
               <a class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" href="${telHref(l.phone)}" id="dtel">${icon.phone}Call from my phone</a>
               ${me.twilio ? `<button class="btn btn-primary btn-xl" style="width:auto;flex:1 1 200px" id="dhub">Call through the Hub</button>` : ''}
             </div>
+            ${me.twilio && nums.numbers.length > 1 ? callerSelect(nums.numbers) : ''}
             ${me.twilio && !me.user.phone ? '<form id="dphone" class="row" style="margin-top:10px"><input name="phone" placeholder="Your mobile, so the Hub can ring you" style="flex:1 1 200px"><button class="btn btn-ghost btn-sm">Save</button></form>' : ''}
             <div class="row" style="margin-top:12px">
               <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.industry || l.category || ''} ${l.city || ''} ${l.state || ''}`)}">Map pack</a>
@@ -579,9 +582,10 @@ export async function dialerPage(app, user) {
     $('#dopen', view).addEventListener('click', () => leadModal(l.id, () => {}));
     $('#dtext', view).addEventListener('click', () => textModal(l, { rep: REP }));
     $('#dbook', view).addEventListener('click', () => bookModal(l, () => logOutcome('booked', $('[data-out="booked"]', view), true)));
+    const callerVal = bindCaller(view);
     $('#dhub', view)?.addEventListener('click', async (e) => {
       busy(e.target, true, 'Ringing you...');
-      try { await api('/api/dialer/call', { method: 'POST', body: { leadId: l.id } }); toast('Your phone is ringing. Answer to connect.'); }
+      try { await api('/api/dialer/call', { method: 'POST', body: { leadId: l.id, from: callerVal() } }); toast('Your phone is ringing. Answer to connect.'); }
       catch (err) { toast(err.message, true); } finally { setTimeout(() => busy(e.target, false), 4000); }
     });
     $('#dphone', view)?.addEventListener('submit', async (e) => {
