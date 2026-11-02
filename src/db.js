@@ -75,7 +75,7 @@ const ADD_COLUMNS = [
   ['leads', 'locations INTEGER'],
   ['clients', 'baseline TEXT'], ['clients', 'intake TEXT'], ['clients', 'intake_at INTEGER'], ['clients', 'logo_key TEXT'],
   ['users', 'google_token TEXT'], ['users', 'google_email TEXT'],
-  ['leads', 'sms_stop INTEGER NOT NULL DEFAULT 0'],
+  ['leads', 'sms_stop INTEGER NOT NULL DEFAULT 0'], ['clients', 'sample INTEGER NOT NULL DEFAULT 0'],
 ];
 
 let ready = null;

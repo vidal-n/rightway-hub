@@ -9,6 +9,12 @@ const INDUSTRIES = [
   [/plumb/i, 'Plumbing', 'plumber', 450],
   [/electric/i, 'Electrical', 'electrician', 450],
   [/dent|orthodon/i, 'Dental', 'dentist', 1200],
+  [/plastic surg|cosmetic surg/i, 'Plastic surgery', 'plastic surgeon', 8000],
+  [/\bcpa\b|account|bookkeep/i, 'Accounting', 'cpa', 1500],
+  [/\btax\b|tax prep/i, 'Tax preparation', 'tax preparer', 400],
+  [/financ|wealth|investment advis|retirement plan/i, 'Financial advisor', 'financial advisor', 5000],
+  [/septic/i, 'Septic', 'septic service', 600],
+  [/foundation/i, 'Foundation repair', 'foundation repair', 8000],
   [/injury|accident lawyer|accident attorney/i, 'Personal injury law', 'personal injury lawyer', 15000],
   [/law|attorney|lawyer|legal/i, 'Law firm', 'lawyer', 5000],
   [/med ?spa|botox|aesthetic|laser/i, 'Med spa', 'med spa', 600],
@@ -265,34 +271,101 @@ export function recommendPlan(lead = {}, intel = null) {
 }
 
 // ---------- call script ----------
+// One pitch from the first dial to the signature. The scan is the hook on the phone and the centerpiece of the meeting.
+// Plain words only: say "Google Maps", "the top 3", "calls". Never "SEO", "citations", "NAP", or "algorithm" to an owner.
+// Each step is one or more lines; lines that start with "Or:" are alternatives, "(" lines are coaching notes.
+export const SCRIPT_KEYS = [
+  ['opener', 'Opener'], ['hook', 'The scan hook'], ['discovery', 'Questions'], ['gap', 'Sum up the gap'],
+  ['book', 'Book the screen share'], ['lock', 'Lock it in'], ['close', 'Close'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'],
+];
+
 export const DEFAULT_SCRIPT = {
-  opener: "Hey {first}, this is {rep} with Rightway Growth. I'll be honest, this is a cold call. Can I take 30 seconds to tell you why I called, and you tell me if it's worth talking?",
-  reason: '{hook} We help {industry} businesses in {city} get into the top 3 on Google Maps so the phone rings more. Is getting more calls from Google something you care about right now?',
+  opener: [
+    "Hey {first}, it's {rep} with Rightway Growth down in Hollywood. I know I'm catching you in the middle of your day, so I'll be quick. {opener_reason} Got 30 seconds?",
+    "Or: Hey {first}, {rep} here with Rightway Growth. Honest answer, this is a cold call. Would it be a terrible idea if I took 30 seconds to tell you why I called, and you tell me if it's worth another minute?",
+    '(Smile when you dial. Slow, low, certain voice. Stop talking after the question.)',
+  ].join('\n'),
+  hook: [
+    '{scan_line}',
+    '{hook_impact}',
+    'Quick question: when a new customer finds you now, is it mostly referrals, or do they find you on Google?',
+  ].join('\n'),
   discovery: [
-    'Where do most of your new customers come from right now?',
-    'Roughly how many calls a week come from Google?',
-    "What's a typical job worth to you?",
-    'Could you handle more work right now, or are you booked out?',
+    "What's a typical job worth to you, ballpark? (Starting guess for {industry}: {ticket}.)",
+    'About how many new calls a week come from Google right now?',
+    'If you got five more good calls a week, could your crew handle it, or are you booked out?',
+    'What kind of jobs do you want more of?',
     'Who takes care of your Google profile and website today?',
-    'Have you worked with anyone on SEO before? How did it go?',
-  ],
-  pitch: "Here's what I found. {problems} The good news is these are all fixable. On our {plan} plan we fix the profile, build the pages and citations Google looks for, and set you up to get reviews every week. You get an app that shows every ranking and every task we do.",
-  book: "What I'd like to do is show you a 15 minute screen share: where you show up across {city}, who's beating you, and exactly what we'd fix. Does {slot1} or {slot2} work better?",
-  close: "Based on everything we looked at, {plan} is the right fit. It's {price} a month plus a one time {setup} setup, six months then month to month. I can send the agreement now. You sign on your phone, and we start this week. Want me to send it to {email_or_phone}?",
+    "If nothing changes on Google for the next six months, what does that cost you? (Let them do the math. Stay quiet.)",
+    "(Label what you hear: \"It sounds like you've built this on referrals, and Google hasn't caught up to how good your work is.\")",
+  ].join('\n'),
+  gap: [
+    "So if I'm hearing you right: you do great work, your jobs are worth about {ticket}, and right now {top_name_or_them} gets the first look on Google in most of {city}. Every week that stays the same, those calls go to them. Is that fair?",
+    "(Wait for \"that's right\". If they correct you, thank them and sum it up again.)",
+    'The good news is the reasons are fixable. {problems}',
+  ].join('\n'),
+  book: [
+    "Here's what I'd suggest. Give me 15 minutes on a screen share. I'll show you the full map street by street, who's beating you and exactly why, and the three fixes that would move you up fastest. Even if we never work together, you'll know exactly where you stand.",
+    'Does {slot1} or {slot2} work better?',
+    'Or: Would it be crazy to grab 15 minutes {slot1}? I promise to keep it to 15.',
+  ].join('\n'),
+  lock: [
+    "Perfect. I'm sending a calendar invite with the video link to {email_or_ask}. What's the best email?",
+    "Is there anyone else who makes marketing decisions with you? Let's get them on the same call so they see the same map.",
+    'Is it OK if I text you a reminder and the link? (If yes, tap "They said yes to texts".)',
+    "Before the call, search \"{keyword}\" from your phone and see who comes up. We'll go over it together.",
+  ].join('\n'),
+  close: [
+    "Based on everything we just looked at, {plan} is the right fit for you: {plan_why}.",
+    "It's {price} a month and a one time {setup} to set it all up. Six months, then month to month. You see every task we do and a new map every month in your own app.",
+    "Just imagine six months from now: someone in {city} searches \"{keyword}\" and the first name they see is {business}.",
+    'Do you want the agreement sent to your phone or your email?',
+    '(Then stop talking. The next person who speaks loses.)',
+  ].join('\n'),
+  voicemail: [
+    "Hey {first}, it's {rep} with Rightway Growth. {vm_scan} Give me a call back at {my_number}. Again, {rep}, {my_number}.",
+    '(Under 25 seconds. Say the number twice, slowly. Then text only if they gave permission or texted first.)',
+  ].join('\n'),
+  gatekeeper: [
+    "Hi, this is {rep} with Rightway Growth. I'm calling for {first_or_owner} about how {business} shows up on Google Maps. Are they around?",
+    'Or: Who handles the marketing and the Google listing there? ... Great, what is the best time to catch them?',
+    '(Be friendly and brief. Get a name and a time, not a pitch.)',
+  ].join('\n'),
 };
 
 export const DEFAULT_OBJECTIONS = [
-  ['Too expensive', "Totally fair. Let me ask: what's one new {industry} customer worth to you? About {ticket}? If we get you just {breakeven} extra jobs a month, the plan pays for itself. Would that be worth it?"],
-  ['We get enough work / word of mouth', "That's great, it means you do good work. Word of mouth people still Google you before they call. When they search \"{keyword}\" they see {top_name} first with {top_reviews} reviews. Want to make sure they find you instead?"],
-  ['Already have someone', 'Good, then you know it matters. Quick check: right now you show up {rank} for "{keyword}" at your own address. Are you happy with that? I can show you the map so you can compare.'],
-  ['Send me an email', "Happy to. So it's useful and not junk, can I take 15 minutes on a screen share to walk you through your own map? Then I'll send everything after. {slot1} or {slot2}?"],
-  ['Not interested', "No problem. Before I go, one question: if I could show you that {top_name} is getting calls that should be yours, would that be worth 15 minutes?"],
-  ["I'm busy", "I get it, you're running a business. When's a better time for a 2 minute call back? I'll put it in my calendar."],
-  ["Tried SEO, it didn't work", "That happens a lot. Usually nobody showed what they did. We show every task in your app and send a ranking map every month, and you can cancel with 30 days notice after six months."],
-  ['Need to talk to my partner', 'Makes sense. Can we set 15 minutes with both of you so they see the same map and numbers? {slot1} or {slot2}?'],
-  ['How long until results?', 'Profile fixes and reviews start showing in the first 30 to 60 days. Pages and links build over 3 to 6 months. That is why it is six months, then month to month.'],
-  ['Do you guarantee rankings?', "Nobody honest can, Google decides rankings. What we guarantee is the work: every task in your plan, every month, and you see it in your app."],
-  ['Are you with Google?', "No, we're an independent local marketing company in Hollywood, Florida. We help businesses show up better on Google."],
+  ["It's too expensive", "I hear you, it's real money. Can I ask, is it the price itself, or not being sure it'll pay you back? (Let them answer.) A typical job for you is about {ticket}. {breakeven_jobs} a month covers the whole plan. Right now {top_name_or_them} is getting those calls. If we only got you {breakeven}, would it be worth it?"],
+  ['I need to think about it', "Totally fair, it's a real decision. It sounds like something's still not sitting right. Usually it's the money, the timing, or whether it'll actually work. Which one is it for you? (Answer that one. Then: \"If we sort that out, is there anything else stopping you?\")"],
+  ['Just send me an email', "Happy to. So it doesn't get buried, what part should I focus on? (Let them answer.) Honestly, the map makes way more sense on screen than in an email, and it's 15 minutes. Does {slot1} or {slot2} work?"],
+  ['Not interested', "No problem, I appreciate you being straight with me. Is it that more calls from Google isn't a priority right now, or that you've been burned by marketing people before? (Listen. If burned, use that answer.) Would it be a bad idea if I just sent you the map so you have it?"],
+  ['We have enough work / word of mouth', "That's the best problem to have, it means you do good work. Here's the thing: most referrals still Google you before they call. When they do, {top_name_or_them} is sitting right there with more reviews. We make sure the referral you earned doesn't end up calling them. And is the work you're getting the work you want, or would you take more of the bigger jobs?"],
+  ['We already have someone', "Good, that means you take it seriously. Quick question: do they show you a map like this every month? Right now you're in the top 3 in {top3_of_points} spots around you. Is that where you expected to be? Let me show you the scan as a free second opinion. If they're doing great, you'll know."],
+  ["We tried SEO, it didn't work", "I get it, and a lot of owners we talk to felt the same way. They paid every month and never saw what was actually done. What they found with us is that everything is visible: every task in your app and a new map every month, so you can check our work yourself. What happened with the last company?"],
+  ["I'm busy right now", "Totally get it, you're running a business. Is later today or tomorrow morning better for 2 minutes? I'll put it in my calendar and call right on time."],
+  ['I need to talk to my partner', "Makes sense, this should be a joint decision. What do you think they'll ask? (Answer it now.) Let's get 15 minutes with both of you so they see the same map. Does {slot1} or {slot2} work?"],
+  ['How long until I see results?', 'Honest answer: profile fixes and new reviews start moving things in the first 30 to 60 days. Pages and links build over 3 to 6 months. That is why the plan is six months, then month to month. You see the map every month, so you watch it happen.'],
+  ['Can you guarantee number 1?', "Anybody who guarantees number 1 on Google isn't being straight with you, because Google decides. What we guarantee is the work: every task in your plan, every month, shown in your app, with the map to prove where you stand."],
+  ['Are you with Google?', "No, we're an independent local marketing company in Hollywood, Florida. We help businesses show up better on Google Maps and search."],
+  ['How did you get my number?', "Your business number is public on your listings. I came across {business} while scanning who shows up for \"{keyword}\" in {city}."],
+  ['Can you just do a one time fix?', "I wish it worked that way. Google keeps re-ranking every week, and {top_name_or_them} keeps adding reviews and posts. A one time fix slides back. That's why the smallest plan, Starter, is {starter_price} a month: enough to keep you moving up, not just patched."],
+  ['Call me back in a few months', "Sure, I can do that. Out of curiosity, what changes in a few months? (Listen.) The only thing I'd say is every month you wait, {top_name_or_them} adds more reviews, and the gap gets more expensive to close. Would it hurt to see the map now, so you have it when you're ready?"],
+];
+
+// The methods behind the script, so the team knows why each line is there. Ideas summarized in our own words.
+export const PLAYBOOK = [
+  ['Ask permission to pitch', 'Jeb Blount, Fanatical Prospecting', 'Name the interruption and ask for 30 seconds. People relax when they feel in control.'],
+  ['Lead with something specific', 'Drew Eric Whitman, Cashvertising', 'Real numbers beat claims: "top 3 in 2 of 9 spots" lands harder than "you could rank better".'],
+  ['Use the 8 core wants', 'Drew Eric Whitman, Cashvertising', 'Owners want to win, to beat the guy across town, to stop worrying about slow months, and to be approved of. Point at the competitor by name.'],
+  ['Teach them something new', 'Dixon and Adamson, The Challenger Sale', 'The map shows them something about their own business they did not know. That earns the meeting.'],
+  ['Find the gap', 'Keenan, Gap Selling', 'Current state, the cost of it, and the future they want. The bigger the gap, the easier the yes.'],
+  ['Ask what it costs them', 'Neil Rackham, SPIN Selling', 'Implication questions ("what does six more months of this cost?") make the problem feel urgent in their own words.'],
+  ['Label and sum up', 'Chris Voss, Never Split the Difference', '"It sounds like..." and a summary they can answer with "that\'s right" build trust faster than any pitch.'],
+  ['No-oriented questions', 'Chris Voss, Never Split the Difference', '"Would it be a bad idea to..." feels safe to say no to, so people say yes.'],
+  ['Just imagine', 'Phil Jones, Exactly What to Say', 'Paint the after picture: their name first on the map. Let them see it before they buy it.'],
+  ['Certainty in three things', 'Jordan Belfort, Way of the Wolf', 'They need to trust the plan, trust you, and trust the company. The app and monthly map prove all three.'],
+  ['Listen, acknowledge, explore, respond', 'Jeb Blount, Objections', 'Never fight an objection. Agree it is fair, ask what is behind it, then answer the real one.'],
+  ['Feel, felt, found', 'Classic sales method', 'Others felt the same; here is what they found. Use it only with true stories.'],
+  ['Alternative choice and silence', 'Zig Ziglar, Secrets of Closing the Sale', 'Offer two yeses ("Tuesday or Wednesday", "phone or email"), then stop talking.'],
 ];
 
 export function fill(tpl, vars) {
@@ -314,54 +387,89 @@ const money = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
 const PRICES = { starter: [597, 397], growth: [997, 997], authority: [1497, 997], leader: [2497, 1497] };
 const PLAN_LABEL = { starter: 'Starter', growth: 'Growth', authority: 'Authority', leader: 'Market Leader' };
 
+// The one sentence the whole pitch hangs on: what the scan found, in numbers.
+export function scanLine(lead = {}, intel = null) {
+  const info = industryInfo(lead.industry, intel?.listing?.category || lead.category);
+  const kw = keywordFor(lead, intel) || info.keyword || 'your service';
+  const name = lead.business || 'your business';
+  const g = intel?.grid;
+  const top = intel?.competitors?.[0];
+  if (g && g.points) {
+    const where = `${g.points} spots around ${name}, up to ${g.radiusMiles} miles out`;
+    if (!g.top3) return `I searched "${kw}" on Google from ${where}, like a customer would. You didn't show up in the top 3 in any of them.${top ? ` ${top.title} did in ${top.wins} of ${g.points}.` : ''}`;
+    return `I searched "${kw}" on Google from ${where}, like a customer would. You were in the top 3 in ${g.top3} of ${g.points}.${top && top.wins > g.top3 ? ` ${top.title} was in ${top.wins}.` : ''}`;
+  }
+  if (intel?.found && intel.rank != null) return `When someone near your address searches "${kw}" on Google, you come up ${rankText(intel.rank)}.${top ? ` ${top.title} is above you.` : ''}`;
+  if (intel?.found) return `When someone near your address searches "${kw}" on Google, you don't show up in the top 20.${top ? ` ${top.title} comes up first.` : ''}`;
+  return `I was looking at who comes up on Google Maps when people search "${kw}" in ${lead.city || 'your area'}, and I wanted to see where ${name} lands.`;
+}
+
 export function scriptVars(lead = {}, intel = null, ctx = {}) {
   const info = industryInfo(lead.industry, intel?.listing?.category || lead.category);
-  const plan = ctx.plan || recommendPlan(lead, intel).plan;
+  const rec = recommendPlan(lead, intel);
+  const plan = ctx.plan || rec.plan;
   const [price, setup] = PRICES[plan] || PRICES.growth;
   const top = intel?.competitors?.[0];
   const probs = findProblems(intel, lead);
   const slots = nextSlots(ctx.at);
   const ticket = ctx.ticket || info.ticket;
+  const g = intel?.grid;
+  const kw = keywordFor(lead, intel) || '';
+  const breakeven = Math.max(1, Math.ceil(price / Math.max(1, ticket)));
+  const first = (lead.contact_name || '').split(' ')[0] || '';
   return {
-    first: (lead.contact_name || '').split(' ')[0] || '',
+    first,
+    first_or_owner: first || 'the owner',
     rep: ctx.rep || '',
+    my_number: ctx.number || '',
     business: lead.business || '',
     city: lead.city || intel?.listing?.city || '',
     industry: info.label.toLowerCase(),
-    keyword: keywordFor(lead, intel) || '',
+    keyword: kw,
+    service_phrase: kw ? `"${kw}"` : `a ${info.label.toLowerCase()} company`,
     rank: intel ? rankText(intel.rank) : '',
     top_name: top?.title || '',
+    top_name_or_them: top?.title || 'your top competitor',
     top_reviews: top?.reviews ?? '',
+    top3_of_points: g ? `${g.top3} of ${g.points}` : 'only a few of the',
     reviews: intel?.listing?.reviews ?? lead.reviews ?? '',
     rating: intel?.listing?.rating ?? lead.rating ?? '',
     plan: PLAN_LABEL[plan],
+    plan_why: rec.why.join(', ').toLowerCase(),
     price: money(price),
     setup: money(setup),
+    starter_price: money(PRICES.starter[0]),
     ticket: money(ticket),
-    breakeven: Math.max(1, Math.ceil(price / Math.max(1, ticket))),
-    hook: probs[0] ? probs[0].talk : `I was looking at ${info.keyword || 'businesses like yours'} in ${lead.city || 'your area'} on Google Maps and you came up.`,
-    problems: probs.slice(0, 3).map((p) => p.talk).join(' ') || 'There are a few gaps on your Google profile and site.',
+    breakeven,
+    breakeven_jobs: `${breakeven} extra job${breakeven === 1 ? '' : 's'}`,
+    scan_line: scanLine(lead, intel),
+    // Only claim a scan when research actually ran.
+    opener_reason: intel?.found ? `I ran ${lead.business || 'your business'} through our Google map scanner and found something you'll want to see.`
+      : `I was looking at who shows up on Google Maps for ${kw ? `"${kw}"` : 'your service'} in ${lead.city || 'your area'}, and I have a quick question about ${lead.business || 'your business'}.`,
+    hook_impact: g && g.top3 < g.points / 2 ? `That means when someone in ${lead.city || 'your area'} needs ${kw ? `"${kw}"` : 'what you do'} today, a lot of them are calling ${top?.title || 'someone else'} before they ever see you.`
+      : g ? `You're strong close to home, but there are spots in ${lead.city || 'your area'} where customers see someone else first.`
+      : 'Most people call one of the first three businesses they see on that map, so where you land decides who gets the call.',
+    vm_scan: intel?.found ? `I ran a Google map scan on ${lead.business || 'your business'}. ${g ? (top && top.wins > g.top3 ? `${top.title} is showing up ahead of you in most of ${lead.city || 'your area'}.` : `You're in the top 3 in ${g.top3} of ${g.points} spots around you, and I see a few quick wins.`) : 'I found a few quick wins.'} I'd like to show you the map.`
+      : `I was looking at ${lead.business || 'your business'} on Google Maps and have a couple of ideas to get you more calls from it.`,
+    hook: probs[0] ? probs[0].talk : scanLine(lead, intel),
+    problems: probs.slice(0, 3).map((p) => p.talk).join(' ') || 'A few gaps on your Google profile and website are holding you back.',
     slot1: slots[0], slot2: slots[1],
     email_or_phone: lead.email || lead.phone || 'your email',
+    email_or_ask: lead.email || 'your email',
   };
 }
+
+const asLines = (v) => (Array.isArray(v) ? v : String(v || '').split('\n')).map((x) => x.trim()).filter(Boolean);
 
 export function buildScript(lead, intel, ctx = {}, custom = {}) {
   const S = { ...DEFAULT_SCRIPT, ...(custom.script || {}) };
   const objections = custom.objections?.length ? custom.objections : DEFAULT_OBJECTIONS;
-  const v = scriptVars(lead, intel, ctx);
-  const disc = Array.isArray(S.discovery) ? S.discovery : String(S.discovery || '').split('\n').filter(Boolean);
+  const v = scriptVars(lead, intel, { ...ctx, number: ctx.number || custom.number });
   return {
     vars: v,
-    steps: [
-      { id: 'opener', title: 'Opener', lines: [fill(S.opener, v)] },
-      { id: 'reason', title: 'Reason for the call', lines: [fill(S.reason, v)] },
-      { id: 'discovery', title: 'Discovery', lines: disc.map((q) => fill(q, v)) },
-      { id: 'pitch', title: 'What we found', lines: [fill(S.pitch, v)] },
-      { id: 'book', title: 'Book the audit', lines: [fill(S.book, v)] },
-      { id: 'close', title: 'Close', lines: [fill(S.close, v)] },
-    ],
+    steps: SCRIPT_KEYS.map(([id, title]) => ({ id, title, lines: asLines(S[id]).map((q) => fill(q, v)) })),
     objections: objections.map(([q, a]) => ({ q, a: fill(a, v) })),
+    playbook: PLAYBOOK.map(([name, from, use]) => ({ name, from, use })),
   };
 }
 

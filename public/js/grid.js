@@ -8,8 +8,8 @@ const MILES_PER_DEG_LAT = 69.0;
 const MILES_PER_DEG_LNG_EQUATOR = 69.172;
 
 export function gridPoints(lat, lng, size, radiusMiles) {
-  if (![3, 5, 7, 9].includes(size)) throw new Error('Grid size must be 3, 5, 7, or 9.');
-  if (!(radiusMiles > 0 && radiusMiles <= 25)) throw new Error('Radius must be between 0 and 25 miles.');
+  if (![3, 5, 7, 9, 11, 13].includes(size)) throw new Error('Grid size must be 3, 5, 7, 9, 11, or 13.');
+  if (!(radiusMiles > 0 && radiusMiles <= 30)) throw new Error('Radius must be between 0 and 30 miles.');
   const half = (size - 1) / 2;
   const step = radiusMiles / half;
   const latStep = step / MILES_PER_DEG_LAT;

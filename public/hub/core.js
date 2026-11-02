@@ -11,8 +11,11 @@ export class ApiError extends Error {
   constructor(message, status) { super(message); this.status = status; }
 }
 
+// Client view: when set, every request is made as that client sees it (read only on the server).
+export const VIEW = { as: null };
 export async function api(path, { method = 'GET', body, form } = {}) {
   const headers = { 'x-rw': '1' };
+  if (VIEW.as) headers['x-view-as'] = VIEW.as;
   let payload;
   if (form) payload = form;
   else if (body !== undefined) { headers['content-type'] = 'application/json'; payload = JSON.stringify(body); }
@@ -140,4 +143,8 @@ export const icon = {
   note: P('<path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h6"/>'),
   upload: P('<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v4h16v-4"/>'),
   scan: P('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5"/>'),
+  dash: P('<rect x="3" y="3" width="8" height="10" rx="2"/><rect x="13" y="3" width="8" height="6" rx="2"/><rect x="13" y="11" width="8" height="10" rx="2"/><rect x="3" y="15" width="8" height="6" rx="2"/>'),
+  device: P('<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/>'),
+  menu: P('<path d="M4 7h16M4 12h16M4 17h16"/>'),
+  close: P('<path d="M6 6l12 12M18 6L6 18"/>'),
 };

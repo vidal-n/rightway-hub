@@ -4,7 +4,7 @@ import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rank
 
 let customCache = null;
 export async function scriptSettings() {
-  if (!customCache) customCache = api('/api/settings').then((s) => ({ script: s.script || {}, objections: s.objections || null })).catch(() => ({ script: {}, objections: null }));
+  if (!customCache) customCache = api('/api/settings').then((s) => ({ script: s.script || {}, objections: s.objections || null, number: s.number || '' })).catch(() => ({ script: {}, objections: null, number: '' }));
   return customCache;
 }
 export function clearScriptCache() { customCache = null; }
@@ -36,6 +36,13 @@ function snapshot(lead, intel) {
 }
 
 // Renders the full prep panel into el. Returns nothing; wires its own buttons.
+// "Or:" lines are alternatives, "(" lines are coaching notes, everything else is what you say.
+function scriptLine(l) {
+  if (/^\(.*\)$/.test(l)) return `<p class="say-note">${esc(l.slice(1, -1))}</p>`;
+  if (/^Or:/i.test(l)) return `<p class="say-alt"><span class="badge gray">Or</span> ${esc(l.replace(/^Or:\s*/i, ''))}</p>`;
+  return `<p class="say-line">${esc(l)}</p>`;
+}
+
 export async function prepPanel(el, lead, intel, { rep = '', onResearched, compact = false } = {}) {
   const custom = await scriptSettings();
   const probs = findProblems(intel, lead);
@@ -68,8 +75,9 @@ export async function prepPanel(el, lead, intel, { rep = '', onResearched, compa
       ${probs.length ? `<h3 style="margin-top:16px">Problems to pitch (${probs.length})</h3><ul class="probs">${probs.map((p) => `<li class="prob sev-${p.severity}"><div class="item-title">${esc(p.title)}</div><div class="small">${esc(p.detail)}</div><div class="say">Say: ${esc(p.talk)}</div></li>`).join('')}</ul>` : '<p class="muted" style="margin-top:12px">No major problems found. Pitch protecting their spot and growing into more keywords and areas.</p>'}`}
       <h3 style="margin-top:18px">Script</h3>
       <div class="seg script-tabs" role="tablist">${s.steps.map((st, i) => `<button type="button" role="tab" class="${i === 0 ? 'is-on' : ''}" data-step="${i}">${esc(st.title)}</button>`).join('')}</div>
-      <div class="script-body">${s.steps.map((st, i) => `<div class="script-step" data-body="${i}"${i ? ' hidden' : ''}>${st.lines.length > 1 ? `<ol>${st.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ol>` : `<p>${esc(st.lines[0] || '')}</p>`}</div>`).join('')}</div>
-      ${compact ? '' : `<h3 style="margin-top:16px">Objections</h3><div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary><p>${esc(o.a)}</p></details>`).join('')}</div>`}
+      <div class="script-body">${s.steps.map((st, i) => `<div class="script-step" data-body="${i}"${i ? ' hidden' : ''}>${st.lines.map(scriptLine).join('')}</div>`).join('')}</div>
+      ${compact ? '' : `<h3 style="margin-top:16px">Objections</h3><div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary><p>${esc(o.a)}</p></details>`).join('')}</div>
+      <details class="obj playbook"><summary>Why the script works (the playbook)</summary><ul>${s.playbook.map((p) => `<li><b>${esc(p.name)}</b> <span class="small">${esc(p.from)}</span><div class="small">${esc(p.use)}</div></li>`).join('')}</ul></details>`}
     </div>`;
   $$('[data-step]', el).forEach((b) => b.addEventListener('click', () => {
     $$('[data-step]', el).forEach((x) => x.classList.toggle('is-on', x === b));

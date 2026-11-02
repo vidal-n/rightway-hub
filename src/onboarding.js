@@ -52,7 +52,7 @@ route('PUT', '/api/clients/:id/onboarding/mark', async ({ env, user, params, bod
   requireStaff(user);
   await clientOr404(env, params.id);
   const { key, value } = await body();
-  if (!/^(gbp|cit):[\w .&'-]{1,80}$/.test(String(key || ''))) throw new HttpError('Unknown checklist item.');
+  if (!/^(gbp|cit):[\w .&'():,-]{1,80}$/.test(String(key || ''))) throw new HttpError('Unknown checklist item.');
   const st = await getSettings(env);
   const done = parse(st[`onb:${params.id}`]) || {};
   if (value == null || value === false || value === '') delete done[key]; else done[key] = typeof value === 'string' ? value.slice(0, 20) : true;

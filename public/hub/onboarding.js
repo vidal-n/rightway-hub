@@ -95,8 +95,10 @@ export async function onboardingTab(el, c) {
         ${d.plan90.fixes.length ? `<h3>Their fixes, in order</h3><ul class="plain">${d.plan90.fixes.map((f) => `<li><b>Week ${f.week}:</b> ${esc(f.title)}. ${esc(f.fix)}</li>`).join('')}</ul>` : ''}</div>
     </div>
     <div class="card"><div class="card-head"><h2>Citations</h2><span class="small">Name, address, and phone must match the Google profile exactly.</span></div>
-      <div class="table-wrap"><table><thead><tr><th>Site</th><th>Type</th><th>Why</th><th>Status</th></tr></thead><tbody>
-      ${d.citations.map((i) => `<tr><td><a href="${esc(i.url)}" target="_blank" rel="noopener">${esc(i.name)}</a></td><td>${esc(i.group)}</td><td class="small">${esc(i.why)}</td>
+      <p class="small">Start with Core, then the data aggregators (they push your details to hundreds of smaller sites), then the industry sites. "Certified" sites only list businesses that hold that membership or certification, so ask the client first.${c.address ? '' : ' For service area businesses, skip sites marked "Address must show".'}</p>
+      <div class="table-wrap"><table class="cit-table"><thead><tr><th>Site</th><th>Type</th><th>Cost</th><th>Why it matters</th><th>Check</th><th>Status</th></tr></thead><tbody>
+      ${d.citations.map((i) => `<tr><td><a href="${esc(i.url)}" target="_blank" rel="noopener"><b>${esc(i.name)}</b></a>${i.sab === false ? '<div class="small">Address must show</div>' : ''}</td><td><span class="badge ${i.group === 'Core' ? '' : 'gray'}">${esc(i.group)}</span></td>
+        <td class="small">${esc(i.cost || '')}</td><td class="small">${esc(i.why)}</td><td>${i.check ? `<a class="btn btn-ghost btn-sm" href="${esc(i.check)}" target="_blank" rel="noopener">Look up</a>` : '<span class="small">-</span>'}</td>
         <td><select data-cit="${esc(i.name)}">${CIT_STATES.map(([k, n]) => `<option value="${k}"${(i.status || '') === k ? ' selected' : ''}>${n}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div></div>
     <div class="card"><div class="card-head"><h2>Logo and photos</h2></div><div id="obup"></div><div id="obgal" style="margin-top:14px">${gallery(d.assets, true)}</div></div>
     <div class="card"><div class="card-head"><h2>Client details</h2>${d.intakeAt ? `<span class="badge">Filled ${esc(fmt.ago(d.intakeAt))}</span>` : '<span class="badge warn">Not filled yet</span>'}</div>

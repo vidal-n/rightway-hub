@@ -4,44 +4,110 @@ import { findProblems, industryInfo } from './leadintel.js';
 
 const enc = encodeURIComponent;
 
-// Directories worth being on, in priority order. Each has a search link so the team can check the listing in one click.
+// Directories worth being on, in priority order: where to claim or sign up, what it costs, what it feeds, and a one-click check.
+// Sources: BrightLocal and Whitespark citation research (general, service area, and industry lists), each site's own business pages.
+// "sab" = accepts a hidden address for service area businesses (true, false, or null when unknown).
+const C = (name, url, group, cost, why, extra = {}) => ({ name, url, group, cost, why, ...extra });
+const HOME = /Roof|HVAC|Plumb|Electric|Landscap|Tree|Pest|Pool|Garage|Locksmith|Moving|Clean|Pressure|Junk|Paint|Remodel|Concrete|Fenc|Floor|Window|Solar|Handyman|Restoration|Appliance|Septic|Foundation/;
+const MED = /Dental|Medical|Chiro|Physical|Med spa|Plastic|Veterinary/;
+
 export function citations(c = {}) {
   const name = c.name || c.business || '';
   const loc = [c.city || (c.address || '').split(',').slice(-2, -1)[0] || '', c.state || ''].join(' ').trim();
   const q = enc(`${name} ${loc}`.trim());
-  const info = industryInfo(c.category || c.industry);
+  const g = (site) => `https://www.google.com/search?q=${enc(`${name} site:${site}`)}`;
+  const t = industryInfo(c.category || c.industry).label;
   const list = [
-    ['Apple Business Connect', 'https://businessconnect.apple.com/', 'Core', 'Apple Maps and Siri'],
-    ['Bing Places', 'https://www.bingplaces.com/', 'Core', 'Bing, Copilot, and ChatGPT search'],
-    ['Yelp', `https://www.yelp.com/search?find_desc=${enc(name)}&find_loc=${enc(loc)}`, 'Core', 'Feeds Apple Maps reviews'],
-    ['Facebook', `https://www.facebook.com/search/pages?q=${q}`, 'Core', 'Page with the same name, address, phone'],
-    ['Better Business Bureau', `https://www.bbb.org/search?find_text=${enc(name)}&find_loc=${enc(loc)}`, 'Core', 'Trust signal'],
-    ['Nextdoor', 'https://business.nextdoor.com/', 'Core', 'Neighborhood recommendations'],
-    ['Foursquare', `https://foursquare.com/explore?q=${q}`, 'Data', 'Feeds many apps and maps'],
-    ['Data Axle', 'https://www.dataaxlegenie.com/', 'Data', 'Data aggregator'],
-    ['Neustar Localeze', 'https://www.neustarlocaleze.biz/', 'Data', 'Data aggregator'],
-    ['Yellow Pages', `https://www.yellowpages.com/search?search_terms=${enc(name)}&geo_location_terms=${enc(loc)}`, 'Directory', ''],
-    ['Manta', `https://www.manta.com/search?search=${q}`, 'Directory', ''],
-    ['MapQuest', `https://www.mapquest.com/search/${q}`, 'Directory', ''],
-    ['Hotfrog', 'https://www.hotfrog.com/', 'Directory', ''],
-    ['Local Chamber of Commerce', `https://www.google.com/search?q=${enc(`${loc} chamber of commerce`)}`, 'Local link', 'Membership link from a trusted local site'],
+    C('Apple Business Connect', 'https://businessconnect.apple.com/', 'Core', 'Free', 'Apple Maps, Siri, and Spotlight on every iPhone', { check: `https://maps.apple.com/?q=${q}`, sab: false }),
+    C('Bing Places', 'https://www.bingplaces.com/', 'Core', 'Free', 'Bing Maps and Copilot. Can import straight from the Google profile', { check: `https://www.bing.com/maps?q=${q}`, sab: false }),
+    C('Yelp', 'https://biz.yelp.com/', 'Core', 'Free (ads are optional)', 'Ranks on page one for most service searches; Yelp reviews also show in other apps', { check: `https://www.yelp.com/search?find_desc=${enc(name)}&find_loc=${enc(loc)}`, sab: true }),
+    C('Facebook page', 'https://www.facebook.com/pages/create', 'Core', 'Free', 'Same name, address, phone, hours, and website as Google', { check: `https://www.facebook.com/search/pages?q=${q}`, sab: true }),
+    C('Better Business Bureau', 'https://www.bbb.org/', 'Core', 'Free listing, accreditation is paid', 'Trust signal customers check before big jobs', { check: `https://www.bbb.org/search?find_text=${enc(name)}&find_loc=${enc(loc)}`, sab: true }),
+    C('Nextdoor', 'https://business.nextdoor.com/', 'Core', 'Free', 'Neighbor recommendations in the exact areas they serve', { check: g('nextdoor.com'), sab: true }),
+    C('LinkedIn company page', 'https://www.linkedin.com/company/setup/new/', 'Core', 'Free', 'Brand search result and trust signal', { check: g('linkedin.com/company'), sab: true }),
+    C('Data Axle', 'https://www.data-axle.com/', 'Data', 'Paid submission (or via a citation service)', 'Data aggregator: feeds maps, apps, and hundreds of directories', { check: null, sab: null }),
+    C('Localeze (Neustar)', 'https://www.neustarlocaleze.biz/', 'Data', 'Paid submission (or via a citation service)', 'Data aggregator: feeds search engines, GPS, and directories', { check: null, sab: null }),
+    C('Foursquare', 'https://foursquare.com/', 'Data', 'Free to claim', 'Location data used by many apps and maps', { check: `https://foursquare.com/explore?q=${q}`, sab: null }),
+    C('Yellow Pages (YP)', 'https://www.yellowpages.com/', 'Directory', 'Free basic listing', 'Old but trusted; often already has wrong info to fix', { check: `https://www.yellowpages.com/search?search_terms=${enc(name)}&geo_location_terms=${enc(loc)}`, sab: null }),
+    C('Manta', 'https://www.manta.com/', 'Directory', 'Free basic listing', 'Strong small business directory', { check: `https://www.manta.com/search?search=${q}`, sab: true }),
+    C('MapQuest', 'https://www.mapquest.com/', 'Directory', 'Fed by data partners', 'Fix through the aggregators if it is wrong', { check: `https://www.mapquest.com/search/${q}`, sab: null }),
+    C('Hotfrog', 'https://www.hotfrog.com/', 'Directory', 'Free', 'General directory', { check: g('hotfrog.com'), sab: null }),
+    C('Alignable', 'https://www.alignable.com/', 'Directory', 'Free', 'Local business network and referrals', { check: g('alignable.com'), sab: true }),
+    C('Brownbook', 'https://www.brownbook.net/', 'Directory', 'Free', 'General directory', { check: g('brownbook.net'), sab: null }),
+    C('Local chamber of commerce', `https://www.google.com/search?q=${enc(`${loc} chamber of commerce`)}`, 'Local link', 'Paid membership', 'A link from a trusted local site, plus events and referrals', { check: null, sab: null }),
   ];
-  const t = info.label;
-  if (/Roof|HVAC|Plumb|Electric|Landscap|Tree|Pest|Pool|Garage|Locksmith|Moving|Clean|Pressure|Junk|Paint|Remodel|Concrete|Fenc|Floor|Window|Solar|Handyman|Restoration|Appliance/.test(t)) {
-    list.push(['Angi', `https://www.angi.com/search?query=${q}`, 'Industry', 'Home services'], ['HomeAdvisor', 'https://pro.homeadvisor.com/', 'Industry', 'Home services'],
-      ['Thumbtack', 'https://www.thumbtack.com/pro', 'Industry', 'Home services'], ['Houzz', `https://www.houzz.com/professionals/query/${q}`, 'Industry', 'Home improvement'],
-      ['Porch', 'https://pro.porch.com/', 'Industry', 'Home services']);
+  const add = (...rows) => list.push(...rows);
+  if (HOME.test(t)) {
+    add(C('Angi', 'https://www.angi.com/', 'Industry', 'Free profile, leads are paid', 'Biggest home services directory. HomeAdvisor now runs under Angi', { check: `https://www.angi.com/search?query=${q}`, sab: true }),
+      C('Thumbtack', 'https://www.thumbtack.com/pro', 'Industry', 'Free profile, pay per lead', 'Home services marketplace', { check: g('thumbtack.com'), sab: true }),
+      C('Houzz', 'https://www.houzz.com/pro', 'Industry', 'Free profile', 'Home improvement; high trust for remodel and exterior work', { check: `https://www.houzz.com/professionals/query/${q}`, sab: true }),
+      C('Porch', 'https://pro.porch.com/', 'Industry', 'Free profile', 'Home services directory', { check: g('porch.com'), sab: true }),
+      C('BuildZoom', 'https://www.buildzoom.com/', 'Industry', 'Free profile', 'Contractor profiles built from license and permit records', { check: g('buildzoom.com'), sab: true }),
+      C('GuildQuality', 'https://www.guildquality.com/', 'Industry', 'Paid membership', 'Verified customer surveys and reviews for contractors', { check: g('guildquality.com'), sab: true }));
   }
-  if (/Dental|Medical|Chiro|Physical|Med spa|Veterinary/.test(t)) {
-    list.push(['Healthgrades', `https://www.healthgrades.com/usearch?what=${q}`, 'Industry', 'Medical'], ['Zocdoc', 'https://www.zocdoc.com/join', 'Industry', 'Medical'],
-      ['WebMD Care', 'https://doctor.webmd.com/', 'Industry', 'Medical'], ['Vitals', 'https://www.vitals.com/', 'Industry', 'Medical']);
+  if (/Roof/.test(t)) add(C('GAF contractor locator', 'https://www.gaf.com/', 'Certified', 'Certified contractors only', 'Homeowners search it by zip. Only if they hold a GAF certification', { sab: true }),
+    C('Owens Corning contractor network', 'https://www.owenscorning.com/', 'Certified', 'Network members only', 'Find a contractor tool on owenscorning.com', { sab: true }),
+    C('CertainTeed find a pro', 'https://www.certainteed.com/', 'Certified', 'Credentialed contractors only', 'Contractor locator for CertainTeed credentials', { sab: true }));
+  if (/HVAC/.test(t)) add(C('ACCA find a contractor', 'https://www.acca.org/', 'Certified', 'ACCA members only', 'Air Conditioning Contractors of America member directory', { sab: true }),
+    C('Equipment brand dealer locator', `https://www.google.com/search?q=${enc(`${name} dealer locator`)}`, 'Certified', 'Factory dealers only', 'If they are a Carrier, Trane, Lennox, or other factory dealer, ask the brand to list them', { sab: true }));
+  if (/Plumb/.test(t)) add(C('Best Plumbers', 'https://www.bestplumbers.com/', 'Industry', 'Free basic listing', 'Plumbing directory that accepts service area businesses', { check: g('bestplumbers.com'), sab: true }));
+  if (/Tree/.test(t)) add(C('ISA find an arborist', 'https://www.treesaregood.org/findanarborist', 'Certified', 'ISA certified arborists only', 'The directory homeowners use to check credentials', { sab: true }),
+    C('TCIA member directory', 'https://www.tcia.org/', 'Certified', 'Members only', 'Tree Care Industry Association', { sab: true }));
+  if (/Pest/.test(t)) add(C('NPMA find a pro (PestWorld)', 'https://www.pestworld.org/', 'Certified', 'NPMA members only', 'National Pest Management Association consumer directory', { sab: true }));
+  if (/Restoration/.test(t)) add(C('IICRC certified firm locator', 'https://www.iicrc.org/', 'Certified', 'Certified firms only', 'Insurance adjusters and homeowners check this', { sab: true }));
+  if (/Solar/.test(t)) add(C('EnergySage', 'https://www.energysage.com/', 'Industry', 'Marketplace, fees apply', 'Solar shoppers compare installers here', { check: g('energysage.com'), sab: true }),
+    C('SolarReviews', 'https://www.solarreviews.com/', 'Industry', 'Free profile', 'Installer reviews', { check: g('solarreviews.com'), sab: true }));
+  if (/Moving/.test(t)) add(C('AMSA ProMover', 'https://www.moving.org/', 'Certified', 'Certified members only', 'American Moving and Storage Association certification and directory', { sab: true }),
+    C('MyMovingReviews', 'https://www.mymovingreviews.com/', 'Industry', 'Free profile', 'Mover reviews', { check: g('mymovingreviews.com'), sab: true }));
+  if (MED.test(t)) {
+    add(C('Healthgrades', 'https://www.healthgrades.com/', 'Industry', 'Free profile update', 'Top medical directory on Google', { check: `https://www.healthgrades.com/usearch?what=${q}`, sab: false }),
+      C('Vitals', 'https://www.vitals.com/', 'Industry', 'Free', 'Provider ratings', { check: g('vitals.com'), sab: true }),
+      C('WebMD Care', 'https://doctor.webmd.com/', 'Industry', 'Free', 'Provider directory', { check: g('doctor.webmd.com'), sab: false }),
+      C('RateMDs', 'https://www.ratemds.com/', 'Industry', 'Free', 'Provider reviews, accepts hidden addresses', { check: g('ratemds.com'), sab: true }),
+      C('Zocdoc', 'https://www.zocdoc.com/join', 'Industry', 'Paid', 'Online booking marketplace', { check: g('zocdoc.com'), sab: false }),
+      C('Wellness.com', 'https://www.wellness.com/', 'Industry', 'Free basic listing', 'Health and wellness directory', { check: g('wellness.com'), sab: null }));
+    if (/Dental/.test(t)) add(C('ADA Find-a-Dentist', 'https://findadentist.ada.org/', 'Certified', 'ADA members only', 'American Dental Association directory', { sab: false }));
+    if (/Chiro/.test(t)) add(C('ACA find a doctor', 'https://handsdownbetter.org/', 'Certified', 'ACA members only', 'American Chiropractic Association consumer site', { sab: false }));
+    if (/Physical/.test(t)) add(C('ChoosePT find a PT', 'https://www.choosept.com/', 'Certified', 'APTA members only', 'American Physical Therapy Association directory', { sab: false }));
+    if (/Med spa|Plastic/.test(t)) add(C('RealSelf', 'https://www.realself.com/', 'Industry', 'Free profile, paid upgrades', 'Where cosmetic patients research providers', { check: g('realself.com'), sab: false }));
   }
-  if (/Law/.test(t)) list.push(['Avvo', 'https://www.avvo.com/', 'Industry', 'Legal'], ['Justia', 'https://lawyers.justia.com/', 'Industry', 'Legal'], ['FindLaw', 'https://lawyers.findlaw.com/', 'Industry', 'Legal'], ['Martindale', 'https://www.martindale.com/', 'Industry', 'Legal']);
-  if (/Restaurant/.test(t)) list.push(['TripAdvisor', `https://www.tripadvisor.com/Search?q=${q}`, 'Industry', 'Restaurants'], ['OpenTable', 'https://restaurant.opentable.com/', 'Industry', 'Restaurants'], ['Uber Eats', 'https://merchants.ubereats.com/', 'Industry', 'Restaurants']);
-  if (/Auto|Towing/.test(t)) list.push(['RepairPal', 'https://repairpal.com/shops', 'Industry', 'Auto'], ['CarFax Service', 'https://www.carfax.com/', 'Industry', 'Auto'], ['Mechanic Advisor', 'https://www.mechanicadvisor.com/', 'Industry', 'Auto']);
-  if (/Salon|Fitness/.test(t)) list.push(['Booksy', 'https://biz.booksy.com/', 'Industry', 'Beauty and wellness'], ['Vagaro', 'https://www.vagaro.com/pro', 'Industry', 'Beauty and wellness'], ['ClassPass', 'https://classpass.com/partners', 'Industry', 'Fitness']);
-  if (/Real estate|Insurance|Accounting/.test(t)) list.push(['Zillow', 'https://www.zillow.com/agent-resources/', 'Industry', 'Real estate'], ['Alignable', 'https://www.alignable.com/', 'Industry', 'Local business network']);
-  return list.map(([name, url, group, why], i) => ({ id: `cit_${i}`, name, url, group, why }));
+  if (/Law/.test(t)) add(
+    C('Avvo', 'https://www.avvo.com/', 'Industry', 'Free to claim', 'Ranks for most lawyer searches; claim and fill the profile', { check: g('avvo.com'), sab: true }),
+    C('Justia', 'https://lawyers.justia.com/', 'Industry', 'Free basic profile', 'Huge legal directory with strong Google rankings', { check: g('lawyers.justia.com'), sab: true }),
+    C('FindLaw', 'https://lawyers.findlaw.com/', 'Industry', 'Free basic profile', 'Thomson Reuters legal directory', { check: g('lawyers.findlaw.com'), sab: null }),
+    C('Martindale-Hubbell', 'https://www.martindale.com/', 'Industry', 'Free basic profile', 'Peer ratings, long trusted', { check: g('martindale.com'), sab: null }),
+    C('Lawyers.com', 'https://www.lawyers.com/', 'Industry', 'Free basic profile', 'Sister site of Martindale', { check: g('lawyers.com'), sab: null }),
+    C('HG.org', 'https://www.hg.org/', 'Industry', 'Free basic listing', 'Legal directory, accepts hidden addresses', { check: g('hg.org'), sab: true }),
+    C('US Legal', 'https://lawyers.uslegal.com/', 'Industry', 'Free basic listing', 'Legal directory', { check: g('uslegal.com'), sab: true }),
+    C('Super Lawyers', 'https://www.superlawyers.com/', 'Certified', 'Peer selected', 'Only if selected; worth listing when they are', { check: g('superlawyers.com'), sab: null }),
+    C('State bar directory', `https://www.google.com/search?q=${enc(`${c.state || ''} state bar find a lawyer`)}`, 'Certified', 'Free for members', 'Make sure the bar record matches the firm name, address, and phone', { sab: null }));
+  if (/Financial|Wealth/.test(t)) add(
+    C('CFP Board: Let\'s Make a Plan', 'https://www.letsmakeaplan.org/', 'Certified', 'CFP professionals only', 'The CFP Board\'s consumer search', { sab: null }),
+    C('NAPFA find an advisor', 'https://www.napfa.org/', 'Certified', 'Fee-only members', 'National Association of Personal Financial Advisors', { sab: null }),
+    C('XY Planning Network', 'https://www.xyplanningnetwork.com/', 'Certified', 'Members only', 'Fee-only advisor network with a consumer search', { sab: null }),
+    C('FINRA BrokerCheck and SEC adviser search', 'https://brokercheck.finra.org/', 'Certified', 'Regulatory record', 'Not a directory to sign up for, but the firm name and address there should match Google', { sab: null }));
+  if (/Insurance/.test(t)) add(C('Trusted Choice', 'https://www.trustedchoice.com/', 'Certified', 'Independent agents', 'Independent insurance agent finder', { sab: null }),
+    C('Insurance Journal agency directory', 'https://www.insurancejournal.com/', 'Industry', 'Free basic listing', 'Insurance industry directory, accepts hidden addresses', { sab: true }));
+  if (/Tax|Account/.test(t)) add(
+    C('TaxBuzz', 'https://www.taxbuzz.com/', 'Industry', 'Free profile, paid upgrades', 'Tax pro and CPA directory', { check: g('taxbuzz.com'), sab: null }),
+    C('CPA Directory', 'https://www.cpadirectory.com/', 'Industry', 'Free basic listing', 'CPA firm directory', { check: g('cpadirectory.com'), sab: null }),
+    C('IRS directory of tax preparers', 'https://irs.treasury.gov/rpo/rpo.jsf', 'Certified', 'Credentialed preparers', 'The IRS public list of preparers with credentials; check the details match', { sab: null }),
+    C('NAEA find an EA', 'https://www.naea.org/', 'Certified', 'Enrolled agent members', 'National Association of Enrolled Agents', { sab: null }),
+    C('State CPA society directory', `https://www.google.com/search?q=${enc(`${c.state || ''} CPA society find a CPA`)}`, 'Certified', 'Members only', 'Most state CPA societies run a find a CPA search', { sab: null }));
+  if (/Auto|Towing/.test(t)) add(
+    C('RepairPal', 'https://repairpal.com/', 'Certified', 'Certification program, fees apply', 'Fair price estimates and certified shop search', { check: g('repairpal.com'), sab: false }),
+    C('AAA Approved Auto Repair', 'https://www.aaa.com/autorepair/', 'Certified', 'Approved shops only', 'AAA members are told to use approved shops', { sab: false }),
+    C('ASE Blue Seal', 'https://www.ase.com/', 'Certified', 'Qualifying shops', 'For shops with enough ASE certified techs', { sab: false }),
+    C('CARFAX', 'https://www.carfax.com/', 'Industry', 'Free shop listing', 'Service history and shop reviews', { check: g('carfax.com'), sab: false }));
+  if (/Restaurant/.test(t)) add(C('TripAdvisor', 'https://www.tripadvisor.com/Owners', 'Industry', 'Free', 'Restaurant and travel reviews', { check: `https://www.tripadvisor.com/Search?q=${q}`, sab: false }),
+    C('OpenTable', 'https://restaurant.opentable.com/', 'Industry', 'Paid', 'Reservations', { sab: false }),
+    C('DoorDash', 'https://get.doordash.com/', 'Industry', 'Commission', 'Delivery and pickup', { sab: false }),
+    C('Uber Eats', 'https://merchants.ubereats.com/', 'Industry', 'Commission', 'Delivery and pickup', { sab: false }));
+  if (/Salon|Fitness/.test(t)) add(C('Booksy', 'https://biz.booksy.com/', 'Industry', 'Paid', 'Booking marketplace', { sab: false }), C('Vagaro', 'https://www.vagaro.com/pro', 'Industry', 'Paid', 'Booking marketplace', { sab: false }),
+    C('StyleSeat', 'https://www.styleseat.com/', 'Industry', 'Paid', 'Beauty booking', { sab: false }), C('ClassPass', 'https://classpass.com/partners', 'Industry', 'Commission', 'Fitness and wellness bookings', { sab: false }));
+  if (/Real estate/.test(t)) add(C('Zillow agent profile', 'https://www.zillow.com/agent-resources/', 'Industry', 'Free profile', 'Where buyers and sellers look up agents', { sab: true }),
+    C('Realtor.com', 'https://www.realtor.com/', 'Industry', 'Free profile', 'Agent search', { sab: true }));
+  return list.map((x, i) => ({ id: `cit_${i}`, check: null, sab: null, ...x }));
 }
 
 // Google profile checklist, pre-checked from what the research saw.

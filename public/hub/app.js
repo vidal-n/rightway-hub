@@ -1,9 +1,10 @@
 // Rightway Hub: one app for the team and for clients. Routes by role.
-import { $, esc, api, toast, busy } from './core.js';
+import { $, esc, api, toast, busy, VIEW } from './core.js';
 import { dashboard, clientPage, teamPage } from './staff.js';
 import { portal } from './portal.js';
 import { pipelinePage, dialerPage, settingsPage } from './crm.js';
 import { inboxPage } from './texts.js';
+import { homePage, clientViewPage } from './home.js';
 
 const app = $('#app');
 const state = { user: null, users: true, ai: false, email: false };
@@ -100,19 +101,43 @@ async function route() {
   if (!state.users) return setupView();
   if (!state.user) return loginView();
   const u = state.user;
-  if (u.role === 'client') return portal(app, u, parts[0] || 'home', state);
+  if (u.role === 'client') {
+    if (u.viewAs) previewBar(u);
+    return portal(app, u, parts[0] || 'home', state);
+  }
   if (parts[0] === 'team') return teamPage(app, u);
   if (parts[0] === 'pipeline') return pipelinePage(app, u);
   if (parts[0] === 'dialer') return dialerPage(app, u);
   if (parts[0] === 'inbox') return inboxPage(app, u);
   if (parts[0] === 'settings') return settingsPage(app, u);
   if (parts[0] === 'client' && parts[1]) return clientPage(app, u, parts[1], parts[2] || 'overview', state);
-  return dashboard(app, u);
+  if (parts[0] === 'clients') return dashboard(app, u);
+  if (parts[0] === 'clientview') return clientViewPage(app, u, parts[1]);
+  return homePage(app, u);
+}
+
+// Client view: /?as=<clientId> loads the client app as that client sees it (team login required, read only).
+const viewAs = new URLSearchParams(location.search).get('as');
+if (viewAs) VIEW.as = viewAs;
+
+function previewBar(u) {
+  if (document.getElementById('cv-bar')) return;
+  const inFrame = window.top !== window;
+  if (inFrame) return; // the Client view page already says it is a preview
+  const bar = document.createElement('div');
+  bar.id = 'cv-bar';
+  bar.className = 'cv-bar';
+  bar.innerHTML = `<span>${inFrame ? 'Client view' : 'Client view, read only'}</span>${inFrame ? '' : `<a href="/#/clientview/${esc(u.client_id)}">Back to the Hub</a>`}`;
+  document.body.appendChild(bar);
 }
 
 async function boot() {
   try {
     const s = await api('/api/auth/state');
+    if (s.user?.viewAs) {
+      // Greet with the client's contact name, like their own login would.
+      try { const { client } = await api(`/api/clients/${s.user.client_id}`); s.user.name = client.contact_name || client.name; } catch { /* keep */ }
+    }
     Object.assign(state, s);
   } catch (e) {
     if (e.status === 503) return notConnected(e.message);

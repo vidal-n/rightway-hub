@@ -128,7 +128,7 @@ export async function researchLead(env, lead, { gridSize = 3, radiusMiles = 2, f
         size: gridSize, radiusMiles, points: ok.length,
         top3: ranked.filter((c) => c.rank <= 3).length,
         avg: ranked.length ? Math.round((ranked.reduce((s, c) => s + c.rank, 0) / ranked.length) * 10) / 10 : null,
-        cells: cells.map(({ row, col, rank, error }) => ({ row, col, rank, error: Boolean(error) })),
+        cells: cells.map(({ row, col, rank, error, top }) => ({ row, col, rank, error: Boolean(error), top: (top || []).slice(0, 3).map((t) => ({ title: t.title, rank: t.rank, rating: t.rating ?? null, reviews: t.reviews ?? null })) })),
       };
       // Competitors: who wins the most top 3 spots across the grid, ties broken by best rank at the center.
       const tally = new Map();

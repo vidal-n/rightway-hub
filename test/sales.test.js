@@ -69,9 +69,17 @@ test('problems, score, plan, and script come from the research', () => {
   assert.equal(recommendPlan(lead, INTEL).plan, 'authority');
   assert.equal(recommendPlan({ ...lead, industry: 'Salon' }, { ...INTEL, competitors: [{ title: 'Y', reviews: 30 }], listing: { ...INTEL.listing, claimed: true, rating: 4.6 }, grid: { ...INTEL.grid, top3: 6 }, rank: 2, speed: null, website: null }).plan, 'starter');
   const s = buildScript(lead, INTEL, { rep: 'Vidal' });
-  assert.match(s.steps[0].lines[0], /Hey Bob, this is Vidal with Rightway Growth/);
-  assert.match(s.steps[1].lines[0], /unclaimed/);
-  assert.ok(s.objections.find((o) => o.q === 'Too expensive').a.includes('$8,000'));
+  assert.match(s.steps[0].lines[0], /Hey Bob, it's Vidal with Rightway Growth/);
+  assert.match(s.steps[0].lines[0], /map scanner/);
+  assert.equal(s.steps[1].id, 'hook');
+  assert.match(s.steps[1].lines[0], /from \d+ spots around Summit Roofing/);
+  assert.ok(s.objections.find((o) => o.q === "It's too expensive").a.includes('$8,000'));
+  assert.ok(s.playbook.length >= 10);
+  // Without research the script never claims a scan was run.
+  const cold = buildScript(lead, null, { rep: 'Vidal' });
+  assert.ok(!/scan/i.test(cold.steps.find((x) => x.id === 'opener').lines[0]));
+  assert.ok(!/scan/i.test(cold.steps.find((x) => x.id === 'voicemail').lines[0]));
+  assert.ok(!/\[\w/.test(JSON.stringify(s.objections)), 'every objection placeholder fills in');
   assert.equal(fill('Hi {first} {missing}', { first: 'Ana' }), 'Hi Ana [missing]');
   assert.equal(roi({ ticket: 500, jobs: 4, plan: 'growth' }).breakeven, 2);
   // No dashes that read as em or en dashes in generated copy.

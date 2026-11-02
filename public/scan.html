@@ -20,10 +20,14 @@
         <img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="148" height="24">
         <span class="brand-tag">Hub</span>
       </a>
-      <nav class="topnav" aria-label="Sections">
-        <a class="topnav-item" href="/#/">Clients</a>
+      <button type="button" class="topnav-toggle" id="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="topnav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <nav class="topnav" id="topnav" aria-label="Sections">
+        <a class="topnav-item" href="/#/">Dashboard</a>
+        <a class="topnav-item" href="/#/pipeline">Pipeline</a>
+        <a class="topnav-item" href="/#/dialer">Dialer</a>
+        <a class="topnav-item" href="/#/clients">Clients</a>
         <span class="topnav-item is-active">Scan tool</span>
-        <a class="topnav-item" href="/#/team">Team</a>
+        <a class="topnav-item" href="/#/settings">Settings</a>
       </nav>
     </div>
   </header>
@@ -63,13 +67,15 @@
       <div id="picked" class="picked"></div>
       <form id="scan-form">
         <div class="row">
-          <label class="field grow"><span>Keyword customers search</span><input id="scan-keyword" required maxlength="80" placeholder="e.g. roofer"></label>
+          <label class="field grow"><span>Keywords customers search (up to 5, one per line or comma separated)</span><textarea id="scan-keyword" required rows="2" maxlength="400" placeholder="roof repair, roofer, roof replacement"></textarea></label>
           <label class="field"><span>Grid</span>
             <select id="scan-size">
               <option value="3">3 x 3 (9 points)</option>
               <option value="5" selected>5 x 5 (25 points)</option>
               <option value="7">7 x 7 (49 points)</option>
               <option value="9">9 x 9 (81 points)</option>
+              <option value="11">11 x 11 (121 points)</option>
+              <option value="13">13 x 13 (169 points)</option>
             </select>
           </label>
           <label class="field"><span>Radius</span>
@@ -83,11 +89,14 @@
               <option value="8">8 miles</option>
               <option value="10">10 miles</option>
               <option value="15">15 miles</option>
+              <option value="20">20 miles</option>
+              <option value="25">25 miles</option>
+              <option value="30">30 miles</option>
             </select>
           </label>
           <button class="btn btn-primary" type="submit" id="scan-btn">Run scan</button>
         </div>
-        <p class="hint">Radius guide: restaurants and shops 1 to 2 miles. Trades that drive to customers (roofers, plumbers, HVAC) 5 to 10 miles.</p>
+        <p class="hint">Radius guide: shops and offices 1 to 3 miles. Trades that drive to customers (roofers, plumbers, HVAC) 5 to 15 miles. Lawyers and big service areas 15 to 30 miles; use 9 x 9 or bigger so the points stay close enough to mean something.</p>
         <p class="hint" id="scan-cost"></p>
         <details class="adv">
           <summary>Advanced</summary>

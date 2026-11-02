@@ -623,7 +623,7 @@ export async function settingsPage(app, user) {
   try { [s, me, g] = await Promise.all([api('/api/settings'), api('/api/me'), api('/api/google/status').catch(() => null)]); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const gmsg = new URLSearchParams(location.search).get('google');
   if (gmsg) { toast(gmsg === 'ok' ? 'Google connected' : gmsg, gmsg !== 'ok'); history.replaceState(null, '', `${location.pathname}${location.hash}`); }
-  const { DEFAULT_SCRIPT, DEFAULT_OBJECTIONS } = await import('/js/leadintel.js');
+  const { DEFAULT_SCRIPT, DEFAULT_OBJECTIONS, SCRIPT_KEYS } = await import('/js/leadintel.js');
   const sc = { ...DEFAULT_SCRIPT, ...(s.script || {}) };
   const obs = s.objections || DEFAULT_OBJECTIONS;
   const bk = g?.booking || {};
@@ -669,9 +669,10 @@ export async function settingsPage(app, user) {
         </form>` : ''}
     </div>
     <div class="card"><div class="card-head"><h2>Call script</h2></div>
-      <p class="muted">The dialer fills these in for each lead. Placeholders: {first} {rep} {business} {city} {industry} {keyword} {rank} {top_name} {top_reviews} {reviews} {rating} {plan} {price} {setup} {ticket} {breakeven} {hook} {problems} {slot1} {slot2} {email_or_phone}. {hook} and {problems} come from the research.</p>
+      <p class="muted">The dialer and the presentation fill these in for each lead. One line per thing to say. Start a line with "Or:" for an alternative, and wrap coaching notes in (parentheses).</p>
+      <p class="small mono">{first} {rep} {my_number} {business} {city} {industry} {keyword} {scan_line} {hook_impact} {opener_reason} {vm_scan} {rank} {top_name} {top_name_or_them} {top_reviews} {top3_of_points} {reviews} {rating} {plan} {plan_why} {price} {setup} {starter_price} {ticket} {breakeven} {breakeven_jobs} {problems} {slot1} {slot2} {email_or_phone} {email_or_ask}</p>
       <form id="scf" class="form-grid" style="grid-template-columns:1fr">
-        ${[['opener', 'Opener'], ['reason', 'Reason for the call'], ['discovery', 'Discovery questions (one per line)'], ['pitch', 'What we found'], ['book', 'Book the audit'], ['close', 'Close']].map(([k, n]) => `<label class="field"><span>${n}</span><textarea name="${k}" rows="${k === 'discovery' ? 6 : 3}"${isAdmin ? '' : ' disabled'}>${esc(Array.isArray(sc[k]) ? sc[k].join('\n') : sc[k])}</textarea></label>`).join('')}
+        ${SCRIPT_KEYS.map(([k, n]) => `<label class="field"><span>${n}</span><textarea name="${k}" rows="${Math.min(9, Math.max(3, String(sc[k] || '').split('\n').length + 1))}"${isAdmin ? '' : ' disabled'}>${esc(Array.isArray(sc[k]) ? sc[k].join('\n') : sc[k])}</textarea></label>`).join('')}
         <label class="field"><span>Objections (one per block: the objection on the first line, the answer below, blank line between)</span><textarea name="objections" rows="14"${isAdmin ? '' : ' disabled'}>${esc(obs.map(([q, a]) => `${q}\n${a}`).join('\n\n'))}</textarea></label>
         ${isAdmin ? '<div class="row end"><button class="btn btn-ghost" type="button" id="screset">Reset to default</button><button class="btn btn-primary" type="submit">Save script</button></div>' : ''}
       </form></div>
@@ -697,7 +698,7 @@ export async function settingsPage(app, user) {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target).entries());
     const objections = String(f.objections || '').split(/\n\s*\n/).map((b) => b.trim().split('\n')).filter((x) => x.length >= 2).map(([q, ...a]) => [q.trim(), a.join(' ').trim()]);
-    const script = Object.fromEntries(['opener', 'reason', 'pitch', 'book', 'close', 'discovery'].map((k) => [k, f[k] || '']));
+    const script = Object.fromEntries(SCRIPT_KEYS.map(([k]) => [k, f[k] || '']));
     try { await api('/api/settings', { method: 'PUT', body: { script, objections } }); clearScriptCache(); toast('Script saved'); } catch (err) { toast(err.message, true); }
   });
   $('#screset', view)?.addEventListener('click', async () => {

@@ -49,32 +49,34 @@ function slides() {
     <div class="anim"><p class="kicker">Local growth plan</p><h1>${esc(lead.business)}:<br>more calls from Google${city ? ` in ${esc(city)}` : ''}</h1>
     <p class="lead">Prepared for ${esc(lead.contact_name || 'you')} by Rightway Growth</p></div>
     <div class="cover-meta"><div><b>${esc(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}</b>Date</div><div><b>${esc(kw)}</b>Main search</div>${D.rep ? `<div><b>${esc(D.rep)}</b>Your strategist</div>` : ''}</div>`,
-  `Thanks for making the time${first ? `, ${first}` : ''}. Quick agenda: I'll show you where you show up on Google right now, who's beating you and why, and exactly what we'd fix. Then you tell me if it makes sense. Sound good?\n\nConfirm before you start: Is getting more calls from Google a priority this quarter? Who else should be part of the decision?`, true);
+  `Set the deal up front:\n"Thanks for making the time${first ? `, ${first}` : ''}. Here's what I was thinking. I'll show you exactly where you show up on Google, who's getting your calls and why, and what we'd fix. About 20 minutes. At the end, if it's not a fit, just tell me, no hard feelings. If it is, we'll talk about next steps. Fair?"\n\nThen: "Before I share my screen, what made you want to take this call?" (Let them talk. Write down their words. You will use them in the close.)\n\nCheck: is everyone who decides on marketing here?`, true);
 
   add('agenda', 'Agenda', `<div class="anim"><p class="kicker">Today</p><h2>What we'll cover in 20 minutes</h2>
     <ol class="agenda"><li>How customers find ${esc(info.label.toLowerCase())} businesses in ${esc(city || 'your area')}</li><li>Where you show up today, street by street</li><li>You vs the businesses getting the calls</li><li>What's holding you back</li><li>The plan, the timeline, and the investment</li></ol></div>`,
-  'Set the frame: by the end you will know exactly where you stand, even if we never work together.\n\nAsk: Where do most of your new customers come from today? How many calls a week come from Google?');
+  `Frame it: "By the end you'll know exactly where you stand, even if we never work together."\n\nFind the gap (ask, then stay quiet):\n• Where do most new customers come from today?\n• About how many calls a week come from Google?\n• What's a typical job worth? What jobs do you want more of?\n• Could you handle more work right now?\n• If nothing changes on Google for six months, what does that cost you?\n\nLabel what you hear: "It sounds like you've built this on referrals, and Google hasn't caught up yet."`);
 
   add('pack', 'How customers find you', `<p class="kicker">How customers find you</p><h2>When someone searches "${esc(kw)}" near ${esc(city || 'you')}, Google shows 3 businesses first</h2>
     <div class="cols c2" style="align-items:start"><div class="pack anim"><div class="q">🔍 ${esc(kw)}</div>
       ${comps.map((c, i) => `<div class="row"><span class="pin">${String.fromCharCode(65 + i)}</span><div><b>${esc(c.title)}</b><br><span style="font-size:18px;color:#61716B">${c.rating ? stars(c.rating) : ''} (${c.reviews ?? 0})</span></div></div>`).join('') || '<div class="row">Run research to show the live map pack.</div>'}
       ${intel ? `<div class="row you"><span class="pin">${intel.rank && intel.rank <= 20 ? intel.rank : '?'}</span><div><b>${esc(lead.business)}</b><br><span style="font-size:18px;color:#61716B">You: ${esc(rankText(intel.rank))}${L.reviews != null ? ` · ${L.reviews} reviews` : ''}</span></div></div>` : ''}</div>
       <div class="anim"><div class="box"><h3>Why the top 3 matters</h3><p>Most people call one of the first three businesses they see on the map. Those spots are earned with a complete Google profile, reviews, a website Google trusts, and steady activity. Every one of those is something we can work on.</p></div></div></div>`,
-  `This is the map pack, pulled live for "${kw}" from their address.\n${comps[0] ? `${comps[0].title} is getting the first look with ${comps[0].reviews ?? 'many'} reviews.` : ''}\nYou come up ${intel ? rankText(intel.rank) : '(run research)'}.\n\nAsk: When you search for your own service, where do you see yourself?`);
+  `Teach them something about their own market:\n"This is exactly what your customer sees when they search ${kw}. Most people call one of these first three and never scroll."\n${comps[0] ? `${comps[0].title} gets the first look with ${comps[0].reviews ?? 'a lot of'} reviews.\n` : ''}You come up ${intel ? rankText(intel.rank) : '(run research first)'}.\n\nAsk: "When you search your own service, where do you see yourself?"`);
 
   if (intel?.grid) {
     const g = intel.grid;
     const band = (c) => (c.error ? 'err' : c.rank == null ? 'none' : c.rank <= 3 ? 'top3' : c.rank <= 10 ? 'top10' : 'top20');
     const mid = Math.floor(g.cells.length / 2);
-    add('grid', 'Where you show up', `<p class="kicker">Where you show up today</p><h2>${g.top3 ? `Top 3 in ${g.top3} of ${g.points} spots` : `Not in the top 3 anywhere we checked`}</h2>
+    add('grid', 'The scan', `<p class="kicker">The scan</p><h2>${g.top3 ? `Top 3 in ${g.top3} of ${g.points} spots` : 'Not in the top 3 anywhere we checked'}</h2>
       <div class="cols" style="grid-template-columns:auto 1fr;align-items:center;gap:72px">
-        <div><div class="biggrid" style="grid-template-columns:repeat(${g.size},1fr)">${g.cells.map((c, i) => `<span class="${band(c)}${i === mid ? ' center' : ''}">${c.error ? '!' : c.rank ?? '20+'}</span>`).join('')}</div>
-          <div class="legend"><span><i style="background:#23B07E"></i>Top 3</span><span><i style="background:#E8A33D"></i>4 to 10</span><span><i style="background:#E07B39"></i>11 to 20</span><span><i style="background:#D64545"></i>Not found</span></div></div>
-        <div class="anim" style="display:grid;gap:22px">
-          <div class="box"><div class="num">${esc(rankText(intel.rank).replace('not in the top 20', '20+'))}</div><div class="label">at your own address for "${esc(kw)}"</div></div>
-          <div class="box"><div class="num">${g.top3}<small> of ${g.points}</small></div><div class="label">spots where you are in the top 3, within ${g.radiusMiles} miles</div></div>
-          <div class="box"><div class="num">${g.avg ?? '20+'}</div><div class="label">average rank across the area</div></div></div></div>`,
-    `Each square is a real Google search from that spot, ${g.radiusMiles} miles apart. The center one with the outline is your address.\nGreen means you're in the top 3. Red means people searching there don't see you at all.\n\nSay: Every red and orange square is a customer calling someone else.`);
+        <div><div class="biggrid" id="biggrid" style="grid-template-columns:repeat(${g.size},1fr)">${g.cells.map((c, i) => `<span data-i="${i}" data-band="${band(c)}" class="${band(c)}${i === mid ? ' center' : ''}">${c.error ? '!' : c.rank ?? '20+'}</span>`).join('')}</div>
+          <div class="legend"><span><i style="background:#23B07E"></i>Top 3</span><span><i style="background:#E8A33D"></i>4 to 10</span><span><i style="background:#E07B39"></i>11 to 20</span><span><i style="background:#D64545"></i>Not found</span><button class="replay" id="greplay" type="button">Replay</button></div></div>
+        <div class="gside">
+          <div class="gphone" id="gphone" hidden></div>
+          <div class="gstats" id="gstats" style="display:grid;gap:22px">
+            <div class="box"><div class="num">${esc(rankText(intel.rank).replace('not in the top 20', '20+'))}</div><div class="label">at your own address for "${esc(kw)}"</div></div>
+            <div class="box"><div class="num">${g.top3}<small> of ${g.points}</small></div><div class="label">spots where you are in the top 3, within ${g.radiusMiles} miles</div></div>
+            <div class="box"><div class="num">${g.avg ?? '20+'}</div><div class="label">average rank across the area</div></div></div></div></div>`,
+    `Let the scan play. Narrate it:\n"I stood in ${g.points} spots around ${lead.business}, up to ${g.radiusMiles} miles out, and searched ${kw} on Google the way a customer does. Watch who comes up at each spot."\n\nWhen it finishes: "${g.top3} of ${g.points}. Every red and orange square is a customer who called someone else."\n\nThen ask and wait: "What do you think that's costing you?"\n\n(Press Replay on the slide to run it again.)`);
   }
 
   if (comps.length) {
@@ -84,12 +86,12 @@ function slides() {
       <table class="vs anim"><thead><tr><th>Business</th><th>Reviews</th><th>Rating</th><th>Google category</th><th>Website</th></tr></thead><tbody>
       ${rows.map((x) => `<tr class="${x.you ? 'you' : ''}"><td>${x.you ? '★ ' : ''}${esc(x.title)}</td><td class="${x.reviews === maxRev ? 'good' : x.you ? 'badv' : ''}">${x.reviews ?? '-'}</td><td>${x.rating ? stars(x.rating) : '-'}</td><td>${esc(x.category || '-')}</td><td>${x.site ? '✓' : '<span class="badv">None</span>'}</td></tr>`).join('')}
       </tbody></table>`,
-    `These are the businesses winning the most top 3 spots around you.\n${comps.map((c) => `${c.title}: ${c.reviews ?? '?'} reviews, ${c.rating ?? '?'} stars`).join('\n')}\nYou: ${L.reviews ?? '?'} reviews, ${L.rating ?? '?'} stars.\n\nAsk: Do you know these guys? Are they doing better work than you?`);
+    `These are the businesses winning the most top 3 spots around you.\n${comps.map((c) => `${c.title}: ${c.reviews ?? '?'} reviews, ${c.rating ?? '?'} stars`).join('\n')}\nYou: ${L.reviews ?? '?'} reviews, ${L.rating ?? '?'} stars.\n\nAsk: "Do you know these guys? Is their work better than yours?" (Almost always no.)\nThen: "So the only difference is what Google sees. That part is fixable."`);
   }
 
   add('problems', 'What is holding you back', `<p class="kicker">What we found</p><h2>${probs.length ? `${probs.length} things holding ${esc(lead.business)} back` : 'Your foundation is solid'}</h2>
     ${probs.length ? `<div class="probs anim">${probs.slice(0, 6).map((p) => `<div class="prob ${p.severity}"><b>${esc(p.title)}</b><span>${esc(p.detail)}</span></div>`).join('')}</div>` : '<p class="lead">No major gaps. The plan focuses on protecting your spot and growing into more searches and areas.</p>'}`,
-  probs.length ? `Walk through each one. Keep it simple: what it is, why it costs them calls.\n\n${probs.slice(0, 6).map((p) => `• ${p.talk}`).join('\n')}\n\nAsk: Which of these surprises you most?` : 'Pitch growth: more keywords, more areas, staying ahead of competitors.');
+  probs.length ? `One at a time: what it is, and what it costs them in calls. Plain words.\n\n${probs.slice(0, 6).map((p) => `• ${p.talk}`).join('\n')}\n\nAsk: "Which of these surprises you most?" Lead with that one in the close.` : 'Pitch growth: more searches, more areas, staying ahead of competitors who are catching up.');
 
   const W = intel?.website;
   if (intel?.speed || (W && W.ok)) {
@@ -112,16 +114,16 @@ function slides() {
         <div class="num" style="font-size:64px;margin-top:26px" id="out-year">${money(r.yearly)}</div><div class="label">a year</div>
         <div class="label" style="margin-top:26px;font-size:22px;color:#fff" id="out-mult">${r.multiple >= 1 ? `${r.multiple.toFixed(1)}x the ${P.name} plan` : `Pays for itself at ${r.breakeven} jobs a month`}</div></div></div>
     <p class="note">Your numbers, not a promise. Fill these in together.</p>`,
-  `Ask, then type their answers in:\n• What's a typical job worth to you? (starting guess ${money(info.ticket)} for ${info.label.toLowerCase()})\n• If you got a few more calls a week, how many would you close?\n\nSay: At ${money(state.ticket)} a job, ${r.breakeven} extra job${r.breakeven === 1 ? '' : 's'} a month covers the whole plan.`);
+  `Let them give the numbers. Type their answers in:\n• "What's a typical job worth to you?" (starting guess ${money(info.ticket)} for ${info.label.toLowerCase()})\n• "If you got a few more calls a week, how many would you close?"\n\nSay: "At ${money(state.ticket)} a job, ${r.breakeven} extra job${r.breakeven === 1 ? '' : 's'} a month covers the whole plan. Everything after that is yours."\nThen stop and let it sink in.`);
 
   add('plan', 'The plan', `<p class="kicker">The plan</p><div class="planhead"><h2 style="margin:0">${esc(P.name)}</h2><span class="pill">Recommended for ${esc(lead.business)}</span></div>
     <ul class="includes anim">${INCLUDES[plan].map((x) => `<li>${esc(x)}</li>`).join('')}<li>Tracking ${P.keywords} keywords</li><li>Your own Rightway app: rankings, every task we do, review requests</li></ul>`,
-  `${script.steps.find((s) => s.id === 'pitch')?.lines[0] || ''}\n\nWhy this plan: ${recommendPlan(lead, intel).why.join('; ')}.`);
+  `Recommend one plan with confidence:\n"For where you are, ${P.name} is the fit: ${recommendPlan(lead, intel).why.join(', ').toLowerCase()}."\n\nPaint the after: "Just imagine six months from now. Someone in ${city || 'your area'} searches ${kw}, and the first name they see is ${lead.business}."\n\nAsk: "Which part of this matters most to you?"`);
 
   add('days', 'First 90 days', `<p class="kicker">First 90 days</p><h2>What happens after you say yes</h2>
     <div class="months anim">${nd.months.map((m) => `<div class="month"><h3>${esc(m.title)}</h3><ul>${m.items.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>
     ${nd.fixes.length ? `<p class="note" style="margin-top:22px">Your fixes first: ${esc(nd.fixes.slice(0, 4).map((f) => `${f.title} (week ${f.week})`).join(' · '))}</p>` : ''}`,
-  'Make it concrete. Kickoff within 48 hours of signing. Month 1 is the foundation, month 2 we build, month 3 it compounds.\n\nSet expectations: profile and reviews show in 30 to 60 days, pages and links build over 3 to 6 months.');
+  'Make it concrete so it feels safe. Kickoff within 48 hours of signing. Month 1 is the foundation, month 2 we build, month 3 it compounds.\n\nBe honest about timing: profile fixes and reviews move things in 30 to 60 days, pages and links build over 3 to 6 months. Honesty here is what makes them trust the rest.');
 
   if (intel?.found) {
     add('reviews', 'Reviews', `<p class="kicker">Reviews</p><h2>${rt.leader && rt.gap ? `${rt.gap} reviews to pass ${esc(rt.leader)}` : 'Keep the reviews coming'}</h2>
@@ -129,7 +131,7 @@ function slides() {
         <div class="box"><div class="num">${rt.leaderReviews ?? '-'}</div><div class="label">${esc(rt.leader || 'the leader')}</div></div>
         <div class="box"><div class="num">${rt.perMonth}<small>/mo</small></div><div class="label">new reviews a month to get there in 6 months</div></div></div>
       <p class="lead" style="margin-top:30px">Your team texts a review link from the Rightway app in 5 seconds, and a QR code at the counter catches the rest. Every request is tracked.</p>`,
-    `${rt.text}\nThe app makes asking easy: type a name and number, tap send. Real reviews from real customers, straight to Google.`);
+    `${rt.text}\nReviews are what customers trust most, and they are what Google watches.\nThe app makes asking easy: type a name and number, tap send. Real reviews from real customers, straight to Google.\n\nAsk: "Who on your team could send these after every job?"`);
   }
 
   add('app', 'Your app', `<p class="kicker">You see everything</p><h2>Your own Rightway app</h2>
@@ -140,19 +142,19 @@ function slides() {
         <li><b>Review requests from your phone</b><span>Text or email a link in seconds, plus a counter QR code.</span></li>
         <li><b>Snap a photo, we post it</b><span>We write the post for Google, Facebook, and Instagram.</span></li>
         <li><b>A monthly results meeting</b><span>We go over the numbers and the next month's plan.</span></li></ul></div>`,
-  'This is the part most agencies skip: you see every piece of work and every ranking change. No black box.\n\nAsk: How do you know today whether your marketing is working?');
+  'This answers "how do I know you will do the work?" before they ask it.\n"Most agencies send a report nobody reads. You get an app with every task we do and a new map every month. If we are not doing the work, you will see it."\n\nAsk: "How do you know today whether your marketing is working?"');
 
   add('price', 'Investment', `<p class="kicker">Investment</p><h2>Pick the plan that fits</h2>
     <div class="plans anim">${Object.entries(PLAN_INFO).map(([k, x]) => `<div class="plan${k === plan ? ' rec' : ''}" data-plan="${k}">${k === plan ? '<span class="tag">Recommended</span>' : ''}<div class="nm">${esc(x.name)}</div>
       <div class="pr">${money(x.price)}<small>/mo</small></div><div class="su">${money(x.setup)} one time setup</div><ul>${INCLUDES[k].slice(0, 4).map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join('')}</div>
     <div class="terms"><span>6 months, then month to month</span><span>Cancel with 30 days notice after that</span><span>You own your profile and content</span><span>No ranking guarantees, every task guaranteed</span></div>`,
-  `${script.steps.find((s) => s.id === 'close')?.lines[0] || ''}\n\nThen stop talking. Let them answer.\n\nIf price comes up: ${script.objections[0]?.a || ''}`);
+  `Sum up the gap in one sentence using their words from the start of the call. Then:\n\n${(script.steps.find((x) => x.id === 'close')?.lines || []).filter((l) => !/^\(/.test(l)).join('\n')}\n\nThen stop talking. Let them answer.\n\nIf price comes up: ${script.objections[0]?.a || ''}`);
 
   add('next', 'Next steps', `<div class="cols c2" style="align-items:center;gap:64px"><div class="anim"><p class="kicker">Next steps</p><h2 style="color:#fff">Start this week</h2>
       <div class="steps"><div class="step"><i>1</i>Sign the agreement on your phone</div><div class="step"><i>2</i>Secure payment through Stripe</div><div class="step"><i>3</i>Kickoff call within 48 hours</div><div class="step"><i>4</i>Baseline map saved, work starts</div></div>
       <div style="margin-top:34px;display:flex;gap:14px"><button class="btn" id="send-wo">Send the ${esc(P.name)} agreement</button></div></div>
     <div class="signbox" id="signbox"><div style="font:600 22px var(--display)">Scan to review and sign</div><div style="width:300px;height:300px;display:grid;place-items:center;color:#9AA8A2;text-align:center">Press "Send the agreement" to make their link</div></div></div>`,
-  `Close: "${v.plan} is the right fit. I can send the agreement now, you sign on your phone, and we start this week."\nPress the button, have them scan the code or text them the link.\n\nIf they hesitate: "What would you need to see to feel good about starting?"`, true);
+  `Assume the yes:\n"I'll send the ${v.plan} agreement now. You sign on your phone, payment is right after, and we kick off within 48 hours. Do you want it by text or email?"\nPress the button, have them scan the code or send the link.\n\nIf they hesitate: "What would you need to see to feel good about starting?" Answer that, then ask again.`, true);
 
   return out;
 }
@@ -161,7 +163,7 @@ function stageScale() {
   const st = document.querySelector('.stage');
   if (!st) return;
   const s = Math.min(window.innerWidth / 1640, window.innerHeight / 940);
-  st.style.transform = `scale(${s})`;
+  st.style.transform = `translate(-50%, -50%) scale(${s})`;
 }
 
 let list = [];
@@ -177,12 +179,59 @@ function renderDeck() {
   go(state.i, false);
 }
 
+// The scan slide replays the search spot by spot, center first, like the scan tool does.
+let gridTimer = 0;
+function where(g, c) {
+  const half = (g.size - 1) / 2, step = g.radiusMiles / half;
+  const east = (c.col - half) * step, north = (half - c.row) * step;
+  const d = Math.hypot(east, north);
+  if (d < 0.05) return 'Searching at your address';
+  const dirs = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+  const ang = ((Math.atan2(east, north) * 180) / Math.PI + 360) % 360;
+  return `Searching ${d.toFixed(1)} miles ${dirs[Math.round(ang / 45) % 8]} of you`;
+}
+function playGrid() {
+  const g = D.intel?.grid;
+  const grid = document.getElementById('biggrid');
+  if (!g || !grid) return;
+  const token = ++gridTimer;
+  const cells = [...grid.children];
+  const phone = document.getElementById('gphone'), stats = document.getElementById('gstats');
+  const kw = D.intel.keyword || 'your service';
+  const half = (g.size - 1) / 2;
+  const order = g.cells.map((c, i) => ({ i, d: Math.hypot(c.row - half, c.col - half), a: Math.atan2(c.col - half, half - c.row) })).sort((a, b) => a.d - b.d || a.a - b.a).map((x) => x.i);
+  cells.forEach((el) => { el.className = `pend${el.dataset.i == Math.floor(cells.length / 2) ? ' center' : ''}`; el.dataset.txt = el.textContent; el.textContent = ''; });
+  phone.hidden = false; stats.style.display = 'none';
+  const per = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 80 : Math.max(500, Math.min(1100, 8000 / order.length));
+  let n = 0;
+  const step = () => {
+    if (token !== gridTimer) return;
+    if (n >= order.length) { cells.forEach((x) => x.classList.remove('now')); phone.hidden = true; stats.style.display = 'grid'; return; }
+    const i = order[n++];
+    const c = g.cells[i];
+    const el = cells[i];
+    cells.forEach((x) => x.classList.remove('now'));
+    el.className = `${el.dataset.band}${i === Math.floor(cells.length / 2) ? ' center' : ''} now pop`;
+    el.textContent = el.dataset.txt;
+    const top = (c.top || []).slice(0, 3);
+    const you = c.rank;
+    phone.innerHTML = `<div class="gwhere">${esc(where(g, c))}</div><div class="gbar">🔍 <span class="gtype" style="--n:${Math.min(36, kw.length)}">${esc(kw)}</span></div>
+      <ol class="glist">${top.map((t, k) => `<li style="--k:${k}" class="${you && t.rank === you ? 'you' : ''}"><b>${t.rank}</b><span>${esc(t.title)}</span></li>`).join('')}</ol>
+      ${you && you <= 3 ? '' : `<div class="gyou ${you ? (you <= 10 ? 'mid' : 'low') : 'none'}"><b>${you || '20+'}</b><span>${esc(D.lead.business)}</span></div>`}
+      <div class="gverdict ${you && you <= 3 ? 'good' : 'bad'}">${you && you <= 3 ? 'A customer here sees you in the top 3' : `A customer here calls ${esc(top[0]?.title || 'someone else')} first`}</div>`;
+    setTimeout(step, per);
+  };
+  setTimeout(step, 500);
+}
+
 function go(n, broadcast = true) {
+  const prev = state.i;
   state.i = Math.max(0, Math.min(list.length - 1, n));
   document.querySelectorAll('.slide').forEach((el) => { const k = Number(el.dataset.n); el.classList.toggle('on', k === state.i); el.classList.toggle('past', k < state.i); });
   const c = document.getElementById('cnt'); if (c) c.textContent = `${state.i + 1} / ${list.length}`;
   const p = document.getElementById('prog'); if (p) p.style.width = `${((state.i + 1) / list.length) * 100}%`;
   if (broadcast) chan?.postMessage({ type: 'slide', i: state.i, plan: state.plan, ticket: state.ticket, jobs: state.jobs });
+  if (!presenter && list[state.i]?.key === 'grid' && (prev !== state.i || !broadcast)) playGrid();
 }
 
 function updateCalc() {
@@ -219,6 +268,7 @@ function wireDeck() {
   if (j) j.oninput = () => { state.jobs = Number(j.value) || 0; updateCalc(); };
   document.querySelectorAll('.plan[data-plan]').forEach((el) => { el.style.cursor = 'pointer'; el.onclick = () => { state.plan = el.dataset.plan; renderDeck(); }; });
   const wo = document.getElementById('send-wo'); if (wo) wo.onclick = () => sendWorkOrder(wo);
+  const rp = document.getElementById('greplay'); if (rp) rp.onclick = () => playGrid();
 }
 
 function startDeck() {
@@ -273,7 +323,7 @@ async function boot() {
   if (!id) { root.innerHTML = '<div class="err">Open a presentation from a lead in the Hub.</div>'; return; }
   try {
     const [d, me, s] = await Promise.all([api(`/api/leads/${encodeURIComponent(id)}`), api('/api/me'), api('/api/settings').catch(() => ({}))]);
-    D = { lead: d.lead, intel: d.intel, rep: (me.user?.name || '').split(' ')[0] || '', custom: { script: s.script || {}, objections: s.objections || null } };
+    D = { lead: d.lead, intel: d.intel, rep: (me.user?.name || '').split(' ')[0] || '', custom: { script: s.script || {}, objections: s.objections || null, number: s.number || '' } };
     const info = industryInfo(D.lead.industry, D.intel?.listing?.category || D.lead.category);
     state.plan = D.lead.plan || recommendPlan(D.lead, D.intel).plan;
     state.ticket = info.ticket;

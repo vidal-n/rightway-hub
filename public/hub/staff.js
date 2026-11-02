@@ -4,24 +4,42 @@ import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.j
 import { billingTab } from './crm.js';
 import { onboardingTab } from './onboarding.js';
 
+const NAV = [
+  ['home', '#/', 'dash', 'Dashboard'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['dialer', '#/dialer', 'phone', 'Dialer'],
+  ['inbox', '#/inbox', 'msg', 'Inbox'], ['clients', '#/clients', 'users', 'Clients'], ['clientview', '#/clientview', 'device', 'Client view'],
+  ['scan', '/scan.html', 'grid', 'Scan tool'], ['team', '#/team', 'star', 'Team'], ['settings', '#/settings', 'note', 'Settings'],
+];
+
 export function staffShell(app, user, active, inner) {
   app.innerHTML = `
     <div class="staff">
-      <aside class="side">
-        <a class="side-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="150" height="26"><span class="tag">Hub</span></a>
-        <nav aria-label="Main">
-          <a href="#/pipeline" class="${active === 'pipeline' ? 'is-active' : ''}">${icon.chart}<span>Pipeline</span></a>
-          <a href="#/dialer" class="${active === 'dialer' ? 'is-active' : ''}">${icon.phone}<span>Dialer</span></a>
-          <a href="#/inbox" class="${active === 'inbox' ? 'is-active' : ''}">${icon.msg}<span>Inbox</span></a>
-          <a href="#/" class="${active === 'clients' ? 'is-active' : ''}">${icon.users}<span>Clients</span></a>
-          <a href="/scan.html">${icon.grid}<span>Scan tool</span></a>
-          <a href="#/team" class="${active === 'team' ? 'is-active' : ''}">${icon.star}<span>Team</span></a>
-          <a href="#/settings" class="${active === 'settings' ? 'is-active' : ''}">${icon.note}<span>Settings</span></a>
-        </nav>
+      <header class="mtop">
+        <a class="mtop-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="132" height="22"><span class="tag">Hub</span></a>
+        <span class="mtop-page">${esc((NAV.find((n) => n[0] === active) || [])[3] || '')}</span>
+        <button type="button" class="mtop-btn" id="menu-open" aria-label="Open menu" aria-controls="side" aria-expanded="false">${icon.menu}</button>
+      </header>
+      <div class="side-scrim" id="scrim" hidden></div>
+      <aside class="side" id="side">
+        <div class="side-head"><a class="side-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="150" height="26"><span class="tag">Hub</span></a>
+          <button type="button" class="mtop-btn side-close" id="menu-close" aria-label="Close menu">${icon.close}</button></div>
+        <nav aria-label="Main">${NAV.map(([k, href, ic, label]) => `<a href="${href}" data-nav="${k}" class="${active === k ? 'is-active' : ''}">${icon[ic]}<span>${label}</span></a>`).join('')}</nav>
         <div class="side-foot"><span class="who">${esc(user.name || user.email)}</span><button type="button" id="logout">Log out</button></div>
       </aside>
       <main class="main" id="view">${inner || '<div class="skeleton"></div>'}</main>
     </div>`;
+  const side = $('#side'), scrim = $('#scrim'), openBtn = $('#menu-open');
+  const setOpen = (on) => {
+    side.classList.toggle('is-open', on); scrim.hidden = !on; openBtn.setAttribute('aria-expanded', String(on));
+    document.body.classList.toggle('menu-open', on);
+    if (on) $('nav a.is-active, nav a', side)?.focus({ preventScroll: true });
+  };
+  openBtn.addEventListener('click', () => setOpen(true));
+  $('#menu-close').addEventListener('click', () => setOpen(false));
+  scrim.addEventListener('click', () => setOpen(false));
+  $$('nav a', side).forEach((a) => a.addEventListener('click', () => setOpen(false)));
+  const onKey = (e) => { if (e.key === 'Escape' && side.classList.contains('is-open')) setOpen(false); };
+  document.addEventListener('keydown', onKey);
+  window.addEventListener('hashchange', () => { document.removeEventListener('keydown', onKey); document.body.classList.remove('menu-open'); }, { once: true });
   import('./texts.js').then((m) => m.unreadBadge(app));
   $('#logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/login'; location.reload(); });
   return $('#view');
@@ -33,10 +51,10 @@ export async function dashboard(app, user) {
   const month = monthKey();
   let data;
   try { data = await api(`/api/clients?month=${month}`); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
-  const active = data.clients.filter((c) => c.status === 'active');
+  const active = data.clients.filter((c) => c.status === 'active' && !c.sample);
   // Real Stripe amounts when billing is linked, plan price otherwise.
   const mrr = active.reduce((s, c) => s + (c.mrr_cents != null && c.billing_status ? c.mrr_cents / 100 : (PLAN_PRICE[c.plan] || 0)), 0);
-  const tot = data.clients.reduce((a, c) => ({ done: a.done + c.overview.tasks.done, total: a.total + c.overview.tasks.total, rr: a.rr + c.overview.reviews.sent, pend: a.pend + c.overview.posts.pending }), { done: 0, total: 0, rr: 0, pend: 0 });
+  const tot = data.clients.filter((c) => !c.sample).reduce((a, c) => ({ done: a.done + c.overview.tasks.done, total: a.total + c.overview.tasks.total, rr: a.rr + c.overview.reviews.sent, pend: a.pend + c.overview.posts.pending }), { done: 0, total: 0, rr: 0, pend: 0 });
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow">${esc(fmt.month(month))}</p><h1>Clients</h1></div>
       <button class="btn btn-primary" id="add-client">${icon.plus}Add client</button></div>
@@ -57,7 +75,7 @@ function clientCard(c, i) {
   const o = c.overview;
   const pct = o.tasks.total ? Math.round((100 * o.tasks.done) / o.tasks.total) : 0;
   return `<a class="client-card" href="#/client/${esc(c.id)}/overview" style="animation-delay:${i * 40}ms">
-    <div class="row"><h3>${esc(c.name)}</h3><span class="spacer"></span>${c.billing_status === 'past_due' ? '<span class="badge bad">Past due</span>' : ''}<span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(PLAN_NAMES[c.plan] || c.plan)}</span></div>
+    <div class="row"><h3>${esc(c.name)}</h3><span class="spacer"></span>${c.billing_status === 'past_due' ? '<span class="badge bad">Past due</span>' : ''}${c.sample ? '<span class="badge warn">Sample</span>' : ''}<span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(PLAN_NAMES[c.plan] || c.plan)}</span></div>
     <div><div class="row small"><span>This month's work</span><span class="spacer"></span><b>${o.tasks.done} of ${o.tasks.total}</b></div>
       <div class="progress" style="margin-top:6px"><span data-w="${pct}"></span></div></div>
     <div class="mini">
@@ -136,7 +154,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   try { data = await api(`/api/clients/${id}`); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const c = data.client;
   view.innerHTML = `
-    <div class="page-head"><div><p class="eyebrow"><a href="#/">Clients</a> / ${esc(PLAN_NAMES[c.plan])}</p><h1>${esc(c.name)}</h1>
+    <div class="page-head"><div><p class="eyebrow"><a href="#/clients">Clients</a> / ${esc(PLAN_NAMES[c.plan])}</p><h1>${esc(c.name)}</h1>
       <div class="small">${esc(c.address || '')}</div></div>
       <div class="row"><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(c.status)}</span><a class="btn btn-ghost btn-sm" href="/scan.html?client=${esc(c.id)}">${icon.scan}Scan</a></div></div>
     <nav class="tabs">${TABS.map(([k, n]) => `<a href="#/client/${esc(id)}/${k}" class="${tab === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>

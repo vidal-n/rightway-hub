@@ -9,13 +9,13 @@ function shell(app, client, user, active, title, sub) {
   app.innerHTML = `
     <div class="portal">
       <header class="p-top"><div class="p-top-in">
-        <div class="row"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="150" height="24"><button class="btn btn-ghost btn-sm" id="logout" style="color:#E7F1EC;border-color:rgba(255,255,255,.2)">Log out</button></div>
+        <div class="row"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="150" height="24">${user.viewAs ? '' : '<button class="btn btn-ghost btn-sm" id="logout" style="color:#E7F1EC;border-color:rgba(255,255,255,.2)">Log out</button>'}</div>
         <h1>${esc(title)}</h1><p>${esc(sub)}</p>
       </div></header>
       <main class="p-main" id="pview"></main>
       <nav class="tabbar" aria-label="Main">${TABS.map(([k, n, ic]) => `<a href="#/${k === 'home' ? '' : k}" class="${active === k ? 'is-active' : ''}">${ic}<span>${n}</span></a>`).join('')}</nav>
     </div>`;
-  $('#logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/login'; location.reload(); });
+  $('#logout')?.addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/login'; location.reload(); });
   return $('#pview');
 }
 

@@ -170,32 +170,54 @@ function pickBusiness(biz) {
   picked.appendChild(change);
   const kw = $('#scan-keyword');
   if (!kw.value && biz.category) kw.value = biz.category.toLowerCase();
+  updateCost();
   $('#step-scan').hidden = false;
   updateCost();
   $('#step-scan').scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'start' });
 }
 
 // ---------- step 2: scan ----------
+const MAX_KEYWORDS = 5;
+function parseKeywords(text) {
+  const seen = new Set();
+  return String(text || '').split(/[\n,;]+/).map((k) => k.trim().replace(/\s+/g, ' ')).filter((k) => {
+    const key = k.toLowerCase();
+    if (!k || k.length > 80 || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, MAX_KEYWORDS);
+}
+
 function updateCost() {
   const size = Number($('#scan-size').value);
   const source = $('#scan-source').value;
+  const n = Math.max(1, parseKeywords($('#scan-keyword').value).length);
   const note = state.demo ? ' Demo mode: free.' : '';
-  $('#scan-cost').textContent = `${size * size} checks, about ${cents(estimateCost(size, source) + 0.006)} in DataForSEO credit.${note}`;
+  $('#scan-cost').textContent = `${n} keyword${n > 1 ? 's' : ''} x ${size * size} checks = ${n * size * size} searches, about ${cents(n * (estimateCost(size, source) + 0.006))} in DataForSEO credit.${note}`;
   $('#zoom-field').hidden = source !== 'maps';
 }
 ['#scan-size', '#scan-source'].forEach((s) => $(s).addEventListener('change', updateCost));
+$('#scan-keyword').addEventListener('input', updateCost);
 
 $('#scan-form').addEventListener('submit', (e) => {
   e.preventDefault();
   if (!state.target) return;
+  const keywords = parseKeywords($('#scan-keyword').value);
+  if (!keywords.length) return;
+  const scans = keywords.map((kw, i) => newScan(kw, i === 0 ? state.searchCost : 0));
+  state.searchCost = 0;
+  runBatch(scans);
+});
+
+function newScan(keyword, cost = 0) {
   const size = Number($('#scan-size').value);
   const radius = Number($('#scan-radius').value);
-  const scan = {
+  return {
     version: 2,
     createdAt: new Date().toISOString(),
     demo: state.demo,
     target: state.target,
-    keyword: $('#scan-keyword').value.trim(),
+    keyword,
     size,
     radius,
     source: $('#scan-source').value,
@@ -203,13 +225,48 @@ $('#scan-form').addEventListener('submit', (e) => {
     zoom: Number($('#scan-zoom').value),
     points: gridPoints(state.target.lat, state.target.lng, size, radius),
     details: {},
-    cost: state.searchCost,
+    cost,
     pagespeed: null,
     math: { jobValue: '', closeRatePct: 40, extraCalls: 10, plan: 'Growth' },
   };
-  state.searchCost = 0;
-  runScan(scan);
-});
+}
+
+// Several keywords run one after another; tabs on the report switch between them.
+async function runBatch(scans) {
+  state.batch = scans.length > 1 ? scans : null;
+  state.batchRunning = true;
+  for (let i = 0; i < scans.length; i++) {
+    state.batchIdx = i;
+    const ok = await runScan(scans[i]);
+    if (!ok) { state.batchRunning = false; renderKwTabs(); return; }
+  }
+  state.batchRunning = false;
+  renderKwTabs();
+}
+
+function renderKwTabs() {
+  const box = $('#r-kw');
+  if (!box) return;
+  const b = state.batch;
+  if (!b) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  const rows = b.map((sc, i) => {
+    const st = gridStats(sc.points);
+    const running = state.batchRunning && i === state.batchIdx;
+    const waiting = state.batchRunning && i > state.batchIdx;
+    const label = waiting ? 'Waiting' : running ? `Scanning ${Math.round((100 * (st.done + st.errors)) / st.total)}%` : `${st.top3Pct}% top 3`;
+    return `<button type="button" class="kw-tab${sc === state.scan ? ' is-on' : ''}" data-kw="${i}"${state.batchRunning ? ' disabled' : ''}>
+      <b>${esc(sc.keyword)}</b><span>${esc(label)}</span></button>`;
+  }).join('');
+  const done = !state.batchRunning && b.every((sc) => sc.completedAt);
+  box.innerHTML = `<div class="kw-tabs">${rows}</div>${done ? `<table class="kw-sum"><thead><tr><th>Keyword</th><th>Top 3 coverage</th><th>First page</th><th>Average rank</th><th>At the address</th></tr></thead><tbody>
+    ${b.map((sc) => { const st = gridStats(sc.points); return `<tr><td>${esc(sc.keyword)}</td><td><b>${st.top3Pct}%</b></td><td>${st.top10Pct}%</td><td>${st.avgRank ?? '-'}</td><td>${st.centerRank ? `#${st.centerRank}` : '20+'}</td></tr>`; }).join('')}</tbody></table>` : ''}`;
+  box.querySelectorAll('[data-kw]').forEach((btn) => btn.addEventListener('click', () => {
+    if (state.batchRunning) return;
+    const sc = b[Number(btn.dataset.kw)];
+    if (sc && sc !== state.scan) openScan(sc, true);
+  }));
+}
 
 async function runScan(scan) {
   const token = ++state.runToken;
@@ -247,18 +304,23 @@ async function runScan(scan) {
       }
       if (token !== state.runToken) return;
       state.map?.update(i);
+      if (p.status === 'done') feed.push(scan, i);
       updateLive(scan);
+      if (state.batch) renderKwTabs();
     }
   }
 
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  if (token !== state.runToken) return;
+  if (token !== state.runToken) return false;
   btn.disabled = false;
   if (authFailed) {
+    feed.stop();
     $('#r-progress-label').textContent = 'Stopped: access key needed. Enter it above and run the scan again.';
-    return;
+    return false;
   }
   await finishScan(scan, token);
+  await feed.drain();
+  return token === state.runToken;
 }
 
 async function finishScan(scan, token) {
@@ -276,6 +338,7 @@ async function finishScan(scan, token) {
   saveLast(scan);
   renderAnalysis(scan, true);
   $('#r-progress').hidden = true;
+  const rb = $('#r-replay'); if (rb) rb.disabled = false;
   if (!empty) label.textContent = s.errors ? `${s.errors} point${s.errors > 1 ? 's' : ''} failed (gray). Run the scan again if it matters.` : '';
 }
 
@@ -307,7 +370,7 @@ function saveLast(scan) {
 }
 
 // ---------- report ----------
-function renderReport(scan, live) {
+function renderReport(scan, live, opts = {}) {
   const r = $('#report');
   r.hidden = false;
   const t = scan.target;
@@ -316,10 +379,12 @@ function renderReport(scan, live) {
     <div class="report-actions no-print">
       <button class="btn btn-primary btn-sm" type="button" id="r-print">Print or save as PDF</button>
       <button class="btn btn-ghost btn-sm" type="button" id="r-download">Download scan file</button>
+      <button class="btn btn-ghost btn-sm" type="button" id="r-replay"${live ? ' disabled' : ''}>Replay the scan</button>
       <button class="btn btn-ghost btn-sm" type="button" id="r-new">New scan</button>
       <span class="cost-note" id="r-cost"></span>
       <span id="r-save" class="row-inline"></span>
     </div>
+    <div id="r-kw" class="no-print" hidden></div>
     <header class="r-hero">
       <div class="r-hero-top">
         <img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="150" height="24">
@@ -355,8 +420,7 @@ function renderReport(scan, live) {
         <p class="hint" id="r-view-caption">Each circle is a Google search for "${esc(scan.keyword)}" from that spot. The center circle is the business address.</p>
       </div>
       <aside class="r-side no-print" id="r-point">
-        <h3>From any spot</h3>
-        <p class="muted">Click a circle on the map to see exactly who ranks there.</p>
+        ${live ? feedIntro(scan) : '<h3>From any spot</h3><p class="muted">Click a circle on the map to see exactly who ranks there. Press "Replay the scan" to show the search spot by spot.</p>'}
       </aside>
     </section>
     <section id="r-findings" class="r-findings"></section>
@@ -373,7 +437,10 @@ function renderReport(scan, live) {
 
   $('#r-print').addEventListener('click', () => window.print());
   $('#r-download').addEventListener('click', () => downloadScan(scan));
+  $('#r-replay').addEventListener('click', () => replay(scan));
   $('#r-new').addEventListener('click', () => {
+    feed.stop();
+    state.batch = null;
     state.runToken++;
     $('#scan-btn').disabled = false;
     r.hidden = true;
@@ -384,8 +451,105 @@ function renderReport(scan, live) {
 
   drawMap(scan);
   updateLive(scan);
+  renderKwTabs();
   if (!live) renderAnalysis(scan, true);
-  r.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'start' });
+  if (!opts.keepScroll) r.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'start' });
+}
+
+// ---------- what the scan is doing, shown live ----------
+// Each finished point is shown as the phone search a customer standing there would see: the search, the top results, and where the business lands.
+const COMPASS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+function whereText(scan, p) {
+  const half = (scan.size - 1) / 2;
+  const step = scan.radius / half;
+  const east = (p.col - half) * step, north = (half - p.row) * step;
+  const d = Math.hypot(east, north);
+  if (d < 0.05) return 'Standing at the business address';
+  const ang = (Math.atan2(east, north) * 180) / Math.PI;
+  return `${d.toFixed(1)} mi ${COMPASS[Math.round(((ang + 360) % 360) / 45) % 8]} of ${scan.target.title}`;
+}
+
+function feedIntro(scan) {
+  return `<div class="sfeed"><p class="eyebrow">Live scan</p><h3>Searching Google like a customer would</h3>
+    <p class="muted">We stand at each dot on the map, search "${esc(scan.keyword)}" on Google, and record who shows up first. ${scan.points.length} searches in total.</p></div>`;
+}
+
+function feedCard(scan, i, n, total) {
+  const p = scan.points[i];
+  const t = scan.target;
+  const list = (p.top || []).slice(0, 3);
+  const youIn = list.some((b) => sameBusiness(b, t));
+  const rank = p.rank;
+  return `<div class="sfeed">
+    <div class="sfeed-top"><p class="eyebrow">Search ${n} of ${total}</p><span class="sfeed-pin">${esc(whereText(scan, p))}</span></div>
+    <div class="sphone">
+      <div class="sbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg><span class="stype" style="--n:${Math.min(40, scan.keyword.length)}">${esc(scan.keyword)}</span></div>
+      <ol class="sres">${list.map((b, k) => `<li style="--k:${k}" class="${sameBusiness(b, t) ? 'is-you' : ''}"><span class="sres-n">${b.rank}</span><span class="sres-name">${esc(b.title)}</span>${b.reviews != null ? `<span class="sres-meta">${b.rating != null ? `${Number(b.rating).toFixed(1)}&#9733; ` : ''}(${fmtInt(b.reviews)})</span>` : ''}</li>`).join('') || '<li class="sres-empty">No businesses came back here</li>'}</ol>
+      ${youIn ? '' : `<div class="sres-you ${rank ? (rank <= 10 ? 'mid' : 'low') : 'none'}" style="--k:3"><span class="sres-n">${rank || '20+'}</span><span class="sres-name">${esc(t.title)}</span><span class="sres-meta">${rank ? (rank <= 10 ? 'below the top 3' : 'off the first page') : 'not in the top 20'}</span></div>`}
+    </div>
+    <p class="sfeed-verdict ${rank && rank <= 3 ? 'good' : 'bad'}">${rank && rank <= 3 ? `A customer here sees ${esc(t.title)} in the top 3.` : `A customer here calls ${esc(list[0]?.title || 'someone else')} first.`}</p>
+  </div>`;
+}
+
+const feed = (() => {
+  let q = [];
+  let busy = null;
+  let stopped = false;
+  let shown = 0;
+  let current = null;
+  const MIN_MS = REDUCED ? 60 : 420;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function pump() {
+    while (q.length && !stopped) {
+      if (q.length > 3) q = q.slice(-2); // scans can outrun the animation; skip ahead
+      const { scan, i } = q.shift();
+      if (scan !== state.scan) continue;
+      const box = $('#r-point');
+      if (!box) break;
+      shown++;
+      state.map?.scanning(i);
+      box.innerHTML = feedCard(scan, i, scan.points.filter((p) => p.status === 'done').length, scan.points.length);
+      await wait(MIN_MS);
+    }
+    busy = null;
+  }
+  return {
+    push(scan, i) { if (stopped) stopped = false; current = scan; q.push({ scan, i }); if (!busy) busy = pump(); },
+    async drain() { if (busy) await busy; if (!stopped && current === state.scan) { state.map?.scanning(-1); const box = $('#r-point'); if (box && shown) box.innerHTML = '<h3>From any spot</h3><p class="muted">Click a circle on the map to see exactly who ranks there. Press "Replay the scan" to show the search spot by spot.</p>'; } shown = 0; },
+    stop() { stopped = true; q = []; state.map?.scanning(-1); },
+  };
+})();
+
+// Replay a finished scan spot by spot, center first, for showing a client on a call.
+let replayToken = 0;
+async function replay(scan) {
+  const token = ++replayToken;
+  const btn = $('#r-replay');
+  if (btn) { btn.disabled = true; btn.textContent = 'Replaying...'; }
+  const half = (scan.size - 1) / 2;
+  const order = scan.points.map((p, i) => ({ i, d: Math.hypot(p.row - half, p.col - half), a: Math.atan2(p.col - half, half - p.row) }))
+    .sort((a, b) => a.d - b.d || a.a - b.a).map((x) => x.i);
+  const shownSet = new Set();
+  const base = viewRankOf(scan);
+  state.map?.setRankOf((p) => (shownSet.has(scan.points.indexOf(p)) ? base(p) : undefined));
+  $('#r-map')?.scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth', block: 'center' });
+  const per = REDUCED ? 40 : Math.max(140, Math.min(650, 14000 / order.length));
+  const box = $('#r-point');
+  for (let n = 0; n < order.length; n++) {
+    if (token !== replayToken || scan !== state.scan) return;
+    const i = order[n];
+    shownSet.add(i);
+    state.map?.update(i);
+    state.map?.scanning(i);
+    if (box && scan.points[i].status === 'done') box.innerHTML = feedCard(scan, i, n + 1, order.length);
+    await new Promise((r) => setTimeout(r, per));
+  }
+  state.map?.scanning(-1);
+  state.map?.setRankOf(base);
+  const s = gridStats(scan.points);
+  if (box) box.innerHTML = `<div class="sfeed"><p class="eyebrow">Replay done</p><h3>${s.top3} of ${s.done} spots see ${esc(scan.target.title)} in the top 3</h3>
+    <p class="muted">${s.done - s.top3} spots send that customer to someone else first. Click any circle to see who.</p></div>`;
+  if (btn) { btn.disabled = false; btn.textContent = 'Replay the scan'; }
 }
 
 function viewRankOf(scan) {
@@ -655,13 +819,14 @@ function downloadScan(scan) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-function openScan(scan) {
+function openScan(scan, keepScroll = false) {
   scan.math ||= { jobValue: '', closeRatePct: 40, extraCalls: 10, plan: 'Growth' };
   scan.details ||= {};
+  feed.stop();
   state.runToken++;
   state.scan = scan;
   state.view = null;
-  renderReport(scan, false);
+  renderReport(scan, false, { keepScroll });
 }
 
 $('#load-file').addEventListener('change', async (e) => {
@@ -671,6 +836,7 @@ $('#load-file').addEventListener('change', async (e) => {
   try {
     const scan = JSON.parse(await file.text());
     if (!scan || !Array.isArray(scan.points) || !scan.target) throw new Error('bad file');
+    state.batch = null;
     openScan(scan);
   } catch {
     setStatus($('#find-status'), 'That file is not a Rightway scan file.', true);
@@ -702,11 +868,12 @@ function setupSave(scan) {
   const box = $('#r-save');
   if (!box || !state.staff) return;
   const save = async (clientId, name, btn) => {
-    if (!scan.completedAt) return setStatus($('#r-progress-label'), 'Wait for the scan to finish, then save it.', true);
+    const list = state.batch && state.batch.includes(scan) ? state.batch : [scan];
+    if (list.some((x) => !x.completedAt)) return setStatus($('#r-progress-label'), 'Wait for the scan to finish, then save it.', true);
     btn.disabled = true;
     try {
-      await hubApi(`/api/clients/${clientId}/scans`, { method: 'POST', body: { scan } });
-      btn.textContent = `Saved to ${name}`;
+      for (const x of list) await hubApi(`/api/clients/${clientId}/scans`, { method: 'POST', body: { scan: x } });
+      btn.textContent = list.length > 1 ? `Saved ${list.length} keywords to ${name}` : `Saved to ${name}`;
     } catch (err) { btn.disabled = false; setStatus($('#r-progress-label'), err.message, true); }
   };
   if (state.clientId) {
@@ -739,8 +906,8 @@ async function hubSession() {
     const { client: c } = await hubApi(`/api/clients/${encodeURIComponent(clientId)}`);
     state.clientId = c.id;
     state.clientName = c.name;
-    const kw = (c.keywords || '').split(/[\n,]+/).map((x) => x.trim()).filter(Boolean)[0];
-    if (kw) $('#scan-keyword').value = kw;
+    const kws = (c.keywords || '').split(/[\n,]+/).map((x) => x.trim()).filter(Boolean).slice(0, MAX_KEYWORDS);
+    if (kws.length) { $('#scan-keyword').value = kws.join(', '); updateCost(); }
     const loc = (c.address || '').split(',').slice(1).join(',').trim();
     if (loc && (c.cid || c.place_id)) {
       // Pull the live profile (rating, reviews, photos) so the report's checks have real numbers.
@@ -785,12 +952,20 @@ async function init() {
         btn.type = 'button';
         btn.className = 'btn btn-ghost btn-sm';
         btn.textContent = `Reopen last scan: ${scan.target.title}, "${scan.keyword}"`;
-        btn.addEventListener('click', () => { openScan(scan); status.innerHTML = ''; });
+        btn.addEventListener('click', () => { state.batch = null; openScan(scan); status.innerHTML = ''; });
         status.appendChild(btn);
       }
     } catch { /* ignore */ }
   }
 }
+
+// Phone menu
+$('#nav-toggle')?.addEventListener('click', (e) => {
+  const nav = $('#topnav');
+  const on = !nav.classList.contains('is-open');
+  nav.classList.toggle('is-open', on);
+  e.currentTarget.setAttribute('aria-expanded', String(on));
+});
 
 window.__rw = { state };
 init();

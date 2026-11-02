@@ -1,6 +1,7 @@
 // Stripe: webhook (signed), payment links per plan, client billing status, Stripe customer portal for clients.
 // Keys: STRIPE_SECRET_KEY (use a restricted key), STRIPE_WEBHOOK_SECRET.
 import { HttpError, json } from './util.js';
+import { SCRIPT_KEYS } from '../public/js/leadintel.js';
 import { all, first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin, requireClientAccess } from './auth.js';
 import { FIRST_CHARGE_CENTS, MONTHLY_CENTS } from './plans.js';
@@ -110,12 +111,19 @@ route('POST', '/api/stripe/webhook', async ({ env, request }) => {
 }, { public: true });
 
 // ---------- settings: payment links ----------
+function prettyPhone(e) {
+  const d = String(e || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+  return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : '';
+}
+
 route('GET', '/api/settings', async ({ env, user }) => {
   requireStaff(user);
   const s = await getSettings(env);
   return json({
     links: Object.fromEntries(PLAN_LINK_KEYS.map((k) => [k, s[`pay_link_${k}`] || ''])),
     company_phone: s.company_phone || '',
+    // The number reps leave on voicemails: the saved company phone, else the Twilio business number.
+    number: s.company_phone || prettyPhone(env.TWILIO_FROM),
     script: s.script ? JSON.parse(s.script) : null,
     objections: s.objections ? JSON.parse(s.objections) : null,
     research_radius: Number(s.research_radius) || 2,
@@ -139,7 +147,7 @@ route('PUT', '/api/settings', async ({ env, user, body }) => {
   }
   if ('company_phone' in b) await setSetting(env, 'company_phone', String(b.company_phone || '').slice(0, 30));
   if ('script' in b) {
-    const keys = ['opener', 'reason', 'discovery', 'pitch', 'book', 'close'];
+    const keys = SCRIPT_KEYS.map(([k]) => k);
     const sc = b.script && typeof b.script === 'object' ? Object.fromEntries(keys.filter((k) => typeof b.script[k] === 'string' && b.script[k].trim()).map((k) => [k, b.script[k].slice(0, 3000)])) : null;
     await setSetting(env, 'script', sc && Object.keys(sc).length ? JSON.stringify(sc) : '');
   }

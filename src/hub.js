@@ -110,7 +110,13 @@ export async function handleHub(request, env, url) {
     await ensureSchema(env);
     // Cross-site forms can't set custom headers, so this blocks CSRF on every write.
     if (!r.public && request.method !== 'GET' && request.headers.get('x-rw') !== '1') throw new HttpError('Missing request header.', 400);
-    const user = await currentUser(env, request);
+    let user = await currentUser(env, request);
+    // Client view: a team member sees the client app exactly as that client would. Read only.
+    const viewAs = request.headers.get('x-view-as');
+    if (viewAs && user && isStaff(user)) {
+      if (request.method !== 'GET') throw new HttpError('Client view is read only. Go back to the Hub to make changes.', 403);
+      user = { ...user, role: 'client', client_id: viewAs, viewAs: true };
+    }
     const ctx = { request, env, url, user, params: m.groups || {}, body: () => request.json().catch(() => ({})) };
     return r.fn(ctx);
   }
@@ -502,6 +508,8 @@ import './billing.js';
 import './workorders.js';
 import './calls.js';
 import './sms.js';
+import './dashboard.js';
+import './sample.js';
 import './intel.js';
 import './google.js';
 import './onboarding.js';

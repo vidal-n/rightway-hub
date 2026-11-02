@@ -30,6 +30,18 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   8am to 8pm their time unless replying within 12 hours of their text. Unknown numbers that text in become leads. Twilio webhooks:
   Voice `/api/twilio/voice` (rings the admin's saved mobile, missed call message, no recording), Messaging `/api/twilio/sms`,
   status `/api/twilio/sms-status`. Business number (305) 507-3393.
+- Team home and client view (built): Dashboard at `#/` (today's dials, meetings, callbacks due, pipeline, deals, clients; `GET /api/dashboard`),
+  Clients list moved to `#/clients`. Client view `#/clientview/<id>` shows the client app in a phone frame via `/?as=<clientId>`; the `x-view-as`
+  header makes the server treat a staff request as that client, GET only (writes return 403). Sample client (`src/sample.js`, `clients.sample = 1`,
+  POST/DELETE `/api/sample-client`) with tasks, reviews, posts, 6 scans, onboarding; left out of revenue and work totals. Phone menu: hamburger
+  drawer under 900px with iPhone safe-area padding; the scan tool has its own menu toggle.
+- Scan tool v3: up to 5 keywords per run (tabs plus a summary table, save all to a client), grids to 13 x 13, radius to 30 miles, bigger map
+  with zoom buttons, drag, pinch, ctrl or trackpad zoom, and double click (`createMap` in `public/js/map.js`). A live feed shows each search as a
+  phone result card while scanning, and "Replay the scan" re-runs it spot by spot for clients. Lead research now keeps the top 3 per grid spot,
+  and the presentation's scan slide replays it the same way.
+- Pitch (built): `public/js/leadintel.js` SCRIPT_KEYS, DEFAULT_SCRIPT, DEFAULT_OBJECTIONS, PLAYBOOK. One pitch from dial to signature with the scan
+  as the hook; never claims a scan when no research ran. Presentation notes follow the same pitch. Citations in `public/js/fulfill.js` carry the
+  sign up link, cost, why, lookup link, and hidden address support, with trade lists that apply only when certified.
 - Onboarding (built): first month tasks created on convert, lead research becomes the client baseline, Onboarding tab (before vs now, fix list,
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).
 - GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.

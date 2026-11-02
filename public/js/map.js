@@ -56,51 +56,178 @@ export function createMap(el, points, opts = {}) {
   el.classList.add('gmap');
   const width = opts.size || el.clientWidth || 480;
   const height = opts.size || el.clientHeight || width;
-  const z = fitZoom(points, width, height);
+  const z0 = fitZoom(points, width, height);
+  const minZ = Math.max(3, z0 - 2), maxZ = Math.min(18, z0 + 3.5);
   const lats = points.map((p) => p.lat);
   const lngs = points.map((p) => p.lng);
-  const mid = project((Math.max(...lats) + Math.min(...lats)) / 2, (Math.max(...lngs) + Math.min(...lngs)) / 2, z);
-  const left = mid.x - width / 2;
-  const top = mid.y - height / 2;
+  const c0 = project((Math.max(...lats) + Math.min(...lats)) / 2, (Math.max(...lngs) + Math.min(...lngs)) / 2, 0);
+  let z = z0;
+  let cx = c0.x, cy = c0.y; // view center in zoom-0 world units
   let rankOf = opts.rankOf || defaultRankOf;
   let heatOn = Boolean(opts.heat);
   let selected = -1;
+  let scanning = -1;
+  let xy = [];
 
-  // Tiles
+  // Everything that moves together sits in one stage, so drags and pinches can preview with a CSS transform.
+  const stage = document.createElement('div');
+  stage.className = 'gmap-stage';
+  el.appendChild(stage);
   const tiles = document.createElement('div');
   tiles.className = 'gmap-tiles';
-  const zi = Math.ceil(z);
-  const scale = 2 ** (z - zi);
-  const size = TILE * scale;
-  const n = 2 ** zi;
-  for (let tx = Math.floor(left / size); tx <= Math.floor((left + width) / size); tx++) {
-    for (let ty = Math.floor(top / size); ty <= Math.floor((top + height) / size); ty++) {
-      if (ty < 0 || ty >= n) continue;
-      const img = document.createElement('img');
-      img.alt = '';
-      img.decoding = 'async';
-      img.referrerPolicy = 'strict-origin-when-cross-origin';
-      img.style.left = `${tx * size - left}px`;
-      img.style.top = `${ty * size - top}px`;
-      img.style.width = img.style.height = `${size + 0.5}px`;
-      img.onerror = () => img.remove();
-      img.src = TILE_URL(zi, ((tx % n) + n) % n, ty);
-      tiles.appendChild(img);
-    }
-  }
-  el.appendChild(tiles);
-
-  // Heat map
+  stage.appendChild(tiles);
   const canvas = document.createElement('canvas');
   canvas.className = 'gmap-heat';
   canvas.width = Math.round(width / 4);
   canvas.height = Math.round(height / 4);
-  el.appendChild(canvas);
-
-  const xy = points.map((p) => {
-    const q = project(p.lat, p.lng, z);
-    return { x: q.x - left, y: q.y - top };
+  stage.appendChild(canvas);
+  const layer = document.createElement('div');
+  layer.className = 'gmap-markers';
+  stage.appendChild(layer);
+  const markers = points.map((pt, i) => {
+    const m = document.createElement('button');
+    m.type = 'button';
+    m.addEventListener('click', (e) => { if (suppress) { e.stopPropagation(); return; } if (opts.onSelect) opts.onSelect(i); });
+    layer.appendChild(m);
+    return m;
   });
+
+  const attribution = document.createElement('div');
+  attribution.className = 'gmap-attr';
+  attribution.innerHTML = 'Map &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+  el.appendChild(attribution);
+
+  if (opts.controls !== false) {
+    const ctl = document.createElement('div');
+    ctl.className = 'gmap-ctl';
+    ctl.innerHTML = '<button type="button" data-z="in" aria-label="Zoom in">+</button><button type="button" data-z="out" aria-label="Zoom out">&minus;</button><button type="button" data-z="fit" aria-label="Fit the grid">Fit</button>';
+    ctl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-z]');
+      if (!b) return;
+      if (b.dataset.z === 'fit') { z = z0; cx = c0.x; cy = c0.y; layout(); return; }
+      zoomAt(b.dataset.z === 'in' ? 1 : -1, width / 2, height / 2);
+    });
+    el.appendChild(ctl);
+  }
+
+  function view() {
+    const scale = 2 ** z;
+    return { scale, left: cx * scale - width / 2, top: cy * scale - height / 2 };
+  }
+
+  function layout() {
+    const { left, top } = view();
+    tiles.innerHTML = '';
+    const zi = Math.min(19, Math.ceil(z));
+    const size = TILE * 2 ** (z - zi);
+    const n = 2 ** zi;
+    for (let tx = Math.floor(left / size); tx <= Math.floor((left + width) / size); tx++) {
+      for (let ty = Math.floor(top / size); ty <= Math.floor((top + height) / size); ty++) {
+        if (ty < 0 || ty >= n) continue;
+        const img = document.createElement('img');
+        img.alt = '';
+        img.decoding = 'async';
+        img.draggable = false;
+        img.referrerPolicy = 'strict-origin-when-cross-origin';
+        img.style.left = `${tx * size - left}px`;
+        img.style.top = `${ty * size - top}px`;
+        img.style.width = img.style.height = `${size + 0.5}px`;
+        img.onerror = () => img.remove();
+        img.src = TILE_URL(zi, ((tx % n) + n) % n, ty);
+        tiles.appendChild(img);
+      }
+    }
+    xy = points.map((p) => {
+      const q = project(p.lat, p.lng, z);
+      return { x: q.x - left, y: q.y - top };
+    });
+    markers.forEach((m, i) => { m.style.left = `${xy[i].x}px`; m.style.top = `${xy[i].y}px`; });
+    // Markers shrink when the grid is dense and grow back when you zoom in.
+    const step = points.length > 1 ? Math.min(...xy.slice(1).map((q) => Math.hypot(q.x - xy[0].x, q.y - xy[0].y)).filter((d) => d > 1)) : 60;
+    el.style.setProperty('--pt', `${Math.round(Math.max(18, Math.min(38, step * 0.8)))}px`);
+    el.classList.toggle('is-zoomed', z > z0 + 0.01);
+    drawHeat();
+  }
+
+  function zoomAt(delta, px, py) {
+    const nz = Math.max(minZ, Math.min(maxZ, z + delta));
+    if (nz === z) return;
+    const { scale, left, top } = view();
+    const wx = (left + px) / scale, wy = (top + py) / scale; // world point under the cursor stays put
+    const ns = 2 ** nz;
+    cx = (wx * ns - px + width / 2) / ns;
+    cy = (wy * ns - py + height / 2) / ns;
+    z = nz;
+    layout();
+  }
+
+  // Drag to pan, pinch to zoom, ctrl or trackpad pinch to zoom, double click to zoom in.
+  const ptrs = new Map();
+  let start = null;
+  let suppress = false;
+  const local = (e) => { const r = el.getBoundingClientRect(); return { x: (e.clientX - r.left) * (width / r.width), y: (e.clientY - r.top) * (height / r.height) }; };
+  el.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.gmap-ctl, .gmap-attr')) return;
+    ptrs.set(e.pointerId, local(e));
+    const pts = [...ptrs.values()];
+    if (pts.length === 1) start = { kind: 'drag', a: pts[0], moved: false };
+    else if (pts.length === 2) start = { kind: 'pinch', d: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1, m: { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }, moved: true };
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!ptrs.has(e.pointerId) || !start) return;
+    ptrs.set(e.pointerId, local(e));
+    const pts = [...ptrs.values()];
+    if (start.kind === 'drag' && pts.length === 1) {
+      const dx = pts[0].x - start.a.x, dy = pts[0].y - start.a.y;
+      if (!start.moved && Math.hypot(dx, dy) < 5) return;
+      if (!start.moved) { start.moved = true; try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ } el.classList.add('is-dragging'); }
+      start.dx = dx; start.dy = dy;
+      stage.style.transform = `translate(${dx}px, ${dy}px)`;
+    } else if (start.kind === 'pinch' && pts.length === 2) {
+      const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const m = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      const k = Math.max(2 ** (minZ - z), Math.min(2 ** (maxZ - z), d / start.d));
+      start.k = k; start.m2 = m;
+      stage.style.transformOrigin = '0 0';
+      stage.style.transform = `translate(${m.x - start.m.x}px, ${m.y - start.m.y}px) translate(${start.m.x}px, ${start.m.y}px) scale(${k}) translate(${-start.m.x}px, ${-start.m.y}px)`;
+    }
+  });
+  const end = (e) => {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.delete(e.pointerId);
+    if (!start) return;
+    const s0 = start;
+    if (s0.kind === 'drag' && s0.moved && ptrs.size === 0) {
+      const { scale } = view();
+      cx -= (s0.dx || 0) / scale; cy -= (s0.dy || 0) / scale;
+      suppress = true; setTimeout(() => { suppress = false; }, 0);
+    } else if (s0.kind === 'pinch' && s0.k) {
+      const { scale, left, top } = view();
+      const wx = (left + s0.m.x) / scale, wy = (top + s0.m.y) / scale;
+      const nz = Math.max(minZ, Math.min(maxZ, z + Math.log2(s0.k)));
+      const ns = 2 ** nz;
+      cx = (wx * ns - s0.m2.x + width / 2) / ns;
+      cy = (wy * ns - s0.m2.y + height / 2) / ns;
+      z = nz;
+      suppress = true; setTimeout(() => { suppress = false; }, 0);
+    }
+    if (ptrs.size === 0 || s0.kind === 'pinch') {
+      start = null;
+      stage.style.transform = '';
+      el.classList.remove('is-dragging');
+      if (s0.moved) layout();
+      ptrs.clear();
+    }
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('wheel', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return; // plain scrolling keeps scrolling the page
+    e.preventDefault();
+    const p = local(e);
+    zoomAt(-Math.sign(e.deltaY) * (Math.abs(e.deltaY) > 40 ? 0.5 : 0.25), p.x, p.y);
+  }, { passive: false });
+  el.addEventListener('dblclick', (e) => { if (e.target.closest('.gmap-pt, .gmap-ctl')) return; const p = local(e); zoomAt(1, p.x, p.y); });
 
   function drawHeat() {
     const ctx = canvas.getContext('2d');
@@ -115,9 +242,9 @@ export function createMap(el, points, opts = {}) {
     const minX = Math.min(...xs) - stepPx / 2, maxX = Math.max(...xs) + stepPx / 2;
     const minY = Math.min(...ys) - stepPx / 2, maxY = Math.max(...ys) + stepPx / 2;
     const img = ctx.createImageData(canvas.width, canvas.height);
-    for (let cy = 0; cy < canvas.height; cy++) {
-      for (let cx = 0; cx < canvas.width; cx++) {
-        const px = cx * 4 + 2, py = cy * 4 + 2;
+    for (let cy2 = 0; cy2 < canvas.height; cy2++) {
+      for (let cx2 = 0; cx2 < canvas.width; cx2++) {
+        const px = cx2 * 4 + 2, py = cy2 * 4 + 2;
         if (px < minX || px > maxX || py < minY || py > maxY) continue;
         let wSum = 0, vSum = 0;
         for (const k of known) {
@@ -127,31 +254,12 @@ export function createMap(el, points, opts = {}) {
           vSum += w * (k.r ?? 21);
         }
         const [r, g, b] = heatColor(vSum / wSum);
-        const o = (cy * canvas.width + cx) * 4;
+        const o = (cy2 * canvas.width + cx2) * 4;
         img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 120;
       }
     }
     ctx.putImageData(img, 0, 0);
   }
-
-  // Markers
-  const layer = document.createElement('div');
-  layer.className = 'gmap-markers';
-  el.appendChild(layer);
-  const markers = points.map((pt, i) => {
-    const m = document.createElement('button');
-    m.type = 'button';
-    m.style.left = `${xy[i].x}px`;
-    m.style.top = `${xy[i].y}px`;
-    m.addEventListener('click', () => opts.onSelect && opts.onSelect(i));
-    layer.appendChild(m);
-    return m;
-  });
-
-  const attribution = document.createElement('div');
-  attribution.className = 'gmap-attr';
-  attribution.innerHTML = 'Map &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
-  el.appendChild(attribution);
 
   function paint(i, animate) {
     const m = markers[i];
@@ -159,23 +267,33 @@ export function createMap(el, points, opts = {}) {
     const r = rankOf(points[i]);
     const band = bandOf(r);
     const was = m.dataset.band;
-    m.className = `gmap-pt band-${band}${i === selected ? ' is-selected' : ''}`;
-    if (animate && was === 'pending' && band !== 'pending') {
-      m.classList.add('is-new');
-    }
+    m.className = `gmap-pt band-${band}${i === selected ? ' is-selected' : ''}${i === scanning ? ' is-scanning' : ''}`;
+    if (animate && was === 'pending' && band !== 'pending') m.classList.add('is-new');
     m.dataset.band = band;
     m.textContent = band === 'pending' ? '' : band === 'error' ? '!' : band === 'none' ? '20+' : String(r);
     m.setAttribute('aria-label', band === 'pending' ? 'Checking' : band === 'none' ? 'Not in the top 20' : band === 'error' ? 'Check failed' : `Rank ${r}`);
   }
 
+  layout();
   points.forEach((_, i) => paint(i, false));
   drawHeat();
 
   return {
-    zoom: z,
+    get zoom() { return z; },
     update(i) { paint(i, true); if (heatOn) drawHeat(); },
     setRankOf(fn) { rankOf = fn || defaultRankOf; points.forEach((_, i) => paint(i, false)); drawHeat(); },
     setHeat(on) { heatOn = on; drawHeat(); },
+    zoomIn() { zoomAt(1, width / 2, height / 2); },
+    zoomOut() { zoomAt(-1, width / 2, height / 2); },
+    fit() { z = z0; cx = c0.x; cy = c0.y; layout(); },
+    // Highlight the spot being searched right now (live scan and replay).
+    scanning(i) {
+      const prev = scanning;
+      scanning = i;
+      if (prev >= 0) paint(prev, false);
+      if (i >= 0) paint(i, false);
+    },
+    point(i) { return xy[i] ? { ...xy[i], width, height } : null; },
     select(i) {
       const prev = selected;
       selected = i;
