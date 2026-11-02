@@ -531,7 +531,7 @@ export async function dialerPage(app, user) {
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
           <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead</label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a></div></div>
-      ${dialTabs('queue')}
+      ${dialTabs('queue', user)}
       ${filterText ? `<div class="row small" style="margin:-6px 0 14px">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}
       <div class="stats">
         <div class="stat hero"><div class="stat-num">${q.stats.dials}</div><div class="stat-label">dials today (target 60)</div></div>

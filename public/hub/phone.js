@@ -10,6 +10,9 @@ export const picon = {
   mic: P('<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0M12 19v3"/>'),
   micOff: P('<path d="M2 2l20 20M9 9v1a3 3 0 005.1 2.1M15 9.3V5a3 3 0 00-5.9-.7"/><path d="M17 16.9A7 7 0 015 10M19 10a7 7 0 01-.1 1.2M12 19v3"/>'),
   pad: P('<circle cx="6" cy="5" r="1.3"/><circle cx="12" cy="5" r="1.3"/><circle cx="18" cy="5" r="1.3"/><circle cx="6" cy="11" r="1.3"/><circle cx="12" cy="11" r="1.3"/><circle cx="18" cy="11" r="1.3"/><circle cx="6" cy="17" r="1.3"/><circle cx="12" cy="17" r="1.3"/><circle cx="18" cy="17" r="1.3"/><circle cx="12" cy="22" r="1.3"/>'),
+  ear: P('<path d="M6 8.5a6 6 0 1112 0c0 2.5-1.5 3.5-2.5 4.5S14 15 14 17a3 3 0 01-6 0"/><path d="M9 9a3 3 0 016 0"/>'),
+  whisper: P('<path d="M21 12a8 8 0 01-11.8 7L4 20l1.1-4.4A8 8 0 1121 12z"/><path d="M9 11h6M9 14h3"/>'),
+  barge: P('<path d="M3 11l18-8-8 18-2-8-8-2z"/>'),
   back: P('<path d="M21 5H9l-7 7 7 7h12a1 1 0 001-1V6a1 1 0 00-1-1z"/><path d="M17 9l-6 6M11 9l6 6"/>'),
 };
 
@@ -101,41 +104,65 @@ function renderBar(view) {
       <div class="cb-who"><b>${esc(view.name || pretty(view.number))}</b><span>${esc(view.name ? pretty(view.number) : '')}${view.from ? `${view.name ? ' · ' : ''}${view.incoming ? 'to' : 'from'} ${esc(pretty(view.from))}` : ''}</span></div>
       <div class="cb-status" aria-live="polite">${esc(view.label)}</div>
     </div>
+    ${view.recording && view.state !== 'ended' ? '<div class="cb-rec"><i></i>Recording</div>' : ''}
     ${live ? '<div class="cb-level" aria-hidden="true"><i></i></div>' : ''}
     ${live && view.pad ? `<div class="cb-pad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((k) => `<button type="button" data-dtmf="${k}">${k}</button>`).join('')}</div>` : ''}
+    ${view.kind === 'monitor' && live ? `<div class="cb-modes">${[['listen', 'Listen', picon.ear], ['whisper', 'Whisper', picon.whisper], ['barge', 'Barge', picon.barge]].map(([m, n, ic]) => `<button type="button" class="cb-btn${view.mode === m ? ' on' : ''}" data-mode="${m}" aria-pressed="${view.mode === m}">${ic}<span>${n}</span></button>`).join('')}</div>
+      <p class="cb-hint">${view.mode === 'listen' ? 'Nobody can hear you.' : view.mode === 'whisper' ? 'Only your rep hears you.' : 'Everyone on the call hears you.'}</p>` : ''}
     <div class="cb-actions">
       ${view.state === 'incoming' ? `<button type="button" class="cb-btn cb-decline" data-act="decline">${picon.hang}<span>Decline</span></button><button type="button" class="cb-btn cb-accept" data-act="accept">${picon.phone}<span>Answer</span></button>` : ''}
-      ${live ? `<button type="button" class="cb-btn${view.muted ? ' on' : ''}" data-act="mute" aria-pressed="${view.muted}">${view.muted ? picon.micOff : picon.mic}<span>${view.muted ? 'Unmute' : 'Mute'}</span></button>
+      ${live && view.kind !== 'monitor' ? `<button type="button" class="cb-btn${view.muted ? ' on' : ''}" data-act="mute" aria-pressed="${view.muted}">${view.muted ? picon.micOff : picon.mic}<span>${view.muted ? 'Unmute' : 'Mute'}</span></button>
         <button type="button" class="cb-btn${view.pad ? ' on' : ''}" data-act="pad" aria-pressed="${Boolean(view.pad)}">${picon.pad}<span>Keypad</span></button>` : ''}
-      ${['dialing', 'ringing', 'live'].includes(view.state) ? `<button type="button" class="cb-btn cb-hang" data-act="hang">${picon.hang}<span>Hang up</span></button>` : ''}
+      ${['dialing', 'ringing', 'live'].includes(view.state) ? `<button type="button" class="cb-btn cb-hang" data-act="hang">${picon.hang}<span>${view.kind === 'monitor' ? 'Leave' : 'Hang up'}</span></button>` : ''}
     </div>`;
 }
 
-function track(call, view, { onEnd } = {}) {
+const END_LABEL = { 'no-answer': 'No answer', busy: 'Busy', failed: 'Call failed', canceled: 'Call canceled' };
+const MODE_LABEL = { listen: 'Listening', whisper: 'Whispering', barge: 'On the call' };
+
+function track(call, view, { onEnd, act } = {}) {
   st.call = call;
   emit();
   let started = 0;
   let answered = false;
+  let endLabel = '';
+  let poll = null;
   const draw = () => renderBar(view);
   const set = (patch) => { Object.assign(view, patch); draw(); };
   const end = (label) => {
-    clearInterval(tick); tick = null;
+    clearInterval(tick); tick = null; clearInterval(poll); poll = null;
     ringback(false);
     if (st.call !== call) return;
     st.call = null;
     emit();
     const secs = answered ? Math.round((Date.now() - started) / 1000) : 0;
-    set({ state: 'ended', label: label || (answered ? `Call ended ${clock(secs)}` : 'No answer') });
+    set({ state: 'ended', label: label || endLabel || (answered ? `Call ended ${clock(secs)}` : 'No answer') });
     hideBar(2200);
     onEnd?.({ answered, seconds: secs });
   };
   draw();
   call.on('ringing', (hasEarlyMedia) => { if (!answered) { set({ state: 'ringing', label: 'Ringing...' }); if (!hasEarlyMedia) ringback(true); } });
-  call.on('accept', () => {
+  const goLive = () => {
     answered = true; started = Date.now(); ringback(false);
     set({ state: 'live', label: '0:00' });
     clearInterval(tick);
     tick = setInterval(() => { const el = bar?.querySelector('.cb-status'); if (el && view.state === 'live') { view.label = clock(Math.round((Date.now() - started) / 1000)); el.textContent = view.label; } }, 1000);
+  };
+  call.on('accept', () => {
+    if (view.kind === 'monitor') { answered = true; started = Date.now(); set({ state: 'live', label: MODE_LABEL[view.mode] || 'Listening' }); return; }
+    if (view.kind !== 'out' || !act) return goLive();
+    // Outbound runs in a conference: the rep is in the room now, the server reports when the other side rings and answers.
+    set({ state: 'ringing', label: 'Ringing...' });
+    let busyPoll = false;
+    poll = setInterval(async () => {
+      if (busyPoll || st.call !== call) return;
+      busyPoll = true;
+      try {
+        const r = await api(`/api/voice/calls/${act}`);
+        if (r.status === 'in-progress' && !answered) goLive();
+        if (END_LABEL[r.status]) { endLabel = END_LABEL[r.status]; clearInterval(poll); poll = null; }
+      } catch { /* keep trying */ } finally { busyPoll = false; }
+    }, 1000);
   });
   call.on('volume', (input) => { const el = bar?.querySelector('.cb-level i'); if (el) el.style.width = `${Math.min(100, Math.round(input * 220))}%`; });
   call.on('mute', (m) => set({ muted: m }));
@@ -154,12 +181,17 @@ function track(call, view, { onEnd } = {}) {
     const btn = ev.target.closest('button');
     if (!btn || st.call !== call) return;
     if (btn.dataset.dtmf) { call.sendDigits(btn.dataset.dtmf); return; }
-    const act = btn.dataset.act;
-    if (act === 'hang') call.disconnect();
-    if (act === 'mute') call.mute(!call.isMuted());
-    if (act === 'pad') set({ pad: !view.pad });
-    if (act === 'accept') { call.accept(); set({ state: 'dialing', label: 'Connecting...', incoming: true }); }
-    if (act === 'decline') { call.reject(); end('Declined'); }
+    if (btn.dataset.mode && btn.dataset.mode !== view.mode) {
+      const mode = btn.dataset.mode;
+      api(`/api/voice/monitor/${act}`, { method: 'POST', body: { mode } }).then(() => set({ mode, label: MODE_LABEL[mode] })).catch((e) => toast(e.message, true));
+      return;
+    }
+    const action = btn.dataset.act;
+    if (action === 'hang') call.disconnect();
+    if (action === 'mute') call.mute(!call.isMuted());
+    if (action === 'pad') set({ pad: !view.pad });
+    if (action === 'accept') { call.accept(); set({ state: 'dialing', label: 'Connecting...', incoming: true }); }
+    if (action === 'decline') { call.reject(); end('Declined'); }
   };
 }
 
@@ -168,13 +200,27 @@ export async function placeCall({ to, leadId, from, name, onEnd } = {}) {
   if (st.call) throw new Error('You are already on a call. Hang up first.');
   const prep = await api('/api/voice/prepare', { method: 'POST', body: { to, leadId, from } });
   const d = await startPhone();
-  const view = { state: 'dialing', label: 'Calling...', name: name || prep.name, number: prep.to, from: prep.from };
+  const view = { state: 'dialing', label: 'Calling...', name: name || prep.name, number: prep.to, from: prep.from, kind: 'out', recording: Boolean(prep.recording) };
   renderBar(view);
   st.call = { pending: true };
   let call;
   try { call = await d.connect({ params: { act: prep.activityId } }); }
   catch (e) { st.call = null; emit(); renderBar({ ...view, state: 'ended', label: 'Call failed' }); hideBar(2000); throw e; }
-  track(call, view, { onEnd });
+  track(call, view, { onEnd, act: prep.activityId });
+  return call;
+}
+
+// Owner only: join a rep's live call to listen, whisper or barge. The server checks the role again.
+export async function joinCall({ act, mode = 'listen', name, number, rep } = {}) {
+  if (st.call) throw new Error('You are already on a call. Hang up first.');
+  const d = await startPhone();
+  const view = { state: 'dialing', label: 'Joining...', kind: 'monitor', mode, name: `${rep || 'Rep'} with ${name || pretty(number)}`, number: '', from: '' };
+  renderBar(view);
+  st.call = { pending: true };
+  let call;
+  try { call = await d.connect({ params: { monitor: act, mode } }); }
+  catch (e) { st.call = null; emit(); renderBar({ ...view, state: 'ended', label: 'Could not join' }); hideBar(2000); throw e; }
+  track(call, view, { act, onEnd: () => {} });
   return call;
 }
 

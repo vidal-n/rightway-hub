@@ -76,7 +76,9 @@ const ADD_COLUMNS = [
   ['clients', 'baseline TEXT'], ['clients', 'intake TEXT'], ['clients', 'intake_at INTEGER'], ['clients', 'logo_key TEXT'],
   ['users', 'google_token TEXT'], ['users', 'google_email TEXT'],
   ['leads', 'sms_stop INTEGER NOT NULL DEFAULT 0'], ['clients', 'sample INTEGER NOT NULL DEFAULT 0'],
-  ['activities', 'to_num TEXT'], ['activities', 'from_num TEXT'],
+  ['activities', 'to_num TEXT'], ['activities', 'from_num TEXT'], ['activities', 'conf_sid TEXT'], ['activities', 'cust_sid TEXT'],
+  ['activities', 'answered_at INTEGER'], ['activities', 'rec_sid TEXT'], ['activities', 'rec_secs INTEGER'], ['activities', 'mon_sid TEXT'],
+  ['activities', 'mon_by TEXT'], ['activities', 'mon_mode TEXT'],
 ];
 
 let ready = null;

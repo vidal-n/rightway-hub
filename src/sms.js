@@ -8,7 +8,7 @@ import { requireStaff } from './auth.js';
 import { e164, digits, inCallingHours, insertLead, logActivity } from './crm.js';
 import { route } from './router.js';
 import { twilioReady, verifiedParams, twiml, xml } from './calls.js';
-import { browserIdentities } from './voice.js';
+import { browserIdentities, recordingOn } from './voice.js';
 
 const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']);
 const START_WORDS = new Set(['start', 'unstop', 'yes']);
@@ -95,12 +95,15 @@ route('POST', '/api/leads/:id/sms', async ({ env, user, url, params, body }) => 
     if (!/rightway/i.test(text)) text = `Rightway Growth: ${text}`;
     text += '\nReply STOP to opt out.';
   }
+  // Keep the thread on one number: reply from whichever of our numbers they last texted or heard from.
+  const last = await first(env, "SELECT CASE WHEN direction = 'in' THEN to_num ELSE from_num END AS ours FROM messages WHERE lead_id = ? ORDER BY at DESC LIMIT 1", lead.id);
+  const fromNum = e164(last?.ours) || env.TWILIO_FROM;
   const id = newId('m_');
-  await run(env, "INSERT INTO messages (id, lead_id, direction, body, from_num, to_num, status, by, at, read) VALUES (?, ?, 'out', ?, ?, ?, 'queued', ?, ?, 1)", id, lead.id, text, env.TWILIO_FROM, to, user.id, now());
+  await run(env, "INSERT INTO messages (id, lead_id, direction, body, from_num, to_num, status, by, at, read) VALUES (?, ?, 'out', ?, ?, ?, 'queued', ?, ?, 1)", id, lead.id, text, fromNum, to, user.id, now());
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`, {
     method: 'POST',
     headers: { Authorization: `Basic ${btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`)}`, 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ To: to, From: env.TWILIO_FROM, Body: text, StatusCallback: `${url.origin}/api/twilio/sms-status` }).toString(),
+    body: new URLSearchParams({ To: to, From: fromNum, Body: text, StatusCallback: `${url.origin}/api/twilio/sms-status` }).toString(),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -163,7 +166,10 @@ route('POST', '/api/twilio/voice', async ({ env, request, url }) => {
   const nouns = clients.map((id) => `<Client><Identity>${xml(id)}</Identity>${param('caller', from)}${param('who', lead?.business)}${param('called', e164(p.To))}${param('leadId', lead?.id)}</Client>`).join('')
     + (cell ? `<Number>${xml(cell)}</Number>` : '');
   const callerId = e164(p.To) || env.TWILIO_FROM;
-  return twiml(`<Dial callerId="${xml(callerId)}" answerOnBridge="true" timeout="20" record="do-not-record" action="${xml(`${url.origin}/api/twilio/voice-done?a=${aid}`)}">${nouns}</Dial>`);
+  const rec = (await recordingOn(env))
+    ? `record="record-from-answer-dual" recordingStatusCallback="${xml(`${url.origin}/api/twilio/recording?a=${aid}`)}" recordingStatusCallbackEvent="completed"`
+    : 'record="do-not-record"';
+  return twiml(`<Dial callerId="${xml(callerId)}" answerOnBridge="true" timeout="20" ${rec} action="${xml(`${url.origin}/api/twilio/voice-done?a=${aid}`)}">${nouns}</Dial>`);
 }, { public: true });
 
 route('POST', '/api/twilio/voice-done', async ({ env, request, url }) => {

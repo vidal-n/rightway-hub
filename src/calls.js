@@ -16,6 +16,7 @@ export function twilioReady(env) {
 
 // The numbers on this Twilio account, for choosing a caller ID. Cached for 5 minutes. Falls back to TWILIO_FROM.
 let numCache = { at: 0, list: null };
+export const resetNumberCache = () => { numCache = { at: 0, list: null }; };
 export async function ownedNumbers(env) {
   if (numCache.list && Date.now() - numCache.at < 300e3 && numCache.key === env.TWILIO_ACCOUNT_SID) return numCache.list;
   let list = [];

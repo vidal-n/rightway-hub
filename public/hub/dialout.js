@@ -21,7 +21,11 @@ export function bindCaller(root, id = 'dfrom') {
   return () => el?.value || undefined;
 }
 
-export const dialTabs = (active) => `<div class="tabs" style="margin-bottom:14px"><a class="${active === 'queue' ? 'is-active' : ''}" href="#/dialer">Call queue</a><a class="${active === 'out' ? 'is-active' : ''}" href="#/dialer/out">Dial out</a></div>`;
+export const dialTabs = (active, user) => {
+  const tabs = [['queue', '#/dialer', 'Call queue'], ['out', '#/dialer/out', 'Dial out'], ['recordings', '#/dialer/recordings', 'Recordings']];
+  if (user?.role === 'admin') tabs.push(['live', '#/dialer/live', 'Live calls'], ['setup', '#/dialer/setup', 'Phone setup']);
+  return `<div class="tabs" style="margin-bottom:14px">${tabs.map(([k, h, n]) => `<a class="${active === k ? 'is-active' : ''}" href="${h}">${n}</a>`).join('')}</div>`;
+};
 
 export function phoneBadge(s = phoneState()) {
   const map = { ready: ['good', 'Phone ready'], loading: ['wait', 'Starting the phone...'], error: ['bad', s.reason || 'Phone not ready'], off: ['wait', 'Starting the phone...'] };
@@ -53,7 +57,7 @@ export async function dialOutPage(app, user) {
 
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Dial out</h1></div><div id="pbadge">${me.twilio ? phoneBadge() : ''}</div></div>
-    ${dialTabs('out')}
+    ${dialTabs('out', user)}
     ${!me.twilio ? '<div class="card" style="margin-bottom:14px"><p>Calling through the Hub needs the Twilio keys in Cloudflare first.</p></div>' : ''}
     <div class="dialout-grid">
       <form class="card dialpad" id="dform" autocomplete="off">

@@ -451,3 +451,21 @@ ul.plain, ol.plain { padding-left: 20px; margin: 0 0 12px; } ul.plain li, ol.pla
 @keyframes cbpulse { 0% { box-shadow: 0 0 0 0 rgba(157, 235, 203, .45); } 70% { box-shadow: 0 0 0 12px rgba(157, 235, 203, 0); } 100% { box-shadow: 0 0 0 0 rgba(157, 235, 203, 0); } }
 @media (max-width: 900px) { .callbar { left: 12px; right: 12px; width: auto; max-width: none; bottom: calc(12px + env(safe-area-inset-bottom)); } }
 @media (prefers-reduced-motion: reduce) { .callbar, .cb-av.pulse, .phone-badge.live i { animation: none; } }
+.cb-rec { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: #F28B8B; }
+.cb-rec i { width: 8px; height: 8px; border-radius: 50%; background: #E05555; animation: cbblink 1.2s infinite; }
+@keyframes cbblink { 50% { opacity: .3; } }
+.cb-modes { display: flex; gap: 8px; margin-top: 14px; }
+.cb-hint { margin: 8px 0 0; font-size: 12px; color: #85988F; text-align: center; }
+.rec-list { padding: 6px 18px; }
+.rec-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 0; border-top: 1px solid var(--line); }
+.rec-row:first-child { border-top: 0; }
+.rec-main { flex: 1 1 260px; min-width: 0; } .rec-main b { display: block; font-weight: 600; } .rec-main > span { display: block; margin-top: 2px; }
+.rec-row .btn svg { width: 16px; height: 16px; }
+.rec-audio { flex-basis: 100%; } .rec-audio:empty { display: none; } .rec-audio audio { width: 100%; height: 40px; }
+.switch { position: relative; flex: none; width: 50px; height: 30px; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; z-index: 1; }
+.switch span { position: absolute; inset: 0; border-radius: 30px; background: var(--line); transition: background .15s; }
+.switch span::after { content: ''; position: absolute; left: 3px; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); transition: transform .15s var(--ease); }
+.switch input:checked + span { background: var(--good); } .switch input:checked + span::after { transform: translateX(20px); }
+.switch input:focus-visible + span { outline: 2px solid var(--mint-strong); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .cb-rec i { animation: none; } }
