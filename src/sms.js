@@ -8,6 +8,7 @@ import { requireStaff } from './auth.js';
 import { e164, digits, inCallingHours, insertLead, logActivity } from './crm.js';
 import { route } from './router.js';
 import { twilioReady, verifiedParams, twiml, xml } from './calls.js';
+import { browserIdentities } from './voice.js';
 
 const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']);
 const START_WORDS = new Set(['start', 'unstop', 'yes']);
@@ -152,11 +153,17 @@ async function forwardNumber(env) {
 route('POST', '/api/twilio/voice', async ({ env, request, url }) => {
   const p = await verifiedParams(env, request);
   const from = e164(p.From);
-  const lead = from && (await first(env, 'SELECT id FROM leads WHERE phone_digits = ? ORDER BY updated_at DESC LIMIT 1', digits(from)));
+  const lead = from && (await first(env, 'SELECT id, business FROM leads WHERE phone_digits = ? ORDER BY updated_at DESC LIMIT 1', digits(from)));
   const aid = await logActivity(env, { lead_id: lead?.id || null, type: 'call', status: 'inbound', body: from ? `Incoming call from ${from}` : 'Incoming call', call_sid: p.CallSid || null });
-  const to = await forwardNumber(env);
-  if (!to) return twiml('<Say voice="Polly.Joanna">Thanks for calling Rightway Growth. Please send us a text and we will get right back to you.</Say><Hangup/>');
-  return twiml(`<Dial callerId="${xml(env.TWILIO_FROM)}" answerOnBridge="true" timeout="20" record="do-not-record" action="${xml(`${url.origin}/api/twilio/voice-done?a=${aid}`)}"><Number>${xml(to)}</Number></Dial>`);
+  // Ring every open Hub (browser phone) and the saved mobile, if any, at the same time. First to answer gets it.
+  const clients = await browserIdentities(env);
+  const cell = await forwardNumber(env);
+  if (!clients.length && !cell) return twiml('<Say voice="Polly.Joanna">Thanks for calling Rightway Growth. Please send us a text and we will get right back to you.</Say><Hangup/>');
+  const param = (k, v) => (v ? `<Parameter name="${k}" value="${xml(v)}"/>` : '');
+  const nouns = clients.map((id) => `<Client><Identity>${xml(id)}</Identity>${param('caller', from)}${param('who', lead?.business)}${param('called', e164(p.To))}${param('leadId', lead?.id)}</Client>`).join('')
+    + (cell ? `<Number>${xml(cell)}</Number>` : '');
+  const callerId = e164(p.To) || env.TWILIO_FROM;
+  return twiml(`<Dial callerId="${xml(callerId)}" answerOnBridge="true" timeout="20" record="do-not-record" action="${xml(`${url.origin}/api/twilio/voice-done?a=${aid}`)}">${nouns}</Dial>`);
 }, { public: true });
 
 route('POST', '/api/twilio/voice-done', async ({ env, request, url }) => {

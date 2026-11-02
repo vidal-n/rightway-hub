@@ -3,7 +3,8 @@ import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, PLAN_NAMES, PLAN_
 import { staffShell } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache } from './prep.js';
 import { textModal } from './texts.js';
-import { dialTabs, callerSelect, bindCaller } from './dialout.js';
+import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
+import { placeCall, startPhone, onPhoneState } from './phone.js';
 import { filterLeads } from '/js/leadfilter.js';
 
 export const STAGE_LABEL = {
@@ -497,6 +498,8 @@ export async function dialerPage(app, user) {
   let me, q, cal, nums = { numbers: [] };
   try { [me, q, cal, nums] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] })), api('/api/dialer/numbers').catch(() => ({ numbers: [] }))]); }
   catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  if (me.twilio) startPhone().catch(() => {});
+  const offPhone = onPhoneState((st) => { if (!document.body.contains(view)) return offPhone(); const b = $('#pbadge', view); if (b) b.innerHTML = phoneBadge(st); });
   let idx = 0;
   const intelCache = new Map();
   const researching = new Set();
@@ -548,11 +551,10 @@ export async function dialerPage(app, user) {
             <div class="row" style="margin:12px 0"><span class="badge">${l.tz_known ? `Their time: ${esc(l.local_time)}` : 'Time zone unknown: add the state'}</span>${l.sms_consent ? '<span class="badge">Agreed to texts</span>' : ''}${l.reviews != null ? `<span class="badge gray">${l.reviews} reviews${l.rating ? ` · ${l.rating}★` : ''}</span>` : ''}</div>
             <div class="dial-phone">${esc(l.phone || '')}</div>
             <div class="row" style="margin-top:14px">
-              <a class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" href="${telHref(l.phone)}" id="dtel">${icon.phone}Call from my phone</a>
-              ${me.twilio ? `<button class="btn btn-primary btn-xl" style="width:auto;flex:1 1 200px" id="dhub">Call through the Hub</button>` : ''}
+              ${me.twilio ? `<button class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" id="dhub">${icon.phone}Call</button>` : ''}
+              <a class="btn ${me.twilio ? 'btn-ghost' : 'btn-mint btn-xl'}" style="width:auto;${me.twilio ? '' : 'flex:1 1 200px'}" href="${telHref(l.phone)}" id="dtel">${me.twilio ? '' : icon.phone}Call from my phone</a>
             </div>
-            ${me.twilio && nums.numbers.length > 1 ? callerSelect(nums.numbers) : ''}
-            ${me.twilio && !me.user.phone ? '<form id="dphone" class="row" style="margin-top:10px"><input name="phone" placeholder="Your mobile, so the Hub can ring you" style="flex:1 1 200px"><button class="btn btn-ghost btn-sm">Save</button></form>' : ''}
+            ${me.twilio ? `<div class="row" style="margin-top:10px;align-items:flex-end">${nums.numbers.length > 1 ? callerSelect(nums.numbers) : ''}<span id="pbadge" style="margin-bottom:10px">${phoneBadge()}</span></div>` : ''}
             <div class="row" style="margin-top:12px">
               <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.industry || l.category || ''} ${l.city || ''} ${l.state || ''}`)}">Map pack</a>
               <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''}`)}">Their profile</a>
@@ -584,13 +586,10 @@ export async function dialerPage(app, user) {
     $('#dbook', view).addEventListener('click', () => bookModal(l, () => logOutcome('booked', $('[data-out="booked"]', view), true)));
     const callerVal = bindCaller(view);
     $('#dhub', view)?.addEventListener('click', async (e) => {
-      busy(e.target, true, 'Ringing you...');
-      try { await api('/api/dialer/call', { method: 'POST', body: { leadId: l.id, from: callerVal() } }); toast('Your phone is ringing. Answer to connect.'); }
-      catch (err) { toast(err.message, true); } finally { setTimeout(() => busy(e.target, false), 4000); }
-    });
-    $('#dphone', view)?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      try { const r = await api('/api/me/phone', { method: 'PUT', body: { phone: e.target.phone.value } }); me.user.phone = r.phone; toast('Saved'); render(); } catch (err) { toast(err.message, true); }
+      const btn = e.currentTarget;
+      busy(btn, true);
+      try { await placeCall({ leadId: l.id, from: callerVal(), name: l.business, onEnd: () => $('#dnote', view)?.focus() }); }
+      catch (err) { toast(err.message, true); } finally { busy(btn, false); }
     });
     $$('[data-out]', view).forEach((b) => b.addEventListener('click', () => logOutcome(b.dataset.out, b)));
   };

@@ -32,7 +32,7 @@ export async function ownedNumbers(env) {
   return list;
 }
 
-async function pickFrom(env, wanted) {
+export async function pickFrom(env, wanted) {
   if (!wanted) return env.TWILIO_FROM;
   const list = await ownedNumbers(env);
   if (!list.some((n) => n.number === wanted)) throw new HttpError('That number is not on your Twilio account.');
@@ -109,6 +109,16 @@ async function placeCall(env, params, activityId) {
   return data;
 }
 
+// A typed number: US or Canada only, no premium lines, not on Do Not Call. Returns the e164 number and any matching lead.
+export async function manualTarget(env, raw) {
+  const to = e164(raw);
+  if (!to) throw new HttpError('Enter a full phone number with area code.');
+  if (!to.startsWith('+1') || /^\+1(900|976)/.test(to)) throw new HttpError('Only US and Canada numbers can be dialed here.');
+  const lead = await first(env, 'SELECT id, business, dnc FROM leads WHERE phone_digits = ? ORDER BY dnc DESC LIMIT 1', to.slice(2));
+  if (lead?.dnc) throw new HttpError(`${lead.business} is on Do Not Call.`, 409);
+  return { to, lead: lead || null };
+}
+
 route('GET', '/api/dialer/numbers', async ({ env, user }) => {
   requireStaff(user);
   if (!twilioReady(env)) return json({ numbers: [], default: null });
@@ -123,12 +133,7 @@ route('POST', '/api/dialer/dial', async ({ env, user, url, body }) => {
   if (!me?.phone) throw new HttpError('Add your mobile number in the dialer first, so the Hub can ring you.');
   const b = await body();
   const from = await pickFrom(env, b.from);
-  const to = e164(b.to);
-  if (!to) throw new HttpError('Enter a full phone number with area code.');
-  if (!to.startsWith('+1') || /^\+1(900|976)/.test(to)) throw new HttpError('Only US and Canada numbers can be dialed here.');
-  const d10 = to.slice(2);
-  const lead = await first(env, 'SELECT id, business, dnc FROM leads WHERE phone_digits = ? ORDER BY dnc DESC LIMIT 1', d10);
-  if (lead?.dnc) throw new HttpError(`${lead.business} is on Do Not Call.`, 409);
+  const { to, lead } = await manualTarget(env, b.to);
   const activityId = await logActivity(env, { lead_id: lead?.id || null, type: 'manual_call', status: 'ringing_you', body: `Manual dial to ${to} from ${from}`, by: user.id });
   const params = new URLSearchParams({
     To: me.phone, From: from,

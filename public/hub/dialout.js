@@ -1,13 +1,14 @@
-// Dial out: type any number and pick which of your numbers shows as caller ID. Also the caller ID picker for the queue.
-import { $, esc, api, toast, busy, icon } from './core.js';
+// Dial out: a dial pad that calls through the computer (mic and speakers), with a choice of caller ID.
+// Also the caller ID picker and tabs shared with the call queue.
+import { $, $$, esc, api, toast, busy } from './core.js';
 import { staffShell } from './staff.js';
+import { placeCall, startPhone, phoneState, onPhoneState, picon, pretty } from './phone.js';
 
 const KEY = 'rw-caller-id';
 export const savedCaller = () => { try { return localStorage.getItem(KEY) || ''; } catch { return ''; } };
 const saveCaller = (v) => { try { localStorage.setItem(KEY, v); } catch { /* ignore */ } };
 
-const pretty = (n) => { const d = String(n || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : n; };
-export const numberLabel = (n) => (n.label && n.label !== n.number && !/^\(?\d/.test(n.label) ? `${pretty(n.number)} · ${n.label}` : pretty(n.number));
+export const numberLabel = (n) => (n.label && n.label !== n.number && !/^[(+\d]/.test(n.label) ? `${pretty(n.number)} · ${n.label}` : pretty(n.number));
 
 export function callerSelect(numbers, id = 'dfrom') {
   if (!numbers?.length) return '';
@@ -22,49 +23,69 @@ export function bindCaller(root, id = 'dfrom') {
 
 export const dialTabs = (active) => `<div class="tabs" style="margin-bottom:14px"><a class="${active === 'queue' ? 'is-active' : ''}" href="#/dialer">Call queue</a><a class="${active === 'out' ? 'is-active' : ''}" href="#/dialer/out">Dial out</a></div>`;
 
+export function phoneBadge(s = phoneState()) {
+  const map = { ready: ['good', 'Phone ready'], loading: ['wait', 'Starting the phone...'], error: ['bad', s.reason || 'Phone not ready'], off: ['wait', 'Starting the phone...'] };
+  const [cls, text] = s.onCall ? ['live', 'On a call'] : map[s.status] || map.off;
+  return `<span class="phone-badge ${cls}"><i></i>${esc(text)}</span>`;
+}
+
+const KEYS = [['1', ''], ['2', 'ABC'], ['3', 'DEF'], ['4', 'GHI'], ['5', 'JKL'], ['6', 'MNO'], ['7', 'PQRS'], ['8', 'TUV'], ['9', 'WXYZ'], ['*', ''], ['0', '+'], ['#', '']];
+const fmtTyped = (v) => {
+  const d = v.replace(/[^\d]/g, '');
+  if (/[^\d\s()+-]/.test(v) || v.startsWith('+')) return v;
+  const x = d.length === 11 && d[0] === '1' ? d.slice(1) : d;
+  if (x.length <= 3) return x;
+  if (x.length <= 6) return `(${x.slice(0, 3)}) ${x.slice(3)}`;
+  if (x.length <= 10) return `(${x.slice(0, 3)}) ${x.slice(3, 6)}-${x.slice(6)}`;
+  return d;
+};
+
 export async function dialOutPage(app, user) {
   const view = staffShell(app, user, 'dialer');
   let me, nums, recent;
   try { [me, nums, recent] = await Promise.all([api('/api/me'), api('/api/dialer/numbers'), api('/api/dialer/recent')]); }
   catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
-  const render = () => {
-    view.innerHTML = `
-      <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Dial out</h1></div></div>
-      ${dialTabs('out')}
-      ${!me.twilio ? '<div class="card"><p>Calling through the Hub needs the Twilio keys in Cloudflare first. Until then, type a number and use your own phone.</p></div>' : ''}
-      <div class="card" style="max-width:560px">
-        <form id="dform">
-          <label class="field"><span>Number to call</span><input name="to" id="dto" type="tel" inputmode="tel" autocomplete="off" placeholder="(954) 555-0123" style="font-size:22px"></label>
-          ${me.twilio ? callerSelect(nums.numbers) : ''}
-          <div class="row" style="margin-top:14px">
-            ${me.twilio ? `<button class="btn btn-primary btn-xl" style="flex:1 1 200px;width:auto" id="dgo">${icon.phone}Call through the Hub</button>` : ''}
-            <a class="btn btn-mint btn-xl" style="flex:1 1 200px;width:auto" id="dtel" href="#">Call from my phone</a>
-          </div>
-        </form>
-        ${me.twilio && !me.user.phone ? '<form id="dphone" class="row" style="margin-top:12px"><input name="phone" placeholder="Your mobile, so the Hub can ring you" style="flex:1 1 200px"><button class="btn btn-ghost btn-sm">Save</button></form>' : ''}
-        <p class="small" style="margin-top:12px">The Hub rings your mobile first. Answer, and it connects you to the number from the caller ID you picked. Calls are not recorded. Numbers on your Do Not Call list are blocked.</p>
-      </div>
-      ${recent.calls.length ? `<div class="card" style="max-width:560px;margin-top:14px"><h3>Recent dial outs</h3>${recent.calls.map((c) => `<div class="row small" style="justify-content:space-between;padding:6px 0;border-top:1px solid var(--line)"><span>${esc((c.body || '').replace('Manual dial to ', ''))}${c.business ? ` · ${esc(c.business)}` : ''}</span><span class="muted">${esc(new Date(c.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}${c.duration ? ` · ${Math.floor(c.duration / 60)}m ${c.duration % 60}s` : ''}</span></div>`).join('')}</div>` : ''}`;
-    const from = bindCaller(view);
-    const to = () => $('#dto', view).value.trim();
-    $('#dtel', view).addEventListener('click', (e) => { const n = to().replace(/[^\d+]/g, ''); if (!n) { e.preventDefault(); return toast('Type a number first.', true); } e.currentTarget.href = `tel:${n}`; });
-    $('#dform', view).addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!me.twilio) return;
-      const btn = $('#dgo', view);
-      if (!to()) return toast('Type a number first.', true);
-      busy(btn, true, 'Ringing you...');
-      try {
-        const r = await api('/api/dialer/dial', { method: 'POST', body: { to: to(), from: from() } });
-        toast(r.lead ? `Your phone is ringing. Calling ${r.lead.business}.` : 'Your phone is ringing. Answer to connect.');
-        recent = await api('/api/dialer/recent');
-        setTimeout(() => { if (document.body.contains(view)) { const v = $('#dto', view)?.value; render(); const i = $('#dto', view); if (i) i.value = v; } }, 3500);
-      } catch (err) { toast(err.message, true); busy(btn, false); }
-    });
-    $('#dphone', view)?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      try { const r = await api('/api/me/phone', { method: 'PUT', body: { phone: e.target.phone.value } }); me.user.phone = r.phone; toast('Saved'); render(); } catch (err) { toast(err.message, true); }
-    });
-  };
-  render();
+  if (me.twilio) startPhone().catch(() => {});
+  const recentHtml = () => (recent.calls.length ? recent.calls.map((c) => {
+    const num = (c.body || '').replace('Manual dial to ', '').split(' from ')[0];
+    return `<button type="button" class="recent-row" data-redial="${esc(num)}"><span><b>${esc(c.business || pretty(num))}</b><small>${esc(c.business ? pretty(num) : '')}</small></span><span class="muted small">${esc(new Date(c.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}${c.duration ? ` · ${Math.floor(c.duration / 60)}m ${c.duration % 60}s` : ''}</span></button>`;
+  }).join('') : '<p class="small muted">Numbers you dial show up here.</p>');
+
+  view.innerHTML = `
+    <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Dial out</h1></div><div id="pbadge">${me.twilio ? phoneBadge() : ''}</div></div>
+    ${dialTabs('out')}
+    ${!me.twilio ? '<div class="card" style="margin-bottom:14px"><p>Calling through the Hub needs the Twilio keys in Cloudflare first.</p></div>' : ''}
+    <div class="dialout-grid">
+      <form class="card dialpad" id="dform" autocomplete="off">
+        <input id="dto" class="dp-display" type="tel" inputmode="tel" placeholder="Enter a number" aria-label="Number to call">
+        <div class="dp-keys">${KEYS.map(([k, l]) => `<button type="button" class="dp-key" data-k="${k}"><b>${k}</b><small>${l || '&nbsp;'}</small></button>`).join('')}</div>
+        ${me.twilio ? callerSelect(nums.numbers) : ''}
+        <div class="dp-row">
+          <span></span>
+          <button class="dp-call" id="dgo" aria-label="Call"${me.twilio ? '' : ' disabled'}>${picon.phone}</button>
+          <button type="button" class="dp-back" id="dback" aria-label="Delete last digit">${picon.back}</button>
+        </div>
+        <p class="small muted" style="text-align:center;margin:12px 0 0">Calls use your computer's mic and speakers. A headset sounds best. Not recorded.</p>
+      </form>
+      <div class="card"><h3>Recent dial outs</h3><div id="drecent">${recentHtml()}</div></div>
+    </div>`;
+
+  const input = $('#dto', view);
+  const from = bindCaller(view);
+  const off = onPhoneState((s) => { const b = $('#pbadge', view); if (!document.body.contains(view)) return off(); if (b && me.twilio) b.innerHTML = phoneBadge(s); });
+  input.addEventListener('input', () => { const pos = input.value.length; input.value = fmtTyped(input.value); if (pos === input.value.length) input.setSelectionRange(pos, pos); });
+  $$('.dp-key', view).forEach((b) => b.addEventListener('click', () => { input.value = fmtTyped(input.value + b.dataset.k); input.focus(); }));
+  $('#dback', view).addEventListener('click', () => { input.value = fmtTyped(input.value.replace(/[\d*#](?=[^\d*#]*$)/, '')); input.focus(); });
+  $('#drecent', view).addEventListener('click', (e) => { const r = e.target.closest('[data-redial]'); if (r) { input.value = fmtTyped(r.dataset.redial); input.focus(); } });
+  $('#dform', view).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!me.twilio) return;
+    if (!input.value.trim()) return toast('Type a number first.', true);
+    const btn = $('#dgo', view);
+    busy(btn, true);
+    try {
+      await placeCall({ to: input.value.trim(), from: from(), onEnd: async () => { try { recent = await api('/api/dialer/recent'); const el = $('#drecent', view); if (el) el.innerHTML = recentHtml(); } catch { /* ignore */ } } });
+    } catch (err) { toast(err.message, true); } finally { busy(btn, false); }
+  });
+  input.focus();
 }

@@ -508,6 +508,7 @@ import './billing.js';
 import './workorders.js';
 import './calls.js';
 import './sms.js';
+import './voice.js';
 import './dashboard.js';
 import './sample.js';
 import './intel.js';

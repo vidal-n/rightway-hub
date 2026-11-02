@@ -1,0 +1,196 @@
+// Browser phone: calls go out and come in through the computer's mic and speakers (Twilio Voice JS SDK, vendored in /vendor).
+// One Device per tab, created after login. A call bar floats over every page while a call is live.
+import { api, esc, toast } from './core.js';
+
+const SDK = '/vendor/twilio-voice-2.18.5.min.js';
+const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+export const picon = {
+  phone: P('<path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.2 2 2 0 014.1 2h3a2 2 0 012 1.7c.1 1 .4 1.9.7 2.8a2 2 0 01-.5 2.1L8 9.9a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.4c.9.3 1.8.6 2.8.7a2 2 0 011.8 2z"/>'),
+  hang: P('<path d="M3.7 14.3l2.1-1.5a1.8 1.8 0 00.7-1.9l-.4-1.5a14 14 0 0111.8 0l-.4 1.5a1.8 1.8 0 00.7 1.9l2.1 1.5a1.8 1.8 0 002.4-.3l.6-.7a1.8 1.8 0 000-2.4C19.9 7.7 16.1 6 12 6s-7.9 1.7-11.3 4.9a1.8 1.8 0 000 2.4l.6.7a1.8 1.8 0 002.4.3z"/>'),
+  mic: P('<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0M12 19v3"/>'),
+  micOff: P('<path d="M2 2l20 20M9 9v1a3 3 0 005.1 2.1M15 9.3V5a3 3 0 00-5.9-.7"/><path d="M17 16.9A7 7 0 015 10M19 10a7 7 0 01-.1 1.2M12 19v3"/>'),
+  pad: P('<circle cx="6" cy="5" r="1.3"/><circle cx="12" cy="5" r="1.3"/><circle cx="18" cy="5" r="1.3"/><circle cx="6" cy="11" r="1.3"/><circle cx="12" cy="11" r="1.3"/><circle cx="18" cy="11" r="1.3"/><circle cx="6" cy="17" r="1.3"/><circle cx="12" cy="17" r="1.3"/><circle cx="18" cy="17" r="1.3"/><circle cx="12" cy="22" r="1.3"/>'),
+  back: P('<path d="M21 5H9l-7 7 7 7h12a1 1 0 001-1V6a1 1 0 00-1-1z"/><path d="M17 9l-6 6M11 9l6 6"/>'),
+};
+
+export const pretty = (n) => { const d = String(n || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : String(n || ''); };
+const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+// ---------- device ----------
+const st = { status: 'off', reason: '', device: null, call: null };
+const listeners = new Set();
+export const phoneState = () => ({ status: st.status, reason: st.reason, onCall: Boolean(st.call) });
+export function onPhoneState(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+const emit = () => listeners.forEach((fn) => { try { fn(phoneState()); } catch { /* ignore */ } });
+const setStatus = (status, reason = '') => { st.status = status; st.reason = reason; emit(); };
+
+function loadSdk() {
+  if (window.Twilio?.Device) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = SDK; s.async = true;
+    s.onload = () => res(); s.onerror = () => rej(new Error('Could not load the phone. Check your connection and reload.'));
+    document.head.appendChild(s);
+  });
+}
+
+let starting = null;
+export function startPhone() {
+  if (st.device) return Promise.resolve(st.device);
+  starting ||= (async () => {
+    setStatus('loading');
+    const t = await api('/api/voice/token');
+    if (!t.ready) throw new Error(t.reason);
+    await loadSdk();
+    const d = new window.Twilio.Device(t.token, { codecPreferences: ['opus', 'pcmu'], closeProtection: 'You are on a call. Leave anyway?', logLevel: 'warn' });
+    d.audio?.outgoing(false);
+    d.on('tokenWillExpire', async () => { try { const n = await api('/api/voice/token'); if (n.ready) d.updateToken(n.token); } catch { /* retried on next expiry warning */ } });
+    d.on('incoming', onIncoming);
+    d.on('registered', () => setStatus('ready'));
+    d.on('unregistered', () => { if (st.status === 'ready') setStatus('loading'); });
+    d.on('error', (e) => { if (!st.call && /token/i.test(e?.message || '')) setStatus('error', 'The phone lost its sign in. Reload the page.'); });
+    st.device = d;
+    try { await d.register(); } catch { /* outgoing still works without registration */ }
+    if (st.status !== 'ready') setStatus('ready');
+    return d;
+  })().catch((e) => { setStatus('error', e.message); throw e; }).finally(() => { starting = null; });
+  return starting;
+}
+
+// ---------- ringback (only if the carrier sends no ringing sound of its own) ----------
+let ring = null;
+function ringback(on) {
+  if (!on) { if (ring) { ring.stop(); ring = null; } return; }
+  if (ring) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const gain = ctx.createGain(); gain.gain.value = 0; gain.connect(ctx.destination);
+    const oscs = [440, 480].map((f) => { const o = ctx.createOscillator(); o.frequency.value = f; o.connect(gain); o.start(); return o; });
+    let t = ctx.currentTime;
+    const sched = () => { for (let i = 0; i < 10; i++) { gain.gain.setValueAtTime(0.08, t); gain.gain.setValueAtTime(0, t + 2); t += 6; } };
+    sched();
+    const timer = setInterval(sched, 55e3);
+    ring = { stop: () => { clearInterval(timer); oscs.forEach((o) => { try { o.stop(); } catch { /* ignore */ } }); ctx.close().catch(() => {}); } };
+  } catch { ring = null; }
+}
+
+// ---------- call bar ----------
+let bar = null;
+let tick = null;
+function ensureBar() {
+  if (bar && document.body.contains(bar)) return bar;
+  bar = document.createElement('div');
+  bar.className = 'callbar';
+  bar.setAttribute('role', 'region');
+  bar.setAttribute('aria-label', 'Phone call');
+  document.body.appendChild(bar);
+  return bar;
+}
+function hideBar(delay = 0) {
+  setTimeout(() => { if (!st.call && bar) { bar.classList.add('out'); setTimeout(() => { if (!st.call) { bar?.remove(); bar = null; } }, 250); } }, delay);
+}
+
+function renderBar(view) {
+  const b = ensureBar();
+  b.classList.remove('out');
+  b.dataset.state = view.state;
+  const live = view.state === 'live';
+  b.innerHTML = `
+    <div class="cb-top">
+      <div class="cb-av${view.state === 'ringing' || view.state === 'incoming' || view.state === 'dialing' ? ' pulse' : ''}">${picon.phone}</div>
+      <div class="cb-who"><b>${esc(view.name || pretty(view.number))}</b><span>${esc(view.name ? pretty(view.number) : '')}${view.from ? `${view.name ? ' · ' : ''}${view.incoming ? 'to' : 'from'} ${esc(pretty(view.from))}` : ''}</span></div>
+      <div class="cb-status" aria-live="polite">${esc(view.label)}</div>
+    </div>
+    ${live ? '<div class="cb-level" aria-hidden="true"><i></i></div>' : ''}
+    ${live && view.pad ? `<div class="cb-pad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((k) => `<button type="button" data-dtmf="${k}">${k}</button>`).join('')}</div>` : ''}
+    <div class="cb-actions">
+      ${view.state === 'incoming' ? `<button type="button" class="cb-btn cb-decline" data-act="decline">${picon.hang}<span>Decline</span></button><button type="button" class="cb-btn cb-accept" data-act="accept">${picon.phone}<span>Answer</span></button>` : ''}
+      ${live ? `<button type="button" class="cb-btn${view.muted ? ' on' : ''}" data-act="mute" aria-pressed="${view.muted}">${view.muted ? picon.micOff : picon.mic}<span>${view.muted ? 'Unmute' : 'Mute'}</span></button>
+        <button type="button" class="cb-btn${view.pad ? ' on' : ''}" data-act="pad" aria-pressed="${Boolean(view.pad)}">${picon.pad}<span>Keypad</span></button>` : ''}
+      ${['dialing', 'ringing', 'live'].includes(view.state) ? `<button type="button" class="cb-btn cb-hang" data-act="hang">${picon.hang}<span>Hang up</span></button>` : ''}
+    </div>`;
+}
+
+function track(call, view, { onEnd } = {}) {
+  st.call = call;
+  emit();
+  let started = 0;
+  let answered = false;
+  const draw = () => renderBar(view);
+  const set = (patch) => { Object.assign(view, patch); draw(); };
+  const end = (label) => {
+    clearInterval(tick); tick = null;
+    ringback(false);
+    if (st.call !== call) return;
+    st.call = null;
+    emit();
+    const secs = answered ? Math.round((Date.now() - started) / 1000) : 0;
+    set({ state: 'ended', label: label || (answered ? `Call ended ${clock(secs)}` : 'No answer') });
+    hideBar(2200);
+    onEnd?.({ answered, seconds: secs });
+  };
+  draw();
+  call.on('ringing', (hasEarlyMedia) => { if (!answered) { set({ state: 'ringing', label: 'Ringing...' }); if (!hasEarlyMedia) ringback(true); } });
+  call.on('accept', () => {
+    answered = true; started = Date.now(); ringback(false);
+    set({ state: 'live', label: '0:00' });
+    clearInterval(tick);
+    tick = setInterval(() => { const el = bar?.querySelector('.cb-status'); if (el && view.state === 'live') { view.label = clock(Math.round((Date.now() - started) / 1000)); el.textContent = view.label; } }, 1000);
+  });
+  call.on('volume', (input) => { const el = bar?.querySelector('.cb-level i'); if (el) el.style.width = `${Math.min(100, Math.round(input * 220))}%`; });
+  call.on('mute', (m) => set({ muted: m }));
+  call.on('disconnect', () => end());
+  call.on('cancel', () => end(view.incoming ? 'Missed call' : 'Call canceled'));
+  call.on('reject', () => end('Declined'));
+  call.on('error', (e) => {
+    const code = e?.code;
+    const msg = code === 31401 || code === 31208 ? 'Allow the microphone for this site (lock icon in the address bar), then call again.'
+      : code === 31402 ? 'No microphone found. Plug in a headset or mic and try again.'
+      : `Call problem: ${e?.message || 'unknown error'}`;
+    toast(msg, true);
+    if (st.call === call && !answered) end('Call failed');
+  });
+  ensureBar().onclick = (ev) => {
+    const btn = ev.target.closest('button');
+    if (!btn || st.call !== call) return;
+    if (btn.dataset.dtmf) { call.sendDigits(btn.dataset.dtmf); return; }
+    const act = btn.dataset.act;
+    if (act === 'hang') call.disconnect();
+    if (act === 'mute') call.mute(!call.isMuted());
+    if (act === 'pad') set({ pad: !view.pad });
+    if (act === 'accept') { call.accept(); set({ state: 'dialing', label: 'Connecting...', incoming: true }); }
+    if (act === 'decline') { call.reject(); end('Declined'); }
+  };
+}
+
+// Outgoing: checks the number on the server, then connects through the browser.
+export async function placeCall({ to, leadId, from, name, onEnd } = {}) {
+  if (st.call) throw new Error('You are already on a call. Hang up first.');
+  const prep = await api('/api/voice/prepare', { method: 'POST', body: { to, leadId, from } });
+  const d = await startPhone();
+  const view = { state: 'dialing', label: 'Calling...', name: name || prep.name, number: prep.to, from: prep.from };
+  renderBar(view);
+  st.call = { pending: true };
+  let call;
+  try { call = await d.connect({ params: { act: prep.activityId } }); }
+  catch (e) { st.call = null; emit(); renderBar({ ...view, state: 'ended', label: 'Call failed' }); hideBar(2000); throw e; }
+  track(call, view, { onEnd });
+  return call;
+}
+
+function onIncoming(call) {
+  const cp = call.customParameters || new Map();
+  const view = { state: 'incoming', label: 'Incoming call', incoming: true, name: cp.get('who') || '', number: cp.get('caller') || call.parameters?.From || '', from: cp.get('called') || '' };
+  track(call, view);
+  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+    try { new Notification('Incoming call', { body: view.name || pretty(view.number), tag: 'rw-call' }); } catch { /* ignore */ }
+  }
+}
+
+// Called once after a staff login so incoming calls ring in the browser too.
+export function initPhone() {
+  if (st.device || starting) return;
+  setTimeout(() => { startPhone().catch(() => {}); }, 800);
+}
+
+export function hangUp() { if (st.call?.disconnect) st.call.disconnect(); }
