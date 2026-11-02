@@ -7,8 +7,8 @@ import { e164, inCallingHours, logActivity } from './crm.js';
 import { route } from './router.js';
 
 const enc = new TextEncoder();
-const xml = (s) => String(s || '').replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[c]);
-const twiml = (inner) => new Response(`<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`, { headers: { 'content-type': 'text/xml; charset=utf-8' } });
+export const xml = (s) => String(s || '').replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[c]);
+export const twiml = (inner) => new Response(`<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`, { headers: { 'content-type': 'text/xml; charset=utf-8' } });
 
 export function twilioReady(env) {
   return Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM);
@@ -22,7 +22,7 @@ export async function twilioSignature(authToken, url, params) {
   return btoa(String.fromCharCode(...sig));
 }
 
-async function verifiedParams(env, request) {
+export async function verifiedParams(env, request) {
   const form = await request.formData();
   const params = Object.fromEntries([...form.entries()].map(([k, v]) => [k, String(v)]));
   const expected = await twilioSignature(env.TWILIO_AUTH_TOKEN || '', request.url, params);

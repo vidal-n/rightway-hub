@@ -2,6 +2,7 @@
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, PLAN_NAMES, PLAN_PRICE } from './core.js';
 import { staffShell } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache } from './prep.js';
+import { textModal } from './texts.js';
 import { filterLeads } from '/js/leadfilter.js';
 
 export const STAGE_LABEL = {
@@ -299,6 +300,7 @@ export async function leadModal(id, onChange) {
       ${l.email ? `<a class="btn btn-ghost" href="mailto:${esc(l.email)}">${icon.mail}Email</a>` : ''}
       ${l.website ? `<a class="btn btn-ghost" href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}" target="_blank" rel="noopener">Website</a>` : ''}
       <a class="btn btn-ghost" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''} ${l.state || ''}`)}" target="_blank" rel="noopener">Google Maps</a>
+      ${l.phone ? '<button class="btn btn-ghost" id="ltexts">Texts</button>' : ''}
       <button class="btn btn-ghost" id="ledit">Edit</button>
     </div>
     ${l.dnc ? '<p class="badge bad" style="margin-bottom:12px">Do not call</p>' : ''}
@@ -338,6 +340,7 @@ export async function leadModal(id, onChange) {
     </div>`;
   const done = () => { m.close(); onChange?.(); };
   prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, onResearched: () => { changed = true; } });
+  $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
   $('#ledit', m.el).addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); });
   $$('[data-out]', m.el).forEach((b) => b.addEventListener('click', async () => {
     const outcome = b.dataset.out;
@@ -551,6 +554,7 @@ export async function dialerPage(app, user) {
               <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.industry || l.category || ''} ${l.city || ''} ${l.state || ''}`)}">Map pack</a>
               <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''}`)}">Their profile</a>
               ${l.website ? `<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}">Website</a>` : ''}
+              <button class="btn btn-ghost btn-sm" id="dtext">Text</button>
               <button class="btn btn-ghost btn-sm" id="dopen">Full details</button>
             </div>
           </div>
@@ -573,6 +577,7 @@ export async function dialerPage(app, user) {
     prefetch(q.queue[idx + 1]);
     $('#dskip', view).addEventListener('click', () => { idx++; render(); });
     $('#dopen', view).addEventListener('click', () => leadModal(l.id, () => {}));
+    $('#dtext', view).addEventListener('click', () => textModal(l, { rep: REP }));
     $('#dbook', view).addEventListener('click', () => bookModal(l, () => logOutcome('booked', $('[data-out="booked"]', view), true)));
     $('#dhub', view)?.addEventListener('click', async (e) => {
       busy(e.target, true, 'Ringing you...');

@@ -12,6 +12,7 @@ export function staffShell(app, user, active, inner) {
         <nav aria-label="Main">
           <a href="#/pipeline" class="${active === 'pipeline' ? 'is-active' : ''}">${icon.chart}<span>Pipeline</span></a>
           <a href="#/dialer" class="${active === 'dialer' ? 'is-active' : ''}">${icon.phone}<span>Dialer</span></a>
+          <a href="#/inbox" class="${active === 'inbox' ? 'is-active' : ''}">${icon.msg}<span>Inbox</span></a>
           <a href="#/" class="${active === 'clients' ? 'is-active' : ''}">${icon.users}<span>Clients</span></a>
           <a href="/scan.html">${icon.grid}<span>Scan tool</span></a>
           <a href="#/team" class="${active === 'team' ? 'is-active' : ''}">${icon.star}<span>Team</span></a>
@@ -21,6 +22,7 @@ export function staffShell(app, user, active, inner) {
       </aside>
       <main class="main" id="view">${inner || '<div class="skeleton"></div>'}</main>
     </div>`;
+  import('./texts.js').then((m) => m.unreadBadge(app));
   $('#logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/login'; location.reload(); });
   return $('#view');
 }

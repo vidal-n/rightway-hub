@@ -3,6 +3,7 @@ import { $, esc, api, toast, busy } from './core.js';
 import { dashboard, clientPage, teamPage } from './staff.js';
 import { portal } from './portal.js';
 import { pipelinePage, dialerPage, settingsPage } from './crm.js';
+import { inboxPage } from './texts.js';
 
 const app = $('#app');
 const state = { user: null, users: true, ai: false, email: false };
@@ -103,6 +104,7 @@ async function route() {
   if (parts[0] === 'team') return teamPage(app, u);
   if (parts[0] === 'pipeline') return pipelinePage(app, u);
   if (parts[0] === 'dialer') return dialerPage(app, u);
+  if (parts[0] === 'inbox') return inboxPage(app, u);
   if (parts[0] === 'settings') return settingsPage(app, u);
   if (parts[0] === 'client' && parts[1]) return clientPage(app, u, parts[1], parts[2] || 'overview', state);
   return dashboard(app, u);

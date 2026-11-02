@@ -57,6 +57,11 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS assets (
     id TEXT PRIMARY KEY, client_id TEXT NOT NULL, media_key TEXT NOT NULL, media_type TEXT, kind TEXT, name TEXT, created_by TEXT, created_at INTEGER NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS assets_client ON assets (client_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY, lead_id TEXT NOT NULL, direction TEXT NOT NULL, body TEXT NOT NULL, from_num TEXT, to_num TEXT,
+    sid TEXT, status TEXT, error TEXT, by TEXT, at INTEGER NOT NULL, read INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS msg_lead ON messages (lead_id, at)`,
+  `CREATE INDEX IF NOT EXISTS msg_sid ON messages (sid)`,
   `CREATE TABLE IF NOT EXISTS oauth_states (state TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL)`,
 ];
 
@@ -70,6 +75,7 @@ const ADD_COLUMNS = [
   ['leads', 'locations INTEGER'],
   ['clients', 'baseline TEXT'], ['clients', 'intake TEXT'], ['clients', 'intake_at INTEGER'], ['clients', 'logo_key TEXT'],
   ['users', 'google_token TEXT'], ['users', 'google_email TEXT'],
+  ['leads', 'sms_stop INTEGER NOT NULL DEFAULT 0'],
 ];
 
 let ready = null;
