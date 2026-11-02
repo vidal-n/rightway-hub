@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="light dark">
+  <title>Monthly Report</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="/hub.css">
+  <style>
+    .rp { max-width: 920px; margin: 0 auto; padding: 28px 16px 64px; display: grid; gap: 18px; }
+    .rp .card + .card { margin-top: 0; }
+    .rp-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .rp-head img { height: 30px; width: auto; }
+    .rp-hero { background: #0F1B17; color: #fff; border-radius: var(--r); padding: 26px 24px; }
+    @media (prefers-color-scheme: dark) { .rp-hero { background: #14251F; border: 1px solid var(--line); } }
+    .rp-hero .eyebrow { color: #9DEBCB; }
+    .rp-hero h1 { color: #fff; margin: 4px 0 2px; }
+    .rp-hero p { color: #CFE9DD; margin: 0; }
+    .rp-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .rp-kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+    .rp-kpi b { display: block; font: 700 30px/1.1 var(--display); }
+    .rp-kpi span { display: block; font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .rp-kpi i { font-style: normal; font-size: 13px; font-weight: 600; }
+    .rp-maps { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; }
+    .rp-maps figure { margin: 0; }
+    .rp-maps figcaption { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+    .rp-maps svg { width: 100%; height: auto; display: block; max-width: 360px; }
+    .rp-row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .rp-row3 div { background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+    .rp-row3 b { display: block; font: 700 22px var(--display); }
+    .rp-row3 span { font-size: 12px; color: var(--muted); }
+    .rp-bar { display: grid; grid-template-columns: minmax(0, 1fr) 120px 44px; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .rp-bar:last-child { border-bottom: 0; }
+    .rp-bar .track { display: block; height: 10px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+    .rp-bar .fill { display: block; height: 100%; border-radius: 6px; background: #8FA39B; }
+    .rp-bar.you .fill { background: var(--good); }
+    .rp-bar.you .nm { font-weight: 700; }
+    .rp-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 12px; }
+    .rp ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+    .rp-note { background: var(--mint-soft); border: 1px solid var(--mint-mid); border-radius: 16px; padding: 18px; white-space: pre-line; }
+    .rp-two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .legend { margin-top: 10px; }
+    @media (max-width: 720px) { .rp-kpis { grid-template-columns: 1fr 1fr; } .rp-two { grid-template-columns: 1fr; } }
+    @media (max-width: 480px) { .rp-maps { grid-template-columns: 1fr; } .rp-row3 { grid-template-columns: 1fr 1fr 1fr; } .rp-bar { grid-template-columns: minmax(0, 1fr) 70px 40px; } }
+    @media print { .no-print { display: none !important; } body { background: #fff; } .card, .rp-kpi { box-shadow: none; break-inside: avoid; } .rp { padding-top: 0; } }
+  </style>
+</head>
+<body>
+  <main class="rp" id="rp"><div class="card"><div class="skeleton"></div></div></main>
+  <script type="module" src="/report.js"></script>
+</body>
+</html>

@@ -214,7 +214,7 @@ export async function renderRankings(el, clientId, { staff = false } = {}) {
   el.innerHTML = '<div class="skeleton"></div>';
   let scans;
   try { ({ scans } = await api(`/api/clients/${clientId}/scans`)); } catch (e) { el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
-  const prog = staff ? '<div id="rk-prog"></div>' : '';
+  const prog = staff ? '<div id="rk-prog"></div>' : await import('./reports.js').then((m) => m.clientReportsCard(clientId)).catch(() => '');
   if (!scans.length) {
     el.innerHTML = `${prog}<div class="card empty"><h3>No ranking scans yet</h3><p>${staff ? 'Run a scan now, or turn on monthly scans in Settings.' : 'Your first map scan shows up here.'}</p>
       ${staff ? `<div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="rk-run">${icon.scan}Run scan now</button><a class="btn btn-ghost" href="/scan.html?client=${esc(clientId)}">Open the scan tool</a></div>` : ''}</div>`;

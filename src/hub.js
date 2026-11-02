@@ -519,6 +519,7 @@ import './crm.js';
 import './billing.js';
 import './stripesetup.js';
 import './autoscan.js';
+import './reports.js';
 import './workorders.js';
 import './calls.js';
 import './sms.js';

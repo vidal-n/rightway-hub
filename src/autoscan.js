@@ -9,7 +9,7 @@ import { gridPoints, gridStats, COST_PER_POINT } from '../public/js/grid.js';
 import { rankAtPoint, businessDetails } from './dataforseo.js';
 import { mockRank, mockDetails } from './mock.js';
 
-const DEFAULTS = { enabled: false, size: 7, radius: 3, keywords: 3, everyDays: 30 };
+const DEFAULTS = { enabled: false, size: 7, radius: 3, keywords: 3, everyDays: 30, autoSend: false };
 export const POINTS_PER_TICK = 40; // Workers allow about 50 outside requests per run on the free plan
 const LOCK_MS = 90e3;
 const CHECK_EVERY_MS = 30 * 60e3;
@@ -23,6 +23,7 @@ export function cleanConfig(b = {}, base = DEFAULTS) {
     size, radius,
     keywords: Math.min(5, Math.max(1, Math.round(Number(b.keywords) || base.keywords))),
     everyDays: Math.min(60, Math.max(7, Math.round(Number(b.everyDays) || base.everyDays))),
+    autoSend: 'autoSend' in b ? Boolean(b.autoSend) : Boolean(base.autoSend),
   };
 }
 export async function getConfig(env) {
@@ -121,6 +122,13 @@ async function finish(env, job, client, data, at) {
   await run(env, 'INSERT INTO log (id, client_id, text, at, by) VALUES (?, ?, ?, ?, ?)', newId('l_'), job.client_id,
     `Monthly ranking scan for "${job.keyword}": top 3 in ${stats.top3Pct}% of the area, average rank ${stats.avgRank ?? 'n/a'}`, at, job.by && job.by !== 'auto' ? job.by : null);
   await run(env, "UPDATE scan_jobs SET status = 'done', scan_id = ?, cursor = ?, finished_at = ?, locked_until = NULL, data = NULL WHERE id = ?", id, points.length, at, job.id);
+  // Last keyword for this client done: make (or refresh) this month's report.
+  const left = await first(env, "SELECT COUNT(*) AS n FROM scan_jobs WHERE client_id = ? AND status IN ('queued','running')", job.client_id);
+  if (!left?.n) {
+    const [cfg, s] = await Promise.all([getConfig(env), getSettings(env).catch(() => ({}))]);
+    const { autoReport } = await import('./reports.js');
+    await autoReport(env, job.client_id, at, { autoSend: cfg.autoSend, origin: s.autoscan_origin || null }).catch((e) => console.error('report', e));
+  }
 }
 
 // Work on the oldest waiting job for up to `budget` grid points. Returns how many points were scanned.
@@ -193,11 +201,13 @@ route('GET', '/api/autoscan', async ({ env, user }) => {
     all(env, 'SELECT j.*, c.name AS client_name FROM scan_jobs j LEFT JOIN clients c ON c.id = j.client_id ORDER BY j.created_at DESC LIMIT 25'),
     first(env, "SELECT COUNT(*) AS n FROM scan_jobs WHERE status IN ('queued','running')"),
   ]);
-  return json({ config: cfg, clients: active?.n || 0, monthlyCost: monthlyCost(active?.n || 0, cfg), queued: queued?.n || 0, jobs: jobs.map(jobRow), demo: isDemo(env) });
+  const drafts = await all(env, "SELECT r.client_id, r.month, c.name FROM reports r JOIN clients c ON c.id = r.client_id WHERE r.status = 'draft' AND c.sample = 0 ORDER BY r.month DESC, c.name LIMIT 30").catch(() => []);
+  return json({ config: cfg, clients: active?.n || 0, monthlyCost: monthlyCost(active?.n || 0, cfg), queued: queued?.n || 0, jobs: jobs.map(jobRow), demo: isDemo(env), drafts });
 });
 
-route('PUT', '/api/autoscan', async ({ env, user, body }) => {
+route('PUT', '/api/autoscan', async ({ env, user, body, url }) => {
   requireAdmin(user);
+  await setSetting(env, 'autoscan_origin', url.origin);
   const cfg = cleanConfig(await body(), await getConfig(env));
   await setSetting(env, 'autoscan', JSON.stringify(cfg));
   if (cfg.enabled) await setSetting(env, 'autoscan_checked', '0');
@@ -212,8 +222,9 @@ route('POST', '/api/autoscan/tick', async ({ env, user }) => {
   return json({ used, queued: queued?.n || 0 });
 });
 
-route('POST', '/api/autoscan/run-all', async ({ env, user }) => {
+route('POST', '/api/autoscan/run-all', async ({ env, user, url }) => {
   requireAdmin(user);
+  await setSetting(env, 'autoscan_origin', url.origin);
   const cfg = await getConfig(env);
   const clients = await all(env, "SELECT * FROM clients WHERE status = 'active' AND sample = 0");
   let made = 0, skipped = 0;

@@ -46,10 +46,13 @@ export async function autoScanCard(box, user) {
         <label class="field"><span>Radius (miles)</span><input name="radius" type="number" min="0.5" max="30" step="0.5" value="${esc(c.radius)}"${dis}></label>
         <label class="field"><span>Keywords per client</span><select name="keywords"${dis}>${[1, 2, 3, 4, 5].map((n) => `<option${n === c.keywords ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
         <label class="field"><span>Scan every (days)</span><input name="everyDays" type="number" min="7" max="60" value="${esc(c.everyDays)}"${dis}></label>
+        <label class="span-all row small" style="gap:8px"><input type="checkbox" name="autoSend"${c.autoSend ? ' checked' : ''}${dis}> Email each client's monthly report as soon as it is ready (otherwise it waits as a draft for you to check)</label>
         <p class="span-all small" id="ascost"></p>
         ${owner ? `<div class="span-all row end" style="gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" type="button" id="asall">Scan all clients now</button><button class="btn btn-primary" type="submit">Save</button></div>` : ''}
       </form>
       ${d.demo ? '<p class="small muted" style="margin-top:8px">DataForSEO is not connected, so scans use demo data.</p>' : ''}
+      ${d.drafts?.length ? `<h3 style="margin-top:18px">Reports waiting to send <span class="badge warn">${d.drafts.length}</span></h3>
+        <ul class="list">${d.drafts.map((r) => `<li class="item"><span class="badge warn">Draft</span><div><div class="item-title"><a href="#/client/${esc(r.client_id)}/reports">${esc(r.name)}</a></div><div class="item-sub">${esc(r.month)}</div></div><a class="btn btn-ghost btn-sm" href="#/client/${esc(r.client_id)}/reports">Check and send</a></li>`).join('')}</ul>` : ''}
       <h3 style="margin-top:18px">Recent scans${d.queued ? ` <span class="badge warn">${d.queued} waiting</span>` : ''}</h3>
       ${d.jobs.length ? `<ul class="list">${d.jobs.slice(0, 10).map((j) => jobLine(j, true)).join('')}</ul>` : '<p class="muted">None yet.</p>'}
     </div>`;
@@ -60,7 +63,7 @@ export async function autoScanCard(box, user) {
     };
     cost();
     f.addEventListener('input', cost);
-    const save = async (extra = {}) => api('/api/autoscan', { method: 'PUT', body: { size: f.size.value, radius: f.radius.value, keywords: f.keywords.value, everyDays: f.everyDays.value, ...extra } });
+    const save = async (extra = {}) => api('/api/autoscan', { method: 'PUT', body: { size: f.size.value, radius: f.radius.value, keywords: f.keywords.value, everyDays: f.everyDays.value, autoSend: f.autoSend.checked, ...extra } });
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       try { await save(); toast('Saved'); draw(); } catch (err) { toast(err.message, true); }

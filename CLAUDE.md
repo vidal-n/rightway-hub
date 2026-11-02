@@ -74,6 +74,14 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Settings card with a cost estimate, "Scan all clients now", and recent jobs. Due clients are checked every 30 minutes. Client Rankings tab: "Run scan now",
   progress strip, and a keyword trend card (latest vs previous scan). Open pages call `POST /api/autoscan/tick` every 6s while jobs wait, so scans
   move even without the cron. Locking with `locked_until` stops two runs working the same job.
+- Monthly reports (built, Phase 4 part 2, `src/reports.js`, `public/hub/reports.js`, public page `/report.html#<token>` with `public/report.js`):
+  table `reports` (one per client per month, long random token, snapshot JSON). Made automatically when a client's last scan job of a run finishes
+  (draft for that month; sent reports are never rewritten unless refreshed on purpose). Snapshot: up to 5 keywords (profile keywords first) with now,
+  before (previous scan) and start (first scan) incl. rank grids, reviews now vs start (from the scan target), review requests, tasks done by kind,
+  posts posted, QR scans, who holds the top 3, next month's plan items. Client Reports tab (make for any month, Update, Open, Copy link, Send with
+  a note); Send emails through Resend (`reportEmail`, inline styled HTML plus text) or, without email, "Mark as sent". Sending marks the month's
+  `report` task done and logs it. Owner option `autoscan.autoSend` emails reports when ready (needs `settings.autoscan_origin`, saved from owner requests).
+  Settings card lists drafts waiting to send. Client app shows sent reports above its scans. `GET /api/public/report/:token` counts views.
 - Google apps (built, `src/googleapps.js`, `public/hub/googleapps.js`, page `#/google`): per app scopes added on top of Calendar
   (`APP_SCOPES` in `src/google.js`, granted list stored in `users.google_scopes`): Sheets export (drive.file) of leads, clients, calls,
   payments; Search Console and GA4 (Data + Admin APIs) and Google Ads (GOOGLE_ADS_DEVELOPER_TOKEN, optional GOOGLE_ADS_LOGIN_CUSTOMER_ID,
@@ -90,7 +98,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).
 - GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.
 - Not built yet: publishing to Google and Meta (needs Google Business Profile API approval and Meta app review; until then posts
-  are copied and marked posted), monthly client reports (Phase 4 part 2), Google Business Profile data (Phase 5, needs API approval), content engine
+  are copied and marked posted), Google Business Profile data (Phase 5, needs API approval), content engine
   (6), call tracking (7), citations/links tracker (8), Market Leader extras (9). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

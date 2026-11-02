@@ -42,6 +42,11 @@ const SCHEMA = [
     locked_until INTEGER, created_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER)`,
   `CREATE INDEX IF NOT EXISTS scan_jobs_status ON scan_jobs (status, created_at)`,
   `CREATE INDEX IF NOT EXISTS scan_jobs_client ON scan_jobs (client_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS reports (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, month TEXT NOT NULL, token TEXT UNIQUE NOT NULL, data TEXT NOT NULL, note TEXT,
+    status TEXT NOT NULL DEFAULT 'draft', views INTEGER NOT NULL DEFAULT 0, sent_at INTEGER, sent_to TEXT, sent_by TEXT,
+    created_at INTEGER NOT NULL, updated_at INTEGER)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS reports_client_month ON reports (client_id, month)`,
   `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY, business TEXT NOT NULL, contact_name TEXT, phone TEXT, phone_digits TEXT, email TEXT, website TEXT,

@@ -147,7 +147,7 @@ export function clientForm(client, onSaved) {
 }
 
 // ---------- one client ----------
-const TABS = [['overview', 'Overview'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
+const TABS = [['overview', 'Overview'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
 
 export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   const view = staffShell(app, user, 'clients');
@@ -166,6 +166,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   if (tab === 'reviews') return renderReviews(el, c.id, { staff: true, clientName: c.name });
   if (tab === 'posts') return renderPosts(el, c.id, { staff: true, ai: state.ai });
   if (tab === 'rankings') return renderRankings(el, c.id, { staff: true });
+  if (tab === 'reports') return import('./reports.js').then((m) => m.reportsTab(el, c));
   if (tab === 'profile') return profileTab(el, c);
   if (tab === 'access') return accessTab(el, c);
   if (tab === 'billing') return billingTab(el, c);
