@@ -228,6 +228,7 @@ route('POST', '/api/twilio/cust-status', async ({ env, request, url }) => {
   else if (['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(s)) {
     const status = s === 'completed' && a.answered_at ? 'completed' : s === 'completed' ? 'no-answer' : s;
     await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', status, Number(p.CallDuration || 0), a.id);
+    if (status === 'failed') await run(env, 'UPDATE activities SET body = ? WHERE id = ?', `The line would not connect${p.SipResponseCode ? ` (code ${p.SipResponseCode})` : ''}. Check the number.`, a.id);
     if (status !== 'completed') await endConference(env, a.conf_sid || p.ConferenceSid);
   }
   return twiml('');
@@ -250,9 +251,9 @@ route('POST', '/api/twilio/recording', async ({ env, request, url }) => {
 // The rep's own call status (the call bar polls this), or any call for an owner.
 route('GET', '/api/voice/calls/:id', async ({ env, user, params }) => {
   requireStaff(user);
-  const a = await first(env, 'SELECT id, status, answered_at, duration, by, rec_sid, mon_by, mon_mode FROM activities WHERE id = ?', params.id);
+  const a = await first(env, 'SELECT id, status, answered_at, duration, by, rec_sid, mon_by, mon_mode, body FROM activities WHERE id = ?', params.id);
   if (!a || (a.by !== user.id && user.role !== 'admin')) throw new HttpError('Call not found.', 404);
-  return json({ status: a.status, answeredAt: a.answered_at, duration: a.duration, coached: Boolean(a.mon_by) });
+  return json({ status: a.status, answeredAt: a.answered_at, duration: a.duration, coached: Boolean(a.mon_by), error: a.status === 'failed' ? a.error_note || a.body || '' : '' });
 });
 
 // ---------- owner tools: live calls, listen, whisper, barge ----------

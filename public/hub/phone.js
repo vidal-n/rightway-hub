@@ -154,13 +154,17 @@ function track(call, view, { onEnd, act } = {}) {
     // Outbound runs in a conference: the rep is in the room now, the server reports when the other side rings and answers.
     set({ state: 'ringing', label: 'Ringing...' });
     let busyPoll = false;
+    const polled0 = Date.now();
+    let stuckShown = false;
     poll = setInterval(async () => {
       if (busyPoll || st.call !== call) return;
       busyPoll = true;
       try {
         const r = await api(`/api/voice/calls/${act}`);
         if (r.status === 'in-progress' && !answered) goLive();
-        if (END_LABEL[r.status]) { endLabel = END_LABEL[r.status]; clearInterval(poll); poll = null; }
+        if (END_LABEL[r.status]) { endLabel = END_LABEL[r.status]; clearInterval(poll); poll = null; if (r.error) toast(r.error, true); }
+        // The Hub never started the outside call: say so instead of sitting on "Ringing..."
+        if (r.status === 'connecting' && Date.now() - polled0 > 12000 && !stuckShown) { stuckShown = true; toast('The Hub could not start the outside call. Hang up and try again. If it keeps happening, tell V.', true); }
       } catch { /* keep trying */ } finally { busyPoll = false; }
     }, 1000);
   });
