@@ -108,7 +108,10 @@ async function stepLinks(env, body) {
 async function stepPortal(env) {
   const state = await readSetup(env);
   const found = await stripe(env, 'GET', '/billing_portal/configurations', { is_default: 'true', limit: '1' });
-  if (found.data?.[0]) return { ok: true, message: 'Client billing portal was already on.' };
+  if (found.data?.[0]) {
+    if (!state.portal) await saveSetup(env, { ...state, mode: keyMode(env), portal: found.data[0].id });
+    return { ok: true, message: 'Client billing portal was already on in Stripe. Left as it is.' };
+  }
   if (state.portal) return { ok: true, message: 'Client billing portal was already set up by the Hub.' };
   const made = await stripe(env, 'POST', '/billing_portal/configurations', {
     'business_profile[headline]': 'Rightway Growth billing',
