@@ -36,6 +36,12 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS scans (
     id TEXT PRIMARY KEY, client_id TEXT NOT NULL, keyword TEXT, created_at INTEGER NOT NULL, summary TEXT, data TEXT)`,
   `CREATE INDEX IF NOT EXISTS scans_client ON scans (client_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS scan_jobs (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, keyword TEXT NOT NULL, size INTEGER NOT NULL, radius REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued', cursor INTEGER NOT NULL DEFAULT 0, batch TEXT, by TEXT, data TEXT, scan_id TEXT, error TEXT,
+    locked_until INTEGER, created_at INTEGER NOT NULL, started_at INTEGER, finished_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS scan_jobs_status ON scan_jobs (status, created_at)`,
+  `CREATE INDEX IF NOT EXISTS scan_jobs_client ON scan_jobs (client_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY, business TEXT NOT NULL, contact_name TEXT, phone TEXT, phone_digits TEXT, email TEXT, website TEXT,

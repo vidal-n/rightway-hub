@@ -6,6 +6,7 @@ import { textModal } from './texts.js';
 import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
 import { loadDispos, keyed, dispositionModal } from './dispo.js';
 import { stripeSetup } from './stripesetup.js';
+import { autoScanCard } from './scans.js';
 import { placeCall, startPhone, onPhoneState } from './phone.js';
 import { filterLeads } from '/js/leadfilter.js';
 
@@ -700,6 +701,7 @@ export async function settingsPage(app, user) {
         <label class="field"><span>Objections (one per block: the objection on the first line, the answer below, blank line between)</span><textarea name="objections" rows="14"${isAdmin ? '' : ' disabled'}>${esc(obs.map(([q, a]) => `${q}\n${a}`).join('\n\n'))}</textarea></label>
         ${isAdmin ? '<div class="row end"><button class="btn btn-ghost" type="button" id="screset">Reset to default</button><button class="btn btn-primary" type="submit">Save script</button></div>' : ''}
       </form></div>
+    <div id="autoscan"></div>
     <div class="card"><div class="card-head"><h2>Lead research</h2></div>
       <form id="resf" class="row"><label class="field" style="flex:0 1 260px"><span>Rank check radius (miles)</span><input name="research_radius" type="number" min="0.5" max="10" step="0.5" value="${esc(s.research_radius || 2)}"${isAdmin ? '' : ' disabled'}></label>
         ${isAdmin ? '<button class="btn btn-ghost" type="submit">Save</button>' : ''}</form>
@@ -712,6 +714,7 @@ export async function settingsPage(app, user) {
       <div class="copybox"><code>${esc(formUrl)}</code><button class="btn btn-ghost btn-sm" id="cpf">Copy</button></div></div>`;
   $('#cpf', view).addEventListener('click', () => copy(formUrl, 'Form address copied'));
   stripeSetup($('#stripesetup', view), user);
+  autoScanCard($('#autoscan', view), user);
   $$('[data-copy]', view).forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, 'Copied')));
   $('#gdisc', view)?.addEventListener('click', async () => { try { await api('/api/google/disconnect', { method: 'POST' }); toast('Disconnected'); settingsPage(app, user); } catch (err) { toast(err.message, true); } });
   $('#bkset', view)?.addEventListener('submit', async (e) => {

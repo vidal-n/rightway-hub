@@ -518,6 +518,7 @@ route('DELETE', '/api/scans/:id', async ({ env, user, params }) => {
 import './crm.js';
 import './billing.js';
 import './stripesetup.js';
+import './autoscan.js';
 import './workorders.js';
 import './calls.js';
 import './sms.js';

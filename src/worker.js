@@ -8,6 +8,7 @@ import baked from './runtime-secrets.js';
 import { handleHub, handleReviewRedirect } from './hub.js';
 import { ensureSchema } from './db.js';
 import { currentUser, isStaff } from './auth.js';
+import { autoScanTick } from './autoscan.js';
 
 // Runtime secrets (dashboard) win; build-time secrets fill any gaps.
 export function withSecrets(env, extra = baked) {
@@ -17,6 +18,12 @@ export function withSecrets(env, extra = baked) {
 }
 
 export default {
+  // Cron trigger (every minute): work on the automatic scan queue.
+  async scheduled(_event, rawEnv, ctx) {
+    const env = withSecrets(rawEnv || {});
+    if (!env.DB) return;
+    ctx.waitUntil((async () => { await ensureSchema(env); await autoScanTick(env); })().catch((e) => console.error('autoscan', e)));
+  },
   async fetch(request, rawEnv) {
     const env = withSecrets(rawEnv || {});
     const url = new URL(request.url);

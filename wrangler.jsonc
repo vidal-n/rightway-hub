@@ -17,6 +17,8 @@
   "r2_buckets": [
     { "binding": "MEDIA", "bucket_name": "rightway-media" }
   ],
+  // Every minute: works through the automatic ranking scan queue (does nothing when it is empty).
+  "triggers": { "crons": ["* * * * *"] },
   // Keep variables and secrets added in the Cloudflare dashboard when deploying from GitHub.
   "keep_vars": true,
   // Copies Build secrets into the Worker (see scripts/bake-secrets.mjs).

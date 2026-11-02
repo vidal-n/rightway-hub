@@ -4,6 +4,7 @@ import { qrSvg } from '../js/qr.js';
 import { createMap } from '../js/map.js';
 import { gridStats } from '../js/grid.js';
 import { leaderboard } from '../js/analysis.js';
+import { trendCard, scanProgress, runScanNow } from './scans.js';
 
 // ---------- activity ----------
 export function feedHtml(items, empty = 'Nothing logged yet this month.') {
@@ -213,19 +214,26 @@ export async function renderRankings(el, clientId, { staff = false } = {}) {
   el.innerHTML = '<div class="skeleton"></div>';
   let scans;
   try { ({ scans } = await api(`/api/clients/${clientId}/scans`)); } catch (e) { el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  const prog = staff ? '<div id="rk-prog"></div>' : '';
   if (!scans.length) {
-    el.innerHTML = `<div class="card empty"><h3>No ranking scans yet</h3><p>${staff ? 'Run a scan and save it to this client.' : 'Your first map scan shows up here.'}</p>
-      ${staff ? `<a class="btn btn-primary" href="/scan.html?client=${esc(clientId)}">${icon.scan}Run a scan</a>` : ''}</div>`;
-    return;
-  }
-  el.innerHTML = `
+    el.innerHTML = `${prog}<div class="card empty"><h3>No ranking scans yet</h3><p>${staff ? 'Run a scan now, or turn on monthly scans in Settings.' : 'Your first map scan shows up here.'}</p>
+      ${staff ? `<div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="rk-run">${icon.scan}Run scan now</button><a class="btn btn-ghost" href="/scan.html?client=${esc(clientId)}">Open the scan tool</a></div>` : ''}</div>`;
+  } else {
+    el.innerHTML = `${prog}${trendCard(scans)}
     <div class="card" id="rk-view"><div class="skeleton"></div></div>
     <div class="card">
-      <div class="card-head"><h2>All scans</h2>${staff ? `<a class="btn btn-primary btn-sm" href="/scan.html?client=${esc(clientId)}">${icon.scan}New scan</a>` : ''}</div>
+      <div class="card-head"><h2>All scans</h2>${staff ? `<div class="row" style="gap:8px"><button class="btn btn-ghost btn-sm" id="rk-run">${icon.scan}Run scan now</button><a class="btn btn-primary btn-sm" href="/scan.html?client=${esc(clientId)}">New scan</a></div>` : ''}</div>
       <div class="table-wrap"><table><thead><tr><th>Date</th><th>Keyword</th><th>Top 3 coverage</th><th>Avg rank</th><th>At address</th></tr></thead>
       <tbody>${scans.map((s, i) => `<tr data-scan="${esc(s.id)}" style="cursor:pointer"${i === 0 ? ' class="is-you"' : ''}>
         <td>${esc(fmt.date(s.created_at))}</td><td>${esc(s.keyword)}</td><td>${s.top3Pct ?? '-'}%</td><td>${s.avgRank ?? '-'}</td><td>${s.centerRank ? `#${s.centerRank}` : '20+'}</td></tr>`).join('')}</tbody></table></div>
     </div>`;
+  }
+  if (staff) {
+    const again = () => renderRankings(el, clientId, { staff });
+    scanProgress($('#rk-prog', el), clientId, again);
+    $('#rk-run', el)?.addEventListener('click', async (e) => { if (await runScanNow(clientId, e.currentTarget)) scanProgress($('#rk-prog', el), clientId, again); });
+  }
+  if (!scans.length) return;
   const show = async (id) => {
     $$('tr[data-scan]', el).forEach((tr) => tr.classList.toggle('is-you', tr.dataset.scan === id));
     const view = $('#rk-view', el);

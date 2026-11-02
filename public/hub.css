@@ -507,3 +507,9 @@ ul.plain, ol.plain { padding-left: 20px; margin: 0 0 12px; } ul.plain li, ol.pla
 .chg { font-weight: 600; } .chg.up { color: var(--good); } .chg.down { color: var(--bad); }
 .gapps > .card, .pay-grid > .card, .web-grid > .card { margin: 0; }
 .pc-val { font-family: var(--body); }
+
+/* Automatic scans */
+.good-text { color: var(--accent); }
+#rk-prog > .card, #autoscan > .card, #stripesetup > .card { margin-top: 0; }
+#rk-prog:not(:empty), #autoscan:not(:empty), #stripesetup:not(:empty) { margin-bottom: 18px; }
+.card + #autoscan:not(:empty), .card + #stripesetup:not(:empty) { margin-top: 18px; }
