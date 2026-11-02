@@ -184,6 +184,38 @@ async function endConference(env, confSid) {
   if (confSid) await twilioPost(env, `Conferences/${confSid}.json`, { Status: 'completed' }).catch(() => {});
 }
 
+// Dial the number into the room. Safe to call twice (webhook and fallback): only the first caller dials.
+async function startCustomer(env, a, confSid, origin) {
+  const claim = await run(env, "UPDATE activities SET cust_sid = 'dialing' WHERE id = ? AND cust_sid IS NULL", a.id);
+  if (!claim?.meta?.changes) return;
+  const f = new URLSearchParams({
+    From: a.from_num || env.TWILIO_FROM, To: a.to_num, EarlyMedia: 'true', Beep: 'false', EndConferenceOnExit: 'true', Timeout: '30', Label: 'customer',
+    StatusCallback: `${origin}/api/twilio/cust-status?a=${a.id}`,
+  });
+  for (const e of ['initiated', 'ringing', 'answered', 'completed']) f.append('StatusCallbackEvent', e);
+  try {
+    const part = await twilioPost(env, `Conferences/${confSid}/Participants.json`, f);
+    await run(env, 'UPDATE activities SET cust_sid = ?, conf_sid = ? WHERE id = ?', part.call_sid || 'unknown', confSid, a.id);
+  } catch (e) {
+    await run(env, "UPDATE activities SET status = 'failed', body = ? WHERE id = ?", String(e.message).slice(0, 300), a.id);
+    await endConference(env, confSid);
+  }
+}
+
+// One place that turns the outside line's Twilio status into our call status.
+async function applyCustStatus(env, a, s, duration = 0, sip = '') {
+  if (s === 'ringing') await run(env, "UPDATE activities SET status = 'ringing' WHERE id = ? AND status = 'connecting'", a.id);
+  else if (s === 'in-progress') await run(env, "UPDATE activities SET status = 'in-progress', answered_at = COALESCE(answered_at, ?) WHERE id = ? AND status IN ('connecting','ringing','in-progress')", now(), a.id);
+  else if (['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(s)) {
+    const fresh = await first(env, 'SELECT status, answered_at FROM activities WHERE id = ?', a.id);
+    if (['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(fresh?.status)) return;
+    const status = s === 'completed' && fresh?.answered_at ? 'completed' : s === 'completed' ? 'no-answer' : s;
+    await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', status, Number(duration || 0), a.id);
+    if (status === 'failed') await run(env, 'UPDATE activities SET body = ? WHERE id = ?', `The line would not connect${sip ? ` (code ${sip})` : ''}. Check the number.`, a.id);
+    if (status !== 'completed') await endConference(env, a.conf_sid);
+  }
+}
+
 route('POST', '/api/twilio/conf-status', async ({ env, request, url }) => {
   const p = await verifiedParams(env, request);
   const a = await first(env, 'SELECT * FROM activities WHERE id = ?', url.searchParams.get('a') || '');
@@ -191,20 +223,7 @@ route('POST', '/api/twilio/conf-status', async ({ env, request, url }) => {
   const ev = p.StatusCallbackEvent;
   if (ev === 'conference-start') {
     await run(env, 'UPDATE activities SET conf_sid = ? WHERE id = ?', p.ConferenceSid || null, a.id);
-    const claim = await run(env, "UPDATE activities SET cust_sid = 'dialing' WHERE id = ? AND cust_sid IS NULL", a.id);
-    if (!claim?.meta?.changes) return twiml('');
-    const f = new URLSearchParams({
-      From: a.from_num || env.TWILIO_FROM, To: a.to_num, EarlyMedia: 'true', Beep: 'false', EndConferenceOnExit: 'true', Timeout: '30', Label: 'customer',
-      StatusCallback: `${url.origin}/api/twilio/cust-status?a=${a.id}`,
-    });
-    for (const e of ['initiated', 'ringing', 'answered', 'completed']) f.append('StatusCallbackEvent', e);
-    try {
-      const part = await twilioPost(env, `Conferences/${p.ConferenceSid}/Participants.json`, f);
-      await run(env, 'UPDATE activities SET cust_sid = ? WHERE id = ?', part.call_sid || 'unknown', a.id);
-    } catch (e) {
-      await run(env, "UPDATE activities SET status = 'failed', body = ? WHERE id = ?", String(e.message).slice(0, 300), a.id);
-      await endConference(env, p.ConferenceSid);
-    }
+    await startCustomer(env, a, p.ConferenceSid, url.origin);
   } else if (ev === 'conference-end') {
     // The rep hung up while it was still ringing: stop the outside call too.
     if (a.cust_sid && a.cust_sid.startsWith('CA') && !a.answered_at) {
@@ -221,16 +240,7 @@ route('POST', '/api/twilio/conf-status', async ({ env, request, url }) => {
 route('POST', '/api/twilio/cust-status', async ({ env, request, url }) => {
   const p = await verifiedParams(env, request);
   const a = await first(env, 'SELECT * FROM activities WHERE id = ?', url.searchParams.get('a') || '');
-  if (!a) return twiml('');
-  const s = p.CallStatus;
-  if (s === 'ringing') await run(env, "UPDATE activities SET status = 'ringing' WHERE id = ? AND status = 'connecting'", a.id);
-  else if (s === 'in-progress') await run(env, "UPDATE activities SET status = 'in-progress', answered_at = ? WHERE id = ?", now(), a.id);
-  else if (['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(s)) {
-    const status = s === 'completed' && a.answered_at ? 'completed' : s === 'completed' ? 'no-answer' : s;
-    await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', status, Number(p.CallDuration || 0), a.id);
-    if (status === 'failed') await run(env, 'UPDATE activities SET body = ? WHERE id = ?', `The line would not connect${p.SipResponseCode ? ` (code ${p.SipResponseCode})` : ''}. Check the number.`, a.id);
-    if (status !== 'completed') await endConference(env, a.conf_sid || p.ConferenceSid);
-  }
+  if (a) await applyCustStatus(env, { ...a, conf_sid: a.conf_sid || p.ConferenceSid }, p.CallStatus, p.CallDuration, p.SipResponseCode);
   return twiml('');
 }, { public: true });
 
@@ -249,11 +259,31 @@ route('POST', '/api/twilio/recording', async ({ env, request, url }) => {
 }, { public: true });
 
 // The rep's own call status (the call bar polls this), or any call for an owner.
-route('GET', '/api/voice/calls/:id', async ({ env, user, params }) => {
+const lastSync = new Map();
+route('GET', '/api/voice/calls/:id', async ({ env, user, params, url }) => {
   requireStaff(user);
-  const a = await first(env, 'SELECT id, status, answered_at, duration, by, rec_sid, mon_by, mon_mode, body FROM activities WHERE id = ?', params.id);
+  let a = await first(env, 'SELECT * FROM activities WHERE id = ?', params.id);
   if (!a || (a.by !== user.id && user.role !== 'admin')) throw new HttpError('Call not found.', 404);
-  return json({ status: a.status, answeredAt: a.answered_at, duration: a.duration, coached: Boolean(a.mon_by), error: a.status === 'failed' ? a.error_note || a.body || '' : '' });
+  // Webhooks can be late or lost, so while the call is live we also ask Twilio directly (at most every 1.5 seconds per call).
+  const live = ['connecting', 'ringing', 'in-progress'].includes(a.status);
+  if (live && a.to_num && a.call_sid && now() - a.at < 3600e3 && now() - (lastSync.get(a.id) || 0) > 1500) {
+    lastSync.set(a.id, now());
+    if (lastSync.size > 200) lastSync.clear();
+    try {
+      if (!a.cust_sid && now() - a.at > 2500) {
+        const q = new URLSearchParams({ FriendlyName: room(a.id), Status: 'in-progress' });
+        const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Conferences.json?${q}`, { headers: { Authorization: twAuth(env) } });
+        const conf = (await res.json().catch(() => ({}))).conferences?.[0];
+        if (conf?.sid) { await run(env, 'UPDATE activities SET conf_sid = ? WHERE id = ?', conf.sid, a.id); await startCustomer(env, a, conf.sid, url.origin); }
+      } else if (a.cust_sid?.startsWith('CA')) {
+        const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Calls/${a.cust_sid}.json`, { headers: { Authorization: twAuth(env) } });
+        const c = await res.json().catch(() => ({}));
+        if (res.ok && c.status && c.status !== 'queued') await applyCustStatus(env, a, c.status, c.duration, '');
+      }
+    } catch { /* the webhooks may still catch up */ }
+    a = await first(env, 'SELECT * FROM activities WHERE id = ?', params.id);
+  }
+  return json({ status: a.status, answeredAt: a.answered_at, duration: a.duration, coached: Boolean(a.mon_by), error: a.status === 'failed' ? a.body || '' : '' });
 });
 
 // ---------- owner tools: live calls, listen, whisper, barge ----------

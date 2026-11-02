@@ -29,6 +29,7 @@ const hook = async (t, path, params) => t.call('POST', path, new URLSearchParams
 
 function mockTwilio() {
   const seen = [];
+  const state = { cust: 'queued' };
   const real = globalThis.fetch;
   globalThis.fetch = async (u, init = {}) => {
     const s = String(u);
@@ -38,14 +39,15 @@ function mockTwilio() {
     if (s.includes('/Participants.json')) return Response.json({ call_sid: 'CAcust1', conference_sid: 'CFroom1' }, { status: 201 });
     if (/\/Participants\/CA[^/]+\.json$/.test(s)) return Response.json({ ok: true });
     if (/\/Conferences\/CF[^/]+\.json$/.test(s)) return Response.json({ status: 'completed' });
-    if (/\/Calls\/CA[^/]+\.json$/.test(s)) return Response.json({ status: 'canceled' });
+    if (/\/Calls\/CA[^/]+\.json$/.test(s)) return Response.json({ status: init.method === 'POST' ? 'canceled' : state.cust, duration: '7' });
+    if (s.includes('/Conferences.json?')) return Response.json({ conferences: [{ sid: 'CFlost1' }] });
     if (/\/Recordings\/RE[^/]+\.mp3$/.test(s)) return new Response('ID3fakeaudio', { status: 200, headers: { 'content-type': 'audio/mpeg', 'content-length': '12' } });
     if (/\/Recordings\/RE[^/]+\.json$/.test(s)) return new Response(null, { status: 204 });
     if (/\/IncomingPhoneNumbers\/PN[^/]+\.json$/.test(s)) return Response.json({ sid: 'PN1' });
     if (s.includes('IncomingPhoneNumbers')) return Response.json({ incoming_phone_numbers: [{ sid: 'PN' + 'a'.repeat(32), phone_number: '+13055073393', capabilities: { voice: true }, voice_url: 'https://hub.test/api/twilio/voice', sms_url: '' }, { sid: 'PN' + 'b'.repeat(32), phone_number: '+19547374725', capabilities: { voice: true }, voice_url: '', sms_url: '' }] });
     return real(u, init);
   };
-  return { seen, restore: () => { globalThis.fetch = real; } };
+  return { seen, state, restore: () => { globalThis.fetch = real; } };
 }
 
 test('voice token is a Twilio access token signed with the key secret', async () => {
@@ -113,10 +115,11 @@ test('browser calling: owner token sets up Twilio once, prepared calls dial from
     assert.equal(parts[0].body.get('To'), '+19545550188');
     assert.equal(parts[0].body.get('EarlyMedia'), 'true');
     r = await t.call('GET', `/api/voice/calls/${act}`);
-    assert.equal(r.data.status, 'connecting');
+    assert.equal(r.data.status, 'connecting'); // Twilio still says queued
     await hook(t, `/api/twilio/cust-status?a=${act}`, { CallStatus: 'ringing' });
     assert.equal((await t.call('GET', `/api/voice/calls/${act}`)).data.status, 'ringing');
     await hook(t, `/api/twilio/cust-status?a=${act}`, { CallStatus: 'in-progress' });
+    m.state.cust = 'in-progress';
     assert.equal((await t.call('GET', `/api/voice/calls/${act}`)).data.status, 'in-progress');
     // Owner sees it live and can join to listen, then switch to whisper and barge
     r = await t.call('GET', '/api/voice/live');
@@ -137,11 +140,30 @@ test('browser calling: owner token sets up Twilio once, prepared calls dial from
     r = await hook(t, '/api/twilio/client-voice', { monitor: act, mode: 'listen', From: 'client:rw_nobody', CallSid: 'CAx' });
     assert.match(r.data, /Only an owner/);
     // Call ends: duration saved, nothing live
+    m.state.cust = 'completed';
     await hook(t, `/api/twilio/cust-status?a=${act}`, { CallStatus: 'completed', CallDuration: '95' });
     assert.equal((await t.call('GET', `/api/voice/calls/${act}`)).data.duration, 95);
     assert.equal((await t.call('GET', '/api/voice/live')).data.calls.length, 0);
     r = await t.call('GET', '/api/dialer/recent');
     assert.equal(r.data.calls.length, 1);
+
+    // Webhooks lost: the Hub still finds the room, dials the number, and follows the call by asking Twilio
+    m.state.cust = 'queued';
+    const actL = (await t.call('POST', '/api/voice/prepare', { to: '7865550999' })).data.activityId;
+    await hook(t, '/api/twilio/client-voice', { act: actL, From: `client:${identity}`, CallSid: 'CAagentL' });
+    await new Promise((res) => setTimeout(res, 2600));
+    r = await t.call('GET', `/api/voice/calls/${actL}`);
+    assert.ok(m.seen.some((x) => x.url.endsWith('/Conferences/CFlost1/Participants.json')));
+    await new Promise((res) => setTimeout(res, 1600));
+    m.state.cust = 'ringing';
+    assert.equal((await t.call('GET', `/api/voice/calls/${actL}`)).data.status, 'ringing');
+    await new Promise((res) => setTimeout(res, 1600));
+    m.state.cust = 'in-progress';
+    assert.equal((await t.call('GET', `/api/voice/calls/${actL}`)).data.status, 'in-progress');
+    await new Promise((res) => setTimeout(res, 1600));
+    m.state.cust = 'completed';
+    assert.equal((await t.call('GET', `/api/voice/calls/${actL}`)).data.status, 'completed');
+    m.state.cust = 'queued';
 
     // Recording on: next call records from the start, and the finished recording is playable
     r = await t.call('PUT', '/api/voice/setup', { recording: true });
