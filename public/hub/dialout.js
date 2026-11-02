@@ -3,6 +3,7 @@
 import { $, $$, esc, api, toast, busy } from './core.js';
 import { staffShell } from './staff.js';
 import { placeCall, startPhone, phoneState, onPhoneState, picon, pretty } from './phone.js';
+import { dispositionModal } from './dispo.js';
 
 const KEY = 'rw-caller-id';
 export const savedCaller = () => { try { return localStorage.getItem(KEY) || ''; } catch { return ''; } };
@@ -52,7 +53,7 @@ export async function dialOutPage(app, user) {
   if (me.twilio) startPhone().catch(() => {});
   const recentHtml = () => (recent.calls.length ? recent.calls.map((c) => {
     const num = (c.body || '').replace('Manual dial to ', '').split(' from ')[0];
-    return `<button type="button" class="recent-row" data-redial="${esc(num)}"><span><b>${esc(c.business || pretty(num))}</b><small>${esc(c.business ? pretty(num) : '')}</small></span><span class="muted small">${esc(new Date(c.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}${c.duration ? ` · ${Math.floor(c.duration / 60)}m ${c.duration % 60}s` : ''}</span></button>`;
+    return `<button type="button" class="recent-row" data-redial="${esc(num)}"><span><b>${esc(c.business || pretty(num))}</b><small>${esc(c.business ? pretty(num) : '')}</small></span><span class="muted small">${c.dispo ? `<span class="badge gray">${esc(c.dispo)}</span> ` : ''}${esc(new Date(c.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}${c.duration ? ` · ${Math.floor(c.duration / 60)}m ${c.duration % 60}s` : ''}</span></button>`;
   }).join('') : '<p class="small muted">Numbers you dial show up here.</p>');
 
   view.innerHTML = `
@@ -88,7 +89,13 @@ export async function dialOutPage(app, user) {
     const btn = $('#dgo', view);
     busy(btn, true);
     try {
-      await placeCall({ to: input.value.trim(), from: from(), onEnd: async () => { try { recent = await api('/api/dialer/recent'); const el = $('#drecent', view); if (el) el.innerHTML = recentHtml(); } catch { /* ignore */ } } });
+      const refresh = async () => { try { recent = await api('/api/dialer/recent'); const el = $('#drecent', view); if (el) el.innerHTML = recentHtml(); } catch { /* ignore */ } };
+      await placeCall({ to: input.value.trim(), from: from(), onEnd: (r) => {
+        refresh();
+        dispositionModal({ title: r.name || pretty(r.to), sub: r.leadId ? 'This number is a lead. The result moves it to the right next step.' : '', answered: r.answered,
+          askLead: !r.leadId, number: pretty(r.to),
+          onSave: async (d) => { const res = await api(`/api/voice/calls/${r.activityId}/disposition`, { method: 'POST', body: d }); toast(res.leadId && !r.leadId ? 'Saved and added as a lead' : 'Saved'); refresh(); } });
+      } });
     } catch (err) { toast(err.message, true); } finally { busy(btn, false); }
   });
   input.focus();

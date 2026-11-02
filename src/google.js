@@ -9,6 +9,19 @@ import { openSlots } from '../public/js/slots.js';
 import { dupKeys } from '../public/js/leadintel.js';
 
 const SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/calendar.events'];
+// Extra Google apps a user can turn on. Each adds its scope on top of what they already granted.
+export const APP_SCOPES = {
+  sheets: 'https://www.googleapis.com/auth/drive.file',
+  gsc: 'https://www.googleapis.com/auth/webmasters.readonly',
+  ga: 'https://www.googleapis.com/auth/analytics.readonly',
+  ads: 'https://www.googleapis.com/auth/adwords',
+};
+export function grantedApps(scopeStr) {
+  const s = String(scopeStr || '');
+  const apps = Object.entries(APP_SCOPES).filter(([, sc]) => s.includes(sc)).map(([k]) => k);
+  if (s.includes('calendar')) apps.unshift('calendar');
+  return apps;
+}
 const API = 'https://www.googleapis.com/calendar/v3';
 export const googleReady = (env) => Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 
@@ -115,27 +128,34 @@ const AGENDA = (business) => [
 // ---------- routes ----------
 route('GET', '/api/google/status', async ({ env, user }) => {
   requireStaff(user);
-  const row = await first(env, 'SELECT google_email, google_token FROM users WHERE id = ?', user.id);
+  const row = await first(env, 'SELECT google_email, google_token, google_scopes FROM users WHERE id = ?', user.id);
   const cfg = await bookingConfig(env);
   const owner = await bookingOwner(env, cfg);
-  return json({ ready: googleReady(env), connected: Boolean(row?.google_token), email: row?.google_email || null, booking: { ...cfg, ownerEmail: owner?.google_email || null } });
+  const team = await all(env, "SELECT name, email, google_email, google_scopes FROM users WHERE google_token IS NOT NULL AND role IN ('admin','team')");
+  return json({ ready: googleReady(env), connected: Boolean(row?.google_token), email: row?.google_email || null,
+    apps: row?.google_token ? (row.google_scopes ? grantedApps(row.google_scopes) : ['calendar']) : [],
+    teamApps: [...new Set(team.flatMap((u) => (u.google_scopes ? grantedApps(u.google_scopes) : ['calendar'])))],
+    adsToken: Boolean(env.GOOGLE_ADS_DEVELOPER_TOKEN),
+    booking: { ...cfg, ownerEmail: owner?.google_email || null } });
 });
 
 route('GET', '/api/google/connect', async ({ env, user, url }) => {
   requireStaff(user);
   if (!googleReady(env)) throw new HttpError('Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloudflare first.', 503);
-  const state = token(18);
+  const apps = (url.searchParams.get('apps') || '').split(',').filter((a) => APP_SCOPES[a]);
+  const state = `${token(18)}${url.searchParams.get('back') === 'google' ? '_g' : ''}`;
   await run(env, 'DELETE FROM oauth_states WHERE at < ?', now() - 600e3);
   await run(env, 'INSERT INTO oauth_states (state, user_id, at) VALUES (?, ?, ?)', state, user.id, now());
   const q = new URLSearchParams({
-    client_id: env.GOOGLE_CLIENT_ID, redirect_uri: `${url.origin}/api/google/callback`, response_type: 'code', scope: SCOPES.join(' '),
+    client_id: env.GOOGLE_CLIENT_ID, redirect_uri: `${url.origin}/api/google/callback`, response_type: 'code', scope: [...SCOPES, ...apps.map((a) => APP_SCOPES[a])].join(' '),
     access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state, login_hint: user.email,
   });
   return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${q}`, 302);
 });
 
 route('GET', '/api/google/callback', async ({ env, user, url }) => {
-  const back = (msg) => Response.redirect(`${url.origin}/?google=${encodeURIComponent(msg)}#/settings`, 302);
+  const toPage = (url.searchParams.get('state') || '').endsWith('_g') ? 'google' : 'settings';
+  const back = (msg) => Response.redirect(`${url.origin}/?google=${encodeURIComponent(msg)}#/${toPage}`, 302);
   if (!user) return back('Log in to the Hub first, then connect Google.');
   const st = await first(env, 'SELECT * FROM oauth_states WHERE state = ?', url.searchParams.get('state') || '');
   if (st) await run(env, 'DELETE FROM oauth_states WHERE state = ?', st.state);
@@ -149,14 +169,14 @@ route('GET', '/api/google/callback', async ({ env, user, url }) => {
   if (!res.ok || !data.refresh_token) return back(data.error_description || 'Google did not return a connection. Remove the Hub under your Google account permissions and try again.');
   let email = null;
   try { email = JSON.parse(atob(data.id_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || null; } catch { email = null; }
-  await run(env, 'UPDATE users SET google_token = ?, google_email = ? WHERE id = ?', await seal(env, data.refresh_token), email, user.id);
+  await run(env, 'UPDATE users SET google_token = ?, google_email = ?, google_scopes = ? WHERE id = ?', await seal(env, data.refresh_token), email, data.scope || null, user.id);
   cache.delete(user.id);
   return back('ok');
 });
 
 route('POST', '/api/google/disconnect', async ({ env, user }) => {
   requireStaff(user);
-  await run(env, 'UPDATE users SET google_token = NULL, google_email = NULL WHERE id = ?', user.id);
+  await run(env, 'UPDATE users SET google_token = NULL, google_email = NULL, google_scopes = NULL WHERE id = ?', user.id);
   cache.delete(user.id);
   return json({ ok: true });
 });

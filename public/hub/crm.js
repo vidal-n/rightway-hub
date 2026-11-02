@@ -4,6 +4,7 @@ import { staffShell } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache } from './prep.js';
 import { textModal } from './texts.js';
 import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
+import { loadDispos, keyed, dispositionModal } from './dispo.js';
 import { placeCall, startPhone, onPhoneState } from './phone.js';
 import { filterLeads } from '/js/leadfilter.js';
 
@@ -13,6 +14,7 @@ export const STAGE_LABEL = {
 };
 const BOARD = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won'];
 const CLOSED = ['not_now', 'lost', 'dnc'];
+// Built in results, used until the custom list loads and for older call records.
 const OUTCOMES = [
   ['no_answer', 'No answer', '1'], ['voicemail', 'Voicemail', '2'], ['gatekeeper', 'Gatekeeper', '3'], ['conversation', 'Talked, follow up', '4'],
   ['booked', 'Booked audit', '5'], ['callback', 'Callback', '6'], ['not_interested', 'Not interested', '7'], ['bad_number', 'Bad number', '8'], ['dnc', 'Do not call', '9'],
@@ -24,6 +26,9 @@ const dueText = (ms) => {
   const h = Math.round(d / 3600e3);
   return h < 24 ? `in ${h} h` : `in ${Math.round(h / 24)} d`;
 };
+let DISP = keyed(OUTCOMES.map(([id, label]) => ({ id, label, acts: id })));
+const dispoOf = (id) => DISP.find((d) => d.id === id) || { id, label: id, acts: id };
+async function refreshDispos() { try { DISP = keyed((await loadDispos()).dispositions); } catch { /* keep the built in list */ } }
 let REP = '';
 export const setRep = (user) => { REP = (user?.name || '').split(' ')[0] || ''; };
 const telHref = (p) => `tel:${String(p || '').replace(/[^\d+]/g, '')}`;
@@ -291,7 +296,7 @@ export async function leadModal(id, onChange) {
   let changed = false;
   const m = modal('<div class="skeleton"></div>', { onClose: () => { if (changed) onChange?.(); } });
   let data;
-  try { data = await api(`/api/leads/${id}`); } catch (e) { m.el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  try { [data] = await Promise.all([api(`/api/leads/${id}`), refreshDispos()]); } catch (e) { m.el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const l = data.lead;
   m.el.innerHTML = `
     <div class="card-head"><div><p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · ${l.attempts} attempts` : ''}</p><h2>${esc(l.business)}</h2>
@@ -312,7 +317,7 @@ export async function leadModal(id, onChange) {
     <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
       <div>
         <h3>Log a call</h3>
-        <div class="outcomes">${OUTCOMES.map(([k, n]) => `<button class="btn btn-ghost btn-sm" data-out="${k}">${n}</button>`).join('')}</div>
+        <div class="outcomes">${DISP.map((d) => `<button class="btn btn-ghost btn-sm" data-out="${esc(d.id)}">${esc(d.label)}</button>`).join('')}</div>
         <label class="field" style="margin-top:10px"><span>Callback or audit time (for Callback and Booked)</span><input type="datetime-local" id="lwhen"></label>
         <label class="field" style="margin-top:10px"><span>Note</span><textarea id="lnote" rows="3" placeholder="What happened on the call"></textarea></label>
         <div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="lnotebtn">Save note only</button>
@@ -346,10 +351,11 @@ export async function leadModal(id, onChange) {
   $('#ledit', m.el).addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); });
   $$('[data-out]', m.el).forEach((b) => b.addEventListener('click', async () => {
     const outcome = b.dataset.out;
+    const acts = dispoOf(outcome).acts;
     const when = $('#lwhen', m.el).value;
-    if ((outcome === 'callback' || outcome === 'booked') && !when) return toast('Pick the date and time first.', true);
+    if ((acts === 'callback' || acts === 'booked') && !when) return toast('Pick the date and time first.', true);
     busy(b, true);
-    try { await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { outcome, note: $('#lnote', m.el).value, callbackAt: when || null } }); toast('Logged'); done(); }
+    try { await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note: $('#lnote', m.el).value, callbackAt: when || null } }); toast('Logged'); done(); }
     catch (err) { toast(err.message, true); busy(b, false); }
   }));
   $('#lnotebtn', m.el).addEventListener('click', async () => {
@@ -397,7 +403,7 @@ export async function leadModal(id, onChange) {
 
 function activityText(a) {
   if (a.type === 'call') {
-    const o = OUTCOMES.find(([k]) => k === a.outcome);
+    const o = a.dispo ? [a.outcome, a.dispo] : OUTCOMES.find(([k]) => k === a.outcome);
     return `Call${o ? `: ${o[1]}` : a.status ? ` (${a.status.replace(/_/g, ' ')})` : ''}${a.duration ? `, ${Math.floor(a.duration / 60)}m ${a.duration % 60}s` : ''}`;
   }
   if (a.type === 'note') return 'Note';
@@ -498,6 +504,7 @@ export async function dialerPage(app, user) {
   let me, q, cal, nums = { numbers: [] };
   try { [me, q, cal, nums] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] })), api('/api/dialer/numbers').catch(() => ({ numbers: [] }))]); }
   catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  await refreshDispos();
   if (me.twilio) startPhone().catch(() => {});
   const offPhone = onPhoneState((st) => { if (!document.body.contains(view)) return offPhone(); const b = $('#pbadge', view); if (b) b.innerHTML = phoneBadge(st); });
   let idx = 0;
@@ -565,7 +572,7 @@ export async function dialerPage(app, user) {
           </div>
           <div class="card">
             <h3>How did it go?</h3>
-            <div class="outcomes big">${OUTCOMES.map(([k, n, key]) => `<button class="btn btn-ghost" data-out="${k}"><span class="kbd">${key}</span>${n}</button>`).join('')}</div>
+            <div class="outcomes big">${DISP.map((d) => `<button class="btn btn-ghost" data-out="${esc(d.id)}">${d.key ? `<span class="kbd">${d.key}</span>` : ''}${esc(d.label)}</button>`).join('')}</div>
             <label class="field" style="margin-top:12px"><span>Callback or audit time</span><input type="datetime-local" id="dwhen"></label>
             <label class="field" style="margin-top:10px"><span>Note</span><textarea id="dnote" rows="3" placeholder="Job value, capacity, who handles marketing, what they said"></textarea></label>
             <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" id="dskip">Skip for now</button><button class="btn btn-ghost btn-sm" id="dbook">Booked: send Meet invite</button><span class="small">Keys 1 to 9 log an outcome.</span></div>
@@ -583,36 +590,48 @@ export async function dialerPage(app, user) {
     $('#dskip', view).addEventListener('click', () => { idx++; render(); });
     $('#dopen', view).addEventListener('click', () => leadModal(l.id, () => {}));
     $('#dtext', view).addEventListener('click', () => textModal(l, { rep: REP }));
-    $('#dbook', view).addEventListener('click', () => bookModal(l, () => logOutcome('booked', $('[data-out="booked"]', view), true)));
+    const bookedId = (DISP.find((d) => d.acts === 'booked') || { id: 'booked' }).id;
+    $('#dbook', view).addEventListener('click', () => bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true)));
     const callerVal = bindCaller(view);
     $('#dhub', view)?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       busy(btn, true);
-      try { await placeCall({ leadId: l.id, from: callerVal(), name: l.business, onEnd: () => $('#dnote', view)?.focus() }); }
+      try {
+        await placeCall({ leadId: l.id, from: callerVal(), name: l.business, onEnd: ({ answered }) => {
+          if (q.queue[idx]?.id !== l.id) return;
+          dispositionModal({ title: l.business, sub: answered ? 'Pick how it went. It moves the lead to the right next step.' : 'No one picked up? Pick the result.', answered,
+            onSave: async (r) => {
+              const note = $('#dnote', view); if (note && r.note) note.value = [note.value, r.note].filter(Boolean).join('\n');
+              const w = $('#dwhen', view); if (w && r.callbackAt) w.value = r.callbackAt;
+              await logOutcome(r.dispo, $(`[data-out="${r.dispo}"]`, view));
+            } });
+        } });
+      }
       catch (err) { toast(err.message, true); } finally { busy(btn, false); }
     });
     $$('[data-out]', view).forEach((b) => b.addEventListener('click', () => logOutcome(b.dataset.out, b)));
   };
   const logOutcome = async (outcome, btn, alreadyBooked = false) => {
     const l = q.queue[idx];
+    const acts = dispoOf(outcome).acts;
     const when = $('#dwhen', view)?.value;
-    if (outcome === 'callback' && !when) return toast('Pick the date and time first.', true);
-    if (outcome === 'booked' && !when && !alreadyBooked) return bookModal(l, () => logOutcome('booked', btn, true));
+    if (acts === 'callback' && !when) return toast('Pick the date and time first.', true);
+    if (acts === 'booked' && !when && !alreadyBooked) return bookModal(l, () => logOutcome(outcome, btn, true));
     busy(btn, true);
     try {
-      if (!(alreadyBooked && outcome === 'booked')) await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { outcome, note: $('#dnote', view).value, callbackAt: when || null } });
+      if (!(alreadyBooked && acts === 'booked')) await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note: $('#dnote', view).value, callbackAt: when || null } });
       else if ($('#dnote', view).value) await api(`/api/leads/${l.id}/note`, { method: 'POST', body: { text: $('#dnote', view).value } });
       q.stats.dials++;
-      if (['conversation', 'booked', 'callback', 'not_interested'].includes(outcome)) q.stats.talks++;
-      if (outcome === 'booked') { q.stats.booked++; toast('Audit booked'); }
+      if (['conversation', 'booked', 'callback', 'not_interested'].includes(acts)) q.stats.talks++;
+      if (acts === 'booked') { q.stats.booked++; toast('Audit booked'); }
       idx++;
       render();
     } catch (err) { toast(err.message, true); busy(btn, false); }
   };
   const onKey = (e) => {
     if (!document.body.contains(view) || /input|textarea|select/i.test(e.target.tagName) || document.querySelector('.modal-bg')) return;
-    const o = OUTCOMES.find(([, , k]) => k === e.key);
-    if (o) { const b = $(`[data-out="${o[0]}"]`, view); if (b) logOutcome(o[0], b); }
+    const o = DISP.find((d) => d.key && d.key === e.key);
+    if (o) { const b = $(`[data-out="${o.id}"]`, view); if (b) logOutcome(o.id, b); }
   };
   document.addEventListener('keydown', onKey);
   window.addEventListener('hashchange', () => document.removeEventListener('keydown', onKey), { once: true });

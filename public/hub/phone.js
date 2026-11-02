@@ -210,7 +210,7 @@ export async function placeCall({ to, leadId, from, name, onEnd } = {}) {
   let call;
   try { call = await d.connect({ params: { act: prep.activityId } }); }
   catch (e) { st.call = null; emit(); renderBar({ ...view, state: 'ended', label: 'Call failed' }); hideBar(2000); throw e; }
-  track(call, view, { onEnd, act: prep.activityId });
+  track(call, view, { onEnd: (r) => onEnd?.({ ...r, activityId: prep.activityId, leadId: prep.leadId || leadId || null, to: prep.to, name: view.name }), act: prep.activityId });
   return call;
 }
 

@@ -6,8 +6,9 @@ import { onboardingTab } from './onboarding.js';
 
 const NAV = [
   ['home', '#/', 'dash', 'Dashboard'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['dialer', '#/dialer', 'phone', 'Dialer'],
-  ['inbox', '#/inbox', 'msg', 'Inbox'], ['clients', '#/clients', 'users', 'Clients'], ['clientview', '#/clientview', 'device', 'Client view'],
-  ['scan', '/scan.html', 'grid', 'Scan tool'], ['team', '#/team', 'star', 'Team'], ['settings', '#/settings', 'note', 'Settings'],
+  ['inbox', '#/inbox', 'msg', 'Inbox'], ['clients', '#/clients', 'users', 'Clients'], ['payments', '#/payments', 'money', 'Payments', 'admin'],
+  ['clientview', '#/clientview', 'device', 'Client view'], ['scan', '/scan.html', 'grid', 'Scan tool'], ['google', '#/google', 'apps', 'Google'],
+  ['team', '#/team', 'star', 'Team'], ['settings', '#/settings', 'note', 'Settings'],
 ];
 
 export function staffShell(app, user, active, inner) {
@@ -22,7 +23,7 @@ export function staffShell(app, user, active, inner) {
       <aside class="side" id="side">
         <div class="side-head"><a class="side-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="150" height="26"><span class="tag">Hub</span></a>
           <button type="button" class="mtop-btn side-close" id="menu-close" aria-label="Close menu">${icon.close}</button></div>
-        <nav aria-label="Main">${NAV.map(([k, href, ic, label]) => `<a href="${href}" data-nav="${k}" class="${active === k ? 'is-active' : ''}">${icon[ic]}<span>${label}</span></a>`).join('')}</nav>
+        <nav aria-label="Main">${NAV.filter((n) => !n[4] || user.role === n[4]).map(([k, href, ic, label]) => `<a href="${href}" data-nav="${k}" class="${active === k ? 'is-active' : ''}">${icon[ic]}<span>${label}</span></a>`).join('')}</nav>
         <div class="side-foot"><span class="who">${esc(user.name || user.email)}</span><button type="button" id="logout">Log out</button></div>
       </aside>
       <main class="main" id="view">${inner || '<div class="skeleton"></div>'}</main>
@@ -146,7 +147,7 @@ export function clientForm(client, onSaved) {
 }
 
 // ---------- one client ----------
-const TABS = [['overview', 'Overview'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
+const TABS = [['overview', 'Overview'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
 
 export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   const view = staffShell(app, user, 'clients');
@@ -168,6 +169,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   if (tab === 'profile') return profileTab(el, c);
   if (tab === 'access') return accessTab(el, c);
   if (tab === 'billing') return billingTab(el, c);
+  if (tab === 'website') return import('./googleapps.js').then((m) => m.websiteTab(el, c));
   if (tab === 'onboarding') return onboardingTab(el, c);
 }
 

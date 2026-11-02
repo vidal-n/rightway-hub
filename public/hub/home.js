@@ -2,6 +2,7 @@
 import { $, $$, esc, api, toast, busy, fmt, icon, animateNumbers } from './core.js';
 import { staffShell } from './staff.js';
 import { leadModal, STAGE_LABEL } from './crm.js';
+import { paymentsSnapshot } from './payments.js';
 
 const DIAL_TARGET = 60;
 const when = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -28,6 +29,7 @@ export async function homePage(app, user) {
       <div class="stat"><div class="stat-num" data-count="${d.pipeline.callableNow}">0</div><div class="stat-label">leads you can call right now (${d.pipeline.aLeads} A grade open)</div></div>
     </div>
     <div class="home-grid">
+      ${user.role === 'admin' ? '<div class="card" id="paysnap"><div class="card-head"><h2>Payments</h2></div><div class="skeleton" style="height:70px"></div></div>' : ''}
       <div class="card"><div class="card-head"><h2>Meetings coming up</h2><a class="btn btn-ghost btn-sm" href="#/pipeline">All leads</a></div>
         ${d.meetings.length ? `<ul class="list">${d.meetings.map((m) => `<li class="item"><span class="badge">${esc(when(m.meet_at))}</span>
           <div><div class="item-title">${esc(m.business)}</div><div class="item-sub">${esc(m.contact_name || '')}</div></div>
@@ -53,6 +55,7 @@ export async function homePage(app, user) {
         : '<p class="muted">Calls, texts, and updates from the last 7 days show up here.</p>'}</div>
     </div>`;
   animateNumbers(view);
+  if (user.role === 'admin') paymentsSnapshot($('#paysnap', view));
   $$('[data-lead]', view).forEach((li) => li.addEventListener('click', () => leadModal(li.dataset.lead, () => homePage(app, user))));
   $('#mk-sample', view)?.addEventListener('click', async (e) => {
     busy(e.currentTarget, true, 'Creating...');

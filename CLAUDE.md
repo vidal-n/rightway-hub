@@ -54,6 +54,18 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   recording verbally (no automated announcement, V's call). Phone setup also lists every Twilio number and connects its Voice and SMS URLs
   to the Hub. Texts reply from whichever of our numbers the thread last used. Owners promote or demote teammates on the Team page
   (`PUT /api/users/:id/role`, not yourself, owner role is the only gate for live calls, all recordings and phone setup).
+- Dispositions (built, `src/dispo.js`, `public/hub/dispo.js`): popup after every outbound browser call (queue and dial out; dial out can add the
+  number as a lead). Owners edit the list in Dialer, Phone setup (settings `dispositions`): name plus "what it does" (a built in result that
+  drives `applyOutcome`, or `none` to just log). `recordOutcome` in `src/crm.js` is the one path; activities keep `outcome` (built in) plus
+  `dispo` (label) and `note`. `POST /api/voice/calls/:id/disposition` for dial out. First 9 get number keys.
+- Payments (built, owners only, `src/payments.js`, `public/hub/payments.js`, nav item filtered by role): Stripe MRR from active subscriptions,
+  collected this month and per month (6 months, net of refunds), balance, next payout, past due and unpaid invoices, recent payments. Each Stripe
+  read is separate so a restricted key missing one permission blanks one section. 60s cache. Snapshot card on the Dashboard for owners.
+- Google apps (built, `src/googleapps.js`, `public/hub/googleapps.js`, page `#/google`): per app scopes added on top of Calendar
+  (`APP_SCOPES` in `src/google.js`, granted list stored in `users.google_scopes`): Sheets export (drive.file) of leads, clients, calls,
+  payments; Search Console and GA4 (Data + Admin APIs) and Google Ads (GOOGLE_ADS_DEVELOPER_TOKEN, optional GOOGLE_ADS_LOGIN_CUSTOMER_ID,
+  GOOGLE_ADS_API_VERSION default v25) on a client Website tab (`clients.gsc_site`, `ga4_property`, `ads_customer`). Data is read with the
+  user's own Google account if it has the app, else an owner's. Not tested against live Google yet.
 - Scan tool v3: up to 5 keywords per run (tabs plus a summary table, save all to a client), grids to 13 x 13, radius to 30 miles, bigger map
   with zoom buttons, drag, pinch, ctrl or trackpad zoom, and double click (`createMap` in `public/js/map.js`). A live feed shows each search as a
   phone result card while scanning, and "Replay the scan" re-runs it spot by spot for clients. Lead research now keeps the top 3 per grid spot,
@@ -65,7 +77,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).
 - GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.
 - Not built yet: publishing to Google and Meta (needs Google Business Profile API approval and Meta app review; until then posts
-  are copied and marked posted), scheduled monthly scans and reports (Phase 4), Google data connections (Phase 5), content engine
+  are copied and marked posted), scheduled monthly scans and reports (Phase 4), Google Business Profile data (Phase 5, needs API approval), content engine
   (6), call tracking (7), citations/links tracker (8), Market Leader extras (9). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

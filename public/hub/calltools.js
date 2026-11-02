@@ -4,6 +4,7 @@ import { $, $$, esc, api, toast, busy } from './core.js';
 import { staffShell } from './staff.js';
 import { dialTabs } from './dialout.js';
 import { joinCall, onPhoneState, phoneState, picon, pretty } from './phone.js';
+import { dispoEditor } from './dispo.js';
 
 const when = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const mins = (s) => (s ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : '0:00');
@@ -102,8 +103,8 @@ export async function phoneSetupPage(app, user) {
   if (user.role !== 'admin') { view.innerHTML = `${head('Phone setup')}${dialTabs('setup', user)}<p class="err-text">Only an owner can change phone settings.</p>`; return; }
   const load = async () => {
     let d;
-    try { d = await api('/api/voice/setup'); } catch (e) { view.innerHTML = `${head('Phone setup')}${dialTabs('setup', user)}<p class="err-text">${esc(e.message)}</p>`; return; }
-    if (!d.ready) { view.innerHTML = `${head('Phone setup')}${dialTabs('setup', user)}<div class="card"><p>Add the Twilio keys in Cloudflare first.</p></div>`; return; }
+    try { d = await api('/api/voice/setup'); } catch (e) { view.innerHTML = `${head('Phone setup')}${dialTabs('setup', user)}<p class="err-text">${esc(e.message)}</p><div class="card" id="sdispo" style="max-width:760px;margin-top:14px"></div>`; dispoEditor($('#sdispo', view)); return; }
+    if (!d.ready) { view.innerHTML = `${head('Phone setup')}${dialTabs('setup', user)}<div class="card"><p>Add the Twilio keys in Cloudflare first.</p></div><div class="card" id="sdispo" style="max-width:760px;margin-top:14px"></div>`; dispoEditor($('#sdispo', view)); return; }
     const state = (v) => (v === 'hub' ? '<span class="badge">Hub</span>' : v === 'other' ? '<span class="badge warn">Somewhere else</span>' : '<span class="badge gray">Not set</span>');
     const todo = d.numbers.filter((n) => n.calls !== 'hub' || n.texts !== 'hub');
     view.innerHTML = `${head('Phone setup')}${dialTabs('setup', user)}
@@ -124,7 +125,9 @@ export async function phoneSetupPage(app, user) {
         </div>`).join('')}
         ${todo.length > 1 ? `<button type="button" class="btn btn-primary" id="sall" style="margin-top:14px">Connect all ${todo.length}</button>` : ''}
         <p class="small muted" style="margin:12px 0 0">Texts still need A2P approval before carriers deliver them. Calls work now.</p>
-      </div>`;
+      </div>
+      <div class="card" id="sdispo" style="max-width:760px;margin-top:14px"></div>`;
+    dispoEditor($('#sdispo', view));
     $('#srec', view).addEventListener('change', async (e) => {
       try { const r = await api('/api/voice/setup', { method: 'PUT', body: { recording: e.target.checked } }); toast(r.recording ? 'Recording is on' : 'Recording is off'); }
       catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }

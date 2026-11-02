@@ -258,3 +258,62 @@ test('owner can promote a teammate to owner and back, not themselves', async () 
   assert.equal((await t.call('PUT', `/api/users/${me.id}/role`, { role: 'team' })).status, 403);
   assert.equal((await t.call('PUT', `/api/users/${kiron.id}/role`, { role: 'admin' })).status, 403);
 });
+
+test('custom dispositions: owner edits the list, results drive the lead, dial out popup can add a lead', async () => {
+  const t = setup();
+  await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  let r = await t.call('GET', '/api/dispositions');
+  assert.equal(r.data.dispositions.length, 9);
+  assert.equal(r.data.custom, false);
+  // Bad lists are refused
+  assert.equal((await t.call('PUT', '/api/dispositions', { dispositions: [] })).status, 400);
+  assert.equal((await t.call('PUT', '/api/dispositions', { dispositions: [{ label: 'X', acts: 'explode' }] })).status, 400);
+  r = await t.call('PUT', '/api/dispositions', { dispositions: [
+    { label: 'Left voicemail #2', acts: 'voicemail' }, { label: 'Owner busy, call Tuesday', acts: 'callback' },
+    { label: 'Already has an agency', acts: 'not_interested' }, { label: 'Wrong person', acts: 'none' }, { id: 'dnc', label: 'Do not call', acts: 'dnc' },
+  ] });
+  assert.equal(r.status, 200);
+  const list = r.data.dispositions;
+  assert.equal(list.length, 5);
+  assert.ok(list.every((d) => d.id));
+  assert.equal((await t.call('GET', '/api/dispositions')).data.custom, true);
+
+  const lead = (await t.call('POST', '/api/leads', { business: 'Bay Roofing', phone: '9545550101', state: 'FL' })).data.lead;
+  // Callback kind needs a time
+  r = await t.call('POST', `/api/leads/${lead.id}/outcome`, { dispo: list[1].id });
+  assert.equal(r.status, 400);
+  r = await t.call('POST', `/api/leads/${lead.id}/outcome`, { dispo: list[1].id, callbackAt: '2030-01-08T10:00' });
+  assert.equal(r.data.lead.stage, 'callback');
+  // "Just log it" leaves the stage alone, history shows the custom name
+  r = await t.call('POST', `/api/leads/${lead.id}/outcome`, { dispo: list[3].id, note: 'Spoke to the receptionist' });
+  assert.equal(r.data.lead.stage, 'callback');
+  r = await t.call('GET', `/api/leads/${lead.id}`);
+  assert.ok(r.data.activities.some((a) => a.dispo === 'Wrong person'));
+  // Old style built in names still work
+  r = await t.call('POST', `/api/leads/${lead.id}/outcome`, { outcome: 'conversation' });
+  assert.equal(r.data.lead.stage, 'follow_up');
+
+  // Dial out popup: unknown number, add as a new lead with a callback
+  const m = mockTwilio();
+  try {
+    await t.call('GET', '/api/voice/token');
+    const prep = (await t.call('POST', '/api/voice/prepare', { to: '(305) 555-0777' })).data;
+    r = await t.call('POST', `/api/voice/calls/${prep.activityId}/disposition`, { dispo: list[1].id, note: 'Wants pricing', callbackAt: '2030-02-01T15:00', newLead: { business: 'Keys Pool Care', contact: 'Ana', state: 'FL' } });
+    assert.equal(r.status, 200);
+    assert.ok(r.data.leadId);
+    const nl = (await t.call('GET', `/api/leads/${r.data.leadId}`)).data;
+    assert.equal(nl.lead.business, 'Keys Pool Care');
+    assert.equal(nl.lead.stage, 'callback');
+    assert.equal(nl.lead.phone_digits || nl.lead.phone.replace(/\D/g, '').slice(-10), '3055550777');
+    // Unknown number, no lead: just labels the call
+    const prep2 = (await t.call('POST', '/api/voice/prepare', { to: '(305) 555-0778' })).data;
+    r = await t.call('POST', `/api/voice/calls/${prep2.activityId}/disposition`, { dispo: list[3].id });
+    assert.equal(r.data.leadId, null);
+    r = await t.call('GET', '/api/dialer/recent');
+    assert.ok(r.data.calls.some((c) => c.dispo === 'Wrong person'));
+  } finally { m.restore(); }
+
+  // Reset to default
+  r = await t.call('PUT', '/api/dispositions', { reset: true });
+  assert.equal(r.data.dispositions.length, 9);
+});

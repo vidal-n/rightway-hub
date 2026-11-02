@@ -6,6 +6,8 @@ import { pipelinePage, dialerPage, settingsPage } from './crm.js';
 import { dialOutPage } from './dialout.js';
 import { initPhone } from './phone.js';
 import { recordingsPage, liveCallsPage, phoneSetupPage } from './calltools.js';
+import { paymentsPage } from './payments.js';
+import { googlePage } from './googleapps.js';
 import { inboxPage } from './texts.js';
 import { homePage, clientViewPage } from './home.js';
 
@@ -119,6 +121,8 @@ async function route() {
     return dialerPage(app, u);
   }
   if (parts[0] === 'inbox') return inboxPage(app, u);
+  if (parts[0] === 'payments') return paymentsPage(app, u);
+  if (parts[0] === 'google') return googlePage(app, u);
   if (parts[0] === 'settings') return settingsPage(app, u);
   if (parts[0] === 'client' && parts[1]) return clientPage(app, u, parts[1], parts[2] || 'overview', state);
   if (parts[0] === 'clients') return dashboard(app, u);

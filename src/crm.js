@@ -5,6 +5,7 @@ import { requireStaff } from './auth.js';
 import { PLANS, tasksForMonth, monthKey } from './plans.js';
 import { route } from './router.js';
 import { scoreLead, dupKeys } from '../public/js/leadintel.js';
+import { resolveDispo } from './dispo.js';
 
 export const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won', 'not_now', 'lost', 'dnc'];
 const CALLABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
@@ -323,18 +324,36 @@ route('DELETE', '/api/leads/:id', async ({ env, user, params }) => {
   return json({ ok: true });
 });
 
+// Log a call result on a lead: moves the lead along (cadence, callback, DNC) and labels the call record.
+export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activityId } = {}) {
+  const d = await resolveDispo(env, dispo);
+  if (!d) throw new HttpError('Unknown call outcome.');
+  let set;
+  if (d.acts === 'none') {
+    set = { last_call_at: now(), updated_at: now() };
+    if (note) set.notes = [l.notes, note].filter(Boolean).join('\n');
+  } else {
+    set = applyOutcome(l, d.acts, { callbackAt, note: note || '' });
+    Object.assign(set, rescore({ ...l, ...set }));
+  }
+  await updateLead(env, l.id, set);
+  // Attach to this call, or the most recent unlabeled call on the lead in the last hour, so a dial counts once.
+  const target = activityId ? { id: activityId }
+    : await first(env, "SELECT id FROM activities WHERE lead_id = ? AND type IN ('call','manual_call') AND outcome IS NULL AND at > ? ORDER BY at DESC LIMIT 1", l.id, now() - 3600e3);
+  if (target) await run(env, "UPDATE activities SET outcome = ?, dispo = ?, note = ?, lead_id = COALESCE(lead_id, ?), body = CASE WHEN type = 'manual_call' THEN body ELSE COALESCE(?, body) END WHERE id = ?", d.acts, d.label, note || null, l.id, note || null, target.id);
+  else {
+    const id = await logActivity(env, { lead_id: l.id, type: 'call', outcome: d.acts, body: note || null, by });
+    await run(env, 'UPDATE activities SET dispo = ?, note = ? WHERE id = ?', d.label, note || null, id);
+  }
+  return d;
+}
+
 route('POST', '/api/leads/:id/outcome', async ({ env, user, params, body }) => {
   requireStaff(user);
   const l = await leadOr404(env, params.id);
   const b = await body();
   const callbackAt = b.callbackAt ? Number(new Date(b.callbackAt)) || null : null;
-  const set = applyOutcome(l, b.outcome, { callbackAt, note: text(b.note, 2000) || '' });
-  Object.assign(set, rescore({ ...l, ...set }));
-  await updateLead(env, l.id, set);
-  // Attach to the most recent call record from the dialer if there is one in the last hour.
-  const recent = await first(env, "SELECT id FROM activities WHERE lead_id = ? AND type = 'call' AND outcome IS NULL AND at > ? ORDER BY at DESC LIMIT 1", l.id, now() - 3600e3);
-  if (recent) await run(env, 'UPDATE activities SET outcome = ?, body = COALESCE(?, body) WHERE id = ?', b.outcome, text(b.note, 2000), recent.id);
-  else await logActivity(env, { lead_id: l.id, type: 'call', outcome: b.outcome, body: text(b.note, 2000), by: user.id });
+  await recordOutcome(env, l, { dispo: b.dispo || b.outcome, note: text(b.note, 2000), callbackAt, by: user.id });
   return json({ lead: decorate(await leadOr404(env, l.id)) });
 });
 

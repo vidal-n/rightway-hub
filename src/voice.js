@@ -10,7 +10,8 @@
 import { HttpError, json } from './util.js';
 import { first, all, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
-import { e164, inCallingHours, logActivity } from './crm.js';
+import { e164, inCallingHours, logActivity, recordOutcome, insertLead, cleanLead } from './crm.js';
+import { resolveDispo } from './dispo.js';
 import { route } from './router.js';
 import { twilioReady, verifiedParams, twiml, xml, pickFrom, manualTarget, ownedNumbers, resetNumberCache } from './calls.js';
 
@@ -284,6 +285,40 @@ route('GET', '/api/voice/calls/:id', async ({ env, user, params, url }) => {
     a = await first(env, 'SELECT * FROM activities WHERE id = ?', params.id);
   }
   return json({ status: a.status, answeredAt: a.answered_at, duration: a.duration, coached: Boolean(a.mon_by), error: a.status === 'failed' ? a.body || '' : '' });
+});
+
+// After the call: the disposition popup. Moves the lead along, or just labels the call when the number is not a lead.
+// "Add as a new lead" creates the lead from the dialed number first.
+route('POST', '/api/voice/calls/:id/disposition', async ({ env, user, params, body }) => {
+  requireStaff(user);
+  const a = await first(env, 'SELECT * FROM activities WHERE id = ?', params.id);
+  if (!a || (a.by !== user.id && user.role !== 'admin')) throw new HttpError('Call not found.', 404);
+  const b = await body();
+  const d = await resolveDispo(env, b.dispo);
+  if (!d) throw new HttpError('Pick a disposition.');
+  const note = b.note ? String(b.note).trim().slice(0, 2000) : '';
+  const callbackAt = b.callbackAt ? Number(new Date(b.callbackAt)) || null : null;
+  let leadId = a.lead_id;
+  if (!leadId && b.newLead?.business && a.to_num) {
+    const business = String(b.newLead.business).trim().slice(0, 120);
+    if (business) {
+      const fields = { business, phone: a.to_num, source: 'dial out' };
+      if (b.newLead.contact) fields.contact_name = b.newLead.contact;
+      if (b.newLead.state) fields.state = b.newLead.state;
+      leadId = await insertLead(env, cleanLead(fields), user.id);
+      if (leadId) await run(env, 'UPDATE activities SET lead_id = ? WHERE id = ?', leadId, a.id);
+    }
+  }
+  if (leadId) {
+    const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', leadId);
+    if (lead) {
+      if (d.acts === 'callback' && !callbackAt) throw new HttpError('Pick the callback time.');
+      await recordOutcome(env, lead, { dispo: d.id, note, callbackAt, by: user.id, activityId: a.id });
+      return json({ ok: true, leadId, dispo: d });
+    }
+  }
+  await run(env, 'UPDATE activities SET outcome = ?, dispo = ?, note = ? WHERE id = ?', d.acts, d.label, note || null, a.id);
+  return json({ ok: true, leadId: null, dispo: d });
 });
 
 // ---------- owner tools: live calls, listen, whisper, barge ----------

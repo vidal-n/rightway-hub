@@ -151,7 +151,7 @@ route('POST', '/api/dialer/dial', async ({ env, user, url, body }) => {
 
 route('GET', '/api/dialer/recent', async ({ env, user }) => {
   requireStaff(user);
-  const rows = await all(env, `SELECT a.id, a.at, a.body, a.status, a.duration, a.lead_id, l.business FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
+  const rows = await all(env, `SELECT a.id, a.at, a.body, a.status, a.duration, a.lead_id, a.dispo, l.business FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
     WHERE a.type = 'manual_call' AND a.by = ? ORDER BY a.at DESC LIMIT 15`, user.id);
   return json({ calls: rows });
 });
