@@ -78,7 +78,7 @@ export async function alertsPage(app, user) {
         <form id="prefs" class="pref-list">${Object.entries(cfg.kinds).map(([k, l]) => `<label class="row small"><input type="checkbox" name="${esc(k)}"${cfg.prefs[k] === false ? '' : ' checked'}> ${esc(l)}</label>`).join('')}</form>
         <p class="small muted" style="margin-top:8px">Everything still shows in the list below. These switches only decide what buzzes your devices.</p></div>
     </div>
-    ${admin ? slackCard(cfg.slack) : ''}
+    <div id="slackbox"></div>
     <div class="card"><div class="card-head"><h2>Recent</h2></div>
       ${list.notifications.length ? `<ul class="list">${list.notifications.map((n) => `<li class="item alert-row${n.read_at ? '' : ' is-new'}" data-id="${esc(n.id)}" data-url="${esc(n.url || '')}"><span class="badge ${n.read_at ? 'gray' : ''}">${esc(cfg.kinds[n.kind] ? cfg.kinds[n.kind].split(' ')[0] : n.kind)}</span>
         <div><div class="item-title">${esc(n.title)}</div>${n.body ? `<div class="item-sub">${esc(n.body)}</div>` : ''}</div><span class="small">${esc(fmt.ago(n.created_at))}</span></li>`).join('')}</ul>` : '<p class="muted">Nothing yet. Calls, texts, voicemails, new tasks and client updates show up here.</p>'}</div>`;
@@ -100,29 +100,5 @@ export async function alertsPage(app, user) {
     const u = r.dataset.url;
     if (u.startsWith('/#/')) location.hash = u.slice(1); else if (u.startsWith('/')) window.open(u, '_blank'); else again();
   }));
-  wireSlack(view, again);
-}
-
-function slackCard(s) {
-  if (!s) return '';
-  return `<div class="card"><div class="card-head"><h2>Slack</h2><span class="badge ${s.connected ? '' : 'gray'}">${s.connected ? 'Connected' : 'Not connected'}</span></div>
-    <p class="small muted">Post Hub alerts to a Slack channel. In Slack: Apps, search "Incoming WebHooks" (or make a Slack app with Incoming Webhooks on), pick the channel, copy the webhook address and paste it here. It is stored encrypted and never shown again.</p>
-    <form id="slackf" class="form-grid">
-      <label class="field span-all"><span>Webhook address</span><input name="webhook" type="url" placeholder="${s.connected ? 'Saved. Paste a new one to replace it.' : 'https://hooks.slack.com/services/...'}" autocomplete="off"></label>
-      <div class="span-all pref-list">${Object.entries(s.all).map(([k, l]) => `<label class="row small"><input type="checkbox" name="k_${esc(k)}"${s.kinds.includes(k) ? ' checked' : ''}> ${esc(l)}</label>`).join('')}</div>
-      <div class="span-all row end">${s.connected ? '<button class="btn btn-ghost btn-sm" type="button" id="slackoff">Disconnect</button><button class="btn btn-ghost btn-sm" type="button" id="slacktest">Send a test</button>' : ''}<button class="btn btn-primary btn-sm" type="submit">Save</button></div>
-    </form></div>`;
-}
-function wireSlack(view, again) {
-  const f = $('#slackf', view);
-  if (!f) return;
-  f.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const kinds = $$('input[type=checkbox]', f).filter((i) => i.checked).map((i) => i.name.slice(2));
-    const btn = f.querySelector('button[type=submit]');
-    busy(btn, true);
-    try { await api('/api/slack', { method: 'PUT', body: { webhook: f.webhook.value.trim(), kinds } }); toast('Slack saved'); again(); } catch (err) { toast(err.message, true); busy(btn, false); }
-  });
-  $('#slacktest', view)?.addEventListener('click', async (e) => { busy(e.target, true); try { await api('/api/slack/test', { method: 'POST' }); toast('Sent to Slack'); } catch (err) { toast(err.message, true); } busy(e.target, false); });
-  $('#slackoff', view)?.addEventListener('click', async () => { if (!confirm('Stop posting to Slack?')) return; await api('/api/slack', { method: 'DELETE' }); again(); });
+  import('./slack.js').then((m) => m.slackCards($('#slackbox', view), user, again)).catch((e) => toast(e.message, true));
 }

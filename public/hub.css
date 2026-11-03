@@ -679,3 +679,9 @@ ol.steps input { margin-top: 4px; flex: none; }
   .access-row { grid-template-columns: auto minmax(0, 1fr); }
   .access-row select { grid-column: 2; }
 }
+
+/* Slack settings */
+.slk-routes { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px 16px; }
+.slk-route { display: grid; grid-template-columns: minmax(0, 1fr) minmax(140px, 200px); align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.slk-route select { width: 100%; }
+.slack-card ol.steps li { display: block; }

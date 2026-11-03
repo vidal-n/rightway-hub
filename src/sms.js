@@ -80,11 +80,10 @@ route('POST', '/api/leads/:id/sms-consent', async ({ env, user, params, body }) 
   return json({ ok: true, consent: yes });
 });
 
-route('POST', '/api/leads/:id/sms', async ({ env, user, url, params, body }) => {
-  requireStaff(user);
+// One path for every outbound text (Hub, dialer, Slack reply), so the consent, STOP and calling hours rules always apply.
+export async function sendText(env, lead, rawText, user, origin) {
   if (!twilioReady(env)) throw new HttpError('Texting needs the Twilio keys in Cloudflare.', 503);
-  const lead = await leadOr404(env, params.id);
-  let text = String((await body()).text || '').trim().slice(0, 600);
+  let text = String(rawText || '').trim().slice(0, 600);
   if (!text) throw new HttpError('Type a message first.');
   const inbound = await first(env, "SELECT MAX(at) AS at FROM messages WHERE lead_id = ? AND direction = 'in'", lead.id).then((r) => (r?.at ? r : null));
   const why = canText(lead, Boolean(inbound));
@@ -107,7 +106,7 @@ route('POST', '/api/leads/:id/sms', async ({ env, user, url, params, body }) => 
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`, {
     method: 'POST',
     headers: { Authorization: `Basic ${btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`)}`, 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ To: to, From: fromNum, Body: text, StatusCallback: `${url.origin}/api/twilio/sms-status` }).toString(),
+    body: new URLSearchParams({ To: to, From: fromNum, Body: text, StatusCallback: `${origin}/api/twilio/sms-status` }).toString(),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -116,6 +115,14 @@ route('POST', '/api/leads/:id/sms', async ({ env, user, url, params, body }) => 
   }
   await run(env, 'UPDATE messages SET sid = ?, status = ? WHERE id = ?', data.sid || null, data.status || 'queued', id);
   await logActivity(env, { lead_id: lead.id, type: 'sms', status: 'out', body: text, by: user.id });
+  return id;
+}
+
+route('POST', '/api/leads/:id/sms', async ({ env, user, url, params, body }) => {
+  requireStaff(user);
+  if (!twilioReady(env)) throw new HttpError('Texting needs the Twilio keys in Cloudflare.', 503);
+  const lead = await leadOr404(env, params.id);
+  const id = await sendText(env, lead, (await body()).text, user, url.origin);
   return json({ ok: true, id });
 });
 
@@ -147,7 +154,7 @@ route('POST', '/api/twilio/sms', async ({ env, request, defer }) => {
   } else {
     await run(env, 'UPDATE leads SET updated_at = ? WHERE id = ?', now(), leadId);
     await logActivity(env, { lead_id: leadId, type: 'sms', status: 'in', body });
-    await notifyLater({ env, defer }, { to: 'staff', kind: 'text', title: `Text from ${lead.business || from}`, body: body.slice(0, 160), url: `/#/inbox`, tag: `text-${leadId}` });
+    await notifyLater({ env, defer }, { to: 'staff', kind: 'text', title: `Text from ${lead.business || from}`, body: body.slice(0, 160), url: `/#/inbox`, tag: `text-${leadId}`, actions: [{ text: 'Reply', action_id: 'text_reply', value: leadId, style: 'primary' }] });
   }
   return twiml(''); // Twilio sends the STOP and START confirmations itself.
 }, { public: true });
@@ -205,6 +212,6 @@ route('POST', '/api/twilio/voice-done', async ({ env, request, url, defer }) => 
   await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', status === 'completed' ? 'inbound_answered' : 'missed', Number(p.DialCallDuration || 0), aid);
   if (status === 'completed') return twiml('<Hangup/>');
   const a = await first(env, 'SELECT a.from_num, l.business FROM activities a LEFT JOIN leads l ON l.id = a.lead_id WHERE a.id = ?', aid);
-  await notifyLater({ env, defer }, { to: 'staff', kind: 'voicemail', title: `Missed call: ${a?.business || prettyNum(a?.from_num) || 'Unknown caller'}`, body: 'They may leave a voicemail. Tap to call back.', url: '/#/inbox/calls', tag: `call-${aid}`, slack: false });
+  await notifyLater({ env, defer }, { to: 'staff', kind: 'voicemail', title: `Missed call: ${a?.business || prettyNum(a?.from_num) || 'Unknown caller'}`, body: 'They may leave a voicemail. Tap to call back.', url: '/#/inbox/calls', tag: `call-${aid}`, slack: false, actions: [{ text: 'Mark heard', action_id: 'call_heard', value: aid }] });
   return twiml(await voicemailTwiml(env, url.origin, aid));
 }, { public: true });

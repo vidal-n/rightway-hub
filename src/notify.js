@@ -1,38 +1,21 @@
 // Notifications: in-app alerts, Web Push to phones, tablets and computers (VAPID with encrypted payloads, RFC 8291 and 8292,
-// no outside service), and Slack (an incoming webhook for one channel). notify() fans out to all three using each person's settings.
+// no outside service), and Slack (src/slack.js: channels per kind, client channels, direct messages, buttons). notify() fans out to all of them.
 // iPhone and iPad get pushes only when the Hub is added to the Home Screen (iOS 16.4 or newer).
 import { HttpError, json } from './util.js';
 import { all, first, run, batch, newId, now, getSettings, setSetting } from './db.js';
 import { requireUser, requireAdmin, requireStaff, isStaff } from './auth.js';
 import { route } from './router.js';
+import { seal, unseal, b64u, unb64u } from './seal.js';
+import { postToSlack, teamSummary } from './slack.js';
 
 export const KINDS = {
   call: 'Incoming calls', voicemail: 'Voicemails and missed calls', text: 'Texts', task: 'Tasks assigned to me and due today',
   client: 'Client updates (approvals, uploads, intake, report views)', lead: 'New leads and bookings', money: 'Payments and new clients', meeting: 'Meeting reminders',
 };
 export const CLIENT_KINDS = { update: 'Reports, things to approve, and meetings' };
-const SLACK_DEFAULT = ['lead', 'money', 'voicemail', 'client'];
 
-// ---------- base64url ----------
-const b64u = (u8) => btoa(String.fromCharCode(...new Uint8Array(u8))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const unb64u = (s) => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4)), (c) => c.charCodeAt(0));
 const enc = new TextEncoder();
 const concat = (...parts) => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
-
-// ---------- sealing (Slack webhook, VAPID private key) ----------
-async function sealKey(env) {
-  const raw = await crypto.subtle.digest('SHA-256', enc.encode(`rw-notify:${env.ACCESS_KEY || 'rightway-hub'}`));
-  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
-}
-async function seal(env, textValue) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await sealKey(env), enc.encode(textValue));
-  return `${b64u(iv)}.${b64u(ct)}`;
-}
-async function unseal(env, sealed) {
-  const [iv, ct] = String(sealed || '').split('.');
-  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64u(iv) }, await sealKey(env), unb64u(ct)));
-}
 
 // ---------- VAPID ----------
 export async function vapidKeys(env) {
@@ -89,23 +72,6 @@ export async function sendPush(env, sub, data, { urgent = false, ttl = 3600, key
   return res.status;
 }
 
-// ---------- Slack ----------
-const slackEsc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-export async function slackConfig(env) {
-  const s = await getSettings(env);
-  if (!s.slack_hook) return null;
-  let kinds = SLACK_DEFAULT;
-  try { kinds = JSON.parse(s.slack_kinds || 'null') || SLACK_DEFAULT; } catch { /* default */ }
-  return { sealed: s.slack_hook, kinds, origin: s.hub_origin || s.autoscan_origin || '' };
-}
-export async function postSlack(env, cfg, { title, body, url }) {
-  const hook = await unseal(env, cfg.sealed);
-  const link = url && cfg.origin ? `\n<${cfg.origin}${url.startsWith('/') ? '' : '/'}${url}|Open in the Hub>` : '';
-  const res = await fetch(hook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: `*${slackEsc(title)}*${body ? `\n${slackEsc(body)}` : ''}${link}` }) });
-  if (!res.ok) throw new HttpError(`Slack said: ${(await res.text().catch(() => '')).slice(0, 120) || `HTTP ${res.status}`}`, 502);
-  return true;
-}
-
 // ---------- the one entry point ----------
 const prefsOf = (u) => { try { return JSON.parse(u.notify_prefs || '{}') || {}; } catch { return {}; } };
 const wants = (u, kind) => prefsOf(u)[kind] !== false;
@@ -125,7 +91,9 @@ async function resolveUsers(env, to) {
 
 // to: user ids, 'staff', 'admins', { client: id } (its account manager) or { clientUsers: id } (the client's own logins).
 // skip: a user id that should not be told (the person who did the thing).
-export async function notify(env, { to, kind, title, body = '', url = '/', tag = null, urgent = false, skip = null, slack = true }) {
+// slack: false keeps it out of Slack channels (personal Slack direct messages still go out). actions: Slack buttons.
+// clientId: also posts to that client's Slack channel when it has one.
+export async function notify(env, { to, kind, title, body = '', url = '/', tag = null, urgent = false, skip = null, slack = true, actions = [], clientId = null }) {
   const users = (await resolveUsers(env, to)).filter((u) => u.id !== skip);
   const at = now();
   if (users.length) {
@@ -143,11 +111,9 @@ export async function notify(env, { to, kind, title, body = '', url = '/', tag =
       sent = results.filter((r) => r.status === 'fulfilled' && r.value >= 200 && r.value < 300).length;
     }
   }
-  let slacked = false;
-  if (slack && typeof to === 'string' || slack && to?.client) {
-    const cfg = await slackConfig(env).catch(() => null);
-    if (cfg && cfg.kinds.includes(kind)) slacked = await postSlack(env, cfg, { title, body, url }).catch((e) => { console.error('slack', e); return false; });
-  }
+  const team = typeof to === 'string' || Boolean(to?.client);
+  const slacked = await postToSlack(env, { kind, title, body, url, actions, clientId: clientId || to?.client || null, users, channel: slack && team })
+    .catch((e) => { console.error('slack', e); return 0; });
   return { users: users.length, pushed: sent, slack: slacked };
 }
 
@@ -168,6 +134,7 @@ export async function digestTick(env, t = now()) {
   const s = await getSettings(env);
   if (s.digest_day === today) return 0;
   await setSetting(env, 'digest_day', today);
+  await teamSummary(env, today).catch((e) => console.error('slack summary', e));
   const rows = await all(env, `SELECT t.owner, SUM(CASE WHEN t.due = ? THEN 1 ELSE 0 END) AS today, SUM(CASE WHEN t.due < ? THEN 1 ELSE 0 END) AS late
     FROM tasks t JOIN clients c ON c.id = t.client_id WHERE t.status IN ('todo','doing') AND c.status = 'active' AND t.owner IS NOT NULL AND t.due IS NOT NULL AND t.due <= ? GROUP BY t.owner`, today, today, today);
   let n = 0;
@@ -201,11 +168,9 @@ route('GET', '/api/notify/config', async ({ env, user, url }) => {
     if (s.hub_origin !== url.origin && !/localhost|127\./.test(url.origin)) await setSetting(env, 'hub_origin', url.origin);
   }
   const me = await first(env, 'SELECT notify_prefs FROM users WHERE id = ?', user.id);
-  const slack = user.role === 'admin' ? await slackConfig(env) : null;
   return json({
     publicKey: keys.pub, kinds: isStaff(user) ? KINDS : CLIENT_KINDS, prefs: prefsOf(me || {}),
     devices: (await first(env, 'SELECT COUNT(*) AS n FROM push_subs WHERE user_id = ?', user.id))?.n || 0,
-    slack: user.role === 'admin' ? { connected: Boolean(slack), kinds: slack?.kinds || SLACK_DEFAULT, all: KINDS } : undefined,
   });
 });
 
@@ -263,33 +228,6 @@ route('POST', '/api/notifications/read', async ({ env, user, body }) => {
     const ids = b.ids.slice(0, 100).map(String);
     await run(env, `UPDATE notifications SET read_at = ? WHERE user_id = ? AND id IN (${ids.map(() => '?').join(',')})`, now(), user.id, ...ids);
   } else await run(env, 'UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL', now(), user.id);
-  return json({ ok: true });
-});
-
-route('PUT', '/api/slack', async ({ env, user, body }) => {
-  requireAdmin(user);
-  const b = await body();
-  if (b.webhook != null && b.webhook !== '') {
-    const hook = String(b.webhook).trim();
-    if (!/^https:\/\/hooks\.slack\.com\/services\/[\w/-]+$/.test(hook)) throw new HttpError('Paste the Slack webhook address. It starts with https://hooks.slack.com/services/');
-    await setSetting(env, 'slack_hook', await seal(env, hook));
-  }
-  if (Array.isArray(b.kinds)) await setSetting(env, 'slack_kinds', JSON.stringify(b.kinds.filter((k) => KINDS[k])));
-  const cfg = await slackConfig(env);
-  return json({ connected: Boolean(cfg), kinds: cfg?.kinds || SLACK_DEFAULT });
-});
-
-route('POST', '/api/slack/test', async ({ env, user }) => {
-  requireAdmin(user);
-  const cfg = await slackConfig(env);
-  if (!cfg) throw new HttpError('Paste the Slack webhook address first.');
-  await postSlack(env, cfg, { title: 'Rightway Hub is connected', body: 'Alerts you picked in Settings will show up in this channel.', url: '/#/' });
-  return json({ ok: true });
-});
-
-route('DELETE', '/api/slack', async ({ env, user }) => {
-  requireAdmin(user);
-  await run(env, "DELETE FROM settings WHERE k IN ('slack_hook','slack_kinds')");
   return json({ ok: true });
 });
 

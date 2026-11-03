@@ -453,7 +453,7 @@ route('POST', '/api/public/lead', async ({ env, request, defer }) => {
   data.next_action = 'Call within 5 minutes: website audit request';
   const id = await insertLead(env, data, null);
   await logActivity(env, { lead_id: id, type: 'stage', body: `Website audit request${data.sms_consent ? ' (agreed to texts)' : ''}` });
-  await notifyLater({ env, defer }, { to: 'staff', kind: 'lead', title: `New audit request: ${data.business || data.contact_name || 'website form'}`, body: [data.contact_name, data.phone, data.city].filter(Boolean).join(' · ') + '. Call within 5 minutes.', url: `/#/pipeline`, urgent: true });
+  await notifyLater({ env, defer }, { to: 'staff', kind: 'lead', title: `New audit request: ${data.business || data.contact_name || 'website form'}`, body: [data.contact_name, data.phone, data.city].filter(Boolean).join(' · ') + '. Call within 5 minutes.', url: `/#/pipeline`, urgent: true, actions: [{ text: 'Claim', action_id: 'lead_claim', value: id, style: 'primary' }] });
   const redirect = b.redirect && /^https:\/\/(www\.)?rightwaygrowth\.com\//.test(b.redirect) ? b.redirect : null;
   if (!ct.includes('json') && redirect) return Response.redirect(redirect, 303);
   return json({ ok: true }, 200, headers);

@@ -170,11 +170,20 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Call back from the browser, Add as lead. Incoming calls ring every saved mobile (up to 5) with the open Hubs; callbacks show "Calling back (you called ...)".
 - Notifications (built, `src/notify.js`, `public/hub/alerts.js`, `#/alerts`, service worker push handlers): Web Push with VAPID keys made once (settings `vapid`,
   private key sealed) and aes128gcm payloads, no outside service. `notify()` writes the alert list (table `notifications`), pushes to `push_subs` by
-  `users.notify_prefs`, and posts to Slack for chosen kinds. Kinds: call, voicemail, text, task, client, lead, money, meeting (clients: update). Hooks: inbound
+  `users.notify_prefs`, and hands Slack to `postToSlack`. Kinds: call, voicemail, text, task, client, lead, money, meeting (clients: update). Hooks: inbound
   call (urgent), missed call and voicemail, inbound text, task assigned, 8am New York digest (`digestTick`), client approvals, uploads, intake and first report view,
   website lead and booking, Stripe new client and failed payment, meeting 15 min reminder (`meetingReminders`), report sent, page ready and meeting booked
   (to the client). Webhooks notify after the response via `defer` (execution context waitUntil). iPhone needs the Hub on the Home Screen.
-- Slack (built): owners paste an Incoming Webhook URL on the Alerts page (sealed in settings `slack_hook`, kinds in `slack_kinds`). Channel posts only, no DMs.
+- Slack (built, `src/slack.js`, `public/hub/slack.js` on the Alerts page): the Rightway Hub Slack app, made from a manifest with the Hub's URLs filled in
+  (`manifestFor`, "Create the Slack app" link `api.slack.com/apps?new_app=1&manifest_json=...`, scopes in `SCOPES`). Owners paste the bot token (xoxb) and
+  signing secret (sealed in settings `slack_bot`, `slack_signing`; `src/seal.js` keyed on ACCESS_KEY); connect runs auth.test and links teammates by email
+  (`users.slack_id`, also matched later by Slack profile email via users.info). `postToSlack` (called by `notify()`): channel per kind (settings `slack_routes`;
+  calls, tasks and meetings are personal so not routable), the client's own channel (`clients.slack_channel`), and direct messages per person
+  (`users.slack_prefs`, tasks and meetings on by default); `slack: false` on notify means no channel posts, DMs still go. Block Kit buttons: Claim (lead),
+  Mark heard (missed call, voicemail), Reply (text, opens a modal that sends through `sendText` in `src/sms.js` with the same consent, STOP and hours rules),
+  Start timer (task), Open in the Hub. `/api/slack/interact` and `/api/slack/command` are public but verify the signing secret (5 minute window).
+  `/hub` (`commandReply`): work, client <name>, lead <name or phone>, stats (owners), help. Morning summary to the `digest` route from `digestTick`
+  (`teamSummary`). The plain incoming webhook still works when the app is not connected (`slack_hook`, `slack_kinds`, `PUT /api/slack/webhook`).
 - Phase 5 Google Business Profile (built, `src/gbp.js`, `public/hub/gbp.js`, client tab `gbp`, Google page app `gbp` scope business.manage): link a location
   (`clients.gbp_account`, `gbp_location`), profile read and edit (description, phone, website), checks, Performance API calls, directions, website clicks,
   views (last 30 vs previous 30, and in the monthly report), reviews list and reply, publish posts (`/api/posts/:id/gbp`, closes a post task with the live link)

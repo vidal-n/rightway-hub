@@ -157,6 +157,7 @@ const ADD_COLUMNS = [
   ['clients', 'owner_id TEXT'], ['clients', 'gbp_account TEXT'], ['clients', 'gbp_location TEXT'], ['clients', 'gbp_title TEXT'],
   ['posts', 'live_url TEXT'], ['posts', 'gbp_name TEXT'],
   ['activities', 'vm_sid TEXT'], ['activities', 'vm_secs INTEGER'], ['activities', 'seen_at INTEGER'], ['users', 'notify_prefs TEXT'],
+  ['users', 'slack_id TEXT'], ['users', 'slack_prefs TEXT'], ['clients', 'slack_channel TEXT'], ['clients', 'slack_channel_name TEXT'],
 ];
 
 let ready = null;

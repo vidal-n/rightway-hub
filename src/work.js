@@ -85,6 +85,14 @@ async function stopRunning(env, userId) {
   return open.length;
 }
 
+// Start a timer on a task (one at a time per person). Also used by the Slack "Start timer" button.
+export async function startTimer(env, t, userId) {
+  await stopRunning(env, userId);
+  await run(env, 'INSERT INTO time_entries (id, task_id, client_id, user_id, kind, started_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', newId('te_'), t.id, t.client_id, userId, t.kind, now(), now());
+  if (t.status === 'todo') await run(env, "UPDATE tasks SET status = 'doing' WHERE id = ?", t.id);
+  if (!t.owner) await run(env, 'UPDATE tasks SET owner = ? WHERE id = ?', userId, t.id);
+}
+
 async function runningFor(env, userId) {
   return first(env, `SELECT e.id, e.task_id, e.client_id, e.started_at, t.title, c.name AS client_name FROM time_entries e
     JOIN tasks t ON t.id = e.task_id JOIN clients c ON c.id = e.client_id WHERE e.user_id = ? AND e.ended_at IS NULL ORDER BY e.started_at DESC LIMIT 1`, userId);
@@ -297,10 +305,7 @@ route('POST', '/api/tasks/:id/timer', async ({ env, user, params, body }) => {
   const t = await taskOr404(env, params.id);
   const { action } = await body();
   if (action === 'start') {
-    await stopRunning(env, user.id); // one timer at a time
-    await run(env, 'INSERT INTO time_entries (id, task_id, client_id, user_id, kind, started_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', newId('te_'), t.id, t.client_id, user.id, t.kind, now(), now());
-    if (t.status === 'todo') await run(env, "UPDATE tasks SET status = 'doing' WHERE id = ?", t.id);
-    if (!t.owner) await run(env, 'UPDATE tasks SET owner = ? WHERE id = ?', user.id, t.id);
+    await startTimer(env, t, user.id);
   } else if (action === 'stop') {
     await stopRunning(env, user.id);
   } else throw new HttpError('Start or stop.');

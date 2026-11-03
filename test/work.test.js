@@ -206,9 +206,10 @@ test('notify: alert list, push to devices, prefs, Slack, assignment pings, diges
     await t.call('POST', '/api/notifications/read', {});
     assert.equal((await t.call('GET', '/api/notifications/unread')).data.unread, 0);
     // Slack: only real webhook addresses, stored sealed, posts for the kinds picked.
-    assert.equal((await t.call('PUT', '/api/slack', { webhook: 'https://evil.example/x' })).status, 400);
-    r = await t.call('PUT', '/api/slack', { webhook: 'https://hooks.slack.com/services/T1/B2/abc', kinds: ['lead'] });
-    assert.equal(r.data.connected, true);
+    assert.equal((await t.call('PUT', '/api/slack/webhook', { webhook: 'https://evil.example/x' })).status, 400);
+    r = await t.call('PUT', '/api/slack/webhook', { webhook: 'https://hooks.slack.com/services/T1/B2/abc', kinds: ['lead'] });
+    assert.equal(r.data.ok, true);
+    assert.equal((await t.call('GET', '/api/slack')).data.webhook, true);
     const stored = await first(t.env, "SELECT v FROM settings WHERE k = 'slack_hook'");
     assert.ok(!stored.v.includes('hooks.slack.com'));
     sent.length = 0;

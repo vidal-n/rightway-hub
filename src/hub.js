@@ -348,7 +348,7 @@ route('PATCH', '/api/tasks/:id', async ({ env, user, params, body, defer }) => {
   if (cols.length) await run(env, `UPDATE tasks SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), t.id);
   if (set.owner && set.owner !== t.owner && set.owner !== user.id) {
     const c = await first(env, 'SELECT name FROM clients WHERE id = ?', t.client_id);
-    await notifyLater({ env, defer }, { to: [set.owner], kind: 'task', title: `New task for you: ${set.title || t.title}`, body: `${c?.name || ''}${(set.due ?? t.due) ? `, due ${set.due ?? t.due}` : ''}. From ${user.name || 'a teammate'}.`, url: `/#/work/task/${t.id}`, slack: false });
+    await notifyLater({ env, defer }, { to: [set.owner], kind: 'task', title: `New task for you: ${set.title || t.title}`, body: `${c?.name || ''}${(set.due ?? t.due) ? `, due ${set.due ?? t.due}` : ''}. From ${user.name || 'a teammate'}.`, url: `/#/work/task/${t.id}`, slack: false, actions: [{ text: 'Start timer', action_id: 'task_start', value: t.id }] });
   }
   return json({ task: await first(env, 'SELECT * FROM tasks WHERE id = ?', t.id) });
 });
@@ -586,3 +586,4 @@ import './meetings.js';
 import './voicemail.js';
 import './gbp.js';
 import './notify.js';
+import './slack.js';
