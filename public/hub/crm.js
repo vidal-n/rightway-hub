@@ -1,6 +1,6 @@
 // CRM screens: pipeline board, lead details, CSV import, power dialer, settings.
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, PLAN_NAMES, PLAN_PRICE } from './core.js';
-import { staffShell } from './staff.js';
+import { staffShell, settingsTabs } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache } from './prep.js';
 import { textModal } from './texts.js';
 import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
@@ -79,7 +79,7 @@ export async function pipelinePage(app, user) {
     const activeFilters = Object.entries(f).filter(([k, v]) => k !== 'q' && (Array.isArray(v) ? v.length : v !== '' && v != null && v !== false)).length;
     view.innerHTML = `
       <div class="page-head"><div><p class="eyebrow">CRM</p><h1>Pipeline</h1></div>
-        <div class="row"><a class="btn btn-mint" href="#/dialer" id="godial">${icon.phone}Dial this list</a><button class="btn btn-ghost" id="imp">${icon.upload}Import</button>
+        <div class="row"><a class="btn btn-mint" href="#/phone" id="godial">${icon.phone}Dial this list</a><button class="btn btn-ghost" id="imp">${icon.upload}Import</button>
           <button class="btn btn-ghost" id="dups">Duplicates</button><button class="btn btn-primary" id="addl">${icon.plus}Add lead</button></div></div>
       <div class="stats">
         <div class="stat hero"><div class="stat-num">${open.length}</div><div class="stat-label">open leads in view (${all.length} total)</div></div>
@@ -658,7 +658,7 @@ export async function settingsPage(app, user) {
   const pill = (on) => `<span class="badge ${on ? '' : 'gray'}">${on ? 'Connected' : 'Not connected'}</span>`;
   const formUrl = `${location.origin}/api/public/lead`;
   view.innerHTML = `
-    <div class="page-head"><h1>Settings</h1></div>
+    <div class="page-head"><h1>Settings</h1></div>${settingsTabs('general')}
     <div id="stripesetup"></div>
     <div class="card"><div class="card-head"><h2>Stripe payment links</h2>${pill(c.stripe)}</div>
       <p class="muted">The Stripe setup above fills these in for you. You can also paste each plan's payment link from Stripe (Payment Links, Copy link) to use your own. Work orders and the "Payment link" button use these, tagged with the lead, so payment marks the deal won and creates the client automatically.</p>

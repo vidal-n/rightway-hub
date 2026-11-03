@@ -19,21 +19,27 @@ import { PLANS, monthKey } from './plans.js';
 export const SCOPES = ['chat:write', 'chat:write.public', 'channels:read', 'groups:read', 'users:read', 'users:read.email', 'im:write', 'commands'];
 const DM_DEFAULT = ['task', 'meeting'];
 // Calls, tasks and meeting reminders are personal (direct messages only), so channels are offered for the rest.
-const PERSONAL = ['call', 'task', 'meeting'];
-const routeKinds = () => ({ ...Object.fromEntries(Object.entries(KINDS).filter(([k]) => !PERSONAL.includes(k))), digest: 'Morning team summary (8am)' });
+const PERSONAL = ['call', 'task', 'meeting', 'slack'];
+const routeKinds = () => ({ ...Object.fromEntries(Object.entries(KINDS).filter(([k]) => !PERSONAL.includes(k) && k !== 'slack')), digest: 'Morning team summary (8am)' });
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const parse = (s, d) => { try { return s ? JSON.parse(s) : d; } catch { return d; } };
 const day = (t) => new Date(t).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
+// Each person's own Slack inside the Hub (src/slackuser.js) uses these user scopes: they read and post as themselves.
+export const USER_SCOPES = ['channels:history', 'channels:read', 'channels:write', 'groups:history', 'groups:read', 'groups:write', 'im:history', 'im:read', 'im:write',
+  'mpim:history', 'mpim:read', 'mpim:write', 'chat:write', 'users:read', 'users:read.email', 'reactions:read', 'reactions:write', 'files:read', 'files:write'];
 export function manifestFor(origin) {
   return {
-    display_information: { name: 'Rightway Hub', description: 'Alerts, tasks and quick actions from Rightway Hub', background_color: '#0F1B17' },
+    display_information: { name: 'Rightway Hub', description: 'Slack inside Rightway Hub, plus alerts, tasks and quick actions', background_color: '#0F1B17' },
     features: {
       bot_user: { display_name: 'Rightway Hub', always_online: true },
       slash_commands: [{ command: '/hub', url: `${origin}/api/slack/command`, description: 'Your work, clients and leads from the Hub', usage_hint: 'work | client <name> | lead <name or phone> | stats', should_escape: false }],
     },
-    oauth_config: { scopes: { bot: SCOPES } },
-    settings: { interactivity: { is_enabled: true, request_url: `${origin}/api/slack/interact` }, org_deploy_enabled: false, socket_mode_enabled: false, token_rotation_enabled: false },
+    oauth_config: { redirect_urls: [`${origin}/api/slack/oauth/callback`], scopes: { bot: SCOPES, user: USER_SCOPES } },
+    settings: {
+      event_subscriptions: { request_url: `${origin}/api/slack/events`, user_events: ['message.channels', 'message.groups', 'message.im', 'message.mpim'] },
+      interactivity: { is_enabled: true, request_url: `${origin}/api/slack/interact` }, org_deploy_enabled: false, socket_mode_enabled: false, token_rotation_enabled: false,
+    },
   };
 }
 
@@ -46,9 +52,10 @@ export async function slackState(env) {
   };
 }
 
-export async function slackApi(token, method, body = {}, { get = false } = {}) {
+export async function slackApi(token, method, body = {}, { get = false, form = false } = {}) {
   const url = `https://slack.com/api/${method}${get ? `?${new URLSearchParams(body)}` : ''}`;
   const res = await fetch(url, get ? { headers: { authorization: `Bearer ${token}` } }
+    : form ? { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body).toString() }
     : { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (!data.ok) throw new HttpError(`Slack: ${data.error || `HTTP ${res.status}`}${data.needed ? ` (needs ${data.needed})` : ''}`, 502);
@@ -66,7 +73,7 @@ export async function slackSignature(secret, ts, raw) {
   const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(`v0:${ts}:${raw}`)));
   return `v0=${[...mac].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
 }
-async function verified(env, request) {
+export async function verified(env, request) {
   const st = await slackState(env);
   if (!st.signing) throw new HttpError('Slack is not connected.', 401);
   const ts = Number(request.headers.get('x-slack-request-timestamp') || 0);
@@ -90,7 +97,7 @@ export function blocksFor({ title, body, url, actions = [], origin }) {
   if (buttons.length) blocks.push({ type: 'actions', elements: buttons });
   return blocks;
 }
-const wantsDm = (u, kind) => { const p = parse(u.slack_prefs, {}); return p[kind] ?? DM_DEFAULT.includes(kind); };
+const wantsDm = (u, kind) => { if (kind === 'slack') return false; const p = parse(u.slack_prefs, {}); return p[kind] ?? DM_DEFAULT.includes(kind); };
 
 // Called by notify() for every alert. channel: false = personal only (no channel posts).
 export async function postToSlack(env, { kind, title, body, url, actions = [], clientId = null, users = [], channel = true }) {
@@ -319,7 +326,8 @@ route('GET', '/api/slack', async ({ env, user, url }) => {
   requireStaff(user);
   const st = await slackState(env);
   const me = await first(env, 'SELECT slack_id, slack_prefs FROM users WHERE id = ?', user.id);
-  const mine = { linked: Boolean(me?.slack_id), prefs: Object.fromEntries(Object.keys(KINDS).map((k) => [k, wantsDm(me || {}, k)])), kinds: KINDS };
+  const dmKinds = Object.fromEntries(Object.entries(KINDS).filter(([k]) => k !== 'slack'));
+  const mine = { linked: Boolean(me?.slack_id), prefs: Object.fromEntries(Object.keys(dmKinds).map((k) => [k, wantsDm(me || {}, k)])), kinds: dmKinds };
   if (user.role !== 'admin') return json({ connected: Boolean(st.bot), team: st.team, mine });
   const manifest = manifestFor(url.origin);
   const clients = await all(env, "SELECT id, name, slack_channel, slack_channel_name FROM clients WHERE status = 'active' AND sample = 0 ORDER BY name");
@@ -405,7 +413,7 @@ route('POST', '/api/slack/link', async ({ env, user, body }) => {
 route('PUT', '/api/slack/prefs', async ({ env, user, body }) => {
   requireStaff(user);
   const b = await body();
-  const prefs = Object.fromEntries(Object.keys(KINDS).map((k) => [k, b[k] === true]));
+  const prefs = Object.fromEntries(Object.keys(KINDS).filter((k) => k !== 'slack').map((k) => [k, b[k] === true]));
   await run(env, 'UPDATE users SET slack_prefs = ? WHERE id = ?', JSON.stringify(prefs), user.id);
   return json({ prefs });
 });

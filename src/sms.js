@@ -154,7 +154,7 @@ route('POST', '/api/twilio/sms', async ({ env, request, defer }) => {
   } else {
     await run(env, 'UPDATE leads SET updated_at = ? WHERE id = ?', now(), leadId);
     await logActivity(env, { lead_id: leadId, type: 'sms', status: 'in', body });
-    await notifyLater({ env, defer }, { to: 'staff', kind: 'text', title: `Text from ${lead.business || from}`, body: body.slice(0, 160), url: `/#/inbox`, tag: `text-${leadId}`, actions: [{ text: 'Reply', action_id: 'text_reply', value: leadId, style: 'primary' }] });
+    await notifyLater({ env, defer }, { to: 'staff', kind: 'text', title: `Text from ${lead.business || from}`, body: body.slice(0, 160), url: `/#/phone/texts`, tag: `text-${leadId}`, actions: [{ text: 'Reply', action_id: 'text_reply', value: leadId, style: 'primary' }] });
   }
   return twiml(''); // Twilio sends the STOP and START confirmations itself.
 }, { public: true });
@@ -189,7 +189,7 @@ route('POST', '/api/twilio/voice', async ({ env, request, url, defer }) => {
   const nouns = clients.map((id) => `<Client><Identity>${xml(id)}</Identity>${param('caller', from)}${param('who', lead?.business)}${param('called', e164(p.To))}${param('leadId', lead?.id)}${param('context', back)}</Client>`).join('')
     + cells.map((n) => `<Number>${xml(n)}</Number>`).join('');
   // Phones and tablets with notifications on light up and buzz while it rings; saved mobiles ring as a normal call.
-  await notifyLater({ env, defer }, { to: 'staff', kind: 'call', title: `Incoming call: ${who}`, body: [prettyNum(from), back].filter(Boolean).join(' · ') || 'Answer in the Hub', url: '/#/inbox/calls', tag: `call-${aid}`, urgent: true, slack: false });
+  await notifyLater({ env, defer }, { to: 'staff', kind: 'call', title: `Incoming call: ${who}`, body: [prettyNum(from), back].filter(Boolean).join(' · ') || 'Answer in the Hub', url: '/#/phone/calls', tag: `call-${aid}`, urgent: true, slack: false });
   const callerId = e164(p.To) || env.TWILIO_FROM;
   const rec = (await recordingOn(env))
     ? `record="record-from-answer-dual" recordingStatusCallback="${xml(`${url.origin}/api/twilio/recording?a=${aid}`)}" recordingStatusCallbackEvent="completed"`
@@ -212,6 +212,6 @@ route('POST', '/api/twilio/voice-done', async ({ env, request, url, defer }) => 
   await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', status === 'completed' ? 'inbound_answered' : 'missed', Number(p.DialCallDuration || 0), aid);
   if (status === 'completed') return twiml('<Hangup/>');
   const a = await first(env, 'SELECT a.from_num, l.business FROM activities a LEFT JOIN leads l ON l.id = a.lead_id WHERE a.id = ?', aid);
-  await notifyLater({ env, defer }, { to: 'staff', kind: 'voicemail', title: `Missed call: ${a?.business || prettyNum(a?.from_num) || 'Unknown caller'}`, body: 'They may leave a voicemail. Tap to call back.', url: '/#/inbox/calls', tag: `call-${aid}`, slack: false, actions: [{ text: 'Mark heard', action_id: 'call_heard', value: aid }] });
+  await notifyLater({ env, defer }, { to: 'staff', kind: 'voicemail', title: `Missed call: ${a?.business || prettyNum(a?.from_num) || 'Unknown caller'}`, body: 'They may leave a voicemail. Tap to call back.', url: '/#/phone/calls', tag: `call-${aid}`, slack: false, actions: [{ text: 'Mark heard', action_id: 'call_heard', value: aid }] });
   return twiml(await voicemailTwiml(env, url.origin, aid));
 }, { public: true });

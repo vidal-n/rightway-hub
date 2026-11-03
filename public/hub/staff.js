@@ -4,48 +4,46 @@ import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.j
 import { billingTab } from './crm.js';
 import { onboardingTab } from './onboarding.js';
 
-const NAV = [
-  ['home', '#/', 'dash', 'Dashboard'], ['work', '#/work', 'check', 'My work'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['dialer', '#/dialer', 'phone', 'Dialer'],
-  ['inbox', '#/inbox', 'msg', 'Inbox'], ['clients', '#/clients', 'users', 'Clients'], ['payments', '#/payments', 'money', 'Payments', 'admin'],
-  ['clientview', '#/clientview', 'device', 'Client view'], ['scan', '/scan.html', 'grid', 'Scan tool'], ['google', '#/google', 'apps', 'Google'],
-  ['alerts', '#/alerts', 'bell', 'Alerts'], ['team', '#/team', 'star', 'Team'], ['settings', '#/settings', 'note', 'Settings'],
-];
+import { navItems, sideLinks, wireNav, activeKey, customizeMenu, NAV } from './nav.js';
 
 export function staffShell(app, user, active, inner) {
+  active = activeKey(active);
   app.innerHTML = `
     <div class="staff">
       <header class="mtop">
         <a class="mtop-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="132" height="22"><span class="tag">Hub</span></a>
         <span class="mtop-page">${esc((NAV.find((n) => n[0] === active) || [])[3] || '')}</span>
-        <button type="button" class="mtop-btn" id="menu-open" aria-label="Open menu" aria-controls="side" aria-expanded="false">${icon.menu}</button>
       </header>
       <div class="side-scrim" id="scrim" hidden></div>
       <aside class="side" id="side">
         <div class="side-head"><a class="side-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="150" height="26"><span class="tag">Hub</span></a>
           <button type="button" class="mtop-btn side-close" id="menu-close" aria-label="Close menu">${icon.close}</button></div>
-        <nav aria-label="Main">${NAV.filter((n) => !n[4] || user.role === n[4]).map(([k, href, ic, label]) => `<a href="${href}" data-nav="${k}" class="${active === k ? 'is-active' : ''}">${icon[ic]}<span>${label}</span></a>`).join('')}</nav>
-        <div class="side-foot"><span class="who">${esc(user.name || user.email)}</span><button type="button" id="logout">Log out</button></div>
+        <nav aria-label="Main">${sideLinks(user, active)}</nav>
+        <div class="side-foot"><button type="button" id="navcust">Customize menu</button><span class="who">${esc(user.name || user.email)}</span><button type="button" id="logout">Log out</button></div>
       </aside>
       <main class="main" id="view">${inner || '<div class="skeleton"></div>'}</main>
+      <nav class="bbar" id="bbar" aria-label="Quick menu"></nav>
     </div>`;
-  const side = $('#side'), scrim = $('#scrim'), openBtn = $('#menu-open');
+  const side = $('#side'), scrim = $('#scrim');
   const setOpen = (on) => {
-    side.classList.toggle('is-open', on); scrim.hidden = !on; openBtn.setAttribute('aria-expanded', String(on));
+    side.classList.toggle('is-open', on); scrim.hidden = !on;
     document.body.classList.toggle('menu-open', on);
     if (on) $('nav a.is-active, nav a', side)?.focus({ preventScroll: true });
   };
-  openBtn.addEventListener('click', () => setOpen(true));
   $('#menu-close').addEventListener('click', () => setOpen(false));
   scrim.addEventListener('click', () => setOpen(false));
-  $$('nav a', side).forEach((a) => a.addEventListener('click', () => setOpen(false)));
+  side.addEventListener('click', (e) => { if (e.target.closest('nav a')) setOpen(false); });
   const onKey = (e) => { if (e.key === 'Escape' && side.classList.contains('is-open')) setOpen(false); };
   document.addEventListener('keydown', onKey);
   window.addEventListener('hashchange', () => { document.removeEventListener('keydown', onKey); document.body.classList.remove('menu-open'); }, { once: true });
-  import('./texts.js').then((m) => m.unreadBadge(app));
-  import('./alerts.js').then((m) => m.alertBadge(app)).catch(() => {});
+  wireNav(app, user, active, () => setOpen(true));
+  $('#navcust').addEventListener('click', () => { setOpen(false); customizeMenu(user, () => location.reload()); });
   $('#logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/login'; location.reload(); });
   return $('#view');
 }
+
+// Settings holds the team too.
+export const settingsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a><a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Team</a></nav>`;
 
 // ---------- dashboard ----------
 export async function dashboard(app, user) {
@@ -164,7 +162,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow"><a href="#/clients">Clients</a> / ${c.parent ? `Location of <a href="#/client/${esc(c.parent.id)}/locations">${esc(c.parent.name)}</a>` : esc(PLAN_NAMES[c.plan])}</p><h1>${esc(c.name)}</h1>
       <div class="small">${esc(c.address || '')}</div></div>
-      <div class="row"><label class="small row" style="gap:6px">Account manager <select id="cowner" aria-label="Account manager"><option value="">Nobody</option></select></label><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(c.status)}</span><a class="btn btn-ghost btn-sm" href="/scan.html?client=${esc(c.id)}">${icon.scan}Scan</a></div></div>
+      <div class="row"><label class="small row" style="gap:6px">Account manager <select id="cowner" aria-label="Account manager"><option value="">Nobody</option></select></label><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(c.status)}</span><a class="btn btn-ghost btn-sm" href="/scan.html?client=${esc(c.id)}">${icon.scan}Scan</a><button class="btn btn-ghost btn-sm" id="cslack">${icon.slack}Slack</button></div></div>
     <nav class="tabs">${tabsFor(c).map(([k, n]) => `<a href="#/client/${esc(id)}/${k}" class="${tab === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>
     <section id="tab"></section>`;
   const el = $('#tab', view);
@@ -172,6 +170,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   const on = $('.tabs .is-active', view);
   if (on) on.parentElement.scrollLeft = Math.max(0, on.offsetLeft - on.parentElement.clientWidth / 2 + on.offsetWidth / 2);
   ownerPicker($('#cowner', view), c);
+  $('#cslack', view).addEventListener('click', () => import('./slackapp.js').then((m) => m.sendToSlack('client', c.id)));
   if (tab === 'overview') return overviewTab(el, data);
   if (tab === 'accesslist') return import('./work.js').then((m) => m.accessListTab(el, c));
   if (tab === 'meetings') return import('./meetings.js').then((m) => m.meetingsTab(el, c, user));
@@ -371,11 +370,11 @@ export function showInvite(box, url, name) {
 
 // ---------- team ----------
 export async function teamPage(app, user) {
-  const view = staffShell(app, user, 'team');
+  const view = staffShell(app, user, 'settings');
   let users;
   try { ({ users } = await api('/api/team')); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   view.innerHTML = `
-    <div class="page-head"><h1>Team</h1></div>
+    <div class="page-head"><div><p class="eyebrow">Settings</p><h1>Team</h1></div></div>${settingsTabs('team')}
     ${user.role === 'admin' ? `<div class="card"><h2>Invite a teammate</h2>
       <form id="tinv" class="form-grid"><label class="field"><span>Name</span><input name="name" required></label><label class="field"><span>Email</span><input name="email" type="email" required></label>
       <label class="field"><span>Role</span><select name="role"><option value="admin">Owner (full access)</option><option value="team">Team (no team settings)</option></select></label>

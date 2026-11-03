@@ -38,7 +38,7 @@ route('POST', '/api/twilio/vm-recording', async ({ env, request, url }) => {
   await run(env, "UPDATE activities SET status = 'voicemail', vm_sid = ?, vm_secs = ?, seen_at = NULL WHERE id = ?", p.RecordingSid, secs, a.id);
   await alertTeam(env, a, secs, url.origin).catch((e) => console.error('voicemail alert', e));
   const lead = a.lead_id ? await first(env, 'SELECT business FROM leads WHERE id = ?', a.lead_id) : null;
-  await notify(env, { to: 'staff', kind: 'voicemail', title: `Voicemail: ${lead?.business || pretty(a.from_num) || 'Unknown caller'}`, body: `${secs} seconds. Tap to listen and call back.`, url: '/#/inbox/calls', tag: `call-${a.id}`, actions: [{ text: 'Mark heard', action_id: 'call_heard', value: a.id }] }).catch((e) => console.error('notify', e));
+  await notify(env, { to: 'staff', kind: 'voicemail', title: `Voicemail: ${lead?.business || pretty(a.from_num) || 'Unknown caller'}`, body: `${secs} seconds. Tap to listen and call back.`, url: '/#/phone/calls', tag: `call-${a.id}`, actions: [{ text: 'Mark heard', action_id: 'call_heard', value: a.id }] }).catch((e) => console.error('notify', e));
   return new Response(null, { status: 204 });
 }, { public: true });
 
@@ -52,7 +52,7 @@ async function alertTeam(env, a, secs, origin) {
   await sendEmail(env, {
     to: to.split(',').map((x) => x.trim()).filter(Boolean),
     subject: `New voicemail from ${who}`,
-    text: `${who} left a ${secs} second voicemail${a.from_num ? ` from ${pretty(a.from_num)}` : ''}.\n\nListen and call back from the Hub: ${origin}/#/inbox/calls\n\nRightway Hub`,
+    text: `${who} left a ${secs} second voicemail${a.from_num ? ` from ${pretty(a.from_num)}` : ''}.\n\nListen and call back from the Hub: ${origin}/#/phone/calls\n\nRightway Hub`,
   });
   return true;
 }

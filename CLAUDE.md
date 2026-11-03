@@ -184,6 +184,23 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Start timer (task), Open in the Hub. `/api/slack/interact` and `/api/slack/command` are public but verify the signing secret (5 minute window).
   `/hub` (`commandReply`): work, client <name>, lead <name or phone>, stats (owners), help. Morning summary to the `digest` route from `digestTick`
   (`teamSummary`). The plain incoming webhook still works when the app is not connected (`slack_hook`, `slack_kinds`, `PUT /api/slack/webhook`).
+- Slack page (built, `src/slackuser.js`, `public/hub/slackapp.js`, menu item "Slack", `#/slack/<channel>`): each person's own Slack inside the Hub.
+  Sign in with Slack (OAuth v2 user scopes `USER_SCOPES` in `src/slack.js`; owners save the app's Client ID and Secret, `PUT /api/slack/app`, secret sealed;
+  redirect `/api/slack/oauth/callback`); the user token is sealed in `users.slack_token` with `users.slack_uid`. Every `/api/slack/me/*` call uses the asking
+  person's own token, so nobody (owners included) can read someone else's Slack. Conversations (users.conversations, names from the `slack_people` cache),
+  history and threads (5 s polling while open, opening marks read and calls conversations.mark), send, edit, delete, reactions, files (files.getUploadURLExternal
+  then completeUploadExternal; images and files shown through `/api/slack/me/file`, files.slack.com only), new DM (users.list, conversations.open), and
+  "Share from the Hub" (`itemMessage`: client, lead, task, report) also on the task panel and client header ("Send in Slack", `sendToSlack`).
+  Events API `/api/slack/events` (signed, url_verification, retries deduped in `slack_events`): `onSlackMessage` adds unread counts for Hub members of that
+  conversation (`slack_members` saved when the list loads, `slack_unread`), and DMs or @mentions push (notify kind `slack`, `list: false`). The manifest adds
+  user scopes, the redirect URL and user events; owners paste the new manifest in the app's App Manifest page.
+- Menu and dots (built, `public/hub/nav.js`, `src/nav.js`): menu items in `NAV` (Dashboard, My work, Slack, Phone, Pipeline, Clients, Payments, Client view,
+  Scan tool, Google, Alerts, Settings). Each person reorders and hides items ("Customize menu", `users.nav_prefs`, `PUT /api/me/nav`). Under 900 px a bottom bar
+  shows as many items as fit (width / 78, 3 to 7) with More opening the full menu; the open page always stays in the bar. Dots: `GET /api/badges` (texts,
+  calls, phone, slack, slackMentions, alerts, work due or overdue, pipeline audit requests not called, total) painted into any `[data-badge]` element and the
+  app icon (setAppBadge), refreshed every 45 s and on focus. Phone tab `#/phone` holds Dialer, Dial out, Texts (`#/phone/texts`), Calls and voicemail
+  (`#/phone/calls`), Recordings, and for owners Live calls and Phone setup (`dialTabs` in `public/hub/dialout.js`); old `#/dialer/*` and `#/inbox*` links
+  still route. Team lives in Settings (`#/settings/team`, `settingsTabs`).
 - Phase 5 Google Business Profile (built, `src/gbp.js`, `public/hub/gbp.js`, client tab `gbp`, Google page app `gbp` scope business.manage): link a location
   (`clients.gbp_account`, `gbp_location`), profile read and edit (description, phone, website), checks, Performance API calls, directions, website clicks,
   views (last 30 vs previous 30, and in the monthly report), reviews list and reply, publish posts (`/api/posts/:id/gbp`, closes a post task with the live link)

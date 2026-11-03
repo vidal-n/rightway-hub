@@ -1,6 +1,7 @@
 // Texting: a thread for one lead (in a modal) and the inbox of all conversations.
 import { $, $$, esc, api, toast, busy, modal, fmt, icon } from './core.js';
 import { staffShell } from './staff.js';
+import { dialTabs } from './dialout.js';
 
 const templates = (l, rep) => {
   const first = (l.contact_name || '').split(' ')[0];
@@ -64,7 +65,9 @@ export function textModal(lead, opts = {}) {
   return m;
 }
 
+// Kept for older callers; the menu dots now come from nav.js.
 export async function unreadBadge(root = document) {
+  return;
   try {
     const { unread } = await api('/api/inbox/unread');
     const a = $('a[href="#/inbox"]', root);
@@ -72,17 +75,16 @@ export async function unreadBadge(root = document) {
   } catch { /* ignore */ }
 }
 
-const inboxTabs = (on, calls) => `<nav class="tabs"><a href="#/inbox" class="${on === 'texts' ? 'is-active' : ''}">Texts</a><a href="#/inbox/calls" class="${on === 'calls' ? 'is-active' : ''}">Calls and voicemail${calls ? ` <b class="nbadge">${calls}</b>` : ''}</a></nav>`;
 
 export async function inboxPage(app, user, sub) {
   const rep = (user?.name || '').split(' ')[0] || '';
-  const view = staffShell(app, user, 'inbox');
+  const view = staffShell(app, user, 'phone');
   if (sub === 'calls') return callsView(view, user);
   const draw = async () => {
     let d, u = {};
     try { [d, u] = await Promise.all([api('/api/inbox'), api('/api/inbox/unread').catch(() => ({}))]); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
     view.innerHTML = `
-      <div class="page-head"><div><p class="eyebrow">Texts</p><h1>Inbox</h1></div></div>${inboxTabs('texts', u.calls)}
+      <div class="page-head"><div><p class="eyebrow">Texts</p><h1>Phone</h1></div></div>${dialTabs('texts', user)}
       ${!d.twilio ? '<p class="badge warn" style="margin-bottom:12px">Add the Twilio keys in Cloudflare to send and receive texts.</p>' : ''}
       ${d.conversations.length ? `<ul class="list">${d.conversations.map((c) => `<li class="item inbox-row" data-id="${esc(c.id)}" tabindex="0">
         <span class="badge ${c.unread ? '' : 'gray'}">${c.unread ? `${c.unread} new` : c.direction === 'out' ? 'Sent' : 'Read'}</span>
@@ -109,8 +111,8 @@ async function callsView(view, user) {
   try { d = await api('/api/calls/inbound'); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const label = { voicemail: ['Voicemail', 'bad'], missed: ['Missed', 'warn'], inbound_answered: ['Answered', ''], inbound: ['Ringing', 'gray'] };
   view.innerHTML = `
-    <div class="page-head"><div><p class="eyebrow">Calls</p><h1>Inbox</h1></div>${d.unseen ? '<button class="btn btn-ghost btn-sm" id="seenall">Mark all heard</button>' : ''}</div>
-    ${inboxTabs('calls', d.unseen)}
+    <div class="page-head"><div><p class="eyebrow">Calls and voicemail</p><h1>Phone</h1></div>${d.unseen ? '<button class="btn btn-ghost btn-sm" id="seenall">Mark all heard</button>' : ''}</div>
+    ${dialTabs('calls', user)}
     <p class="small muted">Missed calls to your numbers go to voicemail. Every teammate with notifications on gets a buzz, and owners get an email for each voicemail${user.role === 'admin' ? '' : ''}.</p>
     ${d.calls.length ? `<ul class="list">${d.calls.map((c) => { const [l, tone] = label[c.status] || ['Call', 'gray']; return `<li class="item call-row${(c.status === 'voicemail' || c.status === 'missed') && !c.seen ? ' is-new' : ''}" data-id="${esc(c.id)}">
       <span class="badge ${tone}">${l}</span>

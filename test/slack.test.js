@@ -32,7 +32,7 @@ function setup(extra = {}) {
     const ct = res.headers.get('content-type') || '';
     return { status: res.status, data: ct.includes('json') ? await res.json() : await res.text() };
   };
-  return { env, call, slack };
+  return { env, call, slack, cookie: () => cookie, setCookie: (c) => { cookie = c; } };
 }
 
 // Fake Slack Web API: records calls, answers like Slack.
@@ -194,4 +194,129 @@ test('signed requests only: /hub command and buttons act in the Hub', async () =
     await t.slack('/api/slack/interact', action({ action_id: 'call_heard', value: 'a9' }, { message: { blocks: [] } }));
     assert.ok((await first(t.env, "SELECT seen_at FROM activities WHERE id = 'a9'")).seen_at);
   } finally { f.restore(); }
+});
+
+test('each person\'s own Slack: connect, read, send, files, share, private to them, events light up dots', async () => {
+  const t = setup();
+  await owner(t);
+  const f = fakeSlack();
+  const real = globalThis.fetch;
+  const base = globalThis.fetch;
+  // Extra user-token methods on top of the fake.
+  globalThis.fetch = async (url, init = {}) => {
+    const u = String(url);
+    const j = (o) => new Response(JSON.stringify(o), { status: 200, headers: { 'content-type': 'application/json' } });
+    if (u.includes('oauth.v2.access')) { f.calls.push({ u, body: String(init.body) }); return j({ ok: true, authed_user: { id: 'UV', access_token: 'xoxp-user-1' }, team: { id: 'T1', name: 'Rightway Growth' } }); }
+    if (u.includes('users.conversations')) return j({ ok: true, channels: [{ id: 'C01LEADS9', name: 'leads', is_channel: true }, { id: 'D01KIRON9', is_im: true, user: 'UK' }], response_metadata: { next_cursor: '' } });
+    if (u.includes('conversations.history')) return j({ ok: true, messages: [{ ts: '1700000002.000200', user: 'UK', text: 'Hey <@UV>, can you call *Ocean Plumbing*?', reply_count: 2 }, { ts: '1700000001.000100', user: 'UV', text: 'Morning' }], has_more: false });
+    if (u.includes('conversations.replies')) return j({ ok: true, messages: [{ ts: '1700000002.000200', user: 'UK', text: 'parent' }, { ts: '1700000003.000300', user: 'UV', text: 'On it' }] });
+    if (u.includes('conversations.mark')) return j({ ok: true });
+    if (u.includes('users.info')) return j({ ok: true, user: { id: 'UK', name: 'kiron', real_name: 'Kiron', profile: { image_72: 'https://avatars.slack-edge.com/k.png', email: 'kiron@x.com' } } });
+    if (u.includes('files.getUploadURLExternal')) { f.calls.push({ u, body: String(init.body) }); return j({ ok: true, upload_url: 'https://files.slack.com/upload/v1/abc', file_id: 'F1' }); }
+    if (u.startsWith('https://files.slack.com/upload')) { f.calls.push({ u }); return new Response('OK'); }
+    if (u.includes('files.completeUploadExternal')) { f.calls.push({ u, body: JSON.parse(init.body) }); return j({ ok: true }); }
+    if (u.startsWith('https://files.slack.com/files-pri/')) return new Response('img', { headers: { 'content-type': 'image/png' } });
+    if (u.includes('reactions.add') || u.includes('chat.update') || u.includes('chat.delete') || u.includes('auth.revoke')) { f.calls.push({ u, body: init.body }); return j({ ok: true }); }
+    return base(url, init);
+  };
+  try {
+    await t.call('POST', '/api/slack/connect', { token: 'xoxb-1-2-abc', signing: SECRET });
+    let r = await t.call('GET', '/api/slack/me');
+    assert.equal(r.data.connected, false);
+    assert.equal(r.data.ready, false);
+    assert.equal((await t.call('PUT', '/api/slack/app', { clientId: 'x', clientSecret: 'y' })).status, 400);
+    await t.call('PUT', '/api/slack/app', { clientId: '123.456', clientSecret: 'f'.repeat(32) });
+    // Sign in with Slack: start sends to Slack with the user scopes, callback stores this person's token.
+    const startRes = await worker.fetch(new Request('https://hub.test/api/slack/oauth/start', { headers: { cookie: t.cookie() }, redirect: 'manual' }), t.env);
+    assert.equal(startRes.status, 302);
+    const loc = new URL(startRes.headers.get('location'));
+    assert.equal(loc.host, 'slack.com');
+    assert.match(loc.searchParams.get('user_scope'), /channels:history/);
+    const st = await first(t.env, "SELECT state FROM oauth_states WHERE state LIKE 'sl_%'");
+    const cb = await worker.fetch(new Request(`https://hub.test/api/slack/oauth/callback?state=${st.state}&code=abc`, { headers: { cookie: t.cookie() }, redirect: 'manual' }), t.env);
+    assert.equal(cb.status, 302);
+    assert.match(cb.headers.get('location'), /slack=ok/);
+    const row = await first(t.env, "SELECT slack_token, slack_uid FROM users WHERE email = 'v@x.com'");
+    assert.equal(row.slack_uid, 'UV');
+    assert.ok(!row.slack_token.includes('xoxp'));
+    assert.equal((await t.call('GET', '/api/slack/me')).data.connected, true);
+    // Conversations: channels and DMs with names, and membership saved for events.
+    r = await t.call('GET', '/api/slack/me/conversations');
+    assert.deepEqual(r.data.conversations.map((c) => [c.kind, c.name]), [['channel', 'leads'], ['dm', 'Kiron']]);
+    // An event from Slack: a DM to V lights up the dot and pushes; a retry is ignored; V's own messages do not count.
+    const ev = (id, event) => JSON.stringify({ type: 'event_callback', event_id: id, event });
+    r = await t.slack('/api/slack/events', JSON.stringify({ type: 'url_verification', challenge: 'xyz' }));
+    assert.equal(r.data.challenge, 'xyz');
+    await t.slack('/api/slack/events', ev('E1', { type: 'message', channel: 'D01KIRON9', channel_type: 'im', user: 'UK', text: 'You there?', ts: '1700000009.1' }));
+    await t.slack('/api/slack/events', ev('E1', { type: 'message', channel: 'D01KIRON9', channel_type: 'im', user: 'UK', text: 'You there?', ts: '1700000009.1' }));
+    await t.slack('/api/slack/events', ev('E2', { type: 'message', channel: 'C01LEADS9', channel_type: 'channel', user: 'UV', text: 'mine', ts: '1700000010.1' }));
+    await t.slack('/api/slack/events', ev('E3', { type: 'message', channel: 'C01LEADS9', channel_type: 'channel', user: 'UK', text: 'new lead in', ts: '1700000011.1' }));
+    r = await t.call('GET', '/api/slack/me/unreads');
+    assert.deepEqual(r.data.unreads, { D01KIRON9: { count: 1, mentions: 1 }, C01LEADS9: { count: 1, mentions: 0 } });
+    r = await t.call('GET', '/api/badges');
+    assert.equal(r.data.slack, 2);
+    assert.equal(r.data.slackMentions, 1);
+    // Reading a conversation clears its dot and tells Slack it was read.
+    r = await t.call('GET', '/api/slack/me/history?channel=C01LEADS9');
+    assert.equal(r.data.messages[1].replies, 2);
+    assert.equal(r.data.people.UK.name, 'Kiron');
+    assert.equal((await t.call('GET', '/api/slack/me/unreads')).data.unreads.C01LEADS9, undefined);
+    r = await t.call('GET', '/api/slack/me/replies?channel=C01LEADS9&ts=1700000002.000200');
+    assert.equal(r.data.messages.length, 2);
+    // Send, edit, delete, react.
+    f.calls.length = 0;
+    r = await t.call('POST', '/api/slack/me/send', { channel: 'C01LEADS9', text: 'Calling now', thread_ts: '1700000002.000200' });
+    const post = f.calls.find((x) => x.u.includes('chat.postMessage'));
+    assert.equal(post.init.headers.authorization, 'Bearer xoxp-user-1'); // posts as the person, not the bot
+    assert.equal(post.body.thread_ts, '1700000002.000200');
+    assert.equal((await t.call('POST', '/api/slack/me/send', { channel: 'bad', text: 'x' })).status, 400);
+    await t.call('POST', '/api/slack/me/react', { channel: 'C01LEADS9', ts: '1700000002.000200', name: ':+1:' });
+    await t.call('POST', '/api/slack/me/edit', { channel: 'C01LEADS9', ts: '1700000001.000100', text: 'Good morning' });
+    await t.call('POST', '/api/slack/me/edit', { channel: 'C01LEADS9', ts: '1700000001.000100', remove: true });
+    assert.ok(f.calls.some((x) => x.u.includes('reactions.add')) && f.calls.some((x) => x.u.includes('chat.update')) && f.calls.some((x) => x.u.includes('chat.delete')));
+    // Files go up through Slack's upload flow.
+    const form = new FormData();
+    form.append('file', new File([new Uint8Array([1, 2, 3])], 'proof.png', { type: 'image/png' }));
+    form.append('channel', 'D01KIRON9'); form.append('comment', 'Here is the screenshot');
+    const up = await worker.fetch(new Request('https://hub.test/api/slack/me/upload', { method: 'POST', body: form, headers: { 'x-rw': '1', cookie: t.cookie() } }), t.env);
+    assert.equal(up.status, 200);
+    const done = f.calls.find((x) => x.u.includes('files.completeUploadExternal'));
+    assert.equal(done.body.channel_id, 'D01KIRON9');
+    assert.equal(done.body.initial_comment, 'Here is the screenshot');
+    // File proxy only fetches Slack files.
+    assert.equal((await t.call('GET', `/api/slack/me/file?u=${encodeURIComponent('https://evil.example/x')}`)).status, 400);
+    assert.equal((await t.call('GET', `/api/slack/me/file?u=${encodeURIComponent('https://files.slack.com/files-pri/T1-F1/a.png')}`)).status, 200);
+    // Share a Hub item.
+    const c = (await t.call('POST', '/api/clients', { name: 'Sunrise Roofing', plan: 'growth' })).data.client;
+    f.calls.length = 0;
+    await t.call('POST', '/api/slack/me/share', { channel: 'C01LEADS9', type: 'client', id: c.id, note: 'FYI' });
+    assert.match(f.calls.find((x) => x.u.includes('chat.postMessage')).body.text, /FYI\n\*Client: Sunrise Roofing\*/);
+    // Private: a teammate without their own Slack cannot read V's.
+    const inv = await t.call('POST', '/api/team/invite', { email: 'kiron@x.com', name: 'Kiron', role: 'team' });
+    const v = t.cookie();
+    t.setCookie('');
+    await t.call('POST', '/api/auth/invite/accept', { token: inv.data.inviteUrl.split('/').pop(), password: 'kiron password 1' });
+    assert.equal((await t.call('GET', '/api/slack/me/conversations')).status, 409);
+    assert.equal((await t.call('GET', '/api/slack/me/history?channel=D01KIRON9')).status, 409);
+    t.setCookie(v);
+    // Disconnect removes the token and dots.
+    await t.call('POST', '/api/slack/me/disconnect');
+    assert.equal((await t.call('GET', '/api/slack/me')).data.connected, false);
+  } finally { globalThis.fetch = real; f.restore(); }
+});
+
+test('menu order per person and the dots endpoint', async () => {
+  const t = setup();
+  await owner(t);
+  let r = await t.call('GET', '/api/me/nav');
+  assert.equal(r.data.prefs, null);
+  r = await t.call('PUT', '/api/me/nav', { order: ['slack', 'phone', 'home', 'BAD!'], hidden: ['google'] });
+  assert.deepEqual(r.data.prefs, { order: ['slack', 'phone', 'home'], hidden: ['google'] });
+  assert.deepEqual((await t.call('GET', '/api/me/nav')).data.prefs.hidden, ['google']);
+  await t.call('PUT', '/api/me/nav', { reset: true });
+  assert.equal((await t.call('GET', '/api/me/nav')).data.prefs, null);
+  await run(t.env, "INSERT INTO leads (id, business, stage, attempts, created_at, updated_at) VALUES ('l1', 'A', 'audit_requested', 0, 0, 0)");
+  r = await t.call('GET', '/api/badges');
+  assert.equal(r.data.pipeline, 1);
+  assert.equal(r.data.total >= 1, true);
 });

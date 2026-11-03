@@ -21,7 +21,7 @@ export async function homePage(app, user) {
   const workPct = d.work.tasksTotal ? Math.round((100 * d.work.tasksDone) / d.work.tasksTotal) : 0;
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow">${esc(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))}</p><h1>${esc(hello())}${first ? `, ${esc(first)}` : ''}</h1></div>
-      <div class="row"><a class="btn btn-mint" href="#/dialer">${icon.phone}Start dialing</a><a class="btn btn-ghost" href="#/pipeline">${icon.chart}Pipeline</a></div></div>
+      <div class="row"><a class="btn btn-mint" href="#/phone">${icon.phone}Start dialing</a><a class="btn btn-ghost" href="#/pipeline">${icon.chart}Pipeline</a></div></div>
     <div class="stats">
       <div class="stat hero"><div class="stat-num" data-count="${d.me.dials}">0</div><div class="stat-label">dials today (goal ${DIAL_TARGET})</div><div class="progress" style="margin-top:10px"><span data-w="${pctDials}"></span></div></div>
       <div class="stat"><div class="stat-num" data-count="${d.me.talks}">0</div><div class="stat-label">owner conversations today</div></div>
@@ -44,7 +44,7 @@ export async function homePage(app, user) {
         <p class="small" style="margin-top:12px">This week, whole team: ${d.week.dials} dials, ${d.week.talks} conversations, ${d.week.booked} audits booked.</p></div>
       <div class="card"><div class="card-head"><h2>Deals this month</h2></div>
         <div class="mini3"><div><b>${d.orders.sent}</b><span>agreements out</span></div><div><b>${d.orders.signed}</b><span>signed</span></div><div><b>${d.orders.paid}</b><span>paid</span></div></div>
-        <div class="row" style="margin-top:14px"><span class="badge ${d.unread ? '' : 'gray'}">${d.unread} unread text${d.unread === 1 ? '' : 's'}</span><a class="btn btn-ghost btn-sm" href="#/inbox">${icon.msg}Inbox</a></div></div>
+        <div class="row" style="margin-top:14px"><span class="badge ${d.unread ? '' : 'gray'}">${d.unread} unread text${d.unread === 1 ? '' : 's'}</span><a class="btn btn-ghost btn-sm" href="#/phone/texts">${icon.msg}Inbox</a></div></div>
       <div class="card"><div class="card-head"><h2>Clients</h2><a class="btn btn-ghost btn-sm" href="#/clients">Open</a></div>
         <div class="mini3"><div><b>${fmt.money(d.clients.mrr)}</b><span>monthly revenue</span></div><div><b>${d.clients.active}</b><span>active clients</span></div><div><b>${workPct}%</b><span>of this month's work done</span></div></div>
         <p class="small" style="margin-top:12px">${d.work.postsWaiting} post${d.work.postsWaiting === 1 ? '' : 's'} waiting to go out.</p>

@@ -11,6 +11,7 @@ import { postToSlack, teamSummary } from './slack.js';
 export const KINDS = {
   call: 'Incoming calls', voicemail: 'Voicemails and missed calls', text: 'Texts', task: 'Tasks assigned to me and due today',
   client: 'Client updates (approvals, uploads, intake, report views)', lead: 'New leads and bookings', money: 'Payments and new clients', meeting: 'Meeting reminders',
+  slack: 'Slack direct messages and mentions',
 };
 export const CLIENT_KINDS = { update: 'Reports, things to approve, and meetings' };
 
@@ -93,10 +94,11 @@ async function resolveUsers(env, to) {
 // skip: a user id that should not be told (the person who did the thing).
 // slack: false keeps it out of Slack channels (personal Slack direct messages still go out). actions: Slack buttons.
 // clientId: also posts to that client's Slack channel when it has one.
-export async function notify(env, { to, kind, title, body = '', url = '/', tag = null, urgent = false, skip = null, slack = true, actions = [], clientId = null }) {
+// list: false skips the in-app alert list (Slack messages have their own unread dots).
+export async function notify(env, { to, kind, title, body = '', url = '/', tag = null, urgent = false, skip = null, slack = true, actions = [], clientId = null, list = true }) {
   const users = (await resolveUsers(env, to)).filter((u) => u.id !== skip);
   const at = now();
-  if (users.length) {
+  if (users.length && list) {
     await batch(env, users.map((u) => ['INSERT INTO notifications (id, user_id, kind, title, body, url, tag, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       newId('n_'), u.id, kind, String(title).slice(0, 160), String(body || '').slice(0, 400), url, tag, at]));
   }

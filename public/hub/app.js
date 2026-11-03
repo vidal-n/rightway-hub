@@ -111,16 +111,20 @@ async function route() {
     return portal(app, u, parts[0] || 'home', { ...state, sub: parts[1] });
   }
   initPhone();
-  if (parts[0] === 'team') return teamPage(app, u);
-  if (parts[0] === 'pipeline') return pipelinePage(app, u);
-  if (parts[0] === 'dialer') {
-    if (parts[1] === 'out') return dialOutPage(app, u);
-    if (parts[1] === 'recordings') return recordingsPage(app, u);
-    if (parts[1] === 'live') return liveCallsPage(app, u);
-    if (parts[1] === 'setup') return phoneSetupPage(app, u);
+  // Phone holds the dialer, texts, calls and voicemail. Old #/dialer and #/inbox links still work.
+  if (parts[0] === 'phone' || parts[0] === 'dialer' || parts[0] === 'inbox') {
+    const sub = parts[0] === 'inbox' ? (parts[1] === 'calls' ? 'calls' : 'texts') : parts[1] || '';
+    if (sub === 'out') return dialOutPage(app, u);
+    if (sub === 'recordings') return recordingsPage(app, u);
+    if (sub === 'live') return liveCallsPage(app, u);
+    if (sub === 'setup') return phoneSetupPage(app, u);
+    if (sub === 'texts') return inboxPage(app, u);
+    if (sub === 'calls') return inboxPage(app, u, 'calls');
     return dialerPage(app, u);
   }
-  if (parts[0] === 'inbox') return inboxPage(app, u, parts[1]);
+  if (parts[0] === 'pipeline') return pipelinePage(app, u);
+  if (parts[0] === 'team' || (parts[0] === 'settings' && parts[1] === 'team')) return teamPage(app, u);
+  if (parts[0] === 'slack') return import('./slackapp.js').then((m) => m.slackPage(app, u, parts[1] || ''));
   if (parts[0] === 'work') return import('./work.js').then((m) => m.workPage(app, u, parts[1] || '', parts[2] || ''));
   if (parts[0] === 'alerts') return import('./alerts.js').then((m) => m.alertsPage(app, u));
   if (parts[0] === 'payments') return paymentsPage(app, u);

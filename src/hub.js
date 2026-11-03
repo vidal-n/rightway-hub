@@ -587,3 +587,5 @@ import './voicemail.js';
 import './gbp.js';
 import './notify.js';
 import './slack.js';
+import './slackuser.js';
+import './nav.js';
