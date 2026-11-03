@@ -11,7 +11,7 @@ import { accessToken, googleReady, APP_SCOPES, hasScope } from './google.js';
 import { buildPayments } from './payments.js';
 
 const LABEL = {
-  mail: 'Gmail', drive: 'Google Drive', docs: 'Google Docs', sheets: 'Google Sheets',
+  calendar: 'Calendar', mail: 'Gmail', drive: 'Google Drive', docs: 'Google Docs', sheets: 'Google Sheets',
   gsc: 'Search Console', ga: 'Google Analytics', ads: 'Google Ads', gbp: 'Google Business Profile',
 };
 
@@ -29,8 +29,12 @@ export async function userFor(env, user, app) {
 export async function ownFor(env, user, app) {
   if (!googleReady(env)) throw new HttpError('Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloudflare first.', 503);
   const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);
-  if (me?.google_token && hasScope(me.google_scopes, APP_SCOPES[app])) return me;
-  throw new HttpError(`Turn on ${LABEL[app]} on the Google page first.`, 400);
+  // Calendar comes with the base connection, so it has no entry in APP_SCOPES.
+  const ok = app === 'calendar'
+    ? Boolean(me?.google_token && String(me.google_scopes || '').includes('calendar'))
+    : Boolean(me?.google_token && hasScope(me.google_scopes, APP_SCOPES[app]));
+  if (ok) return me;
+  throw new HttpError(`Turn on ${LABEL[app] || 'Calendar'} on the Google page first.`, 400);
 }
 
 export async function gfetch(env, row, url, { method = 'GET', body, headers = {}, label = 'Google' } = {}) {

@@ -148,6 +148,14 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   attributes, and blocks remote pictures until "Show pictures". Hub ties: a thread shows the lead or client it belongs to with a link,
   compose suggests addresses from leads, clients and teammates (`/api/google/mail/people`), mail sent to a lead or client is logged as an
   `email` activity on their timeline, and `mailWith(box, email)` lists recent mail with one person for their page.
+- Google Calendar in the Hub (built, `src/gcal.js`, `public/hub/gcal.js`, maths `public/js/calgrid.js` pure and shared, `#/google/calendar`,
+  `/month|week|day`): every calendar the person can see (`calendarList`, up to 6 shown at once, each with its own colour, read-only ones
+  marked), month, week and day views, the red now line, click an empty slot or a free gap to make something, keys m, w, d and t. Events are
+  added, changed and deleted with guests emailed (`sendUpdates=all`), optional Google Meet link, all-day as plain dates, and an event can be
+  pinned to a lead or client (`extendedProperties.private.rwLead`, `rwClient`) which the page then shows as a link. Invite list suggests
+  leads, clients and teammates (`/api/google/cal/people`). `calgrid.js` holds `monthGrid`, `weekGrid`, `eventTimes` (all-day end dates),
+  `slimEvent`, `eventsOn`, `layoutDay` (side-by-side columns for overlaps), `clockLabel`, `inputValue` and `freeGaps` (what is free in
+  working hours). The booking page and Hub meetings keep using `src/google.js`; this is the person's own calendar.
 - Scan tool v3: up to 5 keywords per run (tabs plus a summary table, save all to a client), grids to 13 x 13, radius to 30 miles, bigger map
   with zoom buttons, drag, pinch, ctrl or trackpad zoom, and double click (`createMap` in `public/js/map.js`). A live feed shows each search as a
   phone result card while scanning, and "Replay the scan" re-runs it spot by spot for clients. Lead research now keeps the top 3 per grid spot,

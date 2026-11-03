@@ -154,6 +154,7 @@ export const icon = {
   clip: P('<path d="M20 11.5l-8 8a5 5 0 01-7-7l8.5-8.5a3.5 3.5 0 015 5L10 17.5a2 2 0 01-3-3l7.5-7.5"/>'),
   smile: P('<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4 4 0 007 0M9 9.5h.01M15 9.5h.01"/>'),
   back: P('<path d="M15 5l-7 7 7 7"/>'),
+  next: P('<path d="M9 5l7 7-7 7"/>'),
   reply: P('<path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 016 6v1"/>'),
   stop: P('<rect x="6" y="6" width="12" height="12" rx="2"/>'),
   bell: P('<path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/><path d="M10 20a2 2 0 004 0"/>'),

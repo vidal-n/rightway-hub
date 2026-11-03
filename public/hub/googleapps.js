@@ -22,7 +22,7 @@ const LINKS = [
 const connectUrl = (apps) => `/api/google/connect?back=google${apps.length ? `&apps=${apps.join(',')}` : ''}`;
 
 // Tabs across the top of every Google page: the apps themselves, then the setup page.
-const GTABS = [['mail', '#/google/mail', 'Mail'], ['apps', '#/google', 'Setup']];
+const GTABS = [['mail', '#/google/mail', 'Mail'], ['calendar', '#/google/calendar', 'Calendar'], ['apps', '#/google', 'Setup']];
 export const googleTabs = (active) => `<nav class="tabs" style="margin-bottom:16px">${GTABS.map(([k, href, name]) => `<a href="${href}" class="${active === k ? 'is-active' : ''}">${name}</a>`).join('')}</nav>`;
 
 export async function googlePage(app, user) {
