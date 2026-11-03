@@ -3,8 +3,10 @@
 // is posted there by the Rightway Hub app under the client's name; what the team writes in that channel (in Slack, or from the
 // client's Messages tab in the Hub) shows in the client's app, with an unread dot and a notification.
 // Everything in the chat channel is visible to the client, so internal talk belongs in the other channels.
+// Every active client gets this chat automatically once the Slack app is connected (on sign up, or by the cron for older clients),
+// and the Hub's client updates (reports, pages to approve, meetings, plans) are posted into it too, so the whole history is in one place.
 import { HttpError, json } from './util.js';
-import { all, first, run, now } from './db.js';
+import { all, first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireClientAccess, isStaff } from './auth.js';
 import { route } from './router.js';
 import { unseal } from './seal.js';
@@ -51,16 +53,99 @@ function slim(m, people) {
   const from = meta === 'rw_client_msg' ? 'client' : 'team';
   const name = meta ? String(m.username || '').replace(/\s*\((Rightway Growth|[^)]*)\)\s*$/, '') || (from === 'client' ? 'You' : 'Rightway Growth') : people[m.user]?.name || m.username || 'Rightway Growth';
   return {
-    ts: m.ts, from, hubUser: hub, name, image: from === 'team' ? people[m.user]?.image || null : null, text: m.text || '',
+    ts: m.ts, from, hubUser: hub, name, note: meta === 'rw_hub_note', image: from === 'team' ? people[m.user]?.image || null : null, text: m.text || '',
     files: (m.files || []).filter((f) => f.id && f.mode !== 'tombstone').map((f) => ({ id: f.id, name: f.name || 'file', image: /^image\//.test(f.mimetype || ''), size: f.size || 0 })),
   };
 }
 
+const autoOn = (s) => s.chat_auto !== '0';
+const chatEligible = (c) => c && c.status === 'active' && !c.parent_id && !Number(c.sample || 0);
+
+// Make the client's private chat channel, invite the account manager and owners, and say hello to the client.
+export async function openClientChat(env, c, { by = null, channel = null } = {}) {
+  const { token } = await bot(env);
+  let ch = channel;
+  if (!ch) {
+    const base = `chat-${slug(c.name)}`.slice(0, 70);
+    for (const name of [base, `${base}-2`, `${base}-${Date.now().toString(36).slice(-4)}`]) {
+      const r = await slackApi(token, 'conversations.create', { name, is_private: true }).catch((e) => ({ error: e.message }));
+      if (r.channel?.id) { ch = { id: r.channel.id, name: r.channel.name }; break; }
+      if (!/name_taken/.test(r.error || '')) throw new HttpError(r.error || 'Slack would not make the channel.', 502);
+    }
+    if (!ch) throw new HttpError('Could not find a free channel name. Pick an existing channel instead.');
+    const ids = (await all(env, "SELECT slack_id FROM users WHERE slack_id IS NOT NULL AND (role = 'admin' OR id = ?)", c.owner_id || '')).map((u) => u.slack_id);
+    if (ids.length) await slackApi(token, 'conversations.invite', { channel: ch.id, users: [...new Set(ids)].join(',') }).catch(() => {});
+    // The description is for the team (the client never sees channel notices). The welcome is for the client.
+    await slackApi(token, 'conversations.setPurpose', { channel: ch.id, purpose: `Client Messages for ${c.name}. Everything here shows in their Rightway app. Keep internal talk in other channels.`.slice(0, 250) }).catch(() => {});
+    const am = c.owner_id ? await first(env, 'SELECT name FROM users WHERE id = ?', c.owner_id) : null;
+    const first1 = String(c.contact_name || '').split(/\s+/)[0];
+    await chatNote(env, { ...c, chat_channel: ch.id }, `Welcome to Rightway Growth${first1 ? `, ${first1}` : ''}! This is your direct line to your team. Ask anything, send photos of new jobs, and get updates here: your monthly reports, pages to approve and meeting invites all land in this chat.${am?.name ? ` Your account manager is ${am.name}.` : ''}`, { unread: false });
+  }
+  await run(env, 'UPDATE clients SET chat_channel = ?, chat_channel_name = ? WHERE id = ?', ch.id, ch.name, c.id);
+  await run(env, 'INSERT INTO log (id, client_id, text, at, by) VALUES (?, ?, ?, ?, ?)', `l_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`, c.id, 'Messages turned on', now(), by);
+  return ch;
+}
+
+// A note from the Hub in the client's chat (report ready, page to check, meeting booked). Posted as "Rightway Growth".
+export async function chatNote(env, clientOrId, text, { unread = true } = {}) {
+  const c = typeof clientOrId === 'string' ? await first(env, 'SELECT id, chat_channel FROM clients WHERE id = ?', clientOrId) : clientOrId;
+  if (!c?.chat_channel) return null;
+  const st = await slackState(env);
+  if (!st.bot) return null;
+  const token = await unseal(env, st.bot);
+  const r = await slackApi(token, 'chat.postMessage', { channel: c.chat_channel, text: String(text).slice(0, 3000), username: 'Rightway Growth', unfurl_links: false, metadata: { event_type: 'rw_hub_note', event_payload: { hub_user: 'hub' } } }).catch((e) => { console.error('chat note', e); return null; });
+  if (!r?.ts) return null;
+  await remember(env, c.chat_channel, r.ts, 'hub');
+  if (unread) {
+    await run(env, `INSERT INTO slack_unread (user_id, channel_id, count, mentions, last_ts)
+      SELECT id, ?, 1, 1, NULL FROM users WHERE role = 'client' AND client_id = ? ON CONFLICT(user_id, channel_id) DO UPDATE SET count = count + 1, mentions = mentions + 1`, c.chat_channel, c.id);
+  }
+  return r.ts;
+}
+
+// The account manager changed: add them to the chat so they see the client's messages.
+export async function inviteToChat(env, clientId, userIds) {
+  const c = await first(env, 'SELECT chat_channel FROM clients WHERE id = ?', clientId);
+  if (!c?.chat_channel || !userIds.length) return 0;
+  const st = await slackState(env);
+  if (!st.bot) return 0;
+  const ids = (await all(env, `SELECT slack_id FROM users WHERE slack_id IS NOT NULL AND id IN (${userIds.map(() => '?').join(',')})`, ...userIds)).map((u) => u.slack_id);
+  if (!ids.length) return 0;
+  await slackApi(await unseal(env, st.bot), 'conversations.invite', { channel: c.chat_channel, users: ids.join(',') }).catch((e) => { if (!/already_in_channel/.test(e.message)) console.error('chat invite', e); });
+  return ids.length;
+}
+
+// New clients get their chat right away; this also catches clients from before, a couple per run, once the Slack app is connected.
+export async function ensureClientChats(env, limit = 2) {
+  const s = await getSettings(env);
+  if (!autoOn(s)) return 0;
+  const st = await slackState(env);
+  if (!st.bot) return 0;
+  const list = await all(env, `SELECT * FROM clients WHERE chat_channel IS NULL AND status = 'active' AND parent_id IS NULL AND COALESCE(sample, 0) = 0
+    AND (chat_tried IS NULL OR chat_tried < ?) ORDER BY created_at DESC LIMIT ?`, now() - 6 * 3600e3, limit);
+  let n = 0;
+  for (const c of list) {
+    await run(env, 'UPDATE clients SET chat_tried = ? WHERE id = ?', now(), c.id);
+    try { await openClientChat(env, c); n += 1; } catch (e) { console.error('client chat setup', c.id, e.message); }
+  }
+  return n;
+}
+export async function autoChatFor(env, clientId) {
+  const s = await getSettings(env);
+  const c = await first(env, 'SELECT * FROM clients WHERE id = ?', clientId);
+  if (!autoOn(s) || !chatEligible(c) || c.chat_channel) return null;
+  const st = await slackState(env);
+  if (!st.bot) return null;
+  await run(env, 'UPDATE clients SET chat_tried = ? WHERE id = ?', now(), c.id);
+  return openClientChat(env, c).catch((e) => { console.error('client chat setup', e.message); return null; });
+}
+
 route('GET', '/api/clients/:id/chat', async ({ env, user, params }) => {
   requireClientAccess(user, params.id);
-  const c = await clientOr404(env, params.id);
+  let c = await clientOr404(env, params.id);
   const staff = isStaff(user);
   const st = await slackState(env);
+  if (st.bot && !c.chat_channel && !user.viewAs && await autoChatFor(env, c.id)) c = await clientOr404(env, params.id);
   if (!st.bot || !c.chat_channel) return json({ ready: false, connected: Boolean(st.bot), staff, channelName: c.chat_channel_name || null });
   const { token } = await bot(env);
   const r = await slackApi(token, 'conversations.history', { channel: c.chat_channel, limit: '60', include_all_metadata: 'true' }, { get: true });
@@ -157,31 +242,25 @@ route('GET', '/api/clients/:id/chat/file/:fileId', async ({ env, user, params, u
   return new Response(res.body, { headers: { 'content-type': res.headers.get('content-type') || f.mimetype || 'application/octet-stream', 'cache-control': 'private, max-age=3600', ...(url.searchParams.get('dl') ? { 'content-disposition': `attachment; filename="${String(f.name || 'file').replace(/["\r\n]/g, '')}"` } : {}) } });
 });
 
-// Turn Messages on: make a private channel for this client and invite the account manager and linked owners.
+// Turn Messages on by hand: make a private channel for this client (or use one you pick).
 route('POST', '/api/clients/:id/chat/setup', async ({ env, user, params, body }) => {
   requireStaff(user);
   const c = await clientOr404(env, params.id);
-  const { token } = await bot(env);
   const b = await body();
   let channel = null;
   if (b.channel?.id) {
     if (!/^[CG][A-Z0-9]{6,}$/.test(b.channel.id)) throw new HttpError('Pick a channel from the list.');
     channel = { id: b.channel.id, name: String(b.channel.name || '').slice(0, 80) };
-  } else {
-    const base = `chat-${slug(c.name)}`.slice(0, 70);
-    for (const name of [base, `${base}-2`, `${base}-${Date.now().toString(36).slice(-4)}`]) {
-      const r = await slackApi(token, 'conversations.create', { name, is_private: true }).catch((e) => ({ error: e.message }));
-      if (r.channel?.id) { channel = { id: r.channel.id, name: r.channel.name }; break; }
-      if (!/name_taken/.test(r.error || '')) throw new HttpError(r.error || 'Slack would not make the channel.', 502);
-    }
-    if (!channel) throw new HttpError('Could not find a free channel name. Pick an existing channel instead.');
-    const ids = (await all(env, "SELECT slack_id FROM users WHERE slack_id IS NOT NULL AND (role = 'admin' OR id = ?)", c.owner_id || '')).map((u) => u.slack_id);
-    if (ids.length) await slackApi(token, 'conversations.invite', { channel: channel.id, users: [...new Set(ids)].join(',') }).catch(() => {});
-    await slackApi(token, 'chat.postMessage', { channel: channel.id, text: `This is ${c.name}'s Messages channel. Everything written here shows in their Rightway app, and what they send from the app shows up here. Keep internal talk in other channels.` }).catch(() => {});
   }
-  await run(env, 'UPDATE clients SET chat_channel = ?, chat_channel_name = ? WHERE id = ?', channel.id, channel.name, c.id);
-  await run(env, 'INSERT INTO log (id, client_id, text, at, by) VALUES (?, ?, ?, ?, ?)', `l_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`, c.id, 'Messages turned on', now(), user.id);
-  return json({ channel });
+  return json({ channel: await openClientChat(env, c, { by: user.id, channel }) });
+});
+
+route('PUT', '/api/chat/auto', async ({ env, user, body }) => {
+  requireStaff(user);
+  if (user.role !== 'admin') throw new HttpError('Owners only.', 403);
+  const on = Boolean((await body()).on);
+  await setSetting(env, 'chat_auto', on ? '1' : '0');
+  return json({ on });
 });
 
 route('DELETE', '/api/clients/:id/chat', async ({ env, user, params }) => {

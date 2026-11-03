@@ -8,6 +8,7 @@ import { route } from './router.js';
 import { tasksForMonth, monthKey, planOf, MONTHLY_CENTS } from './plans.js';
 import { guideFor, cleanGuide, dueDate, accessState, accessGaps, blockedBy, ACCESS_ITEMS, ACCESS_STATUS, DEFAULT_GUIDES } from '../public/js/guides.js';
 import { notifyLater } from './notify.js';
+import { inviteToChat } from './chat.js';
 
 const parse = (s, d = null) => { try { return s ? JSON.parse(s) : d; } catch { return d; } };
 const text = (v, max = 500) => (v == null ? null : String(v).replace(/\u0000/g, '').trim().slice(0, max) || null);
@@ -219,6 +220,7 @@ route('PUT', '/api/clients/:id/owner', async ({ env, user, params, body }) => {
   const owner = b.owner_id ? await first(env, "SELECT id FROM users WHERE id = ? AND role IN ('admin','team')", b.owner_id) : null;
   if (b.owner_id && !owner) throw new HttpError('Pick someone on the team.');
   await run(env, 'UPDATE clients SET owner_id = ? WHERE id = ?', owner?.id || null, c.id);
+  if (owner) await inviteToChat(env, c.id, [owner.id]).catch(() => {});
   let moved = 0;
   if (b.apply) {
     const r = await run(env, "UPDATE tasks SET owner = ? WHERE client_id = ? AND status IN ('todo','doing') AND (owner IS NULL OR ? = 1)", owner?.id || null, c.id, b.all ? 1 : 0);

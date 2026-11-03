@@ -7,6 +7,7 @@ import { route } from './router.js';
 import { scoreLead, dupKeys } from '../public/js/leadintel.js';
 import { resolveDispo } from './dispo.js';
 import { notifyLater } from './notify.js';
+import { autoChatFor } from './chat.js';
 
 export const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won', 'not_now', 'lost', 'dnc'];
 const CALLABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
@@ -393,6 +394,7 @@ export async function convertLead(env, lead, plan, by) {
   const list = tasksForMonth({ ...c, has_setup: false }, month);
   await batch(env, list.map((t, i) => ['INSERT INTO tasks (id, client_id, month, kind, title, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', newId('t_'), id, month, t.kind, t.title, i, now()]));
   await logActivity(env, { lead_id: lead.id, client_id: id, type: 'stage', body: 'Won: client created', by });
+  await autoChatFor(env, id).catch(() => {}); // their private chat with the team is ready from day one
   return id;
 }
 

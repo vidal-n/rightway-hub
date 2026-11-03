@@ -27,6 +27,8 @@ export async function chatView(el, clientId, { staff = false } = {}) {
     if (!box) return;
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
     box.innerHTML = msgs.length ? msgs.map((m) => {
+      // Updates from the Hub (report ready, page to check, meeting booked) show as a card in the middle.
+      if (m.note) return `<div class="chat-update"><div class="chat-who small">Rightway Growth · ${esc(when(m.ts))}</div><div>${slackHtml(m.text)}</div></div>`;
       const mine = staff ? m.from === 'team' : m.from === 'client';
       return `<div class="chat-row${mine ? ' mine' : ''}">${mine ? '' : (m.image ? `<img class="chat-av" src="${esc(m.image)}" alt="">` : `<span class="chat-av">${esc(initials(m.name))}</span>`)}
         <div class="chat-bub"><div class="chat-who small">${esc(mine ? 'You' : m.name)} · ${esc(when(m.ts))}</div>${m.text ? `<div>${slackHtml(m.text)}</div>` : ''}
@@ -67,7 +69,8 @@ export async function chatView(el, clientId, { staff = false } = {}) {
 
 async function setupCard(el, clientId, d) {
   el.innerHTML = `<div class="card"><div class="card-head"><h2>Messages with this client</h2></div>
-    <p>Turn on Messages and the client can write to the team from their app, send photos and files, and get your replies with a notification. It runs through a private Slack channel, so the team can answer from Slack or from here. The client does not need Slack.</p>
+    <p>Messages is the client's chat with the team: they write from their app, send photos and files, and get your replies and Hub updates with a notification. It runs through a private Slack channel, so the team can answer from Slack or from here. The client does not need Slack.</p>
+    <p class="small muted">New active clients get it automatically once the Slack app is connected. Turn it on here for a client that did not (a location, a paused client, or with automatic chats off).</p>
     ${d.connected ? `<div class="row"><button class="btn btn-primary" id="ch-make">Turn on Messages</button><span class="small muted">Makes a private channel and invites the account manager and owners.</span></div>
       <details style="margin-top:12px"><summary class="small">Or use a channel you already have</summary><div class="row" style="margin-top:8px"><select id="ch-pick"><option value="">Loading channels...</option></select><button class="btn btn-ghost btn-sm" id="ch-use">Use it</button></div>
       <p class="small muted">Everything in that channel will show in the client's app.</p></details>`

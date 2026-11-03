@@ -1,6 +1,6 @@
 // Team home: today's calling, meetings, callbacks, pipeline, clients, deals. Plus the Client view (see the app as a client does).
 import { $, $$, esc, api, toast, busy, fmt, icon, animateNumbers } from './core.js';
-import { staffShell } from './staff.js';
+import { staffShell, clientsTabs } from './staff.js';
 import { leadModal, STAGE_LABEL } from './crm.js';
 import { paymentsSnapshot } from './payments.js';
 
@@ -48,7 +48,7 @@ export async function homePage(app, user) {
       <div class="card"><div class="card-head"><h2>Clients</h2><a class="btn btn-ghost btn-sm" href="#/clients">Open</a></div>
         <div class="mini3"><div><b>${fmt.money(d.clients.mrr)}</b><span>monthly revenue</span></div><div><b>${d.clients.active}</b><span>active clients</span></div><div><b>${workPct}%</b><span>of this month's work done</span></div></div>
         <p class="small" style="margin-top:12px">${d.work.postsWaiting} post${d.work.postsWaiting === 1 ? '' : 's'} waiting to go out.</p>
-        <div class="row" style="margin-top:6px">${d.clients.sample ? `<a class="btn btn-ghost btn-sm" href="#/clientview/${esc(d.clients.sample)}">${icon.device}See the sample client app</a>` : `<button class="btn btn-ghost btn-sm" id="mk-sample">${icon.device}Create a sample client</button>`}</div></div>
+        <div class="row" style="margin-top:6px">${d.clients.sample ? `<a class="btn btn-ghost btn-sm" href="#/clients/view/${esc(d.clients.sample)}">${icon.device}See the sample client app</a>` : `<button class="btn btn-ghost btn-sm" id="mk-sample">${icon.device}Create a sample client</button>`}</div></div>
       <div class="card"><div class="card-head"><h2>Recent activity</h2></div>
         ${d.recent.length ? `<ul class="feed">${d.recent.map((a) => `<li><span class="dot">${a.type === 'call' ? icon.phone : a.type === 'sms' ? icon.msg : icon.note}</span>
           <div><div>${esc(ACT[a.type] || 'Update')}${a.outcome ? `: ${esc(a.outcome.replace(/_/g, ' '))}` : ''}${a.business ? ` · ${esc(a.business)}` : ''}</div>${a.body ? `<div class="small">${esc(String(a.body).slice(0, 90))}</div>` : ''}</div><span class="small">${esc(fmt.ago(a.at))}</span></li>`).join('')}</ul>`
@@ -59,32 +59,33 @@ export async function homePage(app, user) {
   $$('[data-lead]', view).forEach((li) => li.addEventListener('click', () => leadModal(li.dataset.lead, () => homePage(app, user))));
   $('#mk-sample', view)?.addEventListener('click', async (e) => {
     busy(e.currentTarget, true, 'Creating...');
-    try { const r = await api('/api/sample-client', { method: 'POST' }); location.hash = `#/clientview/${r.id}`; } catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
+    try { const r = await api('/api/sample-client', { method: 'POST' }); location.hash = `#/clients/view/${r.id}`; } catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
   });
 }
 
-const PORTAL_TABS = [['', 'Home'], ['reviews', 'Reviews'], ['post', 'Post'], ['results', 'Results'], ['start', 'Get started']];
+const PORTAL_TABS = [['', 'Home'], ['messages', 'Messages'], ['reviews', 'Reviews'], ['post', 'Post'], ['results', 'Results'], ['start', 'Get started']];
 
 export async function clientViewPage(app, user, clientId) {
-  const view = staffShell(app, user, 'clientview');
+  const view = staffShell(app, user, 'clients');
   let clients;
   try { ({ clients } = await api('/api/clients')); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   if (!clients.length) {
-    view.innerHTML = `<div class="page-head"><div><p class="eyebrow">Client view</p><h1>See what clients see</h1></div></div>
+    view.innerHTML = `<div class="page-head"><div><p class="eyebrow">Clients</p><h1>See what clients see</h1></div></div>${clientsTabs('view')}
       <div class="card empty"><h3>No clients yet</h3><p>Create a sample client with realistic data: rankings, reviews, posts, tasks, and onboarding. It stays out of your revenue numbers.</p>
       <button class="btn btn-primary" id="mk">${icon.device}Create a sample client</button></div>`;
     $('#mk', view).addEventListener('click', async (e) => {
       busy(e.currentTarget, true, 'Creating...');
-      try { const r = await api('/api/sample-client', { method: 'POST' }); location.hash = `#/clientview/${r.id}`; } catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
+      try { const r = await api('/api/sample-client', { method: 'POST' }); location.hash = `#/clients/view/${r.id}`; } catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
     });
     return;
   }
   const c = clients.find((x) => x.id === clientId) || clients.find((x) => x.sample) || clients[0];
   const src = (tab = '') => `/?as=${encodeURIComponent(c.id)}#/${tab}`;
   view.innerHTML = `
-    <div class="page-head"><div><p class="eyebrow">Client view, read only</p><h1>See what ${esc(c.contact_name ? c.contact_name.split(' ')[0] : 'the client')} sees</h1></div>
+    <div class="page-head"><div><p class="eyebrow">Clients · client view, read only</p><h1>See what ${esc(c.contact_name ? c.contact_name.split(' ')[0] : 'the client')} sees</h1></div>
       <div class="row"><select id="cv-pick" aria-label="Client">${clients.map((x) => `<option value="${esc(x.id)}"${x.id === c.id ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
         <a class="btn btn-ghost" href="${esc(src())}" target="_blank" rel="noopener">Open full screen</a></div></div>
+    ${clientsTabs('view')}
     <div class="cv">
       <div class="cv-side">
         <div class="seg cv-tabs" role="tablist">${PORTAL_TABS.map(([k, n], i) => `<button type="button" class="${i === 0 ? 'is-on' : ''}" data-tab="${k}">${n}</button>`).join('')}</div>
@@ -99,7 +100,7 @@ export async function clientViewPage(app, user, clientId) {
       <div class="cv-phone"><iframe id="cv-frame" title="Client app preview" src="${esc(src())}"></iframe></div>
     </div>`;
   const frame = $('#cv-frame', view);
-  $('#cv-pick', view).addEventListener('change', (e) => { location.hash = `#/clientview/${e.target.value}`; });
+  $('#cv-pick', view).addEventListener('change', (e) => { location.hash = `#/clients/view/${e.target.value}`; });
   $$('[data-tab]', view).forEach((b) => b.addEventListener('click', () => {
     $$('[data-tab]', view).forEach((x) => x.classList.toggle('is-on', x === b));
     try { frame.contentWindow.location.hash = `#/${b.dataset.tab}`; } catch { frame.src = src(b.dataset.tab); }
@@ -107,6 +108,6 @@ export async function clientViewPage(app, user, clientId) {
   $('#cv-del', view)?.addEventListener('click', async (e) => {
     if (!confirm('Remove the sample client and all its sample data?')) return;
     busy(e.currentTarget, true);
-    try { await api('/api/sample-client', { method: 'DELETE' }); toast('Sample removed'); location.hash = '#/clientview'; } catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
+    try { await api('/api/sample-client', { method: 'DELETE' }); toast('Sample removed'); location.hash = '#/clients/view'; } catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
   });
 }

@@ -45,6 +45,8 @@ export function staffShell(app, user, active, inner) {
 // Settings holds the team too.
 export const settingsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a><a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Team</a></nav>`;
 
+export const clientsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/clients" class="${active === 'all' ? 'is-active' : ''}">All clients</a><a href="#/clients/view" class="${active === 'view' ? 'is-active' : ''}">Client view</a></nav>`;
+
 // ---------- dashboard ----------
 export async function dashboard(app, user) {
   const view = staffShell(app, user, 'clients');
@@ -60,6 +62,7 @@ export async function dashboard(app, user) {
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow">${esc(fmt.month(month))}</p><h1>Clients</h1></div>
       <button class="btn btn-primary" id="add-client">${icon.plus}Add client</button></div>
+    ${clientsTabs('all')}
     <div class="stats">
       <div class="stat hero"><div class="stat-num" data-count="${mrr}" data-prefix="$">0</div><div class="stat-label">monthly recurring revenue (${active.length} active)</div></div>
       <div class="stat"><div class="stat-num" data-count="${tot.total ? Math.round((100 * tot.done) / tot.total) : 0}" data-suffix="%">0</div><div class="stat-label">of this month's work done (${tot.done} of ${tot.total})</div></div>

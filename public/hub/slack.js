@@ -47,6 +47,10 @@ function connectedCard(d) {
     <h3 style="margin-top:18px">Client channels</h3>
     <p class="small muted">Updates about one client (approvals, uploads, report views, new client) also go to that client's channel.</p>
     <div class="slk-routes" id="slk-clients">${d.clients.map((c) => `<label class="row small slk-route"><span>${esc(c.name)}</span><select data-client="${esc(c.id)}"><option value="">None</option>${c.slack_channel ? `<option value="${esc(c.slack_channel)}" selected>#${esc(c.slack_channel_name || c.slack_channel)}</option>` : ''}</select></label>`).join('') || '<p class="small muted">No active clients yet.</p>'}</div>
+    <h3 style="margin-top:18px">Client chats</h3>
+    <p class="small muted">Every client gets a private chat with the team (their Messages tab). It is made when they sign up, and Hub updates for them (reports, pages to check, meetings) are posted there too. Older clients get theirs within a few minutes.</p>
+    <label class="row small" style="gap:8px"><input type="checkbox" id="slk-chatauto"${d.chatAuto ? ' checked' : ''}> Make a chat for every new client automatically</label>
+    <p class="small muted" style="margin-top:6px">${d.clients.filter((c) => c.chat_channel).length} of ${d.clients.length} active clients have their chat.</p>
     <h3 style="margin-top:18px">Team in Slack</h3>
     <p class="small muted">${linked} of ${d.people.length} linked. People are matched by the email they use in Slack. Linked people get their own alerts as direct messages and can use the buttons and /hub.</p>
     <ul class="list">${d.people.map((p) => `<li class="item"><span class="badge ${p.slack_id ? '' : 'gray'}">${p.slack_id ? 'Linked' : 'Not linked'}</span><div><div class="item-title">${esc(p.name || p.email)}</div><div class="item-sub">${esc(p.email)}</div></div>
@@ -109,6 +113,9 @@ function wire(box, d, user, again) {
     busy(e.target, false);
   });
   $('#slk-off', box)?.addEventListener('click', async () => { if (!confirm('Disconnect Slack? Alerts stop going to Slack.')) return; await api('/api/slack', { method: 'DELETE' }); again(); });
+  $('#slk-chatauto', box)?.addEventListener('change', async (e) => {
+    try { await api('/api/chat/auto', { method: 'PUT', body: { on: e.target.checked } }); toast(e.target.checked ? 'New clients get their chat automatically' : 'Automatic client chats are off'); } catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }
+  });
   $('#slk-saveroutes', box)?.addEventListener('click', async (e) => {
     const routes = Object.fromEntries($$('#slk-routes select', box).map((s) => [s.dataset.kind, s.value ? chan(s.value) || d.routes[s.dataset.kind] : null]));
     busy(e.target, true);

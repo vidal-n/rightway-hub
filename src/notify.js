@@ -7,6 +7,7 @@ import { requireUser, requireAdmin, requireStaff, isStaff } from './auth.js';
 import { route } from './router.js';
 import { seal, unseal, b64u, unb64u } from './seal.js';
 import { postToSlack, teamSummary } from './slack.js';
+import { chatNote } from './chat.js';
 
 export const KINDS = {
   call: 'Incoming calls', voicemail: 'Voicemails and missed calls', text: 'Texts', task: 'Tasks assigned to me and due today',
@@ -112,6 +113,12 @@ export async function notify(env, { to, kind, title, body = '', url = '/', tag =
       const results = await Promise.allSettled(subs.map((s) => sendPush(env, s, data, { urgent, keys })));
       sent = results.filter((r) => r.status === 'fulfilled' && r.value >= 200 && r.value < 300).length;
     }
+  }
+  // Updates for a client also go into the client's chat, so every message to them is in one place.
+  if (to?.clientUsers && kind === 'update' && !String(tag || '').startsWith('chat-')) {
+    const s = await getSettings(env);
+    const link = /^https?:/.test(url) ? url : s.hub_origin ? `${s.hub_origin}${url}` : '';
+    await chatNote(env, to.clientUsers, `*${String(title).replace(/[*_~]/g, '')}*${body ? `\n${body}` : ''}${link && url !== '/' && url !== '/#/' ? `\n<${link}|Open it here>` : ''}`).catch((e) => console.error('chat note', e));
   }
   const team = typeof to === 'string' || Boolean(to?.client);
   const slacked = await postToSlack(env, { kind, title, body, url, actions, clientId: clientId || to?.client || null, users, channel: slack && team })

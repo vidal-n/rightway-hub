@@ -28,7 +28,10 @@ const day = (t) => new Date(t).toLocaleString('en-US', { timeZone: 'America/New_
 
 // Each person's own Slack inside the Hub (src/slackuser.js) uses these user scopes: they read and post as themselves.
 export const USER_SCOPES = ['channels:history', 'channels:read', 'channels:write', 'groups:history', 'groups:read', 'groups:write', 'im:history', 'im:read', 'im:write',
-  'mpim:history', 'mpim:read', 'mpim:write', 'chat:write', 'users:read', 'users:read.email', 'reactions:read', 'reactions:write', 'files:read', 'files:write'];
+  'mpim:history', 'mpim:read', 'mpim:write', 'chat:write', 'users:read', 'users:read.email', 'reactions:read', 'reactions:write', 'files:read', 'files:write',
+  'search:read', 'pins:read', 'pins:write', 'reminders:write', 'users.profile:read', 'users.profile:write', 'users:write', 'dnd:read', 'dnd:write', 'emoji:read'];
+// What the first version asked for. People who connected before the rest was added get a "Reconnect your Slack" banner.
+export const FIRST_USER_SCOPES = USER_SCOPES.slice(0, 19);
 export function manifestFor(origin) {
   return {
     display_information: { name: 'Rightway Hub', description: 'Slack inside Rightway Hub, plus alerts, tasks and quick actions', background_color: '#0F1B17' },
@@ -59,6 +62,7 @@ export async function slackApi(token, method, body = {}, { get = false, form = f
     : form ? { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body).toString() }
     : { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
+  if (data.error === 'missing_scope') throw new HttpError(`Slack needs one more permission for this (${data.needed || 'scope'}). Reconnect Slack to allow it.`, 403);
   if (!data.ok) throw new HttpError(`Slack: ${data.error || `HTTP ${res.status}`}${data.needed ? ` (needs ${data.needed})` : ''}`, 502);
   return data;
 }
@@ -331,8 +335,9 @@ route('GET', '/api/slack', async ({ env, user, url }) => {
   const mine = { linked: Boolean(me?.slack_id), prefs: Object.fromEntries(Object.keys(dmKinds).map((k) => [k, wantsDm(me || {}, k)])), kinds: dmKinds };
   if (user.role !== 'admin') return json({ connected: Boolean(st.bot), team: st.team, mine });
   const manifest = manifestFor(url.origin);
-  const clients = await all(env, "SELECT id, name, slack_channel, slack_channel_name FROM clients WHERE status = 'active' AND sample = 0 ORDER BY name");
-  return json({
+  const clients = await all(env, "SELECT id, name, slack_channel, slack_channel_name, chat_channel, chat_channel_name FROM clients WHERE status = 'active' AND COALESCE(sample, 0) = 0 AND parent_id IS NULL ORDER BY name");
+  const sets = await getSettings(env);
+  return json({ chatAuto: sets.chat_auto !== '0',
     connected: Boolean(st.bot), team: st.team, routes: st.routes, kinds: routeKinds(), mine, webhook: Boolean(st.hook), webhookKinds: st.kinds,
     manifest, createUrl: `https://api.slack.com/apps?new_app=1&manifest_json=${encodeURIComponent(JSON.stringify(manifest))}`,
     clients, people: await linkedTeam(env), origin: url.origin, userApp: Boolean((await getSettings(env)).slack_client_id),

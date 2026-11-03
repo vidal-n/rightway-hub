@@ -9,6 +9,7 @@ import { PLANS, planOf, tasksForMonth, monthKey } from './plans.js';
 import { generateCaptions } from './captions.js';
 import { canEmail, sendEmail } from './email.js';
 import { gridStats } from '../public/js/grid.js';
+import { autoChatFor } from './chat.js';
 import { routes, route } from './router.js';
 import { generateTasks, savedGuides } from './work.js';
 import { guideFor, proofMissing } from '../public/js/guides.js';
@@ -241,6 +242,7 @@ route('POST', '/api/clients', async ({ env, user, body }) => {
   c.created_at = now();
   const cols = Object.keys(c);
   await run(env, `INSERT INTO clients (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...cols.map((k) => c[k]));
+  await autoChatFor(env, c.id).catch(() => {});
   return json({ client: await clientOr404(env, c.id) });
 });
 

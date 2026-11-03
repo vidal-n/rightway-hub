@@ -74,6 +74,7 @@ export async function portal(app, user, tab, state) {
       <div class="stat"><div class="stat-num" data-count="${o.reviews.sent}">0</div><div class="stat-label">review requests sent (${o.reviews.clicked} opened)</div></div>
       <div class="stat"><div class="stat-num" data-count="${o.posts.posted}">0</div><div class="stat-label">posts published this month</div></div>
     </div>
+    <a class="card msg-card" href="#/messages"><span class="msg-card-ic">${icon.msg}</span><span class="msg-card-t"><b>Message your team</b><span class="small">Questions, photos, approvals and updates: everything with Rightway is in one chat.</span></span><b class="nbadge" data-badge="messages" hidden></b></a>
     ${!c.intake_at ? `<a class="card start-card" href="#/start"><b>Get started: 3 quick steps</b><span>Tell us about your business, give us Google access, and upload photos.</span></a>` : ''}
     <a class="btn btn-mint btn-xl" href="#/reviews">${icon.star}Ask a customer for a review</a>
     <a class="btn btn-ghost btn-xl" href="#/post">${icon.camera}Send us a photo to post</a>
@@ -88,8 +89,9 @@ export async function portal(app, user, tab, state) {
     ${c.stripe_customer_id ? '<button class="btn btn-ghost btn-xl" id="pbill">Billing and invoices</button>' : ''}
     <p class="small" style="text-align:center">Tip: add this app to your home screen. On iPhone tap Share, then Add to Home Screen. On Android tap the menu, then Install app.</p>`;
   animateNumbers(v);
+  clientBadges();
   import('./meetings.js').then(async (m) => { const html = await m.nextMeetingCard(c.id); const box = $('#pmeet', v); if (box && html) box.innerHTML = html; }).catch(() => {});
-  if (!user.viewAs) import('./alerts.js').then((m) => m.pushPrompt($('#ppush', v), 'Get a note when your report is ready, a page needs your OK, or a meeting is booked.')).catch(() => {});
+  if (!user.viewAs) import('./alerts.js').then((m) => m.pushPrompt($('#ppush', v), 'Get a note when your team messages you, your report is ready, a page needs your OK, or a meeting is booked.')).catch(() => {});
   if (c.plan === 'leader') {
     import('./leader.js').then(async (m) => {
       const html = await m.liveDashboard(c);

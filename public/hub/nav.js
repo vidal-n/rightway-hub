@@ -6,12 +6,12 @@ import { $, $$, esc, api, toast, modal, icon } from './core.js';
 export const NAV = [
   ['home', '#/', 'dash', 'Dashboard'], ['work', '#/work', 'check', 'My work'], ['slack', '#/slack', 'slack', 'Slack'], ['phone', '#/phone', 'phone', 'Phone'],
   ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['clients', '#/clients', 'users', 'Clients'], ['payments', '#/payments', 'money', 'Payments', 'admin'],
-  ['clientview', '#/clientview', 'device', 'Client view'], ['scan', '/scan.html', 'grid', 'Scan tool'], ['google', '#/google', 'apps', 'Google'],
+  ['scan', '/scan.html', 'grid', 'Scan tool'], ['google', '#/google', 'apps', 'Google'],
   ['alerts', '#/alerts', 'bell', 'Alerts'], ['settings', '#/settings', 'note', 'Settings'],
 ];
 // Which dot belongs to which menu item.
 const BADGE_KEY = { work: 'work', slack: 'slack', phone: 'phone', pipeline: 'pipeline', alerts: 'alerts' };
-const ALIAS = { dialer: 'phone', inbox: 'phone', team: 'settings' };
+const ALIAS = { dialer: 'phone', inbox: 'phone', team: 'settings', clientview: 'clients' };
 export const activeKey = (k) => ALIAS[k] || k;
 
 let prefs = null;

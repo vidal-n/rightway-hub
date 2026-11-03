@@ -114,6 +114,8 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS slack_unread (user_id TEXT NOT NULL, channel_id TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 0, mentions INTEGER NOT NULL DEFAULT 0, last_ts TEXT, PRIMARY KEY (user_id, channel_id))`,
   `CREATE TABLE IF NOT EXISTS slack_people (id TEXT PRIMARY KEY, name TEXT, real_name TEXT, image TEXT, is_bot INTEGER NOT NULL DEFAULT 0, updated_at INTEGER)`,
   `CREATE TABLE IF NOT EXISTS slack_events (id TEXT PRIMARY KEY, at INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS slack_activity (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, channel_id TEXT NOT NULL, ts TEXT NOT NULL, thread_ts TEXT, from_id TEXT, text TEXT, at INTEGER NOT NULL, seen INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS slack_activity_user ON slack_activity (user_id, at)`,
   `CREATE TABLE IF NOT EXISTS chat_posts (ts TEXT NOT NULL, channel TEXT NOT NULL, by TEXT, at INTEGER NOT NULL, PRIMARY KEY (channel, ts))`,
   `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS leads (
@@ -163,7 +165,7 @@ const ADD_COLUMNS = [
   ['clients', 'owner_id TEXT'], ['clients', 'gbp_account TEXT'], ['clients', 'gbp_location TEXT'], ['clients', 'gbp_title TEXT'],
   ['posts', 'live_url TEXT'], ['posts', 'gbp_name TEXT'],
   ['activities', 'vm_sid TEXT'], ['activities', 'vm_secs INTEGER'], ['activities', 'seen_at INTEGER'], ['users', 'notify_prefs TEXT'],
-  ['users', 'slack_id TEXT'], ['users', 'slack_prefs TEXT'], ['users', 'slack_token TEXT'], ['users', 'slack_uid TEXT'], ['users', 'nav_prefs TEXT'], ['clients', 'chat_channel TEXT'], ['clients', 'chat_channel_name TEXT'], ['clients', 'slack_channel TEXT'], ['clients', 'slack_channel_name TEXT'],
+  ['users', 'slack_id TEXT'], ['users', 'slack_prefs TEXT'], ['users', 'slack_token TEXT'], ['users', 'slack_uid TEXT'], ['users', 'slack_scopes TEXT'], ['users', 'slack_snooze INTEGER'], ['clients', 'chat_tried INTEGER'], ['users', 'nav_prefs TEXT'], ['clients', 'chat_channel TEXT'], ['clients', 'chat_channel_name TEXT'], ['clients', 'slack_channel TEXT'], ['clients', 'slack_channel_name TEXT'],
 ];
 
 let ready = null;

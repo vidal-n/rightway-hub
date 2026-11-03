@@ -124,13 +124,14 @@ async function route() {
   }
   if (parts[0] === 'pipeline') return pipelinePage(app, u);
   if (parts[0] === 'team' || (parts[0] === 'settings' && parts[1] === 'team')) return teamPage(app, u);
-  if (parts[0] === 'slack') return import('./slackapp.js').then((m) => m.slackPage(app, u, parts[1] || ''));
+  if (parts[0] === 'slack') return import('./slackapp.js').then((m) => m.slackPage(app, u, parts[1] || '', parts[2] || '', parts[3] || ''));
   if (parts[0] === 'work') return import('./work.js').then((m) => m.workPage(app, u, parts[1] || '', parts[2] || ''));
   if (parts[0] === 'alerts') return import('./alerts.js').then((m) => m.alertsPage(app, u));
   if (parts[0] === 'payments') return paymentsPage(app, u);
   if (parts[0] === 'google') return googlePage(app, u);
   if (parts[0] === 'settings') return settingsPage(app, u);
   if (parts[0] === 'client' && parts[1]) return clientPage(app, u, parts[1], parts[2] || 'overview', { ...state, sub: parts[3] });
+  if (parts[0] === 'clients' && parts[1] === 'view') return clientViewPage(app, u, parts[2]);
   if (parts[0] === 'clients') return dashboard(app, u);
   if (parts[0] === 'clientview') return clientViewPage(app, u, parts[1]);
   return homePage(app, u);
@@ -147,7 +148,7 @@ function previewBar(u) {
   const bar = document.createElement('div');
   bar.id = 'cv-bar';
   bar.className = 'cv-bar';
-  bar.innerHTML = `<span>${inFrame ? 'Client view' : 'Client view, read only'}</span>${inFrame ? '' : `<a href="/#/clientview/${esc(u.client_id)}">Back to the Hub</a>`}`;
+  bar.innerHTML = `<span>${inFrame ? 'Client view' : 'Client view, read only'}</span>${inFrame ? '' : `<a href="/#/clients/view/${esc(u.client_id)}">Back to the Hub</a>`}`;
   document.body.appendChild(bar);
 }
 

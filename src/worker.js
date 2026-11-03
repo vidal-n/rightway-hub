@@ -13,6 +13,7 @@ import { auditTick, enqueueDueAudits } from './siteaudit.js';
 import { reviewTick } from './reputation.js';
 import { ensureMonthTasks } from './work.js';
 import { digestTick, meetingReminders } from './notify.js';
+import { ensureClientChats } from './chat.js';
 
 // Runtime secrets (dashboard) win; build-time secrets fill any gaps.
 export function withSecrets(env, extra = baked) {
@@ -37,6 +38,8 @@ export default {
       await ensureMonthTasks(env).catch((e) => console.error('task engine', e));
       await digestTick(env).catch((e) => console.error('digest', e));
       await meetingReminders(env).catch((e) => console.error('meeting reminders', e));
+      // Clients without their private chat get one (one per run, about 5 Slack calls each).
+      if (used < 35) await ensureClientChats(env, 1).catch((e) => console.error('client chats', e));
     })());
   },
   async fetch(request, rawEnv, execCtx) {

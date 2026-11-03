@@ -31,7 +31,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Voice `/api/twilio/voice` (rings the admin's saved mobile, missed call message, no recording), Messaging `/api/twilio/sms`,
   status `/api/twilio/sms-status`. Business number (305) 507-3393.
 - Team home and client view (built): Dashboard at `#/` (today's dials, meetings, callbacks due, pipeline, deals, clients; `GET /api/dashboard`),
-  Clients list moved to `#/clients`. Client view `#/clientview/<id>` shows the client app in a phone frame via `/?as=<clientId>`; the `x-view-as`
+  Clients list moved to `#/clients`. Client view (Clients tab, `#/clients/view/<id>`) shows the client app in a phone frame via `/?as=<clientId>`; the `x-view-as`
   header makes the server treat a staff request as that client, GET only (writes return 403). Sample client (`src/sample.js`, `clients.sample = 1`,
   POST/DELETE `/api/sample-client`) with tasks, reviews, posts, 6 scans, onboarding; left out of revenue and work totals. Phone menu: hamburger
   drawer under 900px with iPhone safe-area padding; the scan tool has its own menu toggle.
@@ -184,25 +184,43 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Start timer (task), Open in the Hub. `/api/slack/interact` and `/api/slack/command` are public but verify the signing secret (5 minute window).
   `/hub` (`commandReply`): work, client <name>, lead <name or phone>, stats (owners), help. Morning summary to the `digest` route from `digestTick`
   (`teamSummary`). The plain incoming webhook still works when the app is not connected (`slack_hook`, `slack_kinds`, `PUT /api/slack/webhook`).
-- Slack page (built, `src/slackuser.js`, `public/hub/slackapp.js`, menu item "Slack", `#/slack/<channel>`): each person's own Slack inside the Hub.
+- Slack page (built, `src/slackuser.js`, `public/hub/slackapp.js`, text and emoji in `public/hub/slacktext.js` (pure, tested in Node), menu item "Slack",
+  `#/slack/<channel>`, `#/slack/<channel>/t/<thread_ts>`, `#/slack/activity|search|browse|scheduled`): each person's own Slack inside the Hub.
   Sign in with Slack (OAuth v2 user scopes `USER_SCOPES` in `src/slack.js`; owners save the app's Client ID and Secret, `PUT /api/slack/app`, secret sealed;
-  redirect `/api/slack/oauth/callback`); the user token is sealed in `users.slack_token` with `users.slack_uid`. Every `/api/slack/me/*` call uses the asking
-  person's own token, so nobody (owners included) can read someone else's Slack. Conversations (users.conversations, names from the `slack_people` cache),
-  history and threads (5 s polling while open, opening marks read and calls conversations.mark), send, edit, delete, reactions, files (files.getUploadURLExternal
-  then completeUploadExternal; images and files shown through `/api/slack/me/file`, files.slack.com only), new DM (users.list, conversations.open), and
-  "Share from the Hub" (`itemMessage`: client, lead, task, report) also on the task panel and client header ("Send in Slack", `sendToSlack`).
-  Events API `/api/slack/events` (signed, url_verification, retries deduped in `slack_events`): `onSlackMessage` adds unread counts for Hub members of that
-  conversation (`slack_members` saved when the list loads, `slack_unread`), and DMs or @mentions push (notify kind `slack`, `list: false`). The manifest adds
-  user scopes, the redirect URL and user events; owners paste the new manifest in the app's App Manifest page.
-- Client Messages (built, `src/chat.js`, `public/hub/chat.js`, client app tab "Messages" `#/messages`, staff client tab `chat` "Messages"): clients chat with the
-  team without a Slack account. Each client gets a private Slack channel (`POST /api/clients/:id/chat/setup` makes `chat-<client>` and invites the account
-  manager and linked owners, or picks an existing one; `clients.chat_channel`), separate from the internal update channel (`slack_channel`). Client posts go
-  through the bot with their name (`chat:write.customize`, metadata `rw_client_msg`); team posts from the Hub use the person's own Slack token or the bot with
-  "Name (Rightway Growth)". History via the bot (thread replies shown inline), files through `files.info` checked against the channel. Team replies written
+  redirect `/api/slack/oauth/callback`); the user token is sealed in `users.slack_token` with `users.slack_uid`, granted scopes in `users.slack_scopes`
+  (people who connected with the first 19 scopes, `FIRST_USER_SCOPES`, get a "Reconnect" banner; `GET /api/slack/me` returns `missing`). Every `/api/slack/me/*`
+  call uses the asking person's own token, so nobody (owners included) can read someone else's Slack. List: Channels, Clients (client chat channels under the
+  client's name, `slackName` keeps the real name) and Direct messages, collapsible, draft marks, unread dots. Messages: day lines, "New" line, load earlier
+  (cursor), jump to a message (`history?latest=`, no mark read), blocks text (`blocksText`), link previews (attachments), pins, files, reactions with the full
+  emoji set plus workspace emoji (`emoji.list` cached 6 h in settings `slack_emoji`, `std:` for aliases of standard ones), threads with "Also send to the
+  conversation" (reply_broadcast). Message menu (and right click or long press): reply, copy link (chat.getPermalink), copy text, pin/unpin, remind me
+  (reminders.add), mark unread from here (`beforeTs`, conversations.mark plus `slack_unread`), forward (permalink posted), edit in place (Up arrow edits your
+  last), delete. Composer: formatting bar (bold, italic, strike, link as [text](url), lists, quote, code), @people, #channel and :emoji: suggestions turned
+  into Slack tokens by `toSlack`, paste or drop a file, drafts per conversation in localStorage, schedule send (chat.scheduleMessage, list, delete or edit).
+  Details panel: about (topic, description, rename, made by), members (add people), pins, files; leave. Browse and join public channels, create a channel
+  (public or private, description, people). New message to one person or a group (up to 8). Search (search.messages with the person's token, Slack's
+  in:/from:/before: words). Activity: mentions and replies to your threads saved from events (`slack_activity`, `GET /api/slack/me/activity`, seen,
+  count in `/unreads`). You: status with presets and clear after (users.profile.set), away/active (users.setPresence), pause notifications (dnd.setSnooze;
+  also quiets the Hub's Slack pushes until `users.slack_snooze`), profile cards (users.info, getPresence, local time). Huddles and calls are not open to
+  other apps. Events API `/api/slack/events` (signed, url_verification, retries deduped in `slack_events`): `onSlackMessage` adds unread counts for Hub
+  members of that conversation (`slack_members` saved when the list loads, `slack_unread`), records activity, and DMs, @mentions and replies to your
+  threads push (notify kind `slack`, `list: false`). "Share from the Hub" (`itemMessage`: client, lead, task, report) also on the task panel and client
+  header ("Send in Slack", `sendToSlack`). Owners paste the new manifest (`manifestFor`) in the app's App Manifest page whenever scopes change, then everyone reconnects.
+- Client Messages (built, `src/chat.js`, `public/hub/chat.js`, client app tab "Messages" `#/messages` plus a "Message your team" card on its home, staff
+  client tab `chat` "Messages"): the client's one place to talk to the team, without a Slack account. Every active main client gets a private Slack channel
+  automatically (`openClientChat`: `chat-<client>`, invites the account manager and linked owners, sets a team-only description, posts a welcome for the
+  client): on convert (`convertLead`) and `POST /api/clients` (`autoChatFor`), when the client opens Messages, and for older clients from the cron
+  (`ensureClientChats`, one per run, retried every 6 h via `clients.chat_tried`). Owners can switch automatic chats off (settings `chat_auto`, `PUT /api/chat/auto`,
+  Alerts page Slack card); the client tab still offers Turn on Messages or pick an existing channel (`POST /api/clients/:id/chat/setup`). Changing the account
+  manager invites them (`inviteToChat`). Hub updates for a client (`notify` with `to.clientUsers` and kind `update`: report ready, page to check, meeting booked)
+  are also posted into the chat by `chatNote` as "Rightway Growth" (metadata `rw_hub_note`, shown as an update card, link from settings `hub_origin`). Client
+  posts go through the bot with their name (`chat:write.customize`, metadata `rw_client_msg`); team posts from the Hub use the person's own Slack token or the bot
+  with "Name (Rightway Growth)". History via the bot (thread replies shown inline), files through `files.info` checked against the channel. Team replies written
   in Slack arrive by bot events (`onClientChat`): unread count for the client's users (`slack_unread`) and a push (kind `update`); Hub posts are remembered in
-  `chat_posts` so they are not counted twice. Client dot: `GET /api/client-badges`. Everything in the chat channel is visible to the client.
-- Menu and dots (built, `public/hub/nav.js`, `src/nav.js`): menu items in `NAV` (Dashboard, My work, Slack, Phone, Pipeline, Clients, Payments, Client view,
-  Scan tool, Google, Alerts, Settings). Each person reorders and hides items ("Customize menu", `users.nav_prefs`, `PUT /api/me/nav`). Under 900 px a bottom bar
+  `chat_posts` so they are not counted twice. Client dot: `GET /api/client-badges`. Everything in the chat channel is visible to the client; the Slack page shows
+  a warning strip on client chats.
+- Menu and dots (built, `public/hub/nav.js`, `src/nav.js`): menu items in `NAV` (Dashboard, My work, Slack, Phone, Pipeline, Clients, Payments,
+  Scan tool, Google, Alerts, Settings). Client view is a tab inside Clients (`clientsTabs` in `public/hub/staff.js`, `#/clients/view/<id>`; old `#/clientview` links still route). Each person reorders and hides items ("Customize menu", `users.nav_prefs`, `PUT /api/me/nav`). Under 900 px a bottom bar
   shows as many items as fit (width / 78, 3 to 7) with More opening the full menu; the open page always stays in the bar. Dots: `GET /api/badges` (texts,
   calls, phone, slack, slackMentions, alerts, work due or overdue, pipeline audit requests not called, total) painted into any `[data-badge]` element and the
   app icon (setAppBadge), refreshed every 45 s and on focus. Phone tab `#/phone` holds Dialer, Dial out, Texts (`#/phone/texts`), Calls and voicemail
