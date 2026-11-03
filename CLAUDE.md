@@ -136,12 +136,15 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
 - Deployed by Cloudflare Workers Builds from this GitHub repo with `npx wrangler deploy`.
 - DataForSEO live/advanced. Grid: Local Finder ($0.002 per 10 results, we read 20) or Maps ($0.002). Business search and
   competitor details: Maps. Local Finder field names are handled defensively (`organicListings`, name-match fallback).
-- Map: our own tile renderer in `public/js/map.js` (OpenStreetMap tiles, attribution required). QR codes: `public/js/qr.js`
+- Map (`public/js/map.js`, one API for the scan tool and the Hub): Google Maps JavaScript API when `GOOGLE_MAPS_KEY` (browser key, restricted
+  to the Hub address and Maps JavaScript API) is set, served by public `GET /api/maps/config`; rank pins and the heat map draw in an `OverlayView`,
+  POI clutter hidden, cooperative gestures. Without a key, or if Google refuses it (`gm_authFailure`) or fails to load, it falls back to our own
+  OpenStreetMap tile renderer (attribution required). Markers show at once on a blank map while Google loads, then swap. QR codes: `public/js/qr.js`
   (own encoder, verified with OpenCV).
 - Secrets live in Cloudflare's Build "Variables and secrets" (V's setup). `scripts/bake-secrets.mjs` copies them into the deployed
   Worker; runtime dashboard secrets override. Keys: DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD, ACCESS_KEY, PAGESPEED_KEY,
   ANTHROPIC_API_KEY, ANTHROPIC_MODEL (default claude-haiku-4-5-20251001), RESEND_API_KEY, EMAIL_FROM, STRIPE_SECRET_KEY,
-  STRIPE_WEBHOOK_SECRET, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET. Keep `src/runtime-secrets.js`
+  STRIPE_WEBHOOK_SECRET, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_MAPS_KEY. Keep `src/runtime-secrets.js`
   committed empty. `/api/health` reports what is connected (booleans only).
 
 ## Commands

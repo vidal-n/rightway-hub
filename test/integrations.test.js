@@ -281,3 +281,16 @@ test('stripe: owners can create a custom payment link from the Hub', async () =>
     assert.equal(r.data.custom[0].name, 'Audit');
   } finally { m.restore(); }
 });
+
+test('maps config hands the browser the Google Maps key only when one is set', async () => {
+  let t = setup();
+  let r = await t.call('GET', '/api/maps/config');
+  assert.equal(r.status, 200);
+  assert.equal(r.data.google, null);
+  t = setup({ GOOGLE_MAPS_KEY: 'AIzaTest' });
+  r = await t.call('GET', '/api/maps/config');
+  assert.equal(r.data.google, 'AIzaTest');
+  r = await t.call('GET', '/api/health');
+  assert.equal(r.data.googleMaps, true);
+  assert.ok(!JSON.stringify(r.data).includes('AIzaTest'));
+});

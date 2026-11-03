@@ -86,6 +86,7 @@ async function handleApi(request, env, url, runtimeKeys = []) {
       db: Boolean(env.DB),
       media: Boolean(env.MEDIA),
       ai: Boolean(env.ANTHROPIC_API_KEY),
+      googleMaps: Boolean(env.GOOGLE_MAPS_KEY),
       email: Boolean(env.RESEND_API_KEY),
       secrets: {
         DATAFORSEO_LOGIN: Boolean(env.DATAFORSEO_LOGIN),

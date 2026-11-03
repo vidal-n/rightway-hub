@@ -331,3 +331,8 @@ td.w-bar { display: flex; align-items: center; gap: 10px; }
 .sfeed-verdict.bad { color: #B42318; }
 @media (prefers-color-scheme: dark) { .sfeed-verdict.bad { color: #FF8A80; } }
 @media (prefers-reduced-motion: reduce) { .stype, .sres li, .sres-you { animation: none; } }
+
+/* Google Maps engine (public/js/map.js) */
+.gmap-g { position: absolute; inset: 0; }
+.gmap.is-google { touch-action: auto; cursor: auto; }
+.gmap.is-google .gmap-ctl { z-index: 6; }

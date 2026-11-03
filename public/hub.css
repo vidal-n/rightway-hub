@@ -563,3 +563,8 @@ details.card > summary { cursor: pointer; }
 .ct-opt { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; background: var(--surface-2); }
 .ct-opt:has(input:checked) { border-color: var(--mint-strong); background: var(--mint-soft); }
 @media (max-width: 600px) { .ct-call { grid-template-columns: auto 1fr; } .ct-call > .btn { grid-column: 1 / -1; justify-self: start; } }
+
+/* Google Maps engine (public/js/map.js) */
+.gmap-g { position: absolute; inset: 0; }
+.gmap.is-google { touch-action: auto; cursor: auto; }
+.gmap.is-google .gmap-ctl { z-index: 6; }

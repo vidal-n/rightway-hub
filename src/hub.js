@@ -149,6 +149,9 @@ route('GET', '/api/auth/state', async ({ env, user }) => json({
   users: (await userCount(env)) > 0, user, email: canEmail(env), ai: Boolean(env.ANTHROPIC_API_KEY), media: Boolean(env.MEDIA),
 }));
 
+// The Google Maps browser key. Safe to hand out: Google only accepts it from the Hub's own address (set in Google Cloud).
+route('GET', '/api/maps/config', async ({ env }) => json({ google: env.GOOGLE_MAPS_KEY || null }), { public: true });
+
 route('POST', '/api/auth/setup', async ({ env, request, body }) => {
   if ((await userCount(env)) > 0) throw new HttpError('Setup is already done. Log in instead.', 409);
   const b = await body();
