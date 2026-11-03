@@ -165,7 +165,7 @@ const ADD_COLUMNS = [
   ['clients', 'owner_id TEXT'], ['clients', 'gbp_account TEXT'], ['clients', 'gbp_location TEXT'], ['clients', 'gbp_title TEXT'],
   ['posts', 'live_url TEXT'], ['posts', 'gbp_name TEXT'],
   ['activities', 'vm_sid TEXT'], ['activities', 'vm_secs INTEGER'], ['activities', 'seen_at INTEGER'], ['users', 'notify_prefs TEXT'],
-  ['users', 'slack_id TEXT'], ['users', 'slack_prefs TEXT'], ['users', 'slack_token TEXT'], ['users', 'slack_uid TEXT'], ['users', 'slack_scopes TEXT'], ['users', 'slack_snooze INTEGER'], ['clients', 'chat_tried INTEGER'], ['users', 'nav_prefs TEXT'], ['clients', 'chat_channel TEXT'], ['clients', 'chat_channel_name TEXT'], ['clients', 'slack_channel TEXT'], ['clients', 'slack_channel_name TEXT'],
+  ['users', 'slack_id TEXT'], ['users', 'slack_prefs TEXT'], ['users', 'slack_token TEXT'], ['users', 'slack_uid TEXT'], ['users', 'slack_scopes TEXT'], ['users', 'slack_snooze INTEGER'], ['clients', 'chat_tried INTEGER'], ['users', 'nav_prefs TEXT'], ['clients', 'chat_channel TEXT'], ['clients', 'chat_channel_name TEXT'], ['clients', 'slack_channel TEXT'], ['clients', 'slack_channel_name TEXT'], ['clients', 'drive_folder TEXT'],
 ];
 
 let ready = null;

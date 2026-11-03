@@ -156,6 +156,13 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   leads, clients and teammates (`/api/google/cal/people`). `calgrid.js` holds `monthGrid`, `weekGrid`, `eventTimes` (all-day end dates),
   `slimEvent`, `eventsOn`, `layoutDay` (side-by-side columns for overlaps), `clockLabel`, `inputValue` and `freeGaps` (what is free in
   working hours). The booking page and Hub meetings keep using `src/google.js`; this is the person's own calendar.
+- Google Drive, Docs and Sheets in the Hub (built, `src/gdrive.js`, `public/hub/gdrive.js`, `#/google/drive[/<folderId>]`, scope drive):
+  browse folders with a trail back to My Drive, search all of Drive, make a folder, Google Doc, Sheet or Slides, upload (base64 in one
+  JSON request, multipart/related to Google, 20 MB cap), rename, move to the bin (trashed, never wiped), download (Google files are
+  exported: docs and slides as PDF, sheets as xlsx), and share by email with view, comment or edit, or anyone with the link; the sharing
+  box lists who already has it. Each client gets a Drive folder on first use (`clients.drive_folder`, `clientFolder`), shown on the client
+  tab "Files" with upload; `POST /api/clients/:id/to-doc` turns a page draft (or any HTML) into a real Google Doc in that folder
+  (`htmlToDoc` uploads HTML and lets Google convert it). The older Sheets export in `src/googleapps.js` stays as it is.
 - Scan tool v3: up to 5 keywords per run (tabs plus a summary table, save all to a client), grids to 13 x 13, radius to 30 miles, bigger map
   with zoom buttons, drag, pinch, ctrl or trackpad zoom, and double click (`createMap` in `public/js/map.js`). A live feed shows each search as a
   phone result card while scanning, and "Replay the scan" re-runs it spot by spot for clients. Lead research now keeps the top 3 per grid spot,

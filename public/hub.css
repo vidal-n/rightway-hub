@@ -1126,3 +1126,25 @@ ol.steps input { margin-top: 4px; flex: none; }
   .cal-dow { padding: 6px 4px; font-size: 10px; text-align: center; }
   .cal-time { grid-template-columns: 44px repeat(var(--cols), minmax(0, 1fr)); max-height: calc(100dvh - 300px); }
 }
+
+/* ---------- Google Drive in the Hub ---------- */
+.dr-bar { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.dr-bar input[type=search] { width: min(440px, 100%); }
+.dr-crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.dr-crumbs button { border: 0; background: none; color: var(--accent); font: 600 14px var(--body); cursor: pointer; padding: 2px 4px; border-radius: 6px; }
+.dr-crumbs button:hover { background: var(--mint-soft); }
+.dr-crumbs button.is-here { color: var(--ink); cursor: default; }
+.dr-crumbs span { color: var(--muted); }
+.dr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }
+.dr-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; cursor: pointer; box-shadow: var(--shadow); }
+.dr-card:hover { border-color: var(--mint-mid); }
+.dr-ico { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: color-mix(in srgb, var(--c) 16%, transparent); color: var(--c); flex: none; }
+.dr-ico svg { width: 20px; height: 20px; }
+.dr-main { flex: 1; min-width: 0; }
+.dr-name { font: 600 14.5px var(--body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dr-tools { display: none; gap: 2px; flex: none; }
+.dr-card:hover .dr-tools, .dr-card:focus-within .dr-tools { display: flex; }
+.dr-tools svg { width: 16px; height: 16px; }
+.dr-who { max-height: 180px; overflow: auto; }
+.modal:has(.dr-share) { max-width: 580px; }
+@media (max-width: 760px) { .dr-grid { grid-template-columns: 1fr; } .dr-tools { display: flex; } }
