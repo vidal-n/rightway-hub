@@ -1033,7 +1033,9 @@ ol.steps input { margin-top: 4px; flex: none; }
 .gm-html blockquote { margin: 0 0 0 .8ex; border-left: 2px solid var(--line); padding-left: 12px; color: var(--muted); }
 .gm-imgbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 13px; color: var(--muted); }
 .gm-atts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.gm-att { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; text-decoration: none; color: var(--ink-2); font-size: 13px; background: var(--surface-2); }
+.gm-att { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px 4px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; background: var(--surface-2); }
+.gm-att > a { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink-2); }
+.gm-att .icon-btn { width: 28px; height: 28px; }
 .gm-att svg { width: 15px; height: 15px; }
 .gm-att em { color: var(--muted); font-style: normal; font-size: 12px; }
 .gm-reply { display: flex; gap: 8px; flex-wrap: wrap; padding: 16px; position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--line); }

@@ -176,3 +176,14 @@ route('GET', '/api/google/mail/with', async ({ env, user, url }) => {
   const full = await Promise.all(ids.map((id) => gmail(env, me, `/threads/${id}?${metaParams}`).catch(() => null)));
   return json({ threads: full.filter(Boolean).map((t) => threadRow(t, me.google_email)) });
 });
+
+// Keep an attachment: it goes straight into Drive, no download and re-upload by hand.
+route('POST', '/api/google/mail/att/:msgId/:attId/drive', async ({ env, user, body }) => {
+  requireStaff(user);
+  const me = await ownFor(env, user, 'mail');
+  const b = await body();
+  const d = await gmail(env, me, `/messages/${encodeURIComponent(b.msgId || '')}/attachments/${encodeURIComponent(b.attId || '')}`);
+  const { saveToDrive } = await import('./gdrive.js');
+  const file = await saveToDrive(env, user, { name: b.name || 'attachment', mime: b.type || 'application/octet-stream', b64: d.data, parent: b.parent });
+  return json({ file });
+});

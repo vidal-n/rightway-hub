@@ -254,3 +254,22 @@ route('GET', '/api/clients/:id/drive', async ({ env, user, params }) => {
   })}`);
   return json({ folder, files: (d.files || []).map(slimFile) });
 });
+
+// Used by Gmail to keep an attachment, and by anything else that already holds the bytes.
+export async function saveToDrive(env, user, { name, mime, b64, parent }) {
+  const me = await ownFor(env, user, 'drive');
+  const bytes = bytesOf(b64);
+  if (!bytes.length) throw new HttpError('That file came through empty.');
+  if (bytes.length > MAX_UPLOAD) throw new HttpError('That file is bigger than 20 MB.');
+  return slimFile(await upload(env, me, { name: String(name || 'file').slice(0, 200), mime: String(mime || 'application/octet-stream'), bytes, parent: parent || 'root' }));
+}
+
+// A short list of recent Drive files, for picking one to attach to an email.
+route('GET', '/api/google/drive/recent', async ({ env, user, url }) => {
+  requireStaff(user);
+  const me = await ownFor(env, user, 'drive');
+  const q = (url.searchParams.get('q') || '').trim();
+  const where = `trashed = false and mimeType != '${GOOGLE_TYPE.folder}'${q ? ` and name contains '${esc(q)}'` : ''}`;
+  const d = await drive(env, me, `/files?${new URLSearchParams({ q: where, pageSize: '12', orderBy: 'modifiedTime desc', fields: `files(${FIELDS})` })}`);
+  return json({ files: (d.files || []).map(slimFile) });
+});

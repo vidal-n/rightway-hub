@@ -163,6 +163,13 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   box lists who already has it. Each client gets a Drive folder on first use (`clients.drive_folder`, `clientFolder`), shown on the client
   tab "Files" with upload; `POST /api/clients/:id/to-doc` turns a page draft (or any HTML) into a real Google Doc in that folder
   (`htmlToDoc` uploads HTML and lets Google convert it). The older Sheets export in `src/googleapps.js` stays as it is.
+- Google and the rest of the Hub (built): the apps talk to each other and to the pipeline.
+  Mail: an attachment can be kept straight into Drive (`POST /api/google/mail/att/:msgId/:attId/drive`, `saveToDrive`), a thread can be
+  turned into a calendar event with the same people (`quickEvent` in `public/hub/gcal.js`), and compose can drop in a Drive file as a link
+  (`GET /api/google/drive/recent`). Lead page: Email opens the Hub composer, "Put on my calendar" makes an event pinned to that lead, and
+  recent mail with them is listed under the history. Client page: Email and Meeting buttons in the header, a Files tab with the client's
+  Drive folder, uploads and recent mail with the contact. Content editor: "Send to Google Docs" saves the draft and converts it into a
+  Google Doc in the client's Drive folder. Sent mail is logged on the lead's or client's timeline either way.
 - Scan tool v3: up to 5 keywords per run (tabs plus a summary table, save all to a client), grids to 13 x 13, radius to 30 miles, bigger map
   with zoom buttons, drag, pinch, ctrl or trackpad zoom, and double click (`createMap` in `public/js/map.js`). A live feed shows each search as a
   phone result card while scanning, and "Replay the scan" re-runs it spot by spot for clients. Lead research now keeps the top 3 per grid spot,

@@ -307,7 +307,8 @@ export async function leadModal(id, onChange) {
       <button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     <div class="row" style="margin-bottom:14px">
       ${l.phone ? `<a class="btn btn-mint" href="${telHref(l.phone)}">${icon.phone}${esc(l.phone)}</a>` : ''}
-      ${l.email ? `<a class="btn btn-ghost" href="mailto:${esc(l.email)}">${icon.mail}Email</a>` : ''}
+      ${l.email ? `<button class="btn btn-ghost" id="lmailbtn">${icon.mail}Email</button>` : ''}
+      <button class="btn btn-ghost" id="lmeetbtn">Put on my calendar</button>
       ${l.website ? `<a class="btn btn-ghost" href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}" target="_blank" rel="noopener">Website</a>` : ''}
       <a class="btn btn-ghost" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''} ${l.state || ''}`)}" target="_blank" rel="noopener">Google Maps</a>
       ${l.phone ? '<button class="btn btn-ghost" id="ltexts">Texts</button>' : ''}
@@ -342,6 +343,7 @@ export async function leadModal(id, onChange) {
         <h3>Next step</h3>
         <p>${l.next_action ? `${esc(l.next_action)} <span class="badge gray">${esc(dueText(l.next_action_at))}</span>` : '<span class="muted">None set</span>'}</p>
         ${l.notes ? `<h3>Notes</h3><div class="caption">${esc(l.notes)}</div>` : ''}
+        <div class="card" id="lmail" style="box-shadow:none;padding:0;margin-top:18px"></div>
         <h3 style="margin-top:18px">History</h3>
         <ul class="feed">${data.activities.map((a) => `<li><span class="dot">${a.type === 'call' ? icon.msg : a.type === 'payment' ? icon.star : icon.note}</span>
           <div><div>${esc(activityText(a))}</div>${a.body && a.type !== 'stage' ? `<div class="small">${esc(a.body)}</div>` : ''}</div><span class="small">${esc(fmt.ago(a.at))}</span></li>`).join('') || '<li class="muted">Nothing yet.</li>'}</ul>
@@ -351,6 +353,13 @@ export async function leadModal(id, onChange) {
   const done = () => { m.close(); onChange?.(); };
   prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, onResearched: () => { changed = true; } });
   $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
+  // Google: write to them, see what you have already sent, and put a meeting on your own calendar.
+  $('#lmailbtn', m.el)?.addEventListener('click', () => import('./mail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth` })));
+  $('#lmeetbtn', m.el).addEventListener('click', () => import('./gcal.js').then((x) => x.quickEvent({
+    title: `Audit call: ${l.business}`, attendees: [l.email].filter(Boolean), leadId: l.id,
+    notes: [l.contact_name && `Contact: ${l.contact_name}`, l.phone && `Phone: ${l.phone}`, l.website && `Site: ${l.website}`].filter(Boolean).join('\n'),
+  })));
+  if (l.email) import('./mail.js').then((x) => x.mailWith($('#lmail', m.el), l.email, { name: l.contact_name || l.business })).catch(() => {});
   $('#ledit', m.el).addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); });
   $$('[data-out]', m.el).forEach((b) => b.addEventListener('click', async () => {
     const outcome = b.dataset.out;

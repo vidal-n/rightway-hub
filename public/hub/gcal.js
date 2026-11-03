@@ -205,7 +205,8 @@ function editEvent(e = {}) {
   const end = e.end || start + 30 * 60e3;
   const writable = S.cals.filter((c) => c.canWrite);
   const picked = e.calendarId || (writable.find((c) => c.primary) || writable[0] || {}).id || 'primary';
-  const invited = (e.attendees || []).map((a) => a.email);
+  // Attendees arrive as Google objects from an existing event, or as plain addresses from elsewhere in the Hub.
+  const invited = (e.attendees || []).map((a) => (typeof a === 'string' ? a : a.email)).filter(Boolean);
   const m = modal(`<div class="cal-edit">
     <div class="card-head"><h2 style="margin:0">${isNew ? 'New event' : 'Change event'}</h2><button class="icon-btn" data-close aria-label="Close">${icon.close}</button></div>
     <label class="field"><span>What is it</span><input id="ce-title" value="${esc(e.title || '')}" placeholder="Audit call with ..."></label>
@@ -292,4 +293,13 @@ function pickCalendars() {
     if (!picked.length) { toast('Pick at least one', true); return; }
     S.on = new Set(picked); m.close(); load();
   });
+}
+
+// Open the new-event box from anywhere in the Hub (a lead, a client, a mail thread).
+export async function quickEvent(seed = {}) {
+  if (!S.cals.length) {
+    try { const c = await api('/api/google/cal/calendars'); S.cals = c.calendars; S.email = c.email || ''; }
+    catch (e) { toast(e.message, true); return; }
+  }
+  editEvent({ ...seed, start: seed.start || suggestStart() });
 }

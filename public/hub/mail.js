@@ -151,6 +151,7 @@ async function openThread(id) {
       <div class="row" style="gap:4px">
         <button class="icon-btn" id="gm-arch" aria-label="Archive" title="Archive">${icon.check}</button>
         <button class="icon-btn" id="gm-unread" aria-label="Mark unread" title="Mark unread">${icon.mail}</button>
+        <button class="icon-btn" id="gm-cal" aria-label="Put on my calendar" title="Put on my calendar">${icon.clock}</button>
         <button class="icon-btn" id="gm-del" aria-label="Delete" title="Delete">${icon.trash}</button>
       </div>
     </div>
@@ -176,6 +177,12 @@ async function openThread(id) {
     try { await api(`/api/google/mail/threads/${id}/trash`, { method: 'POST' }); S.threads = S.threads.filter((x) => x.id !== id); S.open = null; $('#gmw').classList.remove('is-open'); box.innerHTML = ''; paintList(); toast('In the trash'); }
     catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
   });
+  $('#gm-cal', box).addEventListener('click', () => import('./gcal.js').then((x) => x.quickEvent({
+    title: last.subject || 'Meeting',
+    attendees: [...addrList(last.from), ...addrList(last.to)].map((a) => a.email).filter((e) => e && e !== d.me),
+    notes: `From the email "${last.subject || ''}".`,
+    clientId: d.clients[0]?.id || null, leadId: d.leads[0]?.id || null,
+  })));
   $('#gm-reply', box).addEventListener('click', () => compose({ ...replyTo(last, d.me, false), html: '', threadId: id, quote: quoted(last) }));
   $('#gm-replyall', box).addEventListener('click', () => compose({ ...replyTo(last, d.me, true), html: '', threadId: id, quote: quoted(last) }));
   $('#gm-fwd', box).addEventListener('click', () => compose({ to: '', subject: /^fwd:/i.test(last.subject) ? last.subject : `Fwd: ${last.subject}`, html: '', quote: quoted(last) }));
@@ -197,7 +204,8 @@ function message(m, open, me = '') {
     <div class="gm-msg-body">
       ${m.remoteImages && !showImgs ? '<div class="gm-imgbar">Pictures in this email are hidden. <button class="btn btn-ghost btn-sm" data-imgs>Show pictures</button></div>' : ''}
       <div class="gm-html">${safeMailHtml(m.html, { images: showImgs })}</div>
-      ${m.attachments.length ? `<div class="gm-atts">${m.attachments.map((a) => `<a class="gm-att" href="/api/google/mail/att/${esc(m.id)}/${esc(a.id)}?name=${encodeURIComponent(a.name)}" download>${icon.chain}<span>${esc(a.name)}</span><em>${Math.max(1, Math.round(a.size / 1024))} KB</em></a>`).join('')}</div>` : ''}
+      ${m.attachments.length ? `<div class="gm-atts">${m.attachments.map((a) => `<span class="gm-att"><a href="/api/google/mail/att/${esc(m.id)}/${esc(a.id)}?name=${encodeURIComponent(a.name)}" download>${icon.chain}<span>${esc(a.name)}</span><em>${Math.max(1, Math.round(a.size / 1024))} KB</em></a>
+        <button class="icon-btn" data-drive="${esc(a.id)}" data-name="${esc(a.name)}" data-type="${esc(a.type)}" aria-label="Keep in Drive" title="Keep in Drive">${icon.folder}</button></span>`).join('')}</div>` : ''}
     </div>
     <div class="gm-msg-shut">${esc(m.snippet.slice(0, 120))}</div>
   </article>`;
@@ -215,6 +223,16 @@ function wireMessages(box, messages) {
       $('.gm-imgbar', el).remove();
     });
     $$('.gm-html a', el).forEach((a) => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+    $$('[data-drive]', el).forEach((b) => b.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      busy(b, true);
+      try {
+        const r = await api(`/api/google/mail/att/${encodeURIComponent(el.dataset.id)}/${encodeURIComponent(b.dataset.drive)}/drive`, {
+          method: 'POST', body: { msgId: el.dataset.id, attId: b.dataset.drive, name: b.dataset.name, type: b.dataset.type },
+        });
+        toast(`${r.file.name} is in your Drive`);
+      } catch (err) { toast(err.message, true); } finally { busy(b, false); }
+    }));
   });
 }
 
@@ -229,7 +247,8 @@ export function compose({ to = '', cc = '', bcc = '', subject = '', html = '', q
     <label class="field"><span>Subject</span><input id="gmc-subj" value="${esc(subject)}"></label>
     <div class="gm-tools">
       ${[['bold', 'B'], ['italic', 'I'], ['insertUnorderedList', 'List'], ['createLink', 'Link']].map(([c, n]) => `<button type="button" class="btn btn-ghost btn-sm" data-cmd="${c}">${n}</button>`).join('')}
-      <button type="button" class="btn btn-ghost btn-sm" id="gmc-file">Attach</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="gmc-file">Attach a file</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="gmc-drive">From Drive</button>
       <input type="file" id="gmc-input" multiple hidden>
     </div>
     <div class="gm-editor" id="gmc-body" contenteditable="true" role="textbox" aria-label="Message">${html}</div>
@@ -285,6 +304,23 @@ export function compose({ to = '', cc = '', bcc = '', subject = '', html = '', q
     input.value = '';
     $('#gmc-files', el).innerHTML = files.map((f, i) => `<span class="gm-file">${esc(f.name)} <button type="button" data-rm="${i}" aria-label="Remove">${icon.close}</button></span>`).join('');
     $$('[data-rm]', el).forEach((b) => b.addEventListener('click', () => { files.splice(Number(b.dataset.rm), 1); b.closest('.gm-file').remove(); }));
+  });
+  // A Drive file goes in as a link, the way Google does it for big files.
+  $('#gmc-drive', el).addEventListener('click', async () => {
+    let r;
+    try { r = await api('/api/google/drive/recent'); }
+    catch (err) { toast(err.message, true); return; }
+    if (!r.files.length) { toast('Nothing in your Drive yet', true); return; }
+    const pick = modal(`<div id="gd-pick"><div class="card-head"><h2 style="margin:0">Attach from Drive</h2><button class="icon-btn" data-close aria-label="Close">${icon.close}</button></div>
+      <ul class="list">${r.files.map((f) => `<li class="item"><span></span><div><div class="item-title">${esc(f.name)}</div></div>
+        <button class="btn btn-ghost btn-sm" data-pick="${esc(f.id)}">Attach</button></li>`).join('')}</ul></div>`);
+    $$('[data-pick]', pick.el).forEach((b) => b.addEventListener('click', () => {
+      const f = r.files.find((x) => x.id === b.dataset.pick);
+      body.focus();
+      document.execCommand('insertHTML', false, `<p><a href="${esc(f.link || '')}">${esc(f.name)}</a></p>`);
+      pick.close();
+      toast('Link added. Share the file in Drive so they can open it.');
+    }));
   });
   $('#gmc-send', el).addEventListener('click', async (e) => {
     const payload = {

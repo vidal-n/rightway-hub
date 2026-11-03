@@ -166,7 +166,7 @@ async function editor(el, c, id) {
         ${wp.connected ? `<button class="btn btn-primary btn-block" data-go="wp-publish">${s === 'published' && it.wp_id ? 'Update on WordPress' : 'Publish on WordPress'}</button>
           ${s !== 'published' ? `<button class="btn btn-ghost btn-sm btn-block" data-go="wp-draft" style="margin-top:8px">${it.wp_id ? 'Update the WordPress draft' : 'Send to WordPress as a draft'}</button>` : ''}
           ${it.wp_id && s !== 'published' ? '<p class="small muted" style="margin-top:8px">It is in WordPress as a draft.</p>' : ''}` : '<p class="small muted">No WordPress connection. Copy the page into their site, then mark it published.</p>'}
-        <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-go="copy">Copy HTML</button><button class="btn btn-ghost btn-sm" data-go="download">Download</button></div>
+        <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-go="copy">Copy HTML</button><button class="btn btn-ghost btn-sm" data-go="download">Download</button><button class="btn btn-ghost btn-sm" data-go="docs">Send to Google Docs</button></div>
         ${s !== 'published' ? `<form id="ctlive" class="row" style="gap:6px;margin-top:12px"><input name="url" placeholder="Live address (optional)" style="flex:1;min-width:0"><button class="btn btn-ghost btn-sm" type="submit">Mark live</button></form>` : ''}
         ${it.live_url ? `<p class="small" style="margin-top:10px">Live: <a href="${esc(it.live_url)}" target="_blank" rel="noopener">${esc(it.live_url)}</a></p>` : ''}` : ''}`;
     $$('[data-go]', box).forEach((btn) => btn.addEventListener('click', () => go(btn.dataset.go, btn)));
@@ -179,6 +179,13 @@ async function editor(el, c, id) {
 
   const go = async (what, btn) => {
     if (what === 'copy') return copy(fields().html, 'HTML copied');
+    if (what === 'docs') {
+      // Save first so the doc carries what is on screen, then let Google turn the HTML into a real doc.
+      busy(btn, true);
+      try { if (dirty) await save(true); await import('./gdrive.js').then((m) => m.sendToDocs(c.id, { contentId: it.id })); }
+      catch (err) { toast(err.message, true); } finally { busy(btn, false); }
+      return;
+    }
     if (what === 'download') {
       const f = fields();
       const doc = `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><title>${esc(f.meta_title || f.title)}</title><meta name="description" content="${esc(f.meta_description)}"></head>\n<body>\n<h1>${esc(f.title)}</h1>\n${f.html}\n</body></html>`;

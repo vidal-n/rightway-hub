@@ -199,6 +199,13 @@ export async function clientDriveTab(el, c) {
       <div><div class="item-title">${esc(f.name)}</div><div class="small muted">${esc((KIND[f.kind] || KIND.file)[0])}${f.at ? ` · ${when(f.at)}` : ''}</div></div>
       ${f.link ? `<a class="btn btn-ghost btn-sm" href="${esc(f.link)}" target="_blank" rel="noopener">Open</a>` : ''}</li>`).join('')}</ul>`
       : '<p class="muted">Nothing in this client\'s folder yet. Anything you send to Docs from here lands in it.</p>'}</div>`;
+  if (c.contact_email) {
+    const mailBox = document.createElement('div');
+    mailBox.className = 'card';
+    mailBox.style.marginTop = '18px';
+    el.appendChild(mailBox);
+    import('./mail.js').then((m) => m.mailWith(mailBox, c.contact_email, { name: c.contact_name || c.name })).catch(() => mailBox.remove());
+  }
   $('#cd-up', el).addEventListener('click', () => $('#cd-file', el).click());
   $('#cd-file', el).addEventListener('change', async (e) => {
     const files = [...e.target.files]; e.target.value = '';
