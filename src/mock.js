@@ -108,3 +108,19 @@ export function mockDetails(q) {
 export function mockPageSpeed(url) {
   return { url, score: 41, lcp: '6.8 s', cls: '0.21', tbt: '920 ms', speedIndex: '7.4 s' };
 }
+
+// Demo web results: a seeded mix of found, mismatched and missing listings, plus a few local link ideas.
+export function mockWeb(keyword) {
+  let h = 0;
+  for (const ch of keyword) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const site = (keyword.match(/site:(\S+)/) || [])[1];
+  const name = (keyword.match(/"([^"]+)"/) || [])[1] || 'Business';
+  if (site) {
+    const roll = h % 10;
+    if (roll < 3) return { results: [], cost: 0 };
+    const phone = roll < 8 ? '(954) 555-0142' : '(954) 555-0999';
+    return { results: [{ url: `https://www.${site.split('/')[0]}/biz/${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, title: `${name} - Hollywood, FL`, snippet: roll < 6 ? `${name}. 2600 Hollywood Blvd, Hollywood, FL 33020. Call ${phone}.` : `${name} in Hollywood, FL. See photos and reviews.`, domain: site }], cost: 0 };
+  }
+  const base = keyword.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  return { results: [0, 1, 2].map((i) => ({ url: `https://www.${base.slice(0, 14)}${i}.example/`, title: `${keyword} (example ${i + 1})`, snippet: 'Demo result. Connect DataForSEO for real results.', domain: `${base.slice(0, 14)}${i}.example` })), cost: 0 };
+}

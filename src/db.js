@@ -71,6 +71,14 @@ const SCHEMA = [
     rec_sid TEXT, rec_secs INTEGER, vm_sid TEXT, vm_secs INTEGER)`,
   `CREATE INDEX IF NOT EXISTS tracked_calls_client ON tracked_calls (client_id, started_at)`,
   `CREATE INDEX IF NOT EXISTS tracked_calls_sid ON tracked_calls (call_sid)`,
+  `CREATE TABLE IF NOT EXISTS citation_audits (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, results TEXT, counts TEXT, cost REAL, demo INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, by TEXT)`,
+  `CREATE INDEX IF NOT EXISTS citation_audits_client ON citation_audits (client_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS link_log (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, type TEXT NOT NULL, name TEXT NOT NULL, url TEXT, target TEXT, anchor TEXT, kind TEXT,
+    status TEXT NOT NULL DEFAULT 'planned', cost_cents INTEGER NOT NULL DEFAULT 0, source TEXT, note TEXT, month TEXT, task_id TEXT,
+    check_result TEXT, checked_at INTEGER, created_at INTEGER NOT NULL, live_at INTEGER, by TEXT)`,
+  `CREATE INDEX IF NOT EXISTS link_log_client ON link_log (client_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY, business TEXT NOT NULL, contact_name TEXT, phone TEXT, phone_digits TEXT, email TEXT, website TEXT,

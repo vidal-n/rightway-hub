@@ -568,3 +568,10 @@ details.card > summary { cursor: pointer; }
 .gmap-g { position: absolute; inset: 0; }
 .gmap.is-google { touch-action: auto; cursor: auto; }
 .gmap.is-google .gmap-ctl { z-index: 6; }
+
+/* Citations and links */
+.ci-row { align-items: start; }
+.ci-row select, .ci-table select { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.ci-table td { vertical-align: top; }
+ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+@media (max-width: 700px) { .ci-row { grid-template-columns: auto 1fr; } .ci-row > .row { grid-column: 1 / -1; justify-content: flex-start !important; } }

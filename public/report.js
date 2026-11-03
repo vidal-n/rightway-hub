@@ -76,6 +76,7 @@ function render(d, note) {
       <section class="card"><h2>Work done in ${esc(d.monthLabel.split(' ')[0])}</h2>
         ${d.work.byKind.length ? `<div class="rp-chips">${d.work.byKind.map((b) => `<span class="badge">${esc(b.label)}: ${b.n}</span>`).join('')}</div>` : ''}
         ${d.work.items.length ? `<ul class="plain">${d.work.items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p class="muted">The task list for this month is on its way.</p>'}
+        ${d.links && (d.links.citations.length || d.links.links.length) ? `<p class="small" style="margin-top:12px"><b>New listings and links:</b> ${[...d.links.citations, ...d.links.links].map(esc).join(', ')}</p>` : ''}
         <p class="small" style="margin-top:12px">${[rev.requestsSent ? `${rev.requestsSent} review request${rev.requestsSent === 1 ? '' : 's'} sent, ${rev.requestsClicked} opened` : '', d.qrScans ? `${d.qrScans} QR code scan${d.qrScans === 1 ? '' : 's'}` : ''].filter(Boolean).join('. ')}</p></section>
       <section class="card"><h2>Coming up next month</h2>
         ${d.next.length ? `<ul class="plain">${d.next.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : '<p class="muted">Your plan for next month.</p>'}

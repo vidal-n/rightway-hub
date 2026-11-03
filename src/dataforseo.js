@@ -8,6 +8,7 @@ import { HttpError } from './util.js';
 const BASE = 'https://api.dataforseo.com/v3/serp/google';
 const MAPS = `${BASE}/maps/live/advanced`;
 const LOCAL = `${BASE}/local_finder/live/advanced`;
+const ORGANIC = `${BASE}/organic/live/advanced`;
 const US = 2840;
 
 async function liveSerp(env, endpoint, task, fetchImpl = fetch) {
@@ -127,4 +128,14 @@ export async function businessDetails(env, q, fetchImpl) {
   const list = organicListings(items);
   const hit = list.find((i) => sameBusiness(i, q)) || list.find((i) => norm(i.title) === norm(q.title)) || null;
   return { business: hit ? slim(hit) : null, cost };
+}
+
+// Plain Google web results (used for directory checks and link prospects). About $0.002 per 10 results.
+export async function webSearch(env, keyword, { depth = 10 } = {}, fetchImpl) {
+  const { items, cost } = await liveSerp(env, ORGANIC, { keyword, location_code: US, language_code: 'en', depth }, fetchImpl);
+  return {
+    results: items.filter((i) => i && i.type === 'organic' && i.url).slice(0, depth)
+      .map((i) => ({ url: i.url, title: i.title || '', snippet: i.description || '', domain: i.domain || '' })),
+    cost,
+  };
 }

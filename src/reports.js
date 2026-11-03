@@ -9,6 +9,7 @@ import { PLANS, monthKey } from './plans.js';
 import { canEmail, sendEmail } from './email.js';
 import { leaderboard } from '../public/js/analysis.js';
 import { callStats } from './calltrack.js';
+import { linksForMonth } from './citations.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const monthLabel = (m) => { const [y, mo] = m.split('-').map(Number); return `${MONTHS[mo - 1]} ${y}`; };
@@ -79,6 +80,7 @@ export async function buildReport(env, client, month) {
 
   const tracked = await first(env, 'SELECT COUNT(*) AS n FROM tracking_numbers WHERE client_id = ? AND created_at < ?', client.id, b).catch(() => null);
   const calls = tracked?.n ? await callStats(env, client.id, a, b) : null;
+  const links = await linksForMonth(env, client.id, a, b);
   const [rr, tasks, posts, qr] = await Promise.all([
     first(env, 'SELECT COUNT(*) AS sent, SUM(CASE WHEN clicks > 0 THEN 1 ELSE 0 END) AS clicked FROM review_requests WHERE client_id = ? AND created_at >= ? AND created_at < ?', client.id, a, b),
     all(env, 'SELECT kind, title, status, client_visible FROM tasks WHERE client_id = ? AND month = ? ORDER BY sort, created_at', client.id, month),
@@ -108,6 +110,7 @@ export async function buildReport(env, client, month) {
     posts: posts?.n || 0,
     qrScans: qr?.n || 0,
     calls,
+    links,
     next: plan ? plan.monthly.map(([, title, n]) => (n > 1 ? `${n} x ${title}` : title)) : [],
   };
 }

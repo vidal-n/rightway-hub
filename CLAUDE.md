@@ -108,6 +108,16 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Audio proxied by `/api/tracked-calls/:id/audio` (staff and that client). Release gives the number back to Twilio. Tracking numbers are kept out
   of the agency dialer's caller IDs, Phone setup and "Connect all", and `/api/twilio/voice` forwards them to the client if one points there.
   `callStats` feeds the monthly report (calls card, email line); sending a report with calls also checks off the month's `calls` task.
+- Citations and links (built, Phase 8, `src/citations.js`, `public/hub/citations.js`, client tab "Citations"): directory check runs one Google
+  `site:` search per directory (`webSearch` in `src/dataforseo.js`, organic live advanced, about $0.002 each, max 25; `mockWeb` in demo) over the
+  `fulfill.js` list (domains in `SITES`; Apple, Bing, aggregators and certifications are "check by hand"). `judgeListing` (pure) reads Google's
+  preview: name tokens must match; same phone or ZIP or street number = match, a different phone or ZIP = mismatch (with the number shown),
+  otherwise "listed, check details" or "not listed". Results in `citation_audits`; team status stays the onboarding marks (`onb:<clientId>` cit:*).
+  Table `link_log` (type citation or link, status prospect, planned, submitted, live, lost, cost, kind, note): going live checks off one open `link`
+  task this month and logs it. "Find prospects" runs 6 searches (chamber, business association, trade group, "best X in city" lists, sponsorships)
+  and adds up to 3 new sites each, skipping big platforms and sites already logged. "Check links" fetches up to 15 live entries: links must still
+  href the client domain, listings must still show the phone or name. The monthly report lists listings and links that went live that month.
+  Clients only see live entries. No paid or automated link building.
 - Google apps (built, `src/googleapps.js`, `public/hub/googleapps.js`, page `#/google`): per app scopes added on top of Calendar
   (`APP_SCOPES` in `src/google.js`, granted list stored in `users.google_scopes`): Sheets export (drive.file) of leads, clients, calls,
   payments; Search Console and GA4 (Data + Admin APIs) and Google Ads (GOOGLE_ADS_DEVELOPER_TOKEN, optional GOOGLE_ADS_LOGIN_CUSTOMER_ID,
@@ -124,7 +134,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).
 - GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.
 - Not built yet: publishing to Google and Meta (needs Google Business Profile API approval and Meta app review; until then posts
-  are copied and marked posted), Google Business Profile data (Phase 5, needs API approval and V's own Google Business Profile first), citations/links tracker (8), Market Leader extras (9). Follow the Package build-out tab.
+  are copied and marked posted), Google Business Profile data (Phase 5, needs API approval and V's own Google Business Profile first), Market Leader extras (9). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 
 ## Stack

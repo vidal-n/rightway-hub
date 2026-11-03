@@ -147,7 +147,7 @@ export function clientForm(client, onSaved) {
 }
 
 // ---------- one client ----------
-const TABS = [['overview', 'Overview'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
+const TABS = [['overview', 'Overview'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['citations', 'Citations'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
 
 export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   const view = staffShell(app, user, 'clients');
@@ -173,6 +173,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   if (tab === 'content') return import('./content.js').then((m) => m.contentTab(el, c, state.sub));
   if (tab === 'site') return import('./siteaudit.js').then((m) => m.siteTab(el, c));
   if (tab === 'calls') return import('./calltrack.js').then((m) => m.callsTab(el, c, user));
+  if (tab === 'citations') return import('./citations.js').then((m) => m.citationsTab(el, c));
   if (tab === 'profile') return profileTab(el, c);
   if (tab === 'access') return accessTab(el, c);
   if (tab === 'billing') return billingTab(el, c);
