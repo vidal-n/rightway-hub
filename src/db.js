@@ -61,6 +61,16 @@ const SCHEMA = [
     id TEXT PRIMARY KEY, client_id TEXT NOT NULL, issue_key TEXT, page_url TEXT, what TEXT NOT NULL, before_text TEXT, after_text TEXT, kind TEXT,
     status TEXT NOT NULL DEFAULT 'fixed', by TEXT, created_at INTEGER NOT NULL, checked_at INTEGER)`,
   `CREATE INDEX IF NOT EXISTS site_fixes_client ON site_fixes (client_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS tracking_numbers (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, number TEXT NOT NULL, sid TEXT, source TEXT, forward_to TEXT NOT NULL, record INTEGER NOT NULL DEFAULT 0,
+    alert_to TEXT, status TEXT NOT NULL DEFAULT 'active', created_at INTEGER NOT NULL, released_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS tracking_numbers_num ON tracking_numbers (number, status)`,
+  `CREATE TABLE IF NOT EXISTS tracked_calls (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, number_id TEXT, call_sid TEXT, from_num TEXT, from_city TEXT, from_state TEXT, to_num TEXT, source TEXT,
+    status TEXT NOT NULL DEFAULT 'ringing', duration INTEGER, started_at INTEGER NOT NULL, ended_at INTEGER, first_time INTEGER NOT NULL DEFAULT 0,
+    rec_sid TEXT, rec_secs INTEGER, vm_sid TEXT, vm_secs INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS tracked_calls_client ON tracked_calls (client_id, started_at)`,
+  `CREATE INDEX IF NOT EXISTS tracked_calls_sid ON tracked_calls (call_sid)`,
   `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY, business TEXT NOT NULL, contact_name TEXT, phone TEXT, phone_digits TEXT, email TEXT, website TEXT,

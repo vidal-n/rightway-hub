@@ -27,6 +27,9 @@ export async function ownedNumbers(env) {
     const data = await res.json().catch(() => ({}));
     if (res.ok) list = (data.incoming_phone_numbers || []).filter((n) => n.capabilities?.voice !== false).map((n) => ({ number: n.phone_number, label: n.friendly_name || n.phone_number }));
   } catch { /* use the fallback */ }
+  // Client call tracking numbers are not agency caller IDs.
+  const tracking = env.DB ? new Set((await all(env, "SELECT number FROM tracking_numbers WHERE status = 'active'").catch(() => [])).map((r) => r.number)) : new Set();
+  list = list.filter((n) => !tracking.has(n.number));
   if (env.TWILIO_FROM && !list.some((n) => n.number === env.TWILIO_FROM)) list.unshift({ number: env.TWILIO_FROM, label: env.TWILIO_FROM });
   list.sort((a, b) => (a.number === env.TWILIO_FROM ? -1 : b.number === env.TWILIO_FROM ? 1 : 0));
   numCache = { at: Date.now(), list, key: env.TWILIO_ACCOUNT_SID };

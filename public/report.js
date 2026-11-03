@@ -66,6 +66,12 @@ function render(d, note) {
     ${d.keywords.length ? `${d.keywords.map(keywordCard).join('')}<div class="small">${legend}</div>` : '<section class="card"><h2>Rankings</h2><p class="muted">Your first map scan will show up here.</p></section>'}
     ${d.leaders.length ? `<section class="card"><div class="card-head"><h2>Who holds the top 3</h2><span class="small muted">"${esc(k0.keyword)}", share of the area</span></div>
       ${d.leaders.map((l) => `<div class="rp-bar${l.isTarget ? ' you' : ''}"><span class="nm">${esc(l.title)}${l.isTarget ? ' (you)' : ''}</span><span class="track"><span class="fill" style="width:${Math.max(2, l.sov)}%"></span></span><b>${l.sov}%</b></div>`).join('')}</section>` : ''}
+    ${d.calls ? `<section class="card"><div class="card-head"><h2>Calls from Google and your site</h2><span class="small muted">tracked numbers</span></div>
+      <div class="rp-row3" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+        <div><b>${d.calls.total}</b><span>calls this month</span></div><div><b>${d.calls.firstTime}</b><span>new callers</span></div>
+        <div><b>${d.calls.answered}</b><span>answered</span></div><div><b class="${d.calls.missed ? 'bad-text' : ''}">${d.calls.missed}</b><span>missed${d.calls.voicemail ? `, ${d.calls.voicemail} left a voicemail` : ''}</span></div></div>
+      ${d.calls.bySource.length > 1 ? `<p class="small" style="margin-top:10px">${d.calls.bySource.map((x) => `${esc(x.source)}: <b>${x.n}</b>`).join(' &middot; ')}</p>` : ''}
+      ${d.calls.missed ? '<p class="small muted" style="margin-top:6px">Every missed call is a customer who may call the next business. Calling back within an hour wins most of them.</p>' : ''}</section>` : ''}
     <div class="rp-two">
       <section class="card"><h2>Work done in ${esc(d.monthLabel.split(' ')[0])}</h2>
         ${d.work.byKind.length ? `<div class="rp-chips">${d.work.byKind.map((b) => `<span class="badge">${esc(b.label)}: ${b.n}</span>`).join('')}</div>` : ''}

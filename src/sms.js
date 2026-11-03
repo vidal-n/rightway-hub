@@ -9,6 +9,7 @@ import { e164, digits, inCallingHours, insertLead, logActivity } from './crm.js'
 import { route } from './router.js';
 import { twilioReady, verifiedParams, twiml, xml } from './calls.js';
 import { browserIdentities, recordingOn } from './voice.js';
+import { trackedAnswer } from './calltrack.js';
 
 const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']);
 const START_WORDS = new Set(['start', 'unstop', 'yes']);
@@ -155,6 +156,8 @@ async function forwardNumber(env) {
 
 route('POST', '/api/twilio/voice', async ({ env, request, url }) => {
   const p = await verifiedParams(env, request);
+  const tracked = await trackedAnswer(env, p, url.origin);
+  if (tracked) return tracked;
   const from = e164(p.From);
   const lead = from && (await first(env, 'SELECT id, business FROM leads WHERE phone_digits = ? ORDER BY updated_at DESC LIMIT 1', digits(from)));
   const aid = await logActivity(env, { lead_id: lead?.id || null, type: 'call', status: 'inbound', body: from ? `Incoming call from ${from}` : 'Incoming call', call_sid: p.CallSid || null });

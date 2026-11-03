@@ -8,6 +8,7 @@ import { route } from './router.js';
 import { PLANS, monthKey } from './plans.js';
 import { canEmail, sendEmail } from './email.js';
 import { leaderboard } from '../public/js/analysis.js';
+import { callStats } from './calltrack.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const monthLabel = (m) => { const [y, mo] = m.split('-').map(Number); return `${MONTHS[mo - 1]} ${y}`; };
@@ -76,6 +77,8 @@ export async function buildReport(env, client, month) {
       .map((r) => ({ title: r.title, sov: r.sov, isTarget: Boolean(r.isTarget), reviews: r.reviews ?? null, rating: r.rating ?? null }));
   }
 
+  const tracked = await first(env, 'SELECT COUNT(*) AS n FROM tracking_numbers WHERE client_id = ? AND created_at < ?', client.id, b).catch(() => null);
+  const calls = tracked?.n ? await callStats(env, client.id, a, b) : null;
   const [rr, tasks, posts, qr] = await Promise.all([
     first(env, 'SELECT COUNT(*) AS sent, SUM(CASE WHEN clicks > 0 THEN 1 ELSE 0 END) AS clicked FROM review_requests WHERE client_id = ? AND created_at >= ? AND created_at < ?', client.id, a, b),
     all(env, 'SELECT kind, title, status, client_visible FROM tasks WHERE client_id = ? AND month = ? ORDER BY sort, created_at', client.id, month),
@@ -104,6 +107,7 @@ export async function buildReport(env, client, month) {
     },
     posts: posts?.n || 0,
     qrScans: qr?.n || 0,
+    calls,
     next: plan ? plan.monthly.map(([, title, n]) => (n > 1 ? `${n} x ${title}` : title)) : [],
   };
 }
@@ -142,6 +146,7 @@ export function reportEmail(rep, url, note = '') {
     note ? `${note}\n` : '',
     ...d.keywords.map((k) => `${k.keyword}: top 3 in ${k.now.top3Pct}% of your area${fmtChange(k.now.top3Pct, k.before?.top3Pct, false, '%')}, ${k.now.centerRank ? `#${k.now.centerRank}` : 'not in the top 20'} at your address`),
     d.reviews.count != null ? `Google reviews: ${d.reviews.count}${d.reviews.rating ? ` (${d.reviews.rating} stars)` : ''}` : '',
+    d.calls ? `Calls: ${d.calls.total} (${d.calls.firstTime} new callers, ${d.calls.missed} missed)` : '',
     `Work done this month: ${d.work.done} task${d.work.done === 1 ? '' : 's'}${d.posts ? `, ${d.posts} Google post${d.posts === 1 ? '' : 's'}` : ''}`,
     '', `See the full report: ${url}`, '', 'Rightway Growth',
   ].filter((l) => l !== '').join('\n');
@@ -161,6 +166,7 @@ export function reportEmail(rep, url, note = '') {
         <th style="text-align:right;padding:6px 10px;color:#5B6B65;font-weight:600;font-size:12px">At your address</th></tr></thead><tbody>${kwRows}</tbody></table>` : ''}
       <p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#33443E">
         ${d.reviews.count != null ? `Google reviews: <b>${d.reviews.count}</b>${d.reviews.rating ? `, ${d.reviews.rating} stars` : ''}<br>` : ''}
+        ${d.calls ? `Calls: <b>${d.calls.total}</b> (${d.calls.firstTime} new caller${d.calls.firstTime === 1 ? '' : 's'}, ${d.calls.missed} missed)<br>` : ''}
         Work done this month: <b>${d.work.done}</b> task${d.work.done === 1 ? '' : 's'}${d.posts ? `, <b>${d.posts}</b> Google post${d.posts === 1 ? '' : 's'}` : ''}</p>
       <p style="margin:22px 0 4px"><a href="${h(url)}" style="display:inline-block;background:#0F1B17;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:12px">See the full report</a></p>
     </div>
@@ -171,7 +177,9 @@ export function reportEmail(rep, url, note = '') {
 
 async function markSent(env, rep, { to = null, by = null } = {}) {
   await run(env, "UPDATE reports SET status = 'sent', sent_at = ?, sent_to = ?, sent_by = ? WHERE id = ?", now(), to, by, rep.id);
-  await run(env, "UPDATE tasks SET status = 'done', done_at = ?, done_by = ? WHERE client_id = ? AND month = ? AND kind = 'report' AND status != 'done'", now(), by, rep.client_id, rep.month);
+  // The report is also the lead report when it has tracked calls.
+  const kinds = JSON.parse(rep.data || '{}').calls ? "('report','calls')" : "('report')";
+  await run(env, `UPDATE tasks SET status = 'done', done_at = ?, done_by = ? WHERE client_id = ? AND month = ? AND kind IN ${kinds} AND status != 'done'`, now(), by, rep.client_id, rep.month);
   await run(env, 'INSERT INTO log (id, client_id, text, link, at, by) VALUES (?, ?, ?, ?, ?, ?)', newId('l_'), rep.client_id,
     `${monthLabel(rep.month)} report sent${to ? ` to ${to}` : ''}`, `/report.html#${rep.token}`, now(), by);
 }

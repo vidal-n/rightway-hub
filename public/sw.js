@@ -1,7 +1,7 @@
 // Service worker: makes the Hub installable and keeps the app shell available on a weak connection.
 // API calls always go to the network, so data is never stale.
-const CACHE = 'rw-hub-v15';
-const SHELL = ['/', '/index.html', '/hub.css', '/hub/app.js', '/hub/core.js', '/hub/shared.js', '/hub/staff.js', '/hub/portal.js', '/hub/crm.js', '/hub/prep.js', '/hub/texts.js', '/hub/home.js', '/hub/dialout.js', '/hub/phone.js', '/hub/calltools.js', '/hub/dispo.js', '/hub/payments.js', '/hub/stripesetup.js', '/hub/scans.js', '/hub/reports.js', '/hub/content.js', '/hub/siteaudit.js', '/js/sanitize.js', '/hub/googleapps.js', '/hub/onboarding.js',
+const CACHE = 'rw-hub-v16';
+const SHELL = ['/', '/index.html', '/hub.css', '/hub/app.js', '/hub/core.js', '/hub/shared.js', '/hub/staff.js', '/hub/portal.js', '/hub/crm.js', '/hub/prep.js', '/hub/texts.js', '/hub/home.js', '/hub/dialout.js', '/hub/phone.js', '/hub/calltools.js', '/hub/dispo.js', '/hub/payments.js', '/hub/stripesetup.js', '/hub/scans.js', '/hub/reports.js', '/hub/content.js', '/hub/siteaudit.js', '/hub/calltrack.js', '/js/sanitize.js', '/hub/googleapps.js', '/hub/onboarding.js',
   '/js/qr.js', '/js/map.js', '/js/grid.js', '/js/analysis.js', '/js/leadintel.js', '/js/leadfilter.js', '/js/fulfill.js', '/js/slots.js', '/js/plancopy.js', '/brand/rightway-logo-dark.svg', '/brand/rightway-logo-light.svg', '/favicon.svg'];
 
 self.addEventListener('install', (e) => {

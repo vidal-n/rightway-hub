@@ -100,6 +100,14 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Table `site_fixes` (what, page, before, after): logging a fix checks off the month's `onpage` (or `technical`) task; the next crawl marks it
   "verified" when that issue key (per page) is gone. `buildSchema` makes LocalBusiness JSON-LD (type from category) from the profile to copy.
   Monthly crawl rides the scan schedule (`autoscan.crawl`, on by default when scans are on). Open tab calls `POST /api/site/tick` every 5s while crawling.
+- Call tracking (built, Phase 7, `src/calltrack.js`, `public/hub/calltrack.js`, client tab "Calls", client app `#/calls`): tables `tracking_numbers`
+  (number, sid, source like "Google profile" or "Website", forward_to, record, alert_to) and `tracked_calls`. Owners search and buy a Twilio number
+  (or assign one already on the account); its Voice URL is `/api/twilio/track-voice`, which logs the call (caller, city, source, new caller or not)
+  and `<Dial>`s the client's line keeping the caller's ID. `track-done`: answered with duration, or missed: email alert (Resend) and a short
+  voicemail (`<Record>`, `track-recording?k=vm`). Recording per number, off by default; on adds a spoken "This call may be recorded" first.
+  Audio proxied by `/api/tracked-calls/:id/audio` (staff and that client). Release gives the number back to Twilio. Tracking numbers are kept out
+  of the agency dialer's caller IDs, Phone setup and "Connect all", and `/api/twilio/voice` forwards them to the client if one points there.
+  `callStats` feeds the monthly report (calls card, email line); sending a report with calls also checks off the month's `calls` task.
 - Google apps (built, `src/googleapps.js`, `public/hub/googleapps.js`, page `#/google`): per app scopes added on top of Calendar
   (`APP_SCOPES` in `src/google.js`, granted list stored in `users.google_scopes`): Sheets export (drive.file) of leads, clients, calls,
   payments; Search Console and GA4 (Data + Admin APIs) and Google Ads (GOOGLE_ADS_DEVELOPER_TOKEN, optional GOOGLE_ADS_LOGIN_CUSTOMER_ID,
@@ -116,7 +124,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).
 - GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.
 - Not built yet: publishing to Google and Meta (needs Google Business Profile API approval and Meta app review; until then posts
-  are copied and marked posted), Google Business Profile data (Phase 5, needs API approval and V's own Google Business Profile first), call tracking (7), citations/links tracker (8), Market Leader extras (9). Follow the Package build-out tab.
+  are copied and marked posted), Google Business Profile data (Phase 5, needs API approval and V's own Google Business Profile first), citations/links tracker (8), Market Leader extras (9). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 
 ## Stack

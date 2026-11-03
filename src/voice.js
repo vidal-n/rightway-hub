@@ -14,6 +14,7 @@ import { e164, inCallingHours, logActivity, recordOutcome, insertLead, cleanLead
 import { resolveDispo } from './dispo.js';
 import { route } from './router.js';
 import { twilioReady, verifiedParams, twiml, xml, pickFrom, manualTarget, ownedNumbers, resetNumberCache } from './calls.js';
+import { trackingSet } from './calltrack.js';
 
 const enc = new TextEncoder();
 const b64url = (u8) => btoa(String.fromCharCode(...u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -396,12 +397,13 @@ route('GET', '/api/voice/setup', async ({ env, user, url }) => {
   if (!res.ok) throw new HttpError(`Twilio: ${data.message || `HTTP ${res.status}`}`, 502);
   const voiceUrl = `${url.origin}/api/twilio/voice`;
   const smsUrl = `${url.origin}/api/twilio/sms`;
-  const numbers = (data.incoming_phone_numbers || []).map((n) => ({
+  const { sids: trackingSids } = await trackingSet(env);
+  const numbers = (data.incoming_phone_numbers || []).filter((n) => !trackingSids.has(n.sid)).map((n) => ({
     sid: n.sid, number: n.phone_number, label: n.friendly_name,
     calls: n.voice_url === voiceUrl ? 'hub' : n.voice_url || n.voice_application_sid || n.trunk_sid ? 'other' : 'none',
     texts: n.sms_url === smsUrl ? 'hub' : n.sms_url || n.sms_application_sid ? 'other' : 'none',
   }));
-  return json({ ready: true, recording: await recordingOn(env), numbers, main: env.TWILIO_FROM });
+  return json({ ready: true, recording: await recordingOn(env), numbers, main: env.TWILIO_FROM, tracking: trackingSids.size });
 });
 
 route('PUT', '/api/voice/setup', async ({ env, user, body }) => {
@@ -418,8 +420,9 @@ route('POST', '/api/voice/connect-numbers', async ({ env, user, url, body }) => 
   const sids = (await body()).sids;
   if (!Array.isArray(sids) || !sids.length) throw new HttpError('Pick at least one number.');
   const done = [];
+  const { sids: trackingSids } = await trackingSet(env);
   for (const sid of sids.slice(0, 50)) {
-    if (!/^PN[0-9a-f]{32}$/i.test(sid)) continue;
+    if (!/^PN[0-9a-f]{32}$/i.test(sid) || trackingSids.has(sid)) continue;
     await twilioPost(env, `IncomingPhoneNumbers/${sid}.json`, {
       VoiceUrl: `${url.origin}/api/twilio/voice`, VoiceMethod: 'POST', VoiceApplicationSid: '',
       SmsUrl: `${url.origin}/api/twilio/sms`, SmsMethod: 'POST',
