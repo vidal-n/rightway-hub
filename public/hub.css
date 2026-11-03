@@ -542,3 +542,17 @@ ul.plain, ol.plain { padding-left: 20px; margin: 0 0 12px; } ul.plain li, ol.pla
 .ct-read { line-height: 1.65; }
 .btn-block { width: 100%; justify-content: center; }
 @media (max-width: 600px) { #ctf { grid-template-columns: 1fr !important; } }
+
+/* Site audit */
+.sa-top { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.sa-score { width: 96px; height: 96px; border-radius: 50%; display: grid; place-content: center; text-align: center; border: 6px solid var(--line); flex: none; }
+.sa-score b { font: 700 32px/1 var(--display); }
+.sa-score span { font-size: 11px; color: var(--muted); }
+.sa-score.good { border-color: var(--good); } .sa-score.mid { border-color: var(--warn); } .sa-score.low { border-color: var(--bad); }
+.sa-prog { display: flex; gap: 10px; align-items: center; background: var(--mint-soft); border: 1px solid var(--mint-mid); border-radius: 12px; padding: 10px 14px; margin-bottom: 12px; font-size: 14px; }
+.sa-issue { align-items: start; }
+.sa-pages { margin: 6px 0 0 18px; padding: 0; display: grid; gap: 3px; }
+.sa-ba { display: grid; gap: 4px; margin-top: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.sa-code { margin: 10px 0 0; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font: 12px/1.55 var(--mono); max-height: 320px; overflow: auto; white-space: pre; }
+details.card > summary { cursor: pointer; }
+@media (max-width: 700px) { .sa-issue { grid-template-columns: auto 1fr; } .sa-issue > .row { grid-column: 1 / -1; justify-content: flex-start !important; } }

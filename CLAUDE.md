@@ -91,6 +91,15 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   paste as plain text). Client app `#/content` to approve or ask for changes (home card when pages wait). WordPress: per client site, username and
   application password (sealed AES-GCM keyed on ACCESS_KEY, never returned), REST `wp/v2/pages` or `posts`, draft or publish, updates the same post.
   Otherwise Copy HTML, Download, "Mark live". Going live checks off the month's `page` or `content` task with the live link.
+- Site audit, fix log, schema (built, Phase 6 part 2, `src/siteaudit.js`, `public/hub/siteaudit.js`, client tab "Site audit"): own crawler, no DataForSEO.
+  Table `site_audits` (queue like scans: first run reads home page, robots.txt, http to https check and the sitemap, then up to 40 same-host pages,
+  15 fetches per run, partial state in `data`, `locked_until`). The cron runs scans first, then crawls with what is left (stays under ~50 outside
+  requests a run). `parsePage` and `findIssues` are pure: https, http redirect, broken pages, missing, long or duplicate titles and descriptions, H1
+  missing or many, thin pages (skips contact and legal pages and noindex pages), images without alt, linked noindex pages, mixed content, home page
+  viewport, tel link, phone matching the profile, local schema, city in the home title, sitemap, robots block-all. Score 100 minus 12/5/2 by severity.
+  Table `site_fixes` (what, page, before, after): logging a fix checks off the month's `onpage` (or `technical`) task; the next crawl marks it
+  "verified" when that issue key (per page) is gone. `buildSchema` makes LocalBusiness JSON-LD (type from category) from the profile to copy.
+  Monthly crawl rides the scan schedule (`autoscan.crawl`, on by default when scans are on). Open tab calls `POST /api/site/tick` every 5s while crawling.
 - Google apps (built, `src/googleapps.js`, `public/hub/googleapps.js`, page `#/google`): per app scopes added on top of Calendar
   (`APP_SCOPES` in `src/google.js`, granted list stored in `users.google_scopes`): Sheets export (drive.file) of leads, clients, calls,
   payments; Search Console and GA4 (Data + Admin APIs) and Google Ads (GOOGLE_ADS_DEVELOPER_TOKEN, optional GOOGLE_ADS_LOGIN_CUSTOMER_ID,
@@ -107,7 +116,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).
 - GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.
 - Not built yet: publishing to Google and Meta (needs Google Business Profile API approval and Meta app review; until then posts
-  are copied and marked posted), Google Business Profile data (Phase 5, needs API approval), site crawl, fix log and schema (6 part 2), call tracking (7), citations/links tracker (8), Market Leader extras (9). Follow the Package build-out tab.
+  are copied and marked posted), Google Business Profile data (Phase 5, needs API approval and V's own Google Business Profile first), call tracking (7), citations/links tracker (8), Market Leader extras (9). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 
 ## Stack

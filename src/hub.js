@@ -523,6 +523,7 @@ import './stripesetup.js';
 import './autoscan.js';
 import './reports.js';
 import './content.js';
+import './siteaudit.js';
 import './workorders.js';
 import './calls.js';
 import './sms.js';

@@ -52,6 +52,15 @@ const SCHEMA = [
     html TEXT, meta_title TEXT, meta_description TEXT, slug TEXT, status TEXT NOT NULL DEFAULT 'idea', client_note TEXT, month TEXT, task_id TEXT,
     ai INTEGER NOT NULL DEFAULT 0, wp_id TEXT, wp_status TEXT, live_url TEXT, published_at INTEGER, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER)`,
   `CREATE INDEX IF NOT EXISTS content_client ON content (client_id, updated_at)`,
+  `CREATE TABLE IF NOT EXISTS site_audits (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, start_url TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', data TEXT, result TEXT,
+    pages INTEGER, score INTEGER, issues INTEGER, error TEXT, by TEXT, locked_until INTEGER, created_at INTEGER NOT NULL, finished_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS site_audits_client ON site_audits (client_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS site_audits_status ON site_audits (status, created_at)`,
+  `CREATE TABLE IF NOT EXISTS site_fixes (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, issue_key TEXT, page_url TEXT, what TEXT NOT NULL, before_text TEXT, after_text TEXT, kind TEXT,
+    status TEXT NOT NULL DEFAULT 'fixed', by TEXT, created_at INTEGER NOT NULL, checked_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS site_fixes_client ON site_fixes (client_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY, business TEXT NOT NULL, contact_name TEXT, phone TEXT, phone_digits TEXT, email TEXT, website TEXT,

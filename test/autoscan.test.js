@@ -29,7 +29,7 @@ async function ownerWithClient(t, fields = {}) {
 
 test('keywords, config and cost helpers', () => {
   assert.deepEqual(parseKeywords('roof repair, Roof Repair,roofer\nroof leak; tile roof, a, b', 4), ['roof repair', 'roofer', 'roof leak', 'tile roof']);
-  assert.deepEqual(cleanConfig({ size: 8, radius: 99, keywords: 9, everyDays: 1 }), { enabled: false, size: 7, radius: 30, keywords: 5, everyDays: 7, autoSend: false });
+  assert.deepEqual(cleanConfig({ size: 8, radius: 99, keywords: 9, everyDays: 1 }), { enabled: false, size: 7, radius: 30, keywords: 5, everyDays: 7, autoSend: false, crawl: true });
   assert.equal(monthlyCost(10, { size: 7, keywords: 3, everyDays: 30 }), 5.88);
 });
 

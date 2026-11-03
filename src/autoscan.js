@@ -9,7 +9,7 @@ import { gridPoints, gridStats, COST_PER_POINT } from '../public/js/grid.js';
 import { rankAtPoint, businessDetails } from './dataforseo.js';
 import { mockRank, mockDetails } from './mock.js';
 
-const DEFAULTS = { enabled: false, size: 7, radius: 3, keywords: 3, everyDays: 30, autoSend: false };
+const DEFAULTS = { enabled: false, size: 7, radius: 3, keywords: 3, everyDays: 30, autoSend: false, crawl: true };
 export const POINTS_PER_TICK = 40; // Workers allow about 50 outside requests per run on the free plan
 const LOCK_MS = 90e3;
 const CHECK_EVERY_MS = 30 * 60e3;
@@ -24,6 +24,7 @@ export function cleanConfig(b = {}, base = DEFAULTS) {
     keywords: Math.min(5, Math.max(1, Math.round(Number(b.keywords) || base.keywords))),
     everyDays: Math.min(60, Math.max(7, Math.round(Number(b.everyDays) || base.everyDays))),
     autoSend: 'autoSend' in b ? Boolean(b.autoSend) : Boolean(base.autoSend),
+    crawl: 'crawl' in b ? Boolean(b.crawl) : base.crawl !== false,
   };
 }
 export async function getConfig(env) {

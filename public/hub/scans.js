@@ -47,6 +47,7 @@ export async function autoScanCard(box, user) {
         <label class="field"><span>Keywords per client</span><select name="keywords"${dis}>${[1, 2, 3, 4, 5].map((n) => `<option${n === c.keywords ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
         <label class="field"><span>Scan every (days)</span><input name="everyDays" type="number" min="7" max="60" value="${esc(c.everyDays)}"${dis}></label>
         <label class="span-all row small" style="gap:8px"><input type="checkbox" name="autoSend"${c.autoSend ? ' checked' : ''}${dis}> Email each client's monthly report as soon as it is ready (otherwise it waits as a draft for you to check)</label>
+        <label class="span-all row small" style="gap:8px"><input type="checkbox" name="crawl"${c.crawl !== false ? ' checked' : ''}${dis}> Also check each client's website on the same schedule (free, reads up to 40 pages)</label>
         <p class="span-all small" id="ascost"></p>
         ${owner ? `<div class="span-all row end" style="gap:8px;flex-wrap:wrap"><button class="btn btn-ghost" type="button" id="asall">Scan all clients now</button><button class="btn btn-primary" type="submit">Save</button></div>` : ''}
       </form>
@@ -63,7 +64,7 @@ export async function autoScanCard(box, user) {
     };
     cost();
     f.addEventListener('input', cost);
-    const save = async (extra = {}) => api('/api/autoscan', { method: 'PUT', body: { size: f.size.value, radius: f.radius.value, keywords: f.keywords.value, everyDays: f.everyDays.value, autoSend: f.autoSend.checked, ...extra } });
+    const save = async (extra = {}) => api('/api/autoscan', { method: 'PUT', body: { size: f.size.value, radius: f.radius.value, keywords: f.keywords.value, everyDays: f.everyDays.value, autoSend: f.autoSend.checked, crawl: f.crawl.checked, ...extra } });
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       try { await save(); toast('Saved'); draw(); } catch (err) { toast(err.message, true); }

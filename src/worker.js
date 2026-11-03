@@ -9,6 +9,7 @@ import { handleHub, handleReviewRedirect } from './hub.js';
 import { ensureSchema } from './db.js';
 import { currentUser, isStaff } from './auth.js';
 import { autoScanTick } from './autoscan.js';
+import { auditTick, enqueueDueAudits } from './siteaudit.js';
 
 // Runtime secrets (dashboard) win; build-time secrets fill any gaps.
 export function withSecrets(env, extra = baked) {
@@ -22,7 +23,13 @@ export default {
   async scheduled(_event, rawEnv, ctx) {
     const env = withSecrets(rawEnv || {});
     if (!env.DB) return;
-    ctx.waitUntil((async () => { await ensureSchema(env); await autoScanTick(env); })().catch((e) => console.error('autoscan', e)));
+    ctx.waitUntil((async () => {
+      await ensureSchema(env);
+      // Scans first, then website crawls with what is left of the ~50 outside requests a run may make.
+      const used = await autoScanTick(env).catch((e) => { console.error('autoscan', e); return 40; });
+      await enqueueDueAudits(env).catch((e) => console.error('audit queue', e));
+      if (used < 30) await auditTick(env, { budget: Math.min(15, 40 - used) }).catch((e) => console.error('audit', e));
+    })());
   },
   async fetch(request, rawEnv) {
     const env = withSecrets(rawEnv || {});
