@@ -152,7 +152,7 @@ export function clientForm(client, onSaved) {
 // Authority and Market Leader, the quarterly plan on Market Leader main businesses.
 const tabsFor = (c) => TABS.filter(([k]) => (k === 'locations' ? !c.parent_id && (c.plan === 'leader' || c.locations > 0)
   : k === 'reputation' ? ['authority', 'leader'].includes(c.plan) : k === 'plan' ? c.plan === 'leader' && !c.parent_id : true));
-const TABS = [['overview', 'Overview'], ['locations', 'Locations'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['accesslist', 'Access'], ['meetings', 'Meetings'], ['gbp', 'Google profile'], ['reviews', 'Reviews'], ['reputation', 'Reputation'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['plan', 'Quarterly plan'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['citations', 'Citations'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
+const TABS = [['overview', 'Overview'], ['locations', 'Locations'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['chat', 'Messages'], ['accesslist', 'Access'], ['meetings', 'Meetings'], ['gbp', 'Google profile'], ['reviews', 'Reviews'], ['reputation', 'Reputation'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['plan', 'Quarterly plan'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['citations', 'Citations'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
 
 export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   const view = staffShell(app, user, 'clients');
@@ -173,6 +173,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   $('#cslack', view).addEventListener('click', () => import('./slackapp.js').then((m) => m.sendToSlack('client', c.id)));
   if (tab === 'overview') return overviewTab(el, data);
   if (tab === 'accesslist') return import('./work.js').then((m) => m.accessListTab(el, c));
+  if (tab === 'chat') return import('./chat.js').then((m) => m.chatView(el, c.id, { staff: true }));
   if (tab === 'meetings') return import('./meetings.js').then((m) => m.meetingsTab(el, c, user));
   if (tab === 'gbp') return import('./gbp.js').then((m) => m.gbpTab(el, c, user));
   if (tab === 'tasks') return tasksTab(el, c, state.month || monthKey(), user);

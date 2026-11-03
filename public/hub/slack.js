@@ -51,6 +51,14 @@ function connectedCard(d) {
     <p class="small muted">${linked} of ${d.people.length} linked. People are matched by the email they use in Slack. Linked people get their own alerts as direct messages and can use the buttons and /hub.</p>
     <ul class="list">${d.people.map((p) => `<li class="item"><span class="badge ${p.slack_id ? '' : 'gray'}">${p.slack_id ? 'Linked' : 'Not linked'}</span><div><div class="item-title">${esc(p.name || p.email)}</div><div class="item-sub">${esc(p.email)}</div></div>
       ${p.slack_id ? `<button class="btn btn-ghost btn-sm" data-unlink="${esc(p.id)}">Unlink</button>` : `<button class="btn btn-ghost btn-sm" data-link="${esc(p.id)}" data-email="${esc(p.email)}">Link</button>`}</li>`).join('')}</ul>
+    <h3 style="margin-top:18px">Slack inside the Hub</h3>
+    ${d.userApp ? '<p class="small">On. Each person opens the <a href="#/slack">Slack page</a> and clicks Connect my Slack (one time, on Slack\'s own sign in page).</p>'
+      : `<p class="small muted">Lets each person use their own Slack on the Hub's Slack page, and lets clients message you from their app. One time setup:</p>
+      <ol class="steps small"><li>At api.slack.com/apps, open Rightway Hub, then <b>App Manifest</b>. Replace it with the new setup and save. <button class="linkish" id="slk-man" type="button">Copy the new setup</button></li>
+        <li>Open <b>Basic Information</b> and copy the <b>Client ID</b> and <b>Client Secret</b> into the boxes below.</li></ol>
+      <form id="slk-userapp" class="form-grid"><label class="field"><span>Client ID</span><input name="clientId" placeholder="1234567890.1234567890" autocomplete="off" required></label>
+        <label class="field"><span>Client Secret</span><input name="clientSecret" type="password" autocomplete="off" required></label>
+        <div class="span-all row end"><button class="btn btn-primary btn-sm" type="submit">Save</button></div></form>`}
     <h3 style="margin-top:18px">In Slack</h3>
     <p class="small"><b>/hub</b> your open tasks · <b>/hub client sunrise</b> a client's numbers · <b>/hub lead joe</b> find a lead · <b>/hub stats</b> agency numbers (owners)</p></div>`;
 }
@@ -74,6 +82,11 @@ async function loadChannels(box, d) {
 
 function wire(box, d, user, again) {
   const chan = (id) => { const list = JSON.parse(box.dataset.channels || '[]'); const c = list.find((x) => x.id === id); return c ? { id: c.id, name: c.name } : null; };
+  $('#slk-man', box)?.addEventListener('click', () => copy(JSON.stringify(d.manifest, null, 2), 'Setup copied. Paste it in App Manifest and save.'));
+  $('#slk-userapp', box)?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { await api('/api/slack/app', { method: 'PUT', body: Object.fromEntries(new FormData(e.target).entries()) }); toast('Saved. Now open the Slack page and connect your Slack.'); again(); } catch (err) { toast(err.message, true); }
+  });
   $('#slk-copy', box)?.addEventListener('click', () => copy(JSON.stringify(d.manifest, null, 2), 'Setup copied. In Slack: Create New App, From an app manifest, paste it.'));
   $('#slk-connect', box)?.addEventListener('submit', async (e) => {
     e.preventDefault();

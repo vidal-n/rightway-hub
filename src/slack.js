@@ -16,7 +16,8 @@ import { startTimer } from './work.js';
 import { sendText } from './sms.js';
 import { PLANS, monthKey } from './plans.js';
 
-export const SCOPES = ['chat:write', 'chat:write.public', 'channels:read', 'groups:read', 'users:read', 'users:read.email', 'im:write', 'commands'];
+export const SCOPES = ['chat:write', 'chat:write.public', 'chat:write.customize', 'channels:read', 'channels:history', 'groups:read', 'groups:history', 'groups:write',
+  'users:read', 'users:read.email', 'im:write', 'files:read', 'files:write', 'commands'];
 const DM_DEFAULT = ['task', 'meeting'];
 // Calls, tasks and meeting reminders are personal (direct messages only), so channels are offered for the rest.
 const PERSONAL = ['call', 'task', 'meeting', 'slack'];
@@ -37,7 +38,7 @@ export function manifestFor(origin) {
     },
     oauth_config: { redirect_urls: [`${origin}/api/slack/oauth/callback`], scopes: { bot: SCOPES, user: USER_SCOPES } },
     settings: {
-      event_subscriptions: { request_url: `${origin}/api/slack/events`, user_events: ['message.channels', 'message.groups', 'message.im', 'message.mpim'] },
+      event_subscriptions: { request_url: `${origin}/api/slack/events`, user_events: ['message.channels', 'message.groups', 'message.im', 'message.mpim'], bot_events: ['message.channels', 'message.groups'] },
       interactivity: { is_enabled: true, request_url: `${origin}/api/slack/interact` }, org_deploy_enabled: false, socket_mode_enabled: false, token_rotation_enabled: false,
     },
   };
@@ -334,7 +335,7 @@ route('GET', '/api/slack', async ({ env, user, url }) => {
   return json({
     connected: Boolean(st.bot), team: st.team, routes: st.routes, kinds: routeKinds(), mine, webhook: Boolean(st.hook), webhookKinds: st.kinds,
     manifest, createUrl: `https://api.slack.com/apps?new_app=1&manifest_json=${encodeURIComponent(JSON.stringify(manifest))}`,
-    clients, people: await linkedTeam(env), origin: url.origin,
+    clients, people: await linkedTeam(env), origin: url.origin, userApp: Boolean((await getSettings(env)).slack_client_id),
   });
 });
 

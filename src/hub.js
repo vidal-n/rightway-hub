@@ -589,3 +589,4 @@ import './notify.js';
 import './slack.js';
 import './slackuser.js';
 import './nav.js';
+import './chat.js';

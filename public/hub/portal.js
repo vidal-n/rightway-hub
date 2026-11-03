@@ -3,7 +3,7 @@ import { $, esc, api, fmt, icon, animateNumbers, PLAN_NAMES } from './core.js';
 import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.js';
 import { clientStart } from './onboarding.js';
 
-const TABS = [['home', 'Home', icon.home], ['reviews', 'Reviews', icon.star], ['post', 'Post', icon.camera], ['results', 'Results', icon.chart]];
+const TABS = [['home', 'Home', icon.home], ['messages', 'Messages', icon.msg], ['reviews', 'Reviews', icon.star], ['post', 'Post', icon.camera], ['results', 'Results', icon.chart]];
 
 function shell(app, client, user, active, title, sub) {
   app.innerHTML = `
@@ -13,10 +13,22 @@ function shell(app, client, user, active, title, sub) {
         <h1>${esc(title)}</h1><p>${esc(sub)}</p>
       </div></header>
       <main class="p-main" id="pview"></main>
-      <nav class="tabbar" aria-label="Main">${TABS.map(([k, n, ic]) => `<a href="#/${k === 'home' ? '' : k}" class="${active === k ? 'is-active' : ''}">${ic}<span>${n}</span></a>`).join('')}</nav>
+      <nav class="tabbar" aria-label="Main">${TABS.map(([k, n, ic]) => `<a href="#/${k === 'home' ? '' : k}" class="${active === k ? 'is-active' : ''}">${ic}<span>${n}</span>${k === 'messages' ? '<b class="nbadge" data-badge="messages" hidden></b>' : ''}</a>`).join('')}</nav>
     </div>`;
+  clientBadges();
   $('#logout')?.addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/login'; location.reload(); });
   return $('#pview');
+}
+
+// The Messages dot in the client app, and the app icon number.
+let badgeTimer = null;
+async function clientBadges() {
+  try {
+    const b = await api('/api/client-badges');
+    document.querySelectorAll('[data-badge="messages"]').forEach((el) => { el.hidden = !b.messages; el.textContent = b.messages > 99 ? '99+' : String(b.messages); });
+    if ('setAppBadge' in navigator) { if (b.messages) navigator.setAppBadge(b.messages); else navigator.clearAppBadge(); }
+  } catch { /* ignore */ }
+  if (!badgeTimer) badgeTimer = setInterval(() => { if (!document.hidden) clientBadges(); }, 45e3);
 }
 
 export async function portal(app, user, tab, state) {
@@ -24,6 +36,10 @@ export async function portal(app, user, tab, state) {
   try { data = await api(`/api/clients/${user.client_id}`); } catch (e) { app.innerHTML = `<div class="auth"><div class="auth-card"><p class="err-text">${esc(e.message)}</p></div></div>`; return; }
   const c = data.client;
   const first = String(user.name || '').split(/\s+/)[0];
+  if (tab === 'messages') {
+    const v = shell(app, c, user, 'messages', 'Messages', 'Talk to your Rightway team. Send questions, photos and files.');
+    return import('./chat.js').then((m) => m.chatView(v, c.id, { staff: false })).then(() => clientBadges());
+  }
   if (tab === 'reviews') {
     const v = shell(app, c, user, 'reviews', 'Get more reviews', 'Text a customer in seconds, or show them your QR code.');
     return renderReviews(v, c.id, { clientName: c.name });

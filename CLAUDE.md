@@ -194,6 +194,13 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Events API `/api/slack/events` (signed, url_verification, retries deduped in `slack_events`): `onSlackMessage` adds unread counts for Hub members of that
   conversation (`slack_members` saved when the list loads, `slack_unread`), and DMs or @mentions push (notify kind `slack`, `list: false`). The manifest adds
   user scopes, the redirect URL and user events; owners paste the new manifest in the app's App Manifest page.
+- Client Messages (built, `src/chat.js`, `public/hub/chat.js`, client app tab "Messages" `#/messages`, staff client tab `chat` "Messages"): clients chat with the
+  team without a Slack account. Each client gets a private Slack channel (`POST /api/clients/:id/chat/setup` makes `chat-<client>` and invites the account
+  manager and linked owners, or picks an existing one; `clients.chat_channel`), separate from the internal update channel (`slack_channel`). Client posts go
+  through the bot with their name (`chat:write.customize`, metadata `rw_client_msg`); team posts from the Hub use the person's own Slack token or the bot with
+  "Name (Rightway Growth)". History via the bot (thread replies shown inline), files through `files.info` checked against the channel. Team replies written
+  in Slack arrive by bot events (`onClientChat`): unread count for the client's users (`slack_unread`) and a push (kind `update`); Hub posts are remembered in
+  `chat_posts` so they are not counted twice. Client dot: `GET /api/client-badges`. Everything in the chat channel is visible to the client.
 - Menu and dots (built, `public/hub/nav.js`, `src/nav.js`): menu items in `NAV` (Dashboard, My work, Slack, Phone, Pipeline, Clients, Payments, Client view,
   Scan tool, Google, Alerts, Settings). Each person reorders and hides items ("Customize menu", `users.nav_prefs`, `PUT /api/me/nav`). Under 900 px a bottom bar
   shows as many items as fit (width / 78, 3 to 7) with More opening the full menu; the open page always stays in the bar. Dots: `GET /api/badges` (texts,

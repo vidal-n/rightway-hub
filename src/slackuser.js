@@ -9,6 +9,7 @@ import { route } from './router.js';
 import { seal, unseal } from './seal.js';
 import { slackApi, verified, USER_SCOPES } from './slack.js';
 import { notify } from './notify.js';
+import { onClientChat } from './chat.js';
 
 const MAX_FILE = 20 * 1024 * 1024;
 const parse = (s, d) => { try { return s ? JSON.parse(s) : d; } catch { return d; } };
@@ -316,6 +317,7 @@ route('POST', '/api/slack/me/share', async ({ env, user, body, url }) => {
 // and @mentions also buzz their phone (alert kind "slack", not added to the Alerts list).
 export async function onSlackMessage(env, ev) {
   if (!ev || ev.type !== 'message' || !ev.channel) return 0;
+  await onClientChat(env, ev).catch((e) => console.error('client chat', e));
   if (ev.subtype && !['file_share', 'thread_broadcast', 'bot_message'].includes(ev.subtype)) return 0;
   if (ev.thread_ts && ev.thread_ts !== ev.ts && ev.subtype !== 'thread_broadcast') return 0; // thread replies stay in the thread
   const members = await all(env, 'SELECT u.id, u.slack_uid FROM slack_members m JOIN users u ON u.id = m.user_id WHERE m.channel_id = ? AND u.slack_token IS NOT NULL', ev.channel);

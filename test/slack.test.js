@@ -320,3 +320,73 @@ test('menu order per person and the dots endpoint', async () => {
   assert.equal(r.data.pipeline, 1);
   assert.equal(r.data.total >= 1, true);
 });
+
+test('client Messages: private channel per client, client writes from the app, team replies show with a dot and a buzz', async () => {
+  const t = setup();
+  await owner(t);
+  const f = fakeSlack();
+  const base = globalThis.fetch;
+  const posted = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const u = String(url);
+    const j = (o) => new Response(JSON.stringify(o), { status: 200, headers: { 'content-type': 'application/json' } });
+    if (u.includes('conversations.create')) { f.calls.push({ u, body: JSON.parse(init.body) }); return j({ ok: true, channel: { id: 'G0CHATSUN1', name: 'chat-sunrise-roofing' } }); }
+    if (u.includes('conversations.invite')) { f.calls.push({ u, body: JSON.parse(init.body) }); return j({ ok: true }); }
+    if (u.includes('chat.postMessage')) { const b = JSON.parse(init.body); posted.push({ b, auth: init.headers.authorization }); return j({ ok: true, ts: `17000001${posted.length}.0001` }); }
+    if (u.includes('conversations.history')) return j({ ok: true, messages: [
+      { ts: '1700000300.0003', user: 'UK', text: 'Got it, we will post it Friday.', reply_count: 1 },
+      { ts: '1700000200.0002', bot_id: 'B1', username: 'Bob (Sunrise Roofing)', text: 'New roof photos attached', metadata: { event_type: 'rw_client_msg', event_payload: { hub_user: 'x' } }, files: [{ id: 'F0PIC', name: 'roof.jpg', mimetype: 'image/jpeg' }] },
+      { ts: '1700000100.0001', subtype: 'channel_join', user: 'UK', text: 'joined' }] });
+    if (u.includes('conversations.replies')) return j({ ok: true, messages: [{ ts: '1700000300.0003', user: 'UK', text: 'parent' }, { ts: '1700000400.0004', user: 'UV', text: 'Thread answer' }] });
+    if (u.includes('users.info')) return j({ ok: true, user: { id: 'UK', name: 'kiron', real_name: 'Kiron', profile: {} } });
+    if (u.includes('files.info')) return j({ ok: true, file: { id: 'F0PIC', groups: ['G0CHATSUN1'], url_private: 'https://files.slack.com/files-pri/T1-F0PIC/roof.jpg', thumb_480: 'https://files.slack.com/files-tmb/T1-F0PIC/roof_480.jpg' } });
+    if (u.startsWith('https://files.slack.com/')) return new Response('img', { headers: { 'content-type': 'image/jpeg' } });
+    return base(url, init);
+  };
+  try {
+    await t.call('POST', '/api/slack/connect', { token: 'xoxb-1-2-abc', signing: SECRET });
+    const c = (await t.call('POST', '/api/clients', { name: 'Sunrise Roofing', plan: 'growth', status: 'active', contact_name: 'Bob' })).data.client;
+    let r = await t.call('GET', `/api/clients/${c.id}/chat`);
+    assert.equal(r.data.ready, false);
+    // Turn Messages on: private channel, owners invited.
+    r = await t.call('POST', `/api/clients/${c.id}/chat/setup`, {});
+    assert.equal(r.data.channel.name, 'chat-sunrise-roofing');
+    assert.equal(f.calls.find((x) => x.u.includes('conversations.create')).body.is_private, true);
+    assert.equal(f.calls.find((x) => x.u.includes('conversations.invite')).body.users, 'UV');
+    // The client logs in to their app and writes.
+    const inv = await t.call('POST', `/api/clients/${c.id}/invite`, { email: 'bob@sunrise.test', name: 'Bob' });
+    const staffCookie = t.cookie();
+    t.setCookie('');
+    await t.call('POST', '/api/auth/invite/accept', { token: inv.data.inviteUrl.split('/').pop(), password: 'client password 1' });
+    posted.length = 0;
+    r = await t.call('POST', `/api/clients/${c.id}/chat`, { text: 'Can you post the new roof?' });
+    assert.equal(r.status, 200);
+    const p = posted.find((x) => x.b.channel === 'G0CHATSUN1');
+    assert.equal(p.b.username, 'Bob (Sunrise Roofing)');
+    assert.equal(p.b.metadata.event_type, 'rw_client_msg');
+    // The client sees the chat: their own message, the team's reply, and the thread answer inline; join notices hidden.
+    r = await t.call('GET', `/api/clients/${c.id}/chat`);
+    assert.deepEqual(r.data.messages.map((m) => [m.from, m.name]), [['client', 'Bob'], ['team', 'Kiron'], ['team', 'Kiron']]);
+    assert.equal(r.data.messages[0].files[0].image, true);
+    // Files only from their own channel.
+    assert.equal((await t.call('GET', `/api/clients/${c.id}/chat/file/F0PIC?thumb=1`)).status, 200);
+    // Another client cannot read this chat.
+    assert.equal((await t.call('GET', '/api/clients/c_someone_else/chat')).status, 403);
+    t.setCookie(staffCookie);
+    // A team reply written in Slack: the client's dot lights up; the Hub's own posts are not counted twice.
+    await t.slack('/api/slack/events', JSON.stringify({ type: 'event_callback', event_id: 'E9', event: { type: 'message', channel: 'G0CHATSUN1', channel_type: 'group', user: 'UK', text: 'Posted it!', ts: '1700000500.1' } }));
+    await t.slack('/api/slack/events', JSON.stringify({ type: 'event_callback', event_id: 'E10', event: { type: 'message', channel: 'G0CHATSUN1', bot_id: 'B1', text: 'from the app', ts: '1700000600.1' } }));
+    const bob = await first(t.env, "SELECT id FROM users WHERE email = 'bob@sunrise.test'");
+    assert.equal((await first(t.env, 'SELECT count FROM slack_unread WHERE user_id = ? AND channel_id = ?', bob.id, 'G0CHATSUN1')).count, 1);
+    // The team can answer from the client's Messages tab too: posted under the person's name.
+    posted.length = 0;
+    await t.call('POST', `/api/clients/${c.id}/chat`, { text: 'Anything else today?' });
+    assert.equal(posted[0].b.username, 'V (Rightway Growth)');
+    assert.equal((await first(t.env, 'SELECT count FROM slack_unread WHERE user_id = ? AND channel_id = ?', bob.id, 'G0CHATSUN1')).count, 2);
+    t.setCookie('');
+    await t.call('POST', '/api/auth/login', { email: 'bob@sunrise.test', password: 'client password 1' });
+    assert.equal((await t.call('GET', '/api/client-badges')).data.messages, 2);
+    await t.call('GET', `/api/clients/${c.id}/chat`);
+    assert.equal((await t.call('GET', '/api/client-badges')).data.messages, 0);
+  } finally { globalThis.fetch = base; f.restore(); }
+});
