@@ -118,6 +118,19 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   and adds up to 3 new sites each, skipping big platforms and sites already logged. "Check links" fetches up to 15 live entries: links must still
   href the client domain, listings must still show the phone or name. The monthly report lists listings and links that went live that month.
   Clients only see live entries. No paid or automated link building.
+- Market Leader extras (built, Phase 9, `src/leader.js`, `src/reputation.js`, `src/quarterly.js`, `public/hub/leader.js`, `/plan.html`):
+  Locations: a location is a client row with `parent_id` (added from the main business's Locations tab, copies plan, services, keywords, contact).
+  It gets its own scans, reports, calls, listings and content; it gets no plan tasks (`/tasks/generate` returns 0) and is left out of revenue and
+  client counts; clients list shows it under its main business with a Location badge; its page header links back. `rollup()` shows each location's
+  top 3 coverage, reviews, calls, site score, listings and last report, plus totals. Reputation (tab on Authority and Market Leader): DataForSEO
+  Google reviews task (`business_data/google/reviews/task_post`, newest 100, cid or place_id or name, then `task_get`; queued pulls collected by the
+  cron `reviewTick` or when the tab is opened; demo reviews without DataForSEO), `analyzeReviews` (pure: 6 month counts and average stars, pace,
+  reply rate, unanswered 3 stars or less, star spread, themes from word lists in `THEMES`) and `reviewPace` from scan snapshots (client and top
+  competitors' review counts over time). Monthly report gets a reputation card and email line. Live dashboard: `GET /api/clients/:id/live`
+  (rankings trend, reviews, calls, work and recent activity, site score, live listings, locations, shared plans, last report), shown in the client app
+  home for Market Leader. Quarterly plan (tab on Market Leader main businesses): `draftFrom` (pure) makes goals (top 3 coverage, reviews, reply rate,
+  calls, site score), focus lines and three months of actions from the data; editor saves goals, focus, months, notes; Share makes the private
+  `/plan.html#<token>` link (shown in the client app) and checks off the planning task.
 - Google apps (built, `src/googleapps.js`, `public/hub/googleapps.js`, page `#/google`): per app scopes added on top of Calendar
   (`APP_SCOPES` in `src/google.js`, granted list stored in `users.google_scopes`): Sheets export (drive.file) of leads, clients, calls,
   payments; Search Console and GA4 (Data + Admin APIs) and Google Ads (GOOGLE_ADS_DEVELOPER_TOKEN, optional GOOGLE_ADS_LOGIN_CUSTOMER_ID,
@@ -134,7 +147,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).
 - GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.
 - Not built yet: publishing to Google and Meta (needs Google Business Profile API approval and Meta app review; until then posts
-  are copied and marked posted), Google Business Profile data (Phase 5, needs API approval and V's own Google Business Profile first), Market Leader extras (9). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
+  are copied and marked posted), Google Business Profile data (Phase 5, needs API approval and V's own Google Business Profile first). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 
 ## Stack

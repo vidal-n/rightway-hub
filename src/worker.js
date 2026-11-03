@@ -10,6 +10,7 @@ import { ensureSchema } from './db.js';
 import { currentUser, isStaff } from './auth.js';
 import { autoScanTick } from './autoscan.js';
 import { auditTick, enqueueDueAudits } from './siteaudit.js';
+import { reviewTick } from './reputation.js';
 
 // Runtime secrets (dashboard) win; build-time secrets fill any gaps.
 export function withSecrets(env, extra = baked) {
@@ -29,6 +30,7 @@ export default {
       const used = await autoScanTick(env).catch((e) => { console.error('autoscan', e); return 40; });
       await enqueueDueAudits(env).catch((e) => console.error('audit queue', e));
       if (used < 30) await auditTick(env, { budget: Math.min(15, 40 - used) }).catch((e) => console.error('audit', e));
+      await reviewTick(env).catch((e) => console.error('reviews', e));
     })());
   },
   async fetch(request, rawEnv) {

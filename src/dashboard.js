@@ -26,7 +26,7 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
     all(env, `SELECT id, business, contact_name, next_action, next_action_at, stage, grade FROM leads WHERE dnc = 0 AND next_action_at IS NOT NULL AND next_action_at < ?
       AND stage IN ('callback','follow_up','no_show','audit_requested') ORDER BY next_action_at LIMIT 8`, end),
     all(env, 'SELECT id, business, contact_name, meet_at, meet_link FROM leads WHERE meet_at IS NOT NULL AND meet_at > ? ORDER BY meet_at LIMIT 6', t - 3600e3),
-    all(env, "SELECT id, name, plan, status, mrr_cents, billing_status, sample FROM clients WHERE status = 'active'"),
+    all(env, "SELECT id, name, plan, status, mrr_cents, billing_status, sample, parent_id FROM clients WHERE status = 'active'"),
     first(env, `SELECT COUNT(*) AS total, SUM(tasks.status = 'done') AS done FROM tasks JOIN clients c ON c.id = tasks.client_id WHERE tasks.month = ? AND c.sample = 0 AND c.status = 'active'`, month),
     first(env, "SELECT COUNT(*) AS n FROM posts p JOIN clients c ON c.id = p.client_id WHERE p.status IN ('draft','approved') AND c.sample = 0"),
     first(env, "SELECT COUNT(*) AS n FROM messages WHERE direction = 'in' AND read = 0").catch(() => ({ n: 0 })),
@@ -34,7 +34,7 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
     all(env, `SELECT a.type, a.outcome, a.status, a.body, a.at, l.business, l.id AS lead_id FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
       WHERE a.at >= ? ORDER BY a.at DESC LIMIT 10`, week),
   ]);
-  const real = clients.filter((c) => !c.sample);
+  const real = clients.filter((c) => !c.sample && !c.parent_id); // locations bill through the main business
   const mrr = real.reduce((s, c) => s + (c.billing_status && c.mrr_cents != null ? c.mrr_cents : MONTHLY_CENTS[c.plan] || 0), 0) / 100;
   const byStage = Object.fromEntries(stages.map((r) => [r.stage, r.n]));
   return json({

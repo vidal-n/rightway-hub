@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="light dark">
+  <title>Quarterly Plan</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="/hub.css">
+  <style>
+    .qp { max-width: 920px; margin: 0 auto; padding: 28px 16px 64px; display: grid; gap: 18px; }
+    .qp .card + .card { margin-top: 0; }
+    .qp-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .qp-head img { height: 30px; width: auto; }
+    .qp-hero { background: #0F1B17; color: #fff; border-radius: var(--r); padding: 26px 24px; }
+    @media (prefers-color-scheme: dark) { .qp-hero { background: #14251F; border: 1px solid var(--line); } }
+    .qp-hero .eyebrow { color: #9DEBCB; } .qp-hero h1 { color: #fff; margin: 4px 0 2px; } .qp-hero p { color: #CFE9DD; margin: 0; }
+    .qp-goalt { width: 100%; border-collapse: collapse; }
+    .qp-goalt th, .qp-goalt td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+    .qp-goalt td:nth-child(3) { font-weight: 700; color: var(--accent); }
+    .qp-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+    .qp ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+    .qp-notes { background: var(--mint-soft); border: 1px solid var(--mint-mid); border-radius: 16px; padding: 18px; white-space: pre-line; }
+    @media (max-width: 760px) { .qp-three { grid-template-columns: 1fr; } }
+    @media print { .no-print { display: none !important; } body { background: #fff; } .card { box-shadow: none; break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <main class="qp" id="qp"><div class="card"><div class="skeleton"></div></div></main>
+  <script type="module" src="/plan.js"></script>
+</body>
+</html>

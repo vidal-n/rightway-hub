@@ -70,6 +70,13 @@ export async function portal(app, user, tab, state) {
     ${c.stripe_customer_id ? '<button class="btn btn-ghost btn-xl" id="pbill">Billing and invoices</button>' : ''}
     <p class="small" style="text-align:center">Tip: add this app to your home screen. On iPhone tap Share, then Add to Home Screen. On Android tap the menu, then Install app.</p>`;
   animateNumbers(v);
+  if (c.plan === 'leader') {
+    import('./leader.js').then(async (m) => {
+      const html = await m.liveDashboard(c);
+      const stats = v.querySelector('.stats');
+      if (html && stats && v.isConnected) { stats.insertAdjacentHTML('afterend', html); }
+    });
+  }
   import('./calltrack.js').then(async (m) => {
     const s = await m.callsSummary(c.id);
     const stats = v.querySelector('.stats');

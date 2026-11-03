@@ -52,7 +52,9 @@ export async function dashboard(app, user) {
   const month = monthKey();
   let data;
   try { data = await api(`/api/clients?month=${month}`); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
-  const active = data.clients.filter((c) => c.status === 'active' && !c.sample);
+  const active = data.clients.filter((c) => c.status === 'active' && !c.sample && !c.parent_id);
+  const mains = data.clients.filter((c) => !c.parent_id);
+  data.clients = mains.flatMap((m) => [m, ...data.clients.filter((c) => c.parent_id === m.id)]).concat(data.clients.filter((c) => c.parent_id && !mains.some((m) => m.id === c.parent_id)));
   // Real Stripe amounts when billing is linked, plan price otherwise.
   const mrr = active.reduce((s, c) => s + (c.mrr_cents != null && c.billing_status ? c.mrr_cents / 100 : (PLAN_PRICE[c.plan] || 0)), 0);
   const tot = data.clients.filter((c) => !c.sample).reduce((a, c) => ({ done: a.done + c.overview.tasks.done, total: a.total + c.overview.tasks.total, rr: a.rr + c.overview.reviews.sent, pend: a.pend + c.overview.posts.pending }), { done: 0, total: 0, rr: 0, pend: 0 });
@@ -76,7 +78,7 @@ function clientCard(c, i) {
   const o = c.overview;
   const pct = o.tasks.total ? Math.round((100 * o.tasks.done) / o.tasks.total) : 0;
   return `<a class="client-card" href="#/client/${esc(c.id)}/overview" style="animation-delay:${i * 40}ms">
-    <div class="row"><h3>${esc(c.name)}</h3><span class="spacer"></span>${c.billing_status === 'past_due' ? '<span class="badge bad">Past due</span>' : ''}${c.sample ? '<span class="badge warn">Sample</span>' : ''}<span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(PLAN_NAMES[c.plan] || c.plan)}</span></div>
+    <div class="row"><h3>${esc(c.name)}</h3><span class="spacer"></span>${c.billing_status === 'past_due' ? '<span class="badge bad">Past due</span>' : ''}${c.sample ? '<span class="badge warn">Sample</span>' : ''}${c.parent_id ? '<span class="badge gray">Location</span>' : ''}<span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(PLAN_NAMES[c.plan] || c.plan)}</span></div>
     <div><div class="row small"><span>This month's work</span><span class="spacer"></span><b>${o.tasks.done} of ${o.tasks.total}</b></div>
       <div class="progress" style="margin-top:6px"><span data-w="${pct}"></span></div></div>
     <div class="mini">
@@ -147,7 +149,11 @@ export function clientForm(client, onSaved) {
 }
 
 // ---------- one client ----------
-const TABS = [['overview', 'Overview'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['citations', 'Citations'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
+// Market Leader tabs show only where they apply: locations on main businesses (Market Leader or with locations), reputation on
+// Authority and Market Leader, the quarterly plan on Market Leader main businesses.
+const tabsFor = (c) => TABS.filter(([k]) => (k === 'locations' ? !c.parent_id && (c.plan === 'leader' || c.locations > 0)
+  : k === 'reputation' ? ['authority', 'leader'].includes(c.plan) : k === 'plan' ? c.plan === 'leader' && !c.parent_id : true));
+const TABS = [['overview', 'Overview'], ['locations', 'Locations'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['reputation', 'Reputation'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['plan', 'Quarterly plan'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['citations', 'Citations'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
 
 export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   const view = staffShell(app, user, 'clients');
@@ -155,10 +161,10 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   try { data = await api(`/api/clients/${id}`); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const c = data.client;
   view.innerHTML = `
-    <div class="page-head"><div><p class="eyebrow"><a href="#/clients">Clients</a> / ${esc(PLAN_NAMES[c.plan])}</p><h1>${esc(c.name)}</h1>
+    <div class="page-head"><div><p class="eyebrow"><a href="#/clients">Clients</a> / ${c.parent ? `Location of <a href="#/client/${esc(c.parent.id)}/locations">${esc(c.parent.name)}</a>` : esc(PLAN_NAMES[c.plan])}</p><h1>${esc(c.name)}</h1>
       <div class="small">${esc(c.address || '')}</div></div>
       <div class="row"><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(c.status)}</span><a class="btn btn-ghost btn-sm" href="/scan.html?client=${esc(c.id)}">${icon.scan}Scan</a></div></div>
-    <nav class="tabs">${TABS.map(([k, n]) => `<a href="#/client/${esc(id)}/${k}" class="${tab === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>
+    <nav class="tabs">${tabsFor(c).map(([k, n]) => `<a href="#/client/${esc(id)}/${k}" class="${tab === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>
     <section id="tab"></section>`;
   const el = $('#tab', view);
   // Keep the open tab in view when the tab row scrolls sideways.
@@ -173,6 +179,9 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   if (tab === 'content') return import('./content.js').then((m) => m.contentTab(el, c, state.sub));
   if (tab === 'site') return import('./siteaudit.js').then((m) => m.siteTab(el, c));
   if (tab === 'calls') return import('./calltrack.js').then((m) => m.callsTab(el, c, user));
+  if (tab === 'locations') return import('./leader.js').then((m) => m.locationsTab(el, c));
+  if (tab === 'reputation') return import('./leader.js').then((m) => m.reputationTab(el, c));
+  if (tab === 'plan') return import('./leader.js').then((m) => m.quarterlyTab(el, c));
   if (tab === 'citations') return import('./citations.js').then((m) => m.citationsTab(el, c));
   if (tab === 'profile') return profileTab(el, c);
   if (tab === 'access') return accessTab(el, c);

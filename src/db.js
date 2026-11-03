@@ -79,6 +79,14 @@ const SCHEMA = [
     status TEXT NOT NULL DEFAULT 'planned', cost_cents INTEGER NOT NULL DEFAULT 0, source TEXT, note TEXT, month TEXT, task_id TEXT,
     check_result TEXT, checked_at INTEGER, created_at INTEGER NOT NULL, live_at INTEGER, by TEXT)`,
   `CREATE INDEX IF NOT EXISTS link_log_client ON link_log (client_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS review_pulls (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, task_id TEXT, status TEXT NOT NULL DEFAULT 'queued', reviews TEXT, rating REAL, total INTEGER,
+    cost REAL NOT NULL DEFAULT 0, demo INTEGER NOT NULL DEFAULT 0, error TEXT, created_at INTEGER NOT NULL, finished_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS review_pulls_client ON review_pulls (client_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS quarterly_plans (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, quarter TEXT NOT NULL, data TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', token TEXT UNIQUE NOT NULL,
+    created_at INTEGER NOT NULL, updated_at INTEGER, shared_at INTEGER)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS quarterly_client_q ON quarterly_plans (client_id, quarter)`,
   `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY, business TEXT NOT NULL, contact_name TEXT, phone TEXT, phone_digits TEXT, email TEXT, website TEXT,
@@ -116,7 +124,7 @@ const ADD_COLUMNS = [
   ['leads', 'reviews INTEGER'], ['leads', 'category TEXT'], ['leads', 'map_rank INTEGER'], ['leads', 'problems INTEGER'], ['leads', 'address TEXT'],
   ['leads', 'zip TEXT'], ['leads', 'tags TEXT'], ['leads', 'meet_at INTEGER'], ['leads', 'meet_link TEXT'], ['leads', 'gcal_event_id TEXT'],
   ['leads', 'locations INTEGER'],
-  ['clients', 'baseline TEXT'], ['clients', 'wp_url TEXT'], ['clients', 'wp_user TEXT'], ['clients', 'wp_pass TEXT'], ['clients', 'intake TEXT'], ['clients', 'intake_at INTEGER'], ['clients', 'logo_key TEXT'],
+  ['clients', 'baseline TEXT'], ['clients', 'wp_url TEXT'], ['clients', 'parent_id TEXT'], ['clients', 'wp_user TEXT'], ['clients', 'wp_pass TEXT'], ['clients', 'intake TEXT'], ['clients', 'intake_at INTEGER'], ['clients', 'logo_key TEXT'],
   ['users', 'google_token TEXT'], ['users', 'google_email TEXT'],
   ['leads', 'sms_stop INTEGER NOT NULL DEFAULT 0'], ['clients', 'sample INTEGER NOT NULL DEFAULT 0'],
   ['activities', 'to_num TEXT'], ['activities', 'from_num TEXT'], ['activities', 'conf_sid TEXT'], ['activities', 'cust_sid TEXT'],

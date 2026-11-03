@@ -72,6 +72,11 @@ function render(d, note) {
         <div><b>${d.calls.answered}</b><span>answered</span></div><div><b class="${d.calls.missed ? 'bad-text' : ''}">${d.calls.missed}</b><span>missed${d.calls.voicemail ? `, ${d.calls.voicemail} left a voicemail` : ''}</span></div></div>
       ${d.calls.bySource.length > 1 ? `<p class="small" style="margin-top:10px">${d.calls.bySource.map((x) => `${esc(x.source)}: <b>${x.n}</b>`).join(' &middot; ')}</p>` : ''}
       ${d.calls.missed ? '<p class="small muted" style="margin-top:6px">Every missed call is a customer who may call the next business. Calling back within an hour wins most of them.</p>' : ''}</section>` : ''}
+    ${d.reputation ? `<section class="card"><div class="card-head"><h2>Reputation</h2><span class="small muted">Google reviews</span></div>
+      <div class="rp-row3" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+        <div><b>${d.reputation.rating ?? '-'}</b><span>star rating</span></div><div><b>${d.reputation.newThisMonth}</b><span>new reviews this month</span></div>
+        <div><b>${d.reputation.perMonth}</b><span>new reviews a month (last 90 days)</span></div><div><b>${d.reputation.replyRate ?? '-'}%</b><span>of reviews have a reply</span></div></div>
+      ${d.reputation.themes.length ? `<p class="small" style="margin-top:10px"><b>What customers mention:</b> ${d.reputation.themes.map((t) => `${esc(t.label)} (${t.pos} good${t.neg ? `, ${t.neg} bad` : ''})`).join(', ')}</p>` : ''}</section>` : ''}
     <div class="rp-two">
       <section class="card"><h2>Work done in ${esc(d.monthLabel.split(' ')[0])}</h2>
         ${d.work.byKind.length ? `<div class="rp-chips">${d.work.byKind.map((b) => `<span class="badge">${esc(b.label)}: ${b.n}</span>`).join('')}</div>` : ''}

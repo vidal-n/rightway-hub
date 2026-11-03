@@ -10,6 +10,7 @@ import { canEmail, sendEmail } from './email.js';
 import { leaderboard } from '../public/js/analysis.js';
 import { callStats } from './calltrack.js';
 import { linksForMonth } from './citations.js';
+import { analyzeReviews } from './reputation.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const monthLabel = (m) => { const [y, mo] = m.split('-').map(Number); return `${MONTHS[mo - 1]} ${y}`; };
@@ -81,6 +82,17 @@ export async function buildReport(env, client, month) {
   const tracked = await first(env, 'SELECT COUNT(*) AS n FROM tracking_numbers WHERE client_id = ? AND created_at < ?', client.id, b).catch(() => null);
   const calls = tracked?.n ? await callStats(env, client.id, a, b) : null;
   const links = await linksForMonth(env, client.id, a, b);
+  // Reputation: the newest review pull made before the month ended.
+  const pullRow = await first(env, "SELECT reviews, rating, total, finished_at FROM review_pulls WHERE client_id = ? AND status = 'done' AND created_at < ? ORDER BY created_at DESC LIMIT 1", client.id, b).catch(() => null);
+  let reputation = null;
+  if (pullRow) {
+    const revs = JSON.parse(pullRow.reviews || '[]');
+    const an = analyzeReviews(revs, Math.min(b - 1, pullRow.finished_at || b - 1));
+    reputation = {
+      rating: pullRow.rating ?? an.avg, total: pullRow.total ?? null, newThisMonth: revs.filter((r) => r.at >= a && r.at < b).length, perMonth: an.perMonth,
+      replyRate: an.replyRate, unanswered: an.unansweredCount, themes: an.themes.slice(0, 4).map((t) => ({ label: t.label, pos: t.pos, neg: t.neg })),
+    };
+  }
   const [rr, tasks, posts, qr] = await Promise.all([
     first(env, 'SELECT COUNT(*) AS sent, SUM(CASE WHEN clicks > 0 THEN 1 ELSE 0 END) AS clicked FROM review_requests WHERE client_id = ? AND created_at >= ? AND created_at < ?', client.id, a, b),
     all(env, 'SELECT kind, title, status, client_visible FROM tasks WHERE client_id = ? AND month = ? ORDER BY sort, created_at', client.id, month),
@@ -111,6 +123,7 @@ export async function buildReport(env, client, month) {
     qrScans: qr?.n || 0,
     calls,
     links,
+    reputation,
     next: plan ? plan.monthly.map(([, title, n]) => (n > 1 ? `${n} x ${title}` : title)) : [],
   };
 }
@@ -150,6 +163,7 @@ export function reportEmail(rep, url, note = '') {
     ...d.keywords.map((k) => `${k.keyword}: top 3 in ${k.now.top3Pct}% of your area${fmtChange(k.now.top3Pct, k.before?.top3Pct, false, '%')}, ${k.now.centerRank ? `#${k.now.centerRank}` : 'not in the top 20'} at your address`),
     d.reviews.count != null ? `Google reviews: ${d.reviews.count}${d.reviews.rating ? ` (${d.reviews.rating} stars)` : ''}` : '',
     d.calls ? `Calls: ${d.calls.total} (${d.calls.firstTime} new callers, ${d.calls.missed} missed)` : '',
+    d.reputation ? `Google reviews: ${d.reputation.newThisMonth} new this month${d.reputation.rating ? `, ${d.reputation.rating} stars overall` : ''}` : '',
     `Work done this month: ${d.work.done} task${d.work.done === 1 ? '' : 's'}${d.posts ? `, ${d.posts} Google post${d.posts === 1 ? '' : 's'}` : ''}`,
     '', `See the full report: ${url}`, '', 'Rightway Growth',
   ].filter((l) => l !== '').join('\n');

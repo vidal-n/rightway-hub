@@ -246,8 +246,10 @@ route('GET', '/api/clients/:id', async ({ env, user, params, url }) => {
   const month = monthOk(url.searchParams.get('month'));
   if (!staff) delete c.notes;
   delete c.wp_pass; // sealed WordPress password never leaves the server
+  const parent = c.parent_id ? await first(env, 'SELECT id, name FROM clients WHERE id = ?', c.parent_id) : null;
+  const locations = (await first(env, 'SELECT COUNT(*) AS n FROM clients WHERE parent_id = ?', c.id))?.n || 0;
   return json({
-    client: { ...c, review_link: reviewUrlOf(c), kit_link: `${url.origin}/r/k/${c.id}`, plan_info: planOf(c.plan) },
+    client: { ...c, review_link: reviewUrlOf(c), kit_link: `${url.origin}/r/k/${c.id}`, plan_info: planOf(c.plan), parent, locations },
     overview: await overview(env, c, month, staff),
     activity: await activity(env, c.id, staff, 12),
   });
@@ -289,6 +291,7 @@ route('POST', '/api/clients/:id/tasks/generate', async ({ env, user, params, bod
   requireStaff(user);
   const c = await clientOr404(env, params.id);
   const month = monthOk((await body()).month);
+  if (c.parent_id) return json({ created: 0, month, location: true }); // the plan's work is tracked on the main business
   const existing = await first(env, 'SELECT COUNT(*) AS n FROM tasks WHERE client_id = ? AND month = ?', c.id, month);
   if (existing.n > 0) return json({ created: 0, month });
   const hasSetup = (await first(env, "SELECT COUNT(*) AS n FROM tasks WHERE client_id = ? AND kind = 'setup'", c.id)).n > 0;
@@ -529,6 +532,9 @@ import './content.js';
 import './siteaudit.js';
 import './calltrack.js';
 import './citations.js';
+import './reputation.js';
+import './leader.js';
+import './quarterly.js';
 import './workorders.js';
 import './calls.js';
 import './sms.js';
