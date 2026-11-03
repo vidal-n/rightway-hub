@@ -61,7 +61,11 @@ function connectView(view, st) {
     <div class="card" style="max-width:720px"><h2>Your Slack, inside the Hub</h2>
       <p>Connect your own Slack account. You see your channels and direct messages, post as yourself, send files, and share Hub items like a client, lead, task or report. Nobody else in the Hub can read your Slack.</p>
       ${st.ready ? '<a class="btn btn-primary btn-xl" href="/api/slack/oauth/start">Connect my Slack</a>' : st.admin ? '' : '<p class="badge warn">An owner has to finish the Slack setup first.</p>'}
+      ${st.ready && st.admin ? `<details style="margin-top:14px"><summary class="small">Slack says "redirect_uri did not match"?</summary>
+        <p class="small">The Slack app needs the Hub's return address. At api.slack.com/apps, open Rightway Hub, then <b>OAuth and Permissions</b>. Under <b>Redirect URLs</b>, click Add New Redirect URL, paste this, click Add, then <b>Save URLs</b>. Then try Connect my Slack again.</p>
+        <div class="copybox"><code>${esc(`${location.origin}/api/slack/oauth/callback`)}</code><button class="btn btn-ghost btn-sm" type="button" id="sl-redir">Copy</button></div></details>` : ''}
       ${steps}</div>`;
+  $('#sl-redir', view)?.addEventListener('click', () => navigator.clipboard.writeText(`${location.origin}/api/slack/oauth/callback`).then(() => toast('Copied')).catch(() => prompt('Copy this:', `${location.origin}/api/slack/oauth/callback`)));
   $('#sl-man', view)?.addEventListener('click', async () => {
     const d = await api('/api/slack').catch(() => null);
     if (d?.manifest) { await navigator.clipboard.writeText(JSON.stringify(d.manifest, null, 2)).catch(() => {}); toast('Setup copied. Paste it in App Manifest and save.'); }

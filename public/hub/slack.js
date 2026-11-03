@@ -52,7 +52,8 @@ function connectedCard(d) {
     <ul class="list">${d.people.map((p) => `<li class="item"><span class="badge ${p.slack_id ? '' : 'gray'}">${p.slack_id ? 'Linked' : 'Not linked'}</span><div><div class="item-title">${esc(p.name || p.email)}</div><div class="item-sub">${esc(p.email)}</div></div>
       ${p.slack_id ? `<button class="btn btn-ghost btn-sm" data-unlink="${esc(p.id)}">Unlink</button>` : `<button class="btn btn-ghost btn-sm" data-link="${esc(p.id)}" data-email="${esc(p.email)}">Link</button>`}</li>`).join('')}</ul>
     <h3 style="margin-top:18px">Slack inside the Hub</h3>
-    ${d.userApp ? '<p class="small">On. Each person opens the <a href="#/slack">Slack page</a> and clicks Connect my Slack (one time, on Slack\'s own sign in page).</p>'
+    ${d.userApp ? `<p class="small">On. Each person opens the <a href="#/slack">Slack page</a> and clicks Connect my Slack (one time, on Slack's own sign in page).</p>
+      <p class="small muted">The Slack app must list this under OAuth and Permissions, Redirect URLs:</p><div class="copybox"><code>${esc(d.origin)}/api/slack/oauth/callback</code><button class="btn btn-ghost btn-sm" type="button" id="slk-redir">Copy</button></div>`
       : `<p class="small muted">Lets each person use their own Slack on the Hub's Slack page, and lets clients message you from their app. One time setup:</p>
       <ol class="steps small"><li>At api.slack.com/apps, open Rightway Hub, then <b>App Manifest</b>. Replace it with the new setup and save. <button class="linkish" id="slk-man" type="button">Copy the new setup</button></li>
         <li>Open <b>Basic Information</b> and copy the <b>Client ID</b> and <b>Client Secret</b> into the boxes below.</li></ol>
@@ -82,6 +83,7 @@ async function loadChannels(box, d) {
 
 function wire(box, d, user, again) {
   const chan = (id) => { const list = JSON.parse(box.dataset.channels || '[]'); const c = list.find((x) => x.id === id); return c ? { id: c.id, name: c.name } : null; };
+  $('#slk-redir', box)?.addEventListener('click', () => copy(`${d.origin}/api/slack/oauth/callback`, 'Copied'));
   $('#slk-man', box)?.addEventListener('click', () => copy(JSON.stringify(d.manifest, null, 2), 'Setup copied. Paste it in App Manifest and save.'));
   $('#slk-userapp', box)?.addEventListener('submit', async (e) => {
     e.preventDefault();
