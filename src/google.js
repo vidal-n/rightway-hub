@@ -12,16 +12,25 @@ import { notifyLater } from './notify.js';
 const SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/calendar.events'];
 // Extra Google apps a user can turn on. Each adds its scope on top of what they already granted.
 export const APP_SCOPES = {
+  mail: 'https://www.googleapis.com/auth/gmail.modify',
+  drive: 'https://www.googleapis.com/auth/drive',
+  docs: 'https://www.googleapis.com/auth/documents',
   sheets: 'https://www.googleapis.com/auth/drive.file',
   gsc: 'https://www.googleapis.com/auth/webmasters.readonly',
   ga: 'https://www.googleapis.com/auth/analytics.readonly',
   ads: 'https://www.googleapis.com/auth/adwords',
   gbp: 'https://www.googleapis.com/auth/business.manage',
 };
+// Scopes are matched whole, not as substrings: ".../auth/drive" is a prefix of ".../auth/drive.file".
+export function hasScope(scopeStr, scope) {
+  const set = new Set(String(scopeStr || '').split(/\s+/).filter(Boolean));
+  if (set.has(scope)) return true;
+  // Full Drive covers everything the narrow drive.file scope can do.
+  return scope === APP_SCOPES.sheets && set.has(APP_SCOPES.drive);
+}
 export function grantedApps(scopeStr) {
-  const s = String(scopeStr || '');
-  const apps = Object.entries(APP_SCOPES).filter(([, sc]) => s.includes(sc)).map(([k]) => k);
-  if (s.includes('calendar')) apps.unshift('calendar');
+  const apps = Object.entries(APP_SCOPES).filter(([, sc]) => hasScope(scopeStr, sc)).map(([k]) => k);
+  if (String(scopeStr || '').includes('calendar')) apps.unshift('calendar');
   return apps;
 }
 const API = 'https://www.googleapis.com/calendar/v3';

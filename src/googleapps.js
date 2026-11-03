@@ -7,18 +7,29 @@ import { HttpError, json } from './util.js';
 import { all, first, run, now } from './db.js';
 import { requireStaff, requireAdmin, requireClientAccess } from './auth.js';
 import { route } from './router.js';
-import { accessToken, googleReady, APP_SCOPES } from './google.js';
+import { accessToken, googleReady, APP_SCOPES, hasScope } from './google.js';
 import { buildPayments } from './payments.js';
 
-const LABEL = { sheets: 'Google Sheets', gsc: 'Search Console', ga: 'Google Analytics', ads: 'Google Ads', gbp: 'Google Business Profile' };
+const LABEL = {
+  mail: 'Gmail', drive: 'Google Drive', docs: 'Google Docs', sheets: 'Google Sheets',
+  gsc: 'Search Console', ga: 'Google Analytics', ads: 'Google Ads', gbp: 'Google Business Profile',
+};
 
 export async function userFor(env, user, app) {
   if (!googleReady(env)) throw new HttpError('Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloudflare first.', 503);
   const scope = APP_SCOPES[app];
   const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);
-  if (me?.google_token && String(me.google_scopes || '').includes(scope)) return me;
+  if (me?.google_token && hasScope(me.google_scopes, scope)) return me;
   const other = await first(env, "SELECT * FROM users WHERE google_token IS NOT NULL AND google_scopes LIKE ? AND role IN ('admin','team') ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END LIMIT 1", `%${scope}%`);
   if (other) return other;
+  throw new HttpError(`Turn on ${LABEL[app]} on the Google page first.`, 400);
+}
+
+// Mail, Drive and Calendar are personal: only ever the asking person's own Google account, never a teammate's.
+export async function ownFor(env, user, app) {
+  if (!googleReady(env)) throw new HttpError('Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloudflare first.', 503);
+  const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);
+  if (me?.google_token && hasScope(me.google_scopes, APP_SCOPES[app])) return me;
   throw new HttpError(`Turn on ${LABEL[app]} on the Google page first.`, 400);
 }
 

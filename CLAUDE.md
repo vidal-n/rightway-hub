@@ -135,7 +135,19 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   (`APP_SCOPES` in `src/google.js`, granted list stored in `users.google_scopes`): Sheets export (drive.file) of leads, clients, calls,
   payments; Search Console and GA4 (Data + Admin APIs) and Google Ads (GOOGLE_ADS_DEVELOPER_TOKEN, optional GOOGLE_ADS_LOGIN_CUSTOMER_ID,
   GOOGLE_ADS_API_VERSION default v25) on a client Website tab (`clients.gsc_site`, `ga4_property`, `ads_customer`). Data is read with the
-  user's own Google account if it has the app, else an owner's. Not tested against live Google yet.
+  user's own Google account if it has the app, else an owner's. Not tested against live Google yet. The Google page now has tabs
+  (`googleTabs` in `public/hub/googleapps.js`): the apps themselves first, Setup last. `hasScope` matches whole scopes (".../auth/drive"
+  is a prefix of ".../auth/drive.file"); full Drive counts as the narrow Sheets scope. `ownFor` in `src/googleapps.js` is the personal
+  version of `userFor`: mail and Drive only ever use the asking person's own account, never a teammate's.
+- Gmail in the Hub (built, `src/gmail.js`, `public/hub/mail.js`, parser `public/js/gmailparse.js` pure and shared, `#/google/mail`, scope
+  gmail.modify): labels (system ids get plain names), threads with a page of 20 (the Worker subrequest cap), Gmail search, read, star,
+  archive, mark unread, trash, attachments (downloaded through `/api/google/mail/att/...`), reply, reply to all, forward and compose with
+  a small formatting bar and files up to 6 MB. `gmailparse.js` does the MIME work: base64url and charset decoding, RFC 2047 words, body
+  and attachment picking, `threadRow`, `fullMessage`, `buildRaw` (multipart/alternative plus mixed), `replyTo` and `quoted`.
+  `safeMailHtml` strips scripts, styles, frames, forms, event handlers and javascript: links, drops risky CSS (position, z-index) off style
+  attributes, and blocks remote pictures until "Show pictures". Hub ties: a thread shows the lead or client it belongs to with a link,
+  compose suggests addresses from leads, clients and teammates (`/api/google/mail/people`), mail sent to a lead or client is logged as an
+  `email` activity on their timeline, and `mailWith(box, email)` lists recent mail with one person for their page.
 - Scan tool v3: up to 5 keywords per run (tabs plus a summary table, save all to a client), grids to 13 x 13, radius to 30 miles, bigger map
   with zoom buttons, drag, pinch, ctrl or trackpad zoom, and double click (`createMap` in `public/js/map.js`). A live feed shows each search as a
   phone result card while scanning, and "Replay the scan" re-runs it spot by spot for clients. Lead research now keeps the top 3 per grid spot,

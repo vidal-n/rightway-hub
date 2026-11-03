@@ -5,6 +5,9 @@ import { staffShell } from './staff.js';
 
 const APPS = [
   { k: 'calendar', name: 'Calendar and Meet', what: 'Book audits from the dialer with a Meet link, and the public booking page reads your real free times.', base: true },
+  { k: 'mail', name: 'Gmail', what: 'Read, write, reply and search your email on the Mail tab. Mail to a lead or client is logged on their timeline.' },
+  { k: 'drive', name: 'Google Drive', what: 'Browse, search, upload and share your Drive on the Drive tab, and attach files to a client.' },
+  { k: 'docs', name: 'Google Docs', what: 'Make a Google Doc from a report, a proposal or a page draft, straight into your Drive.' },
   { k: 'sheets', name: 'Google Sheets', what: 'Send leads, clients, calls or payments to a new Google Sheet in your Drive. The Hub can only open sheets it makes.' },
   { k: 'gsc', name: 'Search Console', what: 'Clicks, impressions, average position and top searches for each client site, on the client Website tab.' },
   { k: 'ga', name: 'Google Analytics', what: 'Visitors, sessions, leads (key events) and where traffic comes from, for each client, on the Website tab.' },
@@ -18,12 +21,17 @@ const LINKS = [
 ];
 const connectUrl = (apps) => `/api/google/connect?back=google${apps.length ? `&apps=${apps.join(',')}` : ''}`;
 
+// Tabs across the top of every Google page: the apps themselves, then the setup page.
+const GTABS = [['mail', '#/google/mail', 'Mail'], ['apps', '#/google', 'Setup']];
+export const googleTabs = (active) => `<nav class="tabs" style="margin-bottom:16px">${GTABS.map(([k, href, name]) => `<a href="${href}" class="${active === k ? 'is-active' : ''}">${name}</a>`).join('')}</nav>`;
+
 export async function googlePage(app, user) {
   const view = staffShell(app, user, 'google');
+  const tabs = googleTabs('apps');
   const msg = new URLSearchParams(location.search).get('google');
   if (msg) { toast(msg === 'ok' ? 'Google connected' : msg, msg !== 'ok'); history.replaceState(null, '', `${location.pathname}${location.hash}`); }
   let g;
-  try { g = await api('/api/google/status'); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  try { g = await api('/api/google/status'); } catch (e) { view.innerHTML = `${tabs}<p class="err-text">${esc(e.message)}</p>`; return; }
   const on = new Set(g.apps || []);
   const card = (a) => {
     const has = on.has(a.k);
@@ -38,7 +46,7 @@ export async function googlePage(app, user) {
       ${!has && g.ready ? `<a class="btn ${a.base ? 'btn-primary' : 'btn-ghost'} btn-sm" style="margin-top:10px" href="${esc(connectUrl(a.base ? [] : [a.k]))}">Turn on</a>` : ''}
     </div>`;
   };
-  view.innerHTML = `
+  view.innerHTML = `${tabs}
     <div class="page-head"><div><p class="eyebrow">Integrations</p><h1>Google</h1></div>
       ${g.ready && g.connected ? `<div class="row"><span class="small muted">Signed in as ${esc(g.email || 'Google')}</span>${APPS.some((a) => !a.base && !on.has(a.k)) ? `<a class="btn btn-primary btn-sm" href="${esc(connectUrl(APPS.filter((a) => !a.base).map((a) => a.k)))}">Turn on all</a>` : ''}</div>` : ''}</div>
     ${!g.ready ? `<div class="card" style="margin-bottom:18px"><h2>Connect Google first</h2><p>Add <b>GOOGLE_CLIENT_ID</b> and <b>GOOGLE_CLIENT_SECRET</b> in Cloudflare, Build, Variables and secrets, then rebuild. In Google Cloud, turn on these APIs for the project: Google Calendar, Google Sheets, Google Drive, Search Console, Google Analytics Data, Google Analytics Admin, and Google Ads.</p></div>` : ''}

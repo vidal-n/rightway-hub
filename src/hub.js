@@ -587,6 +587,7 @@ import './onboarding.js';
 import './meetings.js';
 import './voicemail.js';
 import './gbp.js';
+import './gmail.js';
 import './notify.js';
 import './slack.js';
 import './slackuser.js';
