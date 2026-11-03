@@ -222,7 +222,7 @@ route('GET', '/api/clients', async ({ env, user, url }) => {
   requireStaff(user);
   const month = monthOk(url.searchParams.get('month'));
   const clients = await all(env, "SELECT * FROM clients ORDER BY status = 'active' DESC, name");
-  const out = await Promise.all(clients.map(async (c) => ({ ...c, overview: await overview(env, c, month, true) })));
+  const out = await Promise.all(clients.map(async ({ wp_pass, ...c }) => ({ ...c, overview: await overview(env, c, month, true) })));
   return json({ clients: out, month });
 });
 
@@ -242,6 +242,7 @@ route('GET', '/api/clients/:id', async ({ env, user, params, url }) => {
   const staff = isStaff(user);
   const month = monthOk(url.searchParams.get('month'));
   if (!staff) delete c.notes;
+  delete c.wp_pass; // sealed WordPress password never leaves the server
   return json({
     client: { ...c, review_link: reviewUrlOf(c), kit_link: `${url.origin}/r/k/${c.id}`, plan_info: planOf(c.plan) },
     overview: await overview(env, c, month, staff),
@@ -255,7 +256,8 @@ route('PATCH', '/api/clients/:id', async ({ env, user, params, body }) => {
   const c = cleanClient(await body(), true);
   const cols = Object.keys(c);
   if (cols.length) await run(env, `UPDATE clients SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => c[k]), params.id);
-  return json({ client: await clientOr404(env, params.id) });
+  const { wp_pass, ...updated } = await clientOr404(env, params.id);
+  return json({ client: updated });
 });
 
 route('GET', '/api/clients/:id/users', async ({ env, user, params }) => {
@@ -520,6 +522,7 @@ import './billing.js';
 import './stripesetup.js';
 import './autoscan.js';
 import './reports.js';
+import './content.js';
 import './workorders.js';
 import './calls.js';
 import './sms.js';

@@ -108,7 +108,7 @@ async function route() {
   const u = state.user;
   if (u.role === 'client') {
     if (u.viewAs) previewBar(u);
-    return portal(app, u, parts[0] || 'home', state);
+    return portal(app, u, parts[0] || 'home', { ...state, sub: parts[1] });
   }
   initPhone();
   if (parts[0] === 'team') return teamPage(app, u);
@@ -124,7 +124,7 @@ async function route() {
   if (parts[0] === 'payments') return paymentsPage(app, u);
   if (parts[0] === 'google') return googlePage(app, u);
   if (parts[0] === 'settings') return settingsPage(app, u);
-  if (parts[0] === 'client' && parts[1]) return clientPage(app, u, parts[1], parts[2] || 'overview', state);
+  if (parts[0] === 'client' && parts[1]) return clientPage(app, u, parts[1], parts[2] || 'overview', { ...state, sub: parts[3] });
   if (parts[0] === 'clients') return dashboard(app, u);
   if (parts[0] === 'clientview') return clientViewPage(app, u, parts[1]);
   return homePage(app, u);

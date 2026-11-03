@@ -36,6 +36,10 @@ export async function portal(app, user, tab, state) {
     const v = shell(app, c, user, 'home', 'Get started', 'A few details so we can get to work.');
     return clientStart(v, c);
   }
+  if (tab === 'content') {
+    const v = shell(app, c, user, 'home', 'Pages for your website', 'Check new pages before they go live.');
+    return import('./content.js').then((m) => m.clientContent(v, c, state.sub));
+  }
   if (tab === 'results') {
     const v = shell(app, c, user, 'results', 'Your results', 'Where you show up on Google across your area.');
     return renderRankings(v, c.id, { staff: false });
@@ -62,6 +66,10 @@ export async function portal(app, user, tab, state) {
     ${c.stripe_customer_id ? '<button class="btn btn-ghost btn-xl" id="pbill">Billing and invoices</button>' : ''}
     <p class="small" style="text-align:center">Tip: add this app to your home screen. On iPhone tap Share, then Add to Home Screen. On Android tap the menu, then Install app.</p>`;
   animateNumbers(v);
+  import('./content.js').then(async (m) => {
+    const n = await m.waitingCount(c.id);
+    if (n && v.isConnected) v.insertAdjacentHTML('afterbegin', `<a class="card start-card" href="#/content"><b>${n} new page${n === 1 ? '' : 's'} to check</b><span>Read ${n === 1 ? 'it' : 'them'} and approve, or tell us what to change.</span></a>`);
+  });
   $('#pbill', v)?.addEventListener('click', async (e) => {
     e.target.disabled = true;
     try { const r = await api(`/api/clients/${c.id}/billing/portal`, { method: 'POST' }); location.href = r.url; }

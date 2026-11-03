@@ -47,6 +47,11 @@ const SCHEMA = [
     status TEXT NOT NULL DEFAULT 'draft', views INTEGER NOT NULL DEFAULT 0, sent_at INTEGER, sent_to TEXT, sent_by TEXT,
     created_at INTEGER NOT NULL, updated_at INTEGER)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS reports_client_month ON reports (client_id, month)`,
+  `CREATE TABLE IF NOT EXISTS content (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, keyword TEXT, service TEXT, city TEXT, brief TEXT,
+    html TEXT, meta_title TEXT, meta_description TEXT, slug TEXT, status TEXT NOT NULL DEFAULT 'idea', client_note TEXT, month TEXT, task_id TEXT,
+    ai INTEGER NOT NULL DEFAULT 0, wp_id TEXT, wp_status TEXT, live_url TEXT, published_at INTEGER, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS content_client ON content (client_id, updated_at)`,
   `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY, business TEXT NOT NULL, contact_name TEXT, phone TEXT, phone_digits TEXT, email TEXT, website TEXT,
@@ -84,7 +89,7 @@ const ADD_COLUMNS = [
   ['leads', 'reviews INTEGER'], ['leads', 'category TEXT'], ['leads', 'map_rank INTEGER'], ['leads', 'problems INTEGER'], ['leads', 'address TEXT'],
   ['leads', 'zip TEXT'], ['leads', 'tags TEXT'], ['leads', 'meet_at INTEGER'], ['leads', 'meet_link TEXT'], ['leads', 'gcal_event_id TEXT'],
   ['leads', 'locations INTEGER'],
-  ['clients', 'baseline TEXT'], ['clients', 'intake TEXT'], ['clients', 'intake_at INTEGER'], ['clients', 'logo_key TEXT'],
+  ['clients', 'baseline TEXT'], ['clients', 'wp_url TEXT'], ['clients', 'wp_user TEXT'], ['clients', 'wp_pass TEXT'], ['clients', 'intake TEXT'], ['clients', 'intake_at INTEGER'], ['clients', 'logo_key TEXT'],
   ['users', 'google_token TEXT'], ['users', 'google_email TEXT'],
   ['leads', 'sms_stop INTEGER NOT NULL DEFAULT 0'], ['clients', 'sample INTEGER NOT NULL DEFAULT 0'],
   ['activities', 'to_num TEXT'], ['activities', 'from_num TEXT'], ['activities', 'conf_sid TEXT'], ['activities', 'cust_sid TEXT'],
