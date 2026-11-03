@@ -10,6 +10,9 @@ import { generateCaptions } from './captions.js';
 import { canEmail, sendEmail } from './email.js';
 import { gridStats } from '../public/js/grid.js';
 import { routes, route } from './router.js';
+import { generateTasks, savedGuides } from './work.js';
+import { guideFor, proofMissing } from '../public/js/guides.js';
+import { notify, notifyLater } from './notify.js';
 
 const CLIENT_FIELDS = ['name', 'plan', 'status', 'start_date', 'contact_name', 'contact_email', 'phone', 'website', 'address',
   'place_id', 'cid', 'lat', 'lng', 'category', 'services', 'cities', 'keywords', 'brand_voice', 'review_url', 'notes'];
@@ -102,7 +105,7 @@ function reviewMessage(client, name, link) {
 
 // ---------- router ----------
 
-export async function handleHub(request, env, url) {
+export async function handleHub(request, env, url, execCtx = null) {
   for (const r of routes) {
     if (r.method !== request.method) continue;
     const m = url.pathname.match(r.re);
@@ -117,7 +120,9 @@ export async function handleHub(request, env, url) {
       if (request.method !== 'GET') throw new HttpError('Client view is read only. Go back to the Hub to make changes.', 403);
       user = { ...user, role: 'client', client_id: viewAs, viewAs: true };
     }
-    const ctx = { request, env, url, user, params: m.groups || {}, body: () => request.json().catch(() => ({})) };
+    // defer: work that can finish after the response (notifications), when the platform gives us waitUntil.
+    const defer = (p) => (execCtx?.waitUntil ? execCtx.waitUntil(p) : p);
+    const ctx = { request, env, url, user, defer, params: m.groups || {}, body: () => request.json().catch(() => ({})) };
     return r.fn(ctx);
   }
   return null;
@@ -292,45 +297,59 @@ route('POST', '/api/clients/:id/tasks/generate', async ({ env, user, params, bod
   const c = await clientOr404(env, params.id);
   const month = monthOk((await body()).month);
   if (c.parent_id) return json({ created: 0, month, location: true }); // the plan's work is tracked on the main business
-  const existing = await first(env, 'SELECT COUNT(*) AS n FROM tasks WHERE client_id = ? AND month = ?', c.id, month);
-  if (existing.n > 0) return json({ created: 0, month });
-  const hasSetup = (await first(env, "SELECT COUNT(*) AS n FROM tasks WHERE client_id = ? AND kind = 'setup'", c.id)).n > 0;
-  const list = tasksForMonth({ ...c, has_setup: hasSetup }, month);
-  await batch(env, list.map((t, i) => ['INSERT INTO tasks (id, client_id, month, kind, title, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    newId('t_'), c.id, month, t.kind, t.title, i, now()]));
-  return json({ created: list.length, month });
+  return json({ created: await generateTasks(env, c, month), month });
 });
 
 route('POST', '/api/clients/:id/tasks', async ({ env, user, params, body }) => {
   requireStaff(user);
-  await clientOr404(env, params.id);
+  const c = await clientOr404(env, params.id);
   const b = await body();
   const title = text(b.title, 300);
   if (!title) throw new HttpError('Task needs a title.');
   const id = newId('t_');
-  await run(env, 'INSERT INTO tasks (id, client_id, month, kind, title, sort, created_at) VALUES (?, ?, ?, ?, ?, 999, ?)',
-    id, params.id, monthOk(b.month), text(b.kind, 30) || 'custom', title, now());
+  const due = /^\d{4}-\d{2}-\d{2}$/.test(b.due || '') ? b.due : null;
+  await run(env, 'INSERT INTO tasks (id, client_id, month, kind, title, sort, created_at, owner, due) VALUES (?, ?, ?, ?, ?, 999, ?, ?, ?)',
+    id, params.id, monthOk(b.month), text(b.kind, 30) || 'custom', title, now(), b.owner || c.owner_id || null, due);
   return json({ task: await first(env, 'SELECT * FROM tasks WHERE id = ?', id) });
 });
 
-route('PATCH', '/api/tasks/:id', async ({ env, user, params, body }) => {
+route('PATCH', '/api/tasks/:id', async ({ env, user, params, body, defer }) => {
   requireStaff(user);
   const t = await first(env, 'SELECT * FROM tasks WHERE id = ?', params.id);
   if (!t) throw new HttpError('Task not found.', 404);
   const b = await body();
   const set = {};
-  if ('status' in b) {
-    if (!['todo', 'doing', 'done', 'skipped'].includes(b.status)) throw new HttpError('Unknown status.');
-    set.status = b.status;
-    set.done_at = b.status === 'done' ? (t.done_at || now()) : null;
-    set.done_by = b.status === 'done' ? user.id : null;
-  }
   if ('note' in b) set.note = text(b.note, 2000);
   if ('link' in b) set.link = text(b.link, 1000);
   if ('title' in b && text(b.title, 300)) set.title = text(b.title, 300);
   if ('client_visible' in b) set.client_visible = b.client_visible ? 1 : 0;
+  if ('owner' in b) {
+    if (b.owner && !(await first(env, "SELECT id FROM users WHERE id = ? AND role IN ('admin','team')", b.owner))) throw new HttpError('Pick someone on the team.');
+    set.owner = b.owner || null;
+  }
+  if ('due' in b) {
+    if (b.due && !/^\d{4}-\d{2}-\d{2}$/.test(b.due)) throw new HttpError('Pick a date.');
+    set.due = b.due || null;
+  }
+  if ('checks' in b) set.checks = JSON.stringify((Array.isArray(b.checks) ? b.checks : []).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < 40));
+  if ('status' in b) {
+    if (!['todo', 'doing', 'done', 'skipped'].includes(b.status)) throw new HttpError('Unknown status.');
+    // Proof before a task closes: the guide for its kind says what counts (live link, screenshot or note).
+    if (b.status === 'done' && t.status !== 'done') {
+      const why = proofMissing(guideFor(t.kind, await savedGuides(env)), { ...t, ...set });
+      if (why) throw new HttpError(why, 400);
+    }
+    if (b.status === 'skipped' && !text(set.note ?? t.note, 2000)) throw new HttpError('Write why it was skipped in the note first.');
+    set.status = b.status;
+    set.done_at = b.status === 'done' ? (t.done_at || now()) : null;
+    set.done_by = b.status === 'done' ? user.id : null;
+  }
   const cols = Object.keys(set);
   if (cols.length) await run(env, `UPDATE tasks SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), t.id);
+  if (set.owner && set.owner !== t.owner && set.owner !== user.id) {
+    const c = await first(env, 'SELECT name FROM clients WHERE id = ?', t.client_id);
+    await notifyLater({ env, defer }, { to: [set.owner], kind: 'task', title: `New task for you: ${set.title || t.title}`, body: `${c?.name || ''}${(set.due ?? t.due) ? `, due ${set.due ?? t.due}` : ''}. From ${user.name || 'a teammate'}.`, url: `/#/work/task/${t.id}`, slack: false });
+  }
   return json({ task: await first(env, 'SELECT * FROM tasks WHERE id = ?', t.id) });
 });
 
@@ -423,6 +442,18 @@ route('POST', '/api/clients/:id/posts', async ({ env, user, params, request }) =
   return json({ post: await first(env, 'SELECT * FROM posts WHERE id = ?', id) });
 });
 
+// A post going live checks off one open "Google profile post" task this month. With a live link, that link is the proof;
+// without one the task stays open for a screenshot (proof rule), but the post is linked in its note.
+export async function closePostTask(env, p, liveUrl, by) {
+  const m = monthKey();
+  const t = await first(env, "SELECT * FROM tasks WHERE client_id = ? AND kind = 'post' AND status IN ('todo','doing') AND month <= ? ORDER BY month, sort LIMIT 1", p.client_id, m);
+  if (!t) return null;
+  const note = t.note || `Post: ${String(p.google_text || '').slice(0, 80)}`;
+  if (liveUrl) await run(env, "UPDATE tasks SET status = 'done', done_at = ?, done_by = ?, link = ?, note = ? WHERE id = ?", now(), by, liveUrl, note, t.id);
+  else await run(env, "UPDATE tasks SET status = 'doing', note = ? WHERE id = ?", note, t.id);
+  return t.id;
+}
+
 async function postWithAccess(env, user, id) {
   const p = await first(env, 'SELECT * FROM posts WHERE id = ?', id);
   if (!p) throw new HttpError('Post not found.', 404);
@@ -430,7 +461,7 @@ async function postWithAccess(env, user, id) {
   return p;
 }
 
-route('PATCH', '/api/posts/:id', async ({ env, user, params, body }) => {
+route('PATCH', '/api/posts/:id', async ({ env, user, params, body, defer }) => {
   const p = await postWithAccess(env, user, params.id);
   const b = await body();
   const set = {};
@@ -442,12 +473,16 @@ route('PATCH', '/api/posts/:id', async ({ env, user, params, body }) => {
       if (b.status === 'approved') set.approved_at = now();
       if (b.status === 'posted') set.posted_at = now();
     }
+    if ('live_url' in b) set.live_url = /^https?:\/\//i.test(String(b.live_url || '')) ? text(b.live_url, 1000) : null;
   } else if (b.status === 'approved' && p.status === 'draft') {
     set.status = 'approved';
     set.approved_at = now();
+    const c = await first(env, 'SELECT name FROM clients WHERE id = ?', p.client_id);
+    await notifyLater({ env, defer }, { to: { client: p.client_id }, kind: 'client', title: `${c?.name || 'A client'} approved a post`, body: 'It is ready to go on their Google profile.', url: `/#/client/${p.client_id}/posts` });
   } else throw new HttpError('Only approving is available here.', 403);
   const cols = Object.keys(set);
   if (cols.length) await run(env, `UPDATE posts SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), p.id);
+  if (set.status === 'posted' && p.status !== 'posted') await closePostTask(env, p, set.live_url || null, user.id);
   return json({ post: await first(env, 'SELECT * FROM posts WHERE id = ?', p.id) });
 });
 
@@ -547,3 +582,7 @@ import './sample.js';
 import './intel.js';
 import './google.js';
 import './onboarding.js';
+import './meetings.js';
+import './voicemail.js';
+import './gbp.js';
+import './notify.js';

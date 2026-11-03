@@ -5,10 +5,10 @@ import { billingTab } from './crm.js';
 import { onboardingTab } from './onboarding.js';
 
 const NAV = [
-  ['home', '#/', 'dash', 'Dashboard'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['dialer', '#/dialer', 'phone', 'Dialer'],
+  ['home', '#/', 'dash', 'Dashboard'], ['work', '#/work', 'check', 'My work'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['dialer', '#/dialer', 'phone', 'Dialer'],
   ['inbox', '#/inbox', 'msg', 'Inbox'], ['clients', '#/clients', 'users', 'Clients'], ['payments', '#/payments', 'money', 'Payments', 'admin'],
   ['clientview', '#/clientview', 'device', 'Client view'], ['scan', '/scan.html', 'grid', 'Scan tool'], ['google', '#/google', 'apps', 'Google'],
-  ['team', '#/team', 'star', 'Team'], ['settings', '#/settings', 'note', 'Settings'],
+  ['alerts', '#/alerts', 'bell', 'Alerts'], ['team', '#/team', 'star', 'Team'], ['settings', '#/settings', 'note', 'Settings'],
 ];
 
 export function staffShell(app, user, active, inner) {
@@ -42,6 +42,7 @@ export function staffShell(app, user, active, inner) {
   document.addEventListener('keydown', onKey);
   window.addEventListener('hashchange', () => { document.removeEventListener('keydown', onKey); document.body.classList.remove('menu-open'); }, { once: true });
   import('./texts.js').then((m) => m.unreadBadge(app));
+  import('./alerts.js').then((m) => m.alertBadge(app)).catch(() => {});
   $('#logout').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/login'; location.reload(); });
   return $('#view');
 }
@@ -82,7 +83,7 @@ function clientCard(c, i) {
     <div><div class="row small"><span>This month's work</span><span class="spacer"></span><b>${o.tasks.done} of ${o.tasks.total}</b></div>
       <div class="progress" style="margin-top:6px"><span data-w="${pct}"></span></div></div>
     <div class="mini">
-      <div><b>${o.lastScan ? `${o.lastScan.top3Pct}%` : '-'}</b><span>top 3 area</span></div>
+      <div><b>${o.lastScan ? `${o.lastScan.top10Pct ?? 0}%` : '-'}</b><span>first page area</span></div>
       <div><b>${o.reviews.sent}</b><span>review asks</span></div>
       <div><b>${o.posts.pending}</b><span>posts pending</span></div>
     </div></a>`;
@@ -153,7 +154,7 @@ export function clientForm(client, onSaved) {
 // Authority and Market Leader, the quarterly plan on Market Leader main businesses.
 const tabsFor = (c) => TABS.filter(([k]) => (k === 'locations' ? !c.parent_id && (c.plan === 'leader' || c.locations > 0)
   : k === 'reputation' ? ['authority', 'leader'].includes(c.plan) : k === 'plan' ? c.plan === 'leader' && !c.parent_id : true));
-const TABS = [['overview', 'Overview'], ['locations', 'Locations'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['reviews', 'Reviews'], ['reputation', 'Reputation'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['plan', 'Quarterly plan'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['citations', 'Citations'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
+const TABS = [['overview', 'Overview'], ['locations', 'Locations'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['accesslist', 'Access'], ['meetings', 'Meetings'], ['gbp', 'Google profile'], ['reviews', 'Reviews'], ['reputation', 'Reputation'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['plan', 'Quarterly plan'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['citations', 'Citations'], ['website', 'Website'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
 
 export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   const view = staffShell(app, user, 'clients');
@@ -163,15 +164,19 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow"><a href="#/clients">Clients</a> / ${c.parent ? `Location of <a href="#/client/${esc(c.parent.id)}/locations">${esc(c.parent.name)}</a>` : esc(PLAN_NAMES[c.plan])}</p><h1>${esc(c.name)}</h1>
       <div class="small">${esc(c.address || '')}</div></div>
-      <div class="row"><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(c.status)}</span><a class="btn btn-ghost btn-sm" href="/scan.html?client=${esc(c.id)}">${icon.scan}Scan</a></div></div>
+      <div class="row"><label class="small row" style="gap:6px">Account manager <select id="cowner" aria-label="Account manager"><option value="">Nobody</option></select></label><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(c.status)}</span><a class="btn btn-ghost btn-sm" href="/scan.html?client=${esc(c.id)}">${icon.scan}Scan</a></div></div>
     <nav class="tabs">${tabsFor(c).map(([k, n]) => `<a href="#/client/${esc(id)}/${k}" class="${tab === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>
     <section id="tab"></section>`;
   const el = $('#tab', view);
   // Keep the open tab in view when the tab row scrolls sideways.
   const on = $('.tabs .is-active', view);
   if (on) on.parentElement.scrollLeft = Math.max(0, on.offsetLeft - on.parentElement.clientWidth / 2 + on.offsetWidth / 2);
+  ownerPicker($('#cowner', view), c);
   if (tab === 'overview') return overviewTab(el, data);
-  if (tab === 'tasks') return tasksTab(el, c, state.month || monthKey());
+  if (tab === 'accesslist') return import('./work.js').then((m) => m.accessListTab(el, c));
+  if (tab === 'meetings') return import('./meetings.js').then((m) => m.meetingsTab(el, c, user));
+  if (tab === 'gbp') return import('./gbp.js').then((m) => m.gbpTab(el, c, user));
+  if (tab === 'tasks') return tasksTab(el, c, state.month || monthKey(), user);
   if (tab === 'reviews') return renderReviews(el, c.id, { staff: true, clientName: c.name });
   if (tab === 'posts') return renderPosts(el, c.id, { staff: true, ai: state.ai });
   if (tab === 'rankings') return renderRankings(el, c.id, { staff: true });
@@ -195,7 +200,7 @@ function overviewTab(el, { client: c, overview: o, activity }) {
   el.innerHTML = `
     <div class="stats">
       <div class="stat hero"><div class="stat-num" data-count="${pct}" data-suffix="%">0</div><div class="stat-label">of ${esc(fmt.month(o.month))} work done (${o.tasks.done} of ${o.tasks.total})</div></div>
-      <div class="stat"><div class="stat-num" data-count="${o.lastScan?.top3Pct ?? 0}" data-suffix="%">0</div><div class="stat-label">${o.lastScan ? `top 3 coverage for "${esc(o.lastScan.keyword)}"` : 'no scan saved yet'}</div></div>
+      <div class="stat"><div class="stat-num" data-count="${o.lastScan?.top10Pct ?? 0}" data-suffix="%">0</div><div class="stat-label">${o.lastScan ? `first page (top 10) coverage for "${esc(o.lastScan.keyword)}"` : 'no scan saved yet'}</div></div>
       <div class="stat"><div class="stat-num" data-count="${o.reviews.sent}">0</div><div class="stat-label">review requests this month (${o.reviews.clicked} opened)</div></div>
       <div class="stat"><div class="stat-num" data-count="${o.posts.posted}">0</div><div class="stat-label">posts published this month (${o.posts.pending} pending)</div></div>
     </div>
@@ -220,38 +225,53 @@ function overviewTab(el, { client: c, overview: o, activity }) {
   });
 }
 
-async function tasksTab(el, c, month) {
+// Account manager: new monthly tasks for this client go to this person. Changing it can move the open tasks too.
+async function ownerPicker(sel, c) {
+  if (!sel) return;
+  try {
+    const { users } = await api('/api/team');
+    sel.innerHTML = `<option value="">Nobody</option>${users.filter((u) => u.role !== 'client').map((u) => `<option value="${esc(u.id)}"${c.owner_id === u.id ? ' selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}`;
+  } catch { return; }
+  sel.addEventListener('change', async () => {
+    const apply = confirm('Also give this person the open tasks nobody owns?');
+    try { const r = await api(`/api/clients/${c.id}/owner`, { method: 'PUT', body: { owner_id: sel.value || null, apply } }); c.owner_id = r.owner_id; toast(apply ? `Saved. ${r.moved} tasks moved.` : 'Saved'); } catch (err) { toast(err.message, true); }
+  });
+}
+
+async function tasksTab(el, c, month, user) {
   el.innerHTML = '<div class="skeleton"></div>';
-  let data;
-  try { data = await api(`/api/clients/${c.id}/tasks?month=${month}`); } catch (e) { el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  let data, team = [];
+  try { [data, { users: team }] = await Promise.all([api(`/api/clients/${c.id}/tasks?month=${month}`), api('/api/team')]); } catch (e) { el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  const who = new Map(team.map((u) => [u.id, u.name || u.email]));
   const tasks = data.tasks;
   const done = tasks.filter((t) => t.status === 'done').length;
   const pct = tasks.length ? Math.round((100 * done) / tasks.length) : 0;
   const groups = {};
   tasks.forEach((t) => { (groups[t.kind] ||= []).push(t); });
+  const openPanel = (id) => import('./work.js').then((m) => m.openTask(id, user, { onChange: () => tasksTab(el, c, month, user) }));
   el.innerHTML = `
     <div class="card">
       <div class="card-head">
         <div class="row"><button class="icon-btn" id="mprev" title="Previous month">&lsaquo;</button><h2 style="margin:0 6px">${esc(fmt.month(month))}</h2><button class="icon-btn" id="mnext" title="Next month">&rsaquo;</button></div>
         <div class="row">${tasks.length ? `<span class="small" id="tcount"><b>${done}</b> of ${tasks.length} done</span>` : ''}<button class="btn btn-ghost btn-sm" id="tadd">${icon.plus}Add task</button></div>
       </div>
-      ${tasks.length ? `<div class="progress"><span data-w="${pct}"></span></div>` : `
-        <div class="empty"><h3>No tasks for this month yet</h3><p>Create them from the ${esc(PLAN_NAMES[c.plan])} plan: every monthly item, plus setup tasks in the first month.</p>
-        <button class="btn btn-primary" id="tgen">Create ${esc(fmt.month(month))} tasks</button></div>`}
+      ${tasks.length ? `<div class="progress"><span data-w="${pct}"></span></div><p class="small muted" style="margin:8px 0 0">Tap a task for its guide, timer and proof. Most tasks need a live link or a screenshot to close.</p>` : `
+        <div class="empty"><h3>No tasks for this month yet</h3><p>${c.parent_id ? 'Locations do not get plan tasks. The work lives on the main business.' : `They are made on their own for active clients at the start of each month. You can also make them now from the ${esc(PLAN_NAMES[c.plan])} plan.`}</p>
+        ${c.parent_id ? '' : `<button class="btn btn-primary" id="tgen">Create ${esc(fmt.month(month))} tasks</button>`}</div>`}
       ${Object.entries(groups).map(([kind, list]) => `<div class="group-title">${esc(KIND_LABEL[kind] || kind)} · ${list.filter((t) => t.status === 'done').length}/${list.length}</div>
-        <ul class="list">${list.map(taskRow).join('')}</ul>`).join('')}
+        <ul class="list">${list.map((t) => taskRow(t, who)).join('')}</ul>`).join('')}
     </div>`;
   animateNumbers(el);
-  $('#mprev', el).addEventListener('click', () => tasksTab(el, c, shiftMonth(month, -1)));
-  $('#mnext', el).addEventListener('click', () => tasksTab(el, c, shiftMonth(month, 1)));
+  $('#mprev', el).addEventListener('click', () => tasksTab(el, c, shiftMonth(month, -1), user));
+  $('#mnext', el).addEventListener('click', () => tasksTab(el, c, shiftMonth(month, 1), user));
   $('#tgen', el)?.addEventListener('click', async (e) => {
     busy(e.target, true);
-    try { const r = await api(`/api/clients/${c.id}/tasks/generate`, { method: 'POST', body: { month } }); toast(`${r.created} tasks created`); tasksTab(el, c, month); } catch (err) { toast(err.message, true); busy(e.target, false); }
+    try { const r = await api(`/api/clients/${c.id}/tasks/generate`, { method: 'POST', body: { month } }); toast(`${r.created} tasks created`); tasksTab(el, c, month, user); } catch (err) { toast(err.message, true); busy(e.target, false); }
   });
   $('#tadd', el).addEventListener('click', async () => {
     const title = prompt('Task');
     if (!title) return;
-    try { await api(`/api/clients/${c.id}/tasks`, { method: 'POST', body: { title, month } }); tasksTab(el, c, month); } catch (err) { toast(err.message, true); }
+    try { const r = await api(`/api/clients/${c.id}/tasks`, { method: 'POST', body: { title, month } }); tasksTab(el, c, month, user); openPanel(r.task.id); } catch (err) { toast(err.message, true); }
   });
   el.onclick = async (e) => {
     const row = e.target.closest('.item[data-task]');
@@ -260,9 +280,13 @@ async function tasksTab(el, c, month) {
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (!act) return;
     try {
+      if (act === 'open') return openPanel(t.id);
       if (act === 'toggle') {
         const status = t.status === 'done' ? 'todo' : 'done';
-        await api(`/api/tasks/${t.id}`, { method: 'PATCH', body: { status } });
+        try { await api(`/api/tasks/${t.id}`, { method: 'PATCH', body: { status } }); } catch (err) {
+          if (err.status === 400 && status === 'done') { toast(err.message, true); return openPanel(t.id); }
+          throw err;
+        }
         t.status = status;
         row.classList.toggle('is-done', status === 'done');
         $('.check', row).classList.toggle('on', status === 'done');
@@ -276,16 +300,6 @@ async function tasksTab(el, c, month) {
         e.target.closest('[data-act]').classList.toggle('off', !t.client_visible);
         toast(t.client_visible ? 'Client can see this' : 'Hidden from the client');
       }
-      if (act === 'edit') {
-        const ed = $('.item-edit', row);
-        ed.hidden = !ed.hidden;
-      }
-      if (act === 'save') {
-        const ed = $('.item-edit', row);
-        await api(`/api/tasks/${t.id}`, { method: 'PATCH', body: { note: $('[name=note]', ed).value, link: $('[name=link]', ed).value } });
-        toast('Saved');
-        tasksTab(el, c, month);
-      }
       if (act === 'del') {
         if (!confirm('Delete this task?')) return;
         await api(`/api/tasks/${t.id}`, { method: 'DELETE' });
@@ -295,19 +309,16 @@ async function tasksTab(el, c, month) {
   };
 }
 
-function taskRow(t) {
+function taskRow(t, who = new Map()) {
   const on = t.status === 'done';
+  const meta = [t.due ? `due ${new Date(`${t.due}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '', t.owner ? who.get(t.owner) || 'assigned' : 'nobody assigned', t.status === 'doing' ? 'in progress' : '', t.link || t.proof_key ? 'proof added' : ''].filter(Boolean).join(' · ');
   return `<li class="item${on ? ' is-done' : ''}" data-task="${esc(t.id)}">
     <button class="check${on ? ' on' : ''}" data-act="toggle" aria-label="Mark done">${icon.check}</button>
-    <div><div class="item-title">${esc(t.title)}</div>${t.note ? `<div class="item-sub">${esc(t.note)}</div>` : ''}${t.link ? `<a class="small" href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.link)}</a>` : ''}</div>
+    <div data-act="open" class="task-open" role="button" tabindex="0"><div class="item-title">${esc(t.title)}</div><div class="item-sub">${esc(meta)}</div>${t.note ? `<div class="item-sub">${esc(t.note)}</div>` : ''}${t.link ? `<a class="small" href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.link)}</a>` : ''}</div>
     <div class="item-actions">
       <button class="icon-btn${t.client_visible ? '' : ' off'}" data-act="eye" title="Client can see this">${icon.eye}</button>
-      <button class="icon-btn" data-act="edit" title="Note and link">${icon.note}</button>
-    </div>
-    <div class="item-edit" hidden>
-      <input name="note" placeholder="Note (what was done)" value="${esc(t.note || '')}">
-      <input name="link" placeholder="Link (post, page, citation URL)" value="${esc(t.link || '')}">
-      <div class="row"><button class="btn btn-primary btn-sm" data-act="save">Save</button><button class="btn btn-danger btn-sm" data-act="del">Delete task</button></div>
+      <button class="icon-btn" data-act="open" title="Open the task">${icon.note}</button>
+      <button class="icon-btn" data-act="del" title="Delete">${icon.trash}</button>
     </div></li>`;
 }
 

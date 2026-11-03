@@ -87,6 +87,28 @@ const SCHEMA = [
     id TEXT PRIMARY KEY, client_id TEXT NOT NULL, quarter TEXT NOT NULL, data TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', token TEXT UNIQUE NOT NULL,
     created_at INTEGER NOT NULL, updated_at INTEGER, shared_at INTEGER)`,
   `CREATE UNIQUE INDEX IF NOT EXISTS quarterly_client_q ON quarterly_plans (client_id, quarter)`,
+  `CREATE TABLE IF NOT EXISTS guides (kind TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at INTEGER, updated_by TEXT)`,
+  `CREATE TABLE IF NOT EXISTS time_entries (
+    id TEXT PRIMARY KEY, task_id TEXT NOT NULL, client_id TEXT NOT NULL, user_id TEXT NOT NULL, kind TEXT, started_at INTEGER NOT NULL, ended_at INTEGER,
+    minutes INTEGER, manual INTEGER NOT NULL DEFAULT 0, note TEXT, created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS time_client ON time_entries (client_id, started_at)`,
+  `CREATE INDEX IF NOT EXISTS time_user ON time_entries (user_id, ended_at)`,
+  `CREATE INDEX IF NOT EXISTS time_task ON time_entries (task_id)`,
+  `CREATE TABLE IF NOT EXISTS client_access (
+    client_id TEXT NOT NULL, item TEXT NOT NULL, status TEXT NOT NULL, note TEXT, updated_at INTEGER, updated_by TEXT, PRIMARY KEY (client_id, item))`,
+  `CREATE TABLE IF NOT EXISTS meetings (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, title TEXT NOT NULL, start_at INTEGER NOT NULL, minutes INTEGER NOT NULL DEFAULT 30, meet_link TEXT,
+    event_id TEXT, event_link TEXT, event_owner TEXT, attendees TEXT, agenda TEXT, notes TEXT, summary TEXT, status TEXT NOT NULL DEFAULT 'scheduled',
+    task_id TEXT, reminded_at INTEGER, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS meetings_client ON meetings (client_id, start_at)`,
+  `CREATE INDEX IF NOT EXISTS meetings_start ON meetings (start_at)`,
+  `CREATE TABLE IF NOT EXISTS push_subs (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, endpoint TEXT UNIQUE NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, ua TEXT,
+    created_at INTEGER NOT NULL, last_ok INTEGER, fails INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS push_user ON push_subs (user_id)`,
+  `CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, url TEXT, tag TEXT, read_at INTEGER, created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS notif_user ON notifications (user_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS leads (
     id TEXT PRIMARY KEY, business TEXT NOT NULL, contact_name TEXT, phone TEXT, phone_digits TEXT, email TEXT, website TEXT,
@@ -131,6 +153,10 @@ const ADD_COLUMNS = [
   ['activities', 'answered_at INTEGER'], ['activities', 'rec_sid TEXT'], ['activities', 'rec_secs INTEGER'], ['activities', 'mon_sid TEXT'],
   ['activities', 'mon_by TEXT'], ['activities', 'mon_mode TEXT'], ['activities', 'dispo TEXT'], ['activities', 'note TEXT'],
   ['users', 'google_scopes TEXT'], ['clients', 'gsc_site TEXT'], ['clients', 'ga4_property TEXT'], ['clients', 'ads_customer TEXT'],
+  ['tasks', 'owner TEXT'], ['tasks', 'due TEXT'], ['tasks', 'proof_key TEXT'], ['tasks', 'proof_type TEXT'], ['tasks', 'checks TEXT'],
+  ['clients', 'owner_id TEXT'], ['clients', 'gbp_account TEXT'], ['clients', 'gbp_location TEXT'], ['clients', 'gbp_title TEXT'],
+  ['posts', 'live_url TEXT'], ['posts', 'gbp_name TEXT'],
+  ['activities', 'vm_sid TEXT'], ['activities', 'vm_secs INTEGER'], ['activities', 'seen_at INTEGER'], ['users', 'notify_prefs TEXT'],
 ];
 
 let ready = null;

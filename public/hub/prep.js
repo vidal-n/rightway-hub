@@ -1,6 +1,6 @@
 // Call prep: research snapshot, problems with talk tracks, the adaptive script, objections, booking, and presenting.
 import { $, $$, esc, api, toast, busy, modal, fmt, PLAN_NAMES, PLAN_PRICE } from './core.js';
-import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText } from '/js/leadintel.js';
+import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of } from '/js/leadintel.js';
 
 let customCache = null;
 export async function scriptSettings() {
@@ -28,7 +28,7 @@ function snapshot(lead, intel) {
   const top = intel.competitors?.[0];
   const cells = [
     ['Map rank', intel.found ? rankText(intel.rank) : 'No profile', intel.keyword ? `"${intel.keyword}" at their address` : ''],
-    ['Top 3 coverage', intel.grid ? `${intel.grid.top3} of ${intel.grid.points}` : '-', intel.grid ? `${intel.grid.radiusMiles} mile grid` : ''],
+    ['First page coverage', intel.grid ? `${top10Of(intel.grid)} of ${intel.grid.points}` : '-', intel.grid ? `${intel.grid.radiusMiles} mile grid, top 3 in ${intel.grid.top3}` : ''],
     ['Reviews', L.reviews != null ? `${L.reviews}${L.rating ? ` · ${L.rating.toFixed(1)}★` : ''}` : '-', top ? `#1 ${top.title}: ${top.reviews ?? '?'}` : ''],
     ['Mobile speed', intel.speed?.score != null ? `${intel.speed.score}/100` : intel.website?.blocked ? 'Blocked' : L.url || lead.website ? '-' : 'No site', intel.website?.platform || ''],
   ];

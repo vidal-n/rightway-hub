@@ -53,7 +53,7 @@ export async function portal(app, user, tab, state) {
   const v = shell(app, c, user, 'home', `${first ? `Hi ${first}` : 'Welcome'}`, c.name);
   v.innerHTML = `
     <div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin:0">
-      <div class="stat hero"><div class="stat-num" data-count="${o.lastScan?.top3Pct ?? 0}" data-suffix="%">0</div><div class="stat-label">${o.lastScan ? `of your area sees you in Google's top 3 for "${esc(o.lastScan.keyword)}"` : 'top 3 coverage (first scan coming)'}</div></div>
+      <div class="stat hero"><div class="stat-num" data-count="${o.lastScan?.top10Pct ?? 0}" data-suffix="%">0</div><div class="stat-label">${o.lastScan ? `of your area sees you on Google's first page (top 10) for "${esc(o.lastScan.keyword)}"` : 'first page coverage (first scan coming)'}</div></div>
       <div class="stat"><div class="stat-num" data-count="${o.tasks.done}">0</div><div class="stat-label">things we did for you this month</div></div>
       <div class="stat"><div class="stat-num" data-count="${o.reviews.sent}">0</div><div class="stat-label">review requests sent (${o.reviews.clicked} opened)</div></div>
       <div class="stat"><div class="stat-num" data-count="${o.posts.posted}">0</div><div class="stat-label">posts published this month</div></div>
@@ -66,10 +66,14 @@ export async function portal(app, user, tab, state) {
       <div class="row small"><span>${esc(fmt.month(o.month))}</span><span class="spacer"></span><b>${o.tasks.done} of ${o.tasks.total} done</b></div>
       <div class="progress" style="margin-top:8px"><span data-w="${pct}"></span></div>
     </div>
+    <div id="pmeet"></div>
+    <div id="ppush"></div>
     <div class="card"><div class="card-head"><h2>What we did</h2></div>${feedHtml(data.activity, 'Your first updates show up here as we work.')}</div>
     ${c.stripe_customer_id ? '<button class="btn btn-ghost btn-xl" id="pbill">Billing and invoices</button>' : ''}
     <p class="small" style="text-align:center">Tip: add this app to your home screen. On iPhone tap Share, then Add to Home Screen. On Android tap the menu, then Install app.</p>`;
   animateNumbers(v);
+  import('./meetings.js').then(async (m) => { const html = await m.nextMeetingCard(c.id); const box = $('#pmeet', v); if (box && html) box.innerHTML = html; }).catch(() => {});
+  if (!user.viewAs) import('./alerts.js').then((m) => m.pushPrompt($('#ppush', v), 'Get a note when your report is ready, a page needs your OK, or a meeting is booked.')).catch(() => {});
   if (c.plan === 'leader') {
     import('./leader.js').then(async (m) => {
       const html = await m.liveDashboard(c);

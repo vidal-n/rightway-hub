@@ -146,8 +146,41 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
 - Onboarding (built): first month tasks created on convert, lead research becomes the client baseline, Onboarding tab (before vs now, fix list,
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).
 - GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.
-- Not built yet: publishing to Google and Meta (needs Google Business Profile API approval and Meta app review; until then posts
-  are copied and marked posted), Google Business Profile data (Phase 5, needs API approval and V's own Google Business Profile first). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
+- Fulfillment workflow (built, `src/work.js`, `public/js/guides.js` pure and shared, `public/hub/work.js`): the task engine fills every active main client's
+  month on its own (`ensureMonthTasks` from the cron and `GET /api/work`), owner = `clients.owner_id` (Account manager on the client header), due dates from
+  `dueDate` (repeat tasks spread through the month, setup 10 days after start). My work `#/work` (Mine, Nobody assigned, Everyone, per person, per client;
+  overdue, today, next 7 days; bulk assign and due), task panel (`GET /api/tasks/:id`: guide steps as a checklist, timer, add time, access warnings, proof,
+  and tools per kind: posts to copy or publish, business details to copy and missing directories, audit issues and Log a fix, pages in progress, reviews
+  without a reply with Draft a reply, report and meeting status). Proof before close: `proofMissing` per guide (`link`, `screenshot`, `either`, `note`, `none`)
+  enforced in `PATCH /api/tasks/:id`; screenshots in R2 `proof/...`; skipping needs a note. Auto closes (report sent, page live, fix logged, link live,
+  meeting held, plan shared, post posted with a link) skip the proof check. Time: `time_entries`, one running timer per person, capped at 6 h, Hours page
+  `#/work/hours` (per client vs planned minutes from the guides, revenue per hour for owners, per person, per kind vs the guide). Guides `#/work/guides`,
+  owners edit (table `guides`, field by field over `DEFAULT_GUIDES`). Access checklist client tab `accesslist` (`ACCESS_ITEMS`, table `client_access`,
+  auto granted for WordPress saved, Search Console, GA4, Google profile linked, tracking number), gaps shown on My work. Monthly report gets "Proof of the work"
+  (links and screenshots, `/api/public/proof/:token/:taskId`).
+- Top 10 focus (built): headline numbers are first page (top 10) coverage everywhere (Hub, client app, reports, email, quarterly goals, roll-up, content
+  ideas, scan tool, pitch and presentation). `ladder()`, `bands()`, `gapTo`/`gapText`, `climbSteps` in `public/js/analysis.js`: who holds spots #1 to #10 by
+  average rank, where the client sits, what separates them from each business above (reviews, rating, main category, coverage), and the band by band climb.
+  Copy always says rank also depends on distance and relevance, never a promised spot. Pitch problem `not_top10` (high) and `not_top3` (medium, #4 to #10).
+- Meetings (built, `src/meetings.js`, `public/hub/meetings.js`, client tab `meetings`): Google Calendar event with Meet link and invite (`createMeeting`, move with
+  `moveMeeting`, cancel with `cancelEvent`), or a pasted link without Google. Agenda from the latest report (`agendaText`). Mark held needs notes, closes the
+  month's meeting task; summary shows in the client app home with a Join button.
+- Calls back and voicemail (built, `src/voicemail.js`, Inbox tab `#/inbox/calls`): unanswered or nobody available goes to `<Record>` (greeting editable,
+  settings `vm_greeting`), recording on the activity (`vm_sid`, `vm_secs`, `seen_at`), email to owners (or `vm_alert_to`), audio proxy `/api/voicemail/:id/audio`,
+  Call back from the browser, Add as lead. Incoming calls ring every saved mobile (up to 5) with the open Hubs; callbacks show "Calling back (you called ...)".
+- Notifications (built, `src/notify.js`, `public/hub/alerts.js`, `#/alerts`, service worker push handlers): Web Push with VAPID keys made once (settings `vapid`,
+  private key sealed) and aes128gcm payloads, no outside service. `notify()` writes the alert list (table `notifications`), pushes to `push_subs` by
+  `users.notify_prefs`, and posts to Slack for chosen kinds. Kinds: call, voicemail, text, task, client, lead, money, meeting (clients: update). Hooks: inbound
+  call (urgent), missed call and voicemail, inbound text, task assigned, 8am New York digest (`digestTick`), client approvals, uploads, intake and first report view,
+  website lead and booking, Stripe new client and failed payment, meeting 15 min reminder (`meetingReminders`), report sent, page ready and meeting booked
+  (to the client). Webhooks notify after the response via `defer` (execution context waitUntil). iPhone needs the Hub on the Home Screen.
+- Slack (built): owners paste an Incoming Webhook URL on the Alerts page (sealed in settings `slack_hook`, kinds in `slack_kinds`). Channel posts only, no DMs.
+- Phase 5 Google Business Profile (built, `src/gbp.js`, `public/hub/gbp.js`, client tab `gbp`, Google page app `gbp` scope business.manage): link a location
+  (`clients.gbp_account`, `gbp_location`), profile read and edit (description, phone, website), checks, Performance API calls, directions, website clicks,
+  views (last 30 vs previous 30, and in the monthly report), reviews list and reply, publish posts (`/api/posts/:id/gbp`, closes a post task with the live link)
+  and photos from uploads, via signed public media links `/api/public/m/...`. Reply drafts (`/api/clients/:id/review-reply`, Claude or templates). Not tested
+  against live Google: needs Google's Business Profile API access approval for the Cloud project. Q&A is not in the API.
+- Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 
 ## Stack

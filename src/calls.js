@@ -67,7 +67,9 @@ route('GET', '/api/me', async ({ env, user }) => {
 
 route('PUT', '/api/me/phone', async ({ env, user, body }) => {
   requireStaff(user);
-  const p = e164((await body()).phone);
+  const raw = String((await body()).phone || '').trim();
+  if (!raw) { await run(env, 'UPDATE users SET phone = NULL WHERE id = ?', user.id); return json({ phone: null }); }
+  const p = e164(raw);
   if (!p) throw new HttpError('Enter your mobile number with area code.');
   await run(env, 'UPDATE users SET phone = ? WHERE id = ?', p, user.id);
   return json({ phone: p });

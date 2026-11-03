@@ -8,6 +8,7 @@ import { FIRST_CHARGE_CENTS, MONTHLY_CENTS } from './plans.js';
 import { convertLead, logActivity } from './crm.js';
 import { route } from './router.js';
 import { webhookSecret, storedWebhookSecret, readSetup } from './stripekeys.js';
+import { notify } from './notify.js';
 
 const enc = new TextEncoder();
 const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
@@ -86,6 +87,8 @@ export async function handleStripeEvent(env, event) {
         billing_status = 'active', mrr_cents = COALESCE(mrr_cents, ?), status = 'active' WHERE id = ?`,
       o.customer || null, o.subscription || null, plan ? MONTHLY_CENTS[plan] : null, clientId);
     }
+    const who = lead?.business || email || 'Someone';
+    await notify(env, { to: 'admins', kind: 'money', title: clientId ? `New client: ${who}` : 'Payment received', body: `Paid $${((o.amount_total || 0) / 100).toFixed(2)} through Stripe${clientId ? '' : ', not matched to a lead yet'}.`, url: clientId ? `/#/client/${clientId}/overview` : '/#/payments' }).catch(() => {});
     return clientId ? 'linked' : 'unmatched';
   }
   if (event.type.startsWith('customer.subscription.')) {
@@ -102,6 +105,10 @@ export async function handleStripeEvent(env, event) {
     const paid = event.type === 'invoice.paid';
     await run(env, 'UPDATE clients SET billing_status = ? WHERE id = ?', paid ? 'active' : 'past_due', c.id);
     await logActivity(env, { client_id: c.id, type: 'payment', body: paid ? `Invoice paid: $${((o.amount_paid || 0) / 100).toFixed(2)}` : 'Payment failed. Stripe will retry.' });
+    if (!paid) {
+      const cl = await first(env, 'SELECT name FROM clients WHERE id = ?', c.id);
+      await notify(env, { to: 'admins', kind: 'money', title: `Payment failed: ${cl?.name || 'a client'}`, body: 'Stripe will retry. Check their card in the Billing tab.', url: `/#/client/${c.id}/billing` }).catch(() => {});
+    }
     return 'updated';
   }
   return 'ignored';

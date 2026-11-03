@@ -24,7 +24,7 @@ export async function keywordTrend(env, clientId) {
   return [...by.values()].slice(0, 5).map(([a, b]) => {
     const s = parse(a.summary) || {};
     const p = b ? parse(b.summary) || {} : null;
-    return { keyword: a.keyword, at: a.created_at, top3Pct: s.top3Pct ?? 0, avgRank: s.avgRank ?? null, centerRank: s.centerRank ?? null, change: p ? (s.top3Pct ?? 0) - (p.top3Pct ?? 0) : null };
+    return { keyword: a.keyword, at: a.created_at, top10Pct: s.top10Pct ?? 0, top3Pct: s.top3Pct ?? 0, avgRank: s.avgRank ?? null, centerRank: s.centerRank ?? null, change: p ? (s.top10Pct ?? 0) - (p.top10Pct ?? 0) : null };
   });
 }
 
@@ -46,7 +46,7 @@ async function snapshot(env, c, month) {
   const calls = tracked?.n ? await callStats(env, c.id, a, b) : null;
   return {
     id: c.id, name: c.name, address: c.address || '', isMain: !c.parent_id,
-    keywords, top3Avg: keywords.length ? Math.round(keywords.reduce((s, k) => s + k.top3Pct, 0) / keywords.length) : null,
+    keywords, top10Avg: keywords.length ? Math.round(keywords.reduce((s, k) => s + k.top10Pct, 0) / keywords.length) : null,
     reviews: target && (target.rating != null || target.reviews != null) ? { rating: target.rating ?? null, count: target.reviews ?? null } : null,
     calls: calls ? { total: calls.total, missed: calls.missed, firstTime: calls.firstTime } : null,
     site: site ? site.score : null, listings: listings?.n || 0,
@@ -59,12 +59,12 @@ export async function rollup(env, parent, month = monthKey()) {
   if (!kids.length) return null;
   const rows = await Promise.all([parent, ...kids].map((c) => snapshot(env, c, month)));
   const sum = (f) => rows.reduce((s, r) => s + (f(r) || 0), 0);
-  const withTop = rows.filter((r) => r.top3Avg != null);
+  const withTop = rows.filter((r) => r.top10Avg != null);
   return {
     month, locations: rows,
     totals: {
       count: rows.length, calls: sum((r) => r.calls?.total), missed: sum((r) => r.calls?.missed), reviews: sum((r) => r.reviews?.count), listings: sum((r) => r.listings),
-      top3Avg: withTop.length ? Math.round(withTop.reduce((s, r) => s + r.top3Avg, 0) / withTop.length) : null,
+      top10Avg: withTop.length ? Math.round(withTop.reduce((s, r) => s + r.top10Avg, 0) / withTop.length) : null,
     },
   };
 }

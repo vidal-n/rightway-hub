@@ -127,6 +127,7 @@ export async function researchLead(env, lead, { gridSize = 3, radiusMiles = 2, f
       intel.grid = {
         size: gridSize, radiusMiles, points: ok.length,
         top3: ranked.filter((c) => c.rank <= 3).length,
+        top10: ranked.filter((c) => c.rank <= 10).length,
         avg: ranked.length ? Math.round((ranked.reduce((s, c) => s + c.rank, 0) / ranked.length) * 10) / 10 : null,
         cells: cells.map(({ row, col, rank, error, top }) => ({ row, col, rank, error: Boolean(error), top: (top || []).slice(0, 3).map((t) => ({ title: t.title, rank: t.rank, rating: t.rating ?? null, reviews: t.reviews ?? null })) })),
       };

@@ -106,7 +106,7 @@ test('reports: email goes out through Resend with the private link, and automati
 });
 
 test('report email escapes names and has no dashes in copy', async () => {
-  const d = { monthLabel: 'November 2026', client: { name: 'Bob <script>' }, keywords: [{ keyword: 'a&b', now: { top3Pct: 20, centerRank: 3 }, before: { top3Pct: 10 } }], reviews: { count: 12, rating: 4.8 }, work: { done: 3 }, posts: 2 };
+  const d = { monthLabel: 'November 2026', client: { name: 'Bob <script>' }, keywords: [{ keyword: 'a&b', now: { top3Pct: 20, top10Pct: 20, centerRank: 3 }, before: { top3Pct: 10, top10Pct: 10 } }], reviews: { count: 12, rating: 4.8 }, work: { done: 3 }, posts: 2 };
   const m = reportEmail(d, 'https://x.test/report.html#t', 'Note <b>');
   assert.ok(!m.html.includes('<script>'));
   assert.ok(m.html.includes('a&amp;b'));

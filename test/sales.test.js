@@ -38,7 +38,7 @@ async function owner(t) {
 const INTEL = {
   at: Date.now(), found: true, keyword: 'roofing contractor', rank: 7,
   listing: { title: 'Summit Roofing', reviews: 18, rating: 4.1, category: 'Roofing contractor', claimed: false, hours: false, photos: 6, url: 'https://summit.example', additional_categories: [] },
-  grid: { size: 3, radiusMiles: 2, points: 9, top3: 1, avg: 9.4, cells: Array.from({ length: 9 }, (_, i) => ({ row: Math.floor(i / 3), col: i % 3, rank: i === 4 ? 7 : i + 2 })) },
+  grid: { size: 3, radiusMiles: 2, points: 9, top3: 1, avg: 9.4, cells: Array.from({ length: 9 }, (_, i) => ({ row: Math.floor(i / 3), col: i % 3, rank: i === 4 ? 7 : i < 3 ? i + 2 : null })) },
   competitors: [{ title: 'Coastal Roof Pros', reviews: 240, rating: 4.8 }, { title: 'Bayside Roofing', reviews: 97, rating: 4.5 }],
   website: { ok: true, https: false, title: 'Home', titleHasCity: false, titleHasService: false, schema: false, tel: false, viewport: true },
   speed: { score: 28, lcp: '7.1 s' },

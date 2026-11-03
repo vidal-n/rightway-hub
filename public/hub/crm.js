@@ -115,6 +115,7 @@ export async function pipelinePage(app, user) {
         </div>
         <div class="row" style="margin-top:10px"><label class="row small" style="gap:6px"><input type="checkbox" data-f="callable"${f.callable ? ' checked' : ''}> Callable right now</label>
           <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop3"${f.notTop3 ? ' checked' : ''}> Not in the top 3</label>
+          <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop10"${f.notTop10 ? ' checked' : ''}> Not on the first page</label>
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
       </div>
       <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)</button></div>
@@ -695,7 +696,7 @@ export async function settingsPage(app, user) {
     </div>
     <div class="card"><div class="card-head"><h2>Call script</h2></div>
       <p class="muted">The dialer and the presentation fill these in for each lead. One line per thing to say. Start a line with "Or:" for an alternative, and wrap coaching notes in (parentheses).</p>
-      <p class="small mono">{first} {rep} {my_number} {business} {city} {industry} {keyword} {scan_line} {hook_impact} {opener_reason} {vm_scan} {rank} {top_name} {top_name_or_them} {top_reviews} {top3_of_points} {reviews} {rating} {plan} {plan_why} {price} {setup} {starter_price} {ticket} {breakeven} {breakeven_jobs} {problems} {slot1} {slot2} {email_or_phone} {email_or_ask}</p>
+      <p class="small mono">{first} {rep} {my_number} {business} {city} {industry} {keyword} {scan_line} {hook_impact} {opener_reason} {vm_scan} {rank} {top_name} {top_name_or_them} {top_reviews} {top3_of_points} {top10_of_points} {reviews} {rating} {plan} {plan_why} {price} {setup} {starter_price} {ticket} {breakeven} {breakeven_jobs} {problems} {slot1} {slot2} {email_or_phone} {email_or_ask}</p>
       <form id="scf" class="form-grid" style="grid-template-columns:1fr">
         ${SCRIPT_KEYS.map(([k, n]) => `<label class="field"><span>${n}</span><textarea name="${k}" rows="${Math.min(9, Math.max(3, String(sc[k] || '').split('\n').length + 1))}"${isAdmin ? '' : ' disabled'}>${esc(Array.isArray(sc[k]) ? sc[k].join('\n') : sc[k])}</textarea></label>`).join('')}
         <label class="field"><span>Objections (one per block: the objection on the first line, the answer below, blank line between)</span><textarea name="objections" rows="14"${isAdmin ? '' : ' disabled'}>${esc(obs.map(([q, a]) => `${q}\n${a}`).join('\n\n'))}</textarea></label>

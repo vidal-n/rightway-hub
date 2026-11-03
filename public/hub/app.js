@@ -120,7 +120,9 @@ async function route() {
     if (parts[1] === 'setup') return phoneSetupPage(app, u);
     return dialerPage(app, u);
   }
-  if (parts[0] === 'inbox') return inboxPage(app, u);
+  if (parts[0] === 'inbox') return inboxPage(app, u, parts[1]);
+  if (parts[0] === 'work') return import('./work.js').then((m) => m.workPage(app, u, parts[1] || '', parts[2] || ''));
+  if (parts[0] === 'alerts') return import('./alerts.js').then((m) => m.alertsPage(app, u));
   if (parts[0] === 'payments') return paymentsPage(app, u);
   if (parts[0] === 'google') return googlePage(app, u);
   if (parts[0] === 'settings') return settingsPage(app, u);

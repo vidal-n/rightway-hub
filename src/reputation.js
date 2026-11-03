@@ -97,7 +97,8 @@ const auth = (env) => `Basic ${btoa(`${env.DATAFORSEO_LOGIN}:${env.DATAFORSEO_PA
 export function slimReviews(items = []) {
   return items.filter((i) => i && (i.type === 'google_reviews_search' || i.type === 'google_review' || i.rating)).map((i) => {
     const ts = Date.parse(String(i.timestamp || '').replace(' +00:00', 'Z').replace(' ', 'T'));
-    return { rating: Number(i.rating?.value ?? i.rating) || null, text: String(i.review_text || i.original_review_text || '').slice(0, 1200), at: Number.isFinite(ts) ? ts : null, reply: Boolean(i.owner_answer) };
+    return { rating: Number(i.rating?.value ?? i.rating) || null, text: String(i.review_text || i.original_review_text || '').slice(0, 1200), at: Number.isFinite(ts) ? ts : null, reply: Boolean(i.owner_answer),
+      name: i.profile_name ? String(i.profile_name).slice(0, 80) : null, url: /^https:\/\//.test(i.review_url || '') ? String(i.review_url).slice(0, 500) : null };
   }).filter((r) => r.rating && r.at);
 }
 

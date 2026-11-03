@@ -230,10 +230,11 @@ export async function joinCall({ act, mode = 'listen', name, number, rep } = {})
 
 function onIncoming(call) {
   const cp = call.customParameters || new Map();
-  const view = { state: 'incoming', label: 'Incoming call', incoming: true, name: cp.get('who') || '', number: cp.get('caller') || call.parameters?.From || '', from: cp.get('called') || '' };
+  const ctx = cp.get('context') || '';
+  const view = { state: 'incoming', label: ctx || 'Incoming call', incoming: true, name: cp.get('who') || '', number: cp.get('caller') || call.parameters?.From || '', from: cp.get('called') || '' };
   track(call, view);
   if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-    try { new Notification('Incoming call', { body: view.name || pretty(view.number), tag: 'rw-call' }); } catch { /* ignore */ }
+    try { new Notification(ctx ? `Call back: ${view.name || pretty(view.number)}` : 'Incoming call', { body: view.name ? `${view.name} · ${pretty(view.number)}` : pretty(view.number), tag: 'rw-call', requireInteraction: true }); } catch { /* ignore */ }
   }
 }
 

@@ -6,6 +6,7 @@ import { PLANS, tasksForMonth, monthKey } from './plans.js';
 import { route } from './router.js';
 import { scoreLead, dupKeys } from '../public/js/leadintel.js';
 import { resolveDispo } from './dispo.js';
+import { notifyLater } from './notify.js';
 
 export const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won', 'not_now', 'lost', 'dnc'];
 const CALLABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
@@ -435,7 +436,7 @@ export function corsHeaders(request) {
 
 route('OPTIONS', '/api/public/lead', async ({ request }) => new Response(null, { status: 204, headers: corsHeaders(request) }), { public: true });
 
-route('POST', '/api/public/lead', async ({ env, request }) => {
+route('POST', '/api/public/lead', async ({ env, request, defer }) => {
   const ct = request.headers.get('content-type') || '';
   const b = ct.includes('json') ? await request.json().catch(() => ({})) : Object.fromEntries((await request.formData().catch(() => new FormData())).entries());
   const headers = corsHeaders(request);
@@ -452,6 +453,7 @@ route('POST', '/api/public/lead', async ({ env, request }) => {
   data.next_action = 'Call within 5 minutes: website audit request';
   const id = await insertLead(env, data, null);
   await logActivity(env, { lead_id: id, type: 'stage', body: `Website audit request${data.sms_consent ? ' (agreed to texts)' : ''}` });
+  await notifyLater({ env, defer }, { to: 'staff', kind: 'lead', title: `New audit request: ${data.business || data.contact_name || 'website form'}`, body: [data.contact_name, data.phone, data.city].filter(Boolean).join(' · ') + '. Call within 5 minutes.', url: `/#/pipeline`, urgent: true });
   const redirect = b.redirect && /^https:\/\/(www\.)?rightwaygrowth\.com\//.test(b.redirect) ? b.redirect : null;
   if (!ct.includes('json') && redirect) return Response.redirect(redirect, 303);
   return json({ ok: true }, 200, headers);

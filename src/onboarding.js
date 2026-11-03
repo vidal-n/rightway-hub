@@ -7,6 +7,7 @@ import { route } from './router.js';
 import { researchLead } from './intel.js';
 import { findProblems } from '../public/js/leadintel.js';
 import { citations, gbpChecklist, reviewTarget, ninetyDayPlan, compareIntel } from '../public/js/fulfill.js';
+import { notify } from './notify.js';
 
 const MAX = 10 * 1024 * 1024;
 const parse = (s) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
@@ -74,6 +75,7 @@ route('PUT', '/api/clients/:id/intake', async ({ env, user, params, body }) => {
   await run(env, `UPDATE clients SET intake = ?, intake_at = COALESCE(intake_at, ?), services = COALESCE(?, services), cities = COALESCE(?, cities),
     phone = COALESCE(phone, ?) WHERE id = ?`, JSON.stringify(next), done ? now() : null, next.services || null, next.cities || null, next.phone || null, c.id);
   await run(env, 'INSERT INTO log (id, client_id, text, at, by) VALUES (?, ?, ?, ?, ?)', newId('l_'), c.id, 'Business details updated', now(), user.id);
+  if (user.role === 'client') await notify(env, { to: { client: c.id }, kind: 'client', title: `${c.name} updated their business details`, body: 'Check the Onboarding tab.', url: `/#/client/${c.id}/onboarding` }).catch(() => {});
   return json({ ok: true, intake: next });
 });
 
@@ -100,6 +102,7 @@ route('POST', '/api/clients/:id/assets', async ({ env, user, params, request }) 
     ids.push(id);
   }
   await run(env, 'INSERT INTO log (id, client_id, text, at, by) VALUES (?, ?, ?, ?, ?)', newId('l_'), c.id, `${ids.length} ${kind === 'logo' ? 'logo' : kind === 'doc' ? 'file' : 'photo'}${ids.length === 1 ? '' : 's'} uploaded`, now(), user.id);
+  if (user.role === 'client') await notify(env, { to: { client: c.id }, kind: 'client', title: `${c.name} uploaded ${ids.length} ${kind === 'logo' ? 'logo' : kind === 'doc' ? 'file' : 'photo'}${ids.length === 1 ? '' : 's'}`, body: 'Use them for posts and the Google profile.', url: `/#/client/${c.id}/onboarding` }).catch(() => {});
   return json({ ok: true, ids });
 });
 

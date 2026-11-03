@@ -1,6 +1,6 @@
 import { gridPoints, gridStats, estimateCost, UNRANKED } from './js/grid.js';
 import {
-  profileChecklist, categoryGap, planMath, sameBusiness, rankAt, leaderboard, findings, fixFirst,
+  profileChecklist, categoryGap, planMath, sameBusiness, rankAt, leaderboard, findings, fixFirst, ladder,
 } from './js/analysis.js';
 import { createMap } from './js/map.js';
 
@@ -254,13 +254,13 @@ function renderKwTabs() {
     const st = gridStats(sc.points);
     const running = state.batchRunning && i === state.batchIdx;
     const waiting = state.batchRunning && i > state.batchIdx;
-    const label = waiting ? 'Waiting' : running ? `Scanning ${Math.round((100 * (st.done + st.errors)) / st.total)}%` : `${st.top3Pct}% top 3`;
+    const label = waiting ? 'Waiting' : running ? `Scanning ${Math.round((100 * (st.done + st.errors)) / st.total)}%` : `${st.top10Pct}% first page`;
     return `<button type="button" class="kw-tab${sc === state.scan ? ' is-on' : ''}" data-kw="${i}"${state.batchRunning ? ' disabled' : ''}>
       <b>${esc(sc.keyword)}</b><span>${esc(label)}</span></button>`;
   }).join('');
   const done = !state.batchRunning && b.every((sc) => sc.completedAt);
-  box.innerHTML = `<div class="kw-tabs">${rows}</div>${done ? `<table class="kw-sum"><thead><tr><th>Keyword</th><th>Top 3 coverage</th><th>First page</th><th>Average rank</th><th>At the address</th></tr></thead><tbody>
-    ${b.map((sc) => { const st = gridStats(sc.points); return `<tr><td>${esc(sc.keyword)}</td><td><b>${st.top3Pct}%</b></td><td>${st.top10Pct}%</td><td>${st.avgRank ?? '-'}</td><td>${st.centerRank ? `#${st.centerRank}` : '20+'}</td></tr>`; }).join('')}</tbody></table>` : ''}`;
+  box.innerHTML = `<div class="kw-tabs">${rows}</div>${done ? `<table class="kw-sum"><thead><tr><th>Keyword</th><th>First page (top 10)</th><th>Top 3</th><th>Average rank</th><th>At the address</th></tr></thead><tbody>
+    ${b.map((sc) => { const st = gridStats(sc.points); return `<tr><td>${esc(sc.keyword)}</td><td><b>${st.top10Pct}%</b></td><td>${st.top3Pct}%</td><td>${st.avgRank ?? '-'}</td><td>${st.centerRank ? `#${st.centerRank}` : '20+'}</td></tr>`; }).join('')}</tbody></table>` : ''}`;
   box.querySelectorAll('[data-kw]').forEach((btn) => btn.addEventListener('click', () => {
     if (state.batchRunning) return;
     const sc = b[Number(btn.dataset.kw)];
@@ -485,9 +485,9 @@ function feedCard(scan, i, n, total) {
     <div class="sphone">
       <div class="sbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg><span class="stype" style="--n:${Math.min(40, scan.keyword.length)}">${esc(scan.keyword)}</span></div>
       <ol class="sres">${list.map((b, k) => `<li style="--k:${k}" class="${sameBusiness(b, t) ? 'is-you' : ''}"><span class="sres-n">${b.rank}</span><span class="sres-name">${esc(b.title)}</span>${b.reviews != null ? `<span class="sres-meta">${b.rating != null ? `${Number(b.rating).toFixed(1)}&#9733; ` : ''}(${fmtInt(b.reviews)})</span>` : ''}</li>`).join('') || '<li class="sres-empty">No businesses came back here</li>'}</ol>
-      ${youIn ? '' : `<div class="sres-you ${rank ? (rank <= 10 ? 'mid' : 'low') : 'none'}" style="--k:3"><span class="sres-n">${rank || '20+'}</span><span class="sres-name">${esc(t.title)}</span><span class="sres-meta">${rank ? (rank <= 10 ? 'below the top 3' : 'off the first page') : 'not in the top 20'}</span></div>`}
+      ${youIn ? '' : `<div class="sres-you ${rank ? (rank <= 10 ? 'mid' : 'low') : 'none'}" style="--k:3"><span class="sres-n">${rank || '20+'}</span><span class="sres-name">${esc(t.title)}</span><span class="sres-meta">${rank ? (rank <= 10 ? 'on the first page' : 'off the first page') : 'not in the top 20'}</span></div>`}
     </div>
-    <p class="sfeed-verdict ${rank && rank <= 3 ? 'good' : 'bad'}">${rank && rank <= 3 ? `A customer here sees ${esc(t.title)} in the top 3.` : `A customer here calls ${esc(list[0]?.title || 'someone else')} first.`}</p>
+    <p class="sfeed-verdict ${rank && rank <= 10 ? 'good' : 'bad'}">${rank && rank <= 3 ? `A customer here sees ${esc(t.title)} near the top.` : rank && rank <= 10 ? `A customer here sees ${esc(t.title)} at #${rank}, on the first page.` : `A customer here calls ${esc(list[0]?.title || 'someone else')} first.`}</p>
   </div>`;
 }
 
@@ -547,8 +547,8 @@ async function replay(scan) {
   state.map?.scanning(-1);
   state.map?.setRankOf(base);
   const s = gridStats(scan.points);
-  if (box) box.innerHTML = `<div class="sfeed"><p class="eyebrow">Replay done</p><h3>${s.top3} of ${s.done} spots see ${esc(scan.target.title)} in the top 3</h3>
-    <p class="muted">${s.done - s.top3} spots send that customer to someone else first. Click any circle to see who.</p></div>`;
+  if (box) box.innerHTML = `<div class="sfeed"><p class="eyebrow">Replay done</p><h3>${s.top10} of ${s.done} spots see ${esc(scan.target.title)} on the first page</h3>
+    <p class="muted">${s.done - s.top10} spots never show them on the first page, and ${s.top3} show them in the top 3. Click any circle to see who.</p></div>`;
   if (btn) { btn.disabled = false; btn.textContent = 'Replay the scan'; }
 }
 
@@ -616,9 +616,9 @@ function renderStats(scan, s, animate) {
   if (!box) return;
   const center = s.centerRank === undefined ? null : s.centerRank;
   const tiles = [
-    { id: 'st-top3', num: s.top3Pct, suffix: '%', label: `of the area sees them in the top 3 (${s.top3} of ${s.done || s.total} points)`, tone: s.done ? (s.top3Pct >= 50 ? 'good' : 'bad') : '' },
+    { id: 'st-top10', num: s.top10Pct, suffix: '%', label: `of the area sees them on the first page, top 10 (${s.top10} of ${s.done || s.total} points)`, tone: s.done ? (s.top10Pct >= 50 ? 'good' : 'bad') : '' },
     { id: 'st-avg', num: s.avgRank, decimals: 1, label: `average rank across the grid (not in the top 20 counts as ${UNRANKED})` },
-    { id: 'st-top10', num: s.top10Pct, suffix: '%', label: 'of the area sees them on the first page (top 10)' },
+    { id: 'st-top3', num: s.top3Pct, suffix: '%', label: 'of the area sees them in the top 3' },
     { id: 'st-center', num: center, prefix: '#', label: 'rank right at their own address', none: s.centerRank === null ? '20+' : null },
   ];
   box.innerHTML = tiles.map((t) => `
@@ -649,7 +649,7 @@ function renderAnalysis(scan, animate) {
     state.map?.setRankOf(viewRankOf(scan));
     const v = state.view;
     $('#r-view-caption').textContent = v
-      ? `Showing ${v.title}: top 3 at ${v.top3Points} of ${s.done} points, average rank ${v.avgRank}.`
+      ? `Showing ${v.title}: first page at ${v.top10Points} of ${s.done} points, average rank ${v.avgRank}.`
       : `Each circle is a Google search for "${scan.keyword}" from that spot. The center circle is the business address.`;
   };
 
@@ -667,32 +667,35 @@ function renderAnalysis(scan, animate) {
         : '<p class="muted">No profile gaps against the top competitors. The work here is content, links, and steady reviews.</p>'}
     </div>`;
 
-  // Share of local voice
-  const all = [board.target, ...board.rows].filter(Boolean).sort((a, b) => b.top3Points - a.top3Points || a.avgRank - b.avgRank);
+  // The top 10 ladder: who usually holds each spot, and what separates them from the business scanned.
+  const lad = ladder(scan.points, t, 10);
+  const rowsL = lad.target && lad.position > 10 ? [...lad.rows, lad.target] : lad.rows;
   $('#r-board').innerHTML = `
     <div class="reveal">
-      <h2>Who owns this area</h2>
-      <p class="muted">Share of the grid where each business shows in the top 3. ${esc(t.title)} is #${board.position} of ${board.total} businesses seen.</p>
+      <h2>Who holds the top 10</h2>
+      <p class="muted">Ordered by average spot across the grid. ${esc(t.title)} is #${lad.position} of ${lad.total} businesses seen${lad.target ? `, average rank ${lad.target.avgRank}` : ''}.</p>
       <div class="table-wrap"><table class="board">
-        <thead><tr><th>Business</th><th class="w-bar">Top 3 share</th><th>Avg rank</th><th>Top 10 spots</th><th>Rating</th><th>Reviews</th></tr></thead>
-        <tbody>${all.map((b) => `
+        <thead><tr><th>Spot</th><th>Business</th><th class="w-bar">First page share</th><th>Avg rank</th><th>Rating</th><th>Reviews</th><th>To pass them</th></tr></thead>
+        <tbody>${rowsL.map((b) => `
           <tr class="${b.isTarget ? 'is-target' : ''}">
+            <td class="num">#${b.position}</td>
             <td>${esc(b.title)}${b.isTarget ? ' (you)' : ''}</td>
-            <td class="w-bar"><div class="bar"><span style="--w:${b.sov}%"></span></div><span class="bar-num">${b.sov}%</span></td>
+            <td class="w-bar"><div class="bar"><span style="--w:${b.sov10}%"></span></div><span class="bar-num">${b.sov10}%</span></td>
             <td class="num">${b.avgRank}</td>
-            <td class="num">${b.top10Points} of ${s.done}</td>
             <td class="num">${b.rating != null ? Number(b.rating).toFixed(1) : '-'}</td>
             <td class="num">${fmtInt(b.reviews)}</td>
+            <td class="small">${!b.isTarget && lad.target && b.position < lad.position ? esc(b.gapText || '-') : ''}</td>
           </tr>`).join('')}
         </tbody>
       </table></div>
+      <p class="small muted">Rank also depends on distance and how well the business matches the search, so the gaps show what to work on, not a promised spot.</p>
     </div>`;
 
   // Head to head
   const rows = [{ ...t, isTarget: true }, ...comps];
   $('#r-h2h').innerHTML = `
     <div class="reveal">
-      <h2>Head to head with the top 3</h2>
+      <h2>Head to head with the leaders</h2>
       <div class="table-wrap"><table>
         <thead><tr><th>Business</th><th>Rating</th><th>Reviews</th><th>Photos</th><th>Categories</th><th>Website</th><th>Primary category</th></tr></thead>
         <tbody>${rows.map((b) => `

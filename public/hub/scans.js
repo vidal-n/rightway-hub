@@ -132,9 +132,9 @@ export function trendCard(scans) {
     return `<span class="small ${better ? 'good-text' : 'bad-text'}">${better ? 'better' : 'worse'} by ${Math.abs(d)}${unit}</span>`;
   };
   return `<div class="card"><div class="card-head"><h2>Keyword trend</h2><span class="small muted">latest scan vs the one before</span></div>
-    <div class="table-wrap"><table><thead><tr><th>Keyword</th><th>Top 3 coverage</th><th>Average rank</th><th>At address</th><th>Last scan</th></tr></thead><tbody>
+    <div class="table-wrap"><table><thead><tr><th>Keyword</th><th>First page (top 10)</th><th>Average rank</th><th>At address</th><th>Last scan</th></tr></thead><tbody>
     ${rows.map(({ now, before }) => `<tr><td>${esc(now.keyword)}</td>
-      <td><b>${now.top3Pct ?? 0}%</b> ${before ? delta(now.top3Pct, before.top3Pct, false, ' pts') : ''}</td>
+      <td><b>${now.top10Pct ?? 0}%</b> ${before ? delta(now.top10Pct, before.top10Pct, false, ' pts') : ''}</td>
       <td><b>${now.avgRank ?? '-'}</b> ${before ? delta(now.avgRank, before.avgRank, true) : ''}</td>
       <td>${now.centerRank ? `#${now.centerRank}` : '20+'}${before && now.centerRank && before.centerRank && now.centerRank !== before.centerRank ? ` <span class="small muted">was #${before.centerRank}</span>` : ''}</td>
       <td>${esc(fmt.date(now.created_at))}${now.auto ? ' <span class="badge gray">auto</span>' : ''}</td></tr>`).join('')}

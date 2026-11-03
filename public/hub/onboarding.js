@@ -77,12 +77,13 @@ export async function onboardingTab(el, c) {
         <div><p class="small">Baseline from ${esc(fmt.date(b.at))}${now ? `, latest check ${esc(fmt.date(now.at))}` : ''}. Keyword: "${esc(b.keyword || '')}"</p>
           ${cmp ? `<div class="table-wrap"><table><thead><tr><th></th><th>Before</th><th>Now</th><th>Change</th></tr></thead><tbody>
             <tr><td>Rank at their address</td><td>${esc(rankText(cmp.rank.before))}</td><td>${esc(rankText(cmp.rank.after))}</td><td>${cmp.rank.better ? '<span class="badge">Better</span>' : ''}</td></tr>
+            ${cmp.top10 ? `<tr><td>First page spots in the grid (top 10)</td><td>${cmp.top10.before ?? '-'}</td><td>${cmp.top10.after ?? '-'}</td><td>${cmp.top10.change != null ? `${cmp.top10.change > 0 ? '+' : ''}${cmp.top10.change}` : ''}</td></tr>` : ''}
             <tr><td>Top 3 spots in the grid</td><td>${cmp.top3.before ?? '-'}</td><td>${cmp.top3.after ?? '-'}</td><td>${cmp.top3.change != null ? `${cmp.top3.change > 0 ? '+' : ''}${cmp.top3.change}` : ''}</td></tr>
             <tr><td>Google reviews</td><td>${cmp.reviews.before ?? '-'}</td><td>${cmp.reviews.after ?? '-'}</td><td>${cmp.reviews.change != null ? `${cmp.reviews.change > 0 ? '+' : ''}${cmp.reviews.change}` : ''}</td></tr>
             <tr><td>Rating</td><td>${cmp.rating.before ?? '-'}</td><td>${cmp.rating.after ?? '-'}</td><td></td></tr>
             <tr><td>Mobile speed</td><td>${cmp.speed.before ?? '-'}</td><td>${cmp.speed.after ?? '-'}</td><td>${cmp.speed.change != null ? `${cmp.speed.change > 0 ? '+' : ''}${cmp.speed.change}` : ''}</td></tr>
             <tr><td>Problems found</td><td>${cmp.problems.before}</td><td>${cmp.problems.after}</td><td></td></tr></tbody></table></div>`
-            : `<p>Rank ${esc(rankText(b.rank))} · top 3 in ${b.grid?.top3 ?? '-'} of ${b.grid?.points ?? '-'} spots · ${b.listing?.reviews ?? '-'} reviews · speed ${b.speed?.score ?? '-'}</p>`}
+            : `<p>Rank ${esc(rankText(b.rank))} · first page in ${b.grid ? (b.grid.top10 ?? (b.grid.cells || []).filter((x) => x.rank != null && x.rank <= 10).length) : '-'} of ${b.grid?.points ?? '-'} spots · ${b.listing?.reviews ?? '-'} reviews · speed ${b.speed?.score ?? '-'}</p>`}
           ${d.problems.length ? `<h3 style="margin-top:14px">Fix list from the baseline</h3><ul class="probs">${d.problems.map((p) => `<li class="prob sev-${p.severity}"><div class="item-title">${esc(p.title)}</div><div class="small">${esc(p.fix)}</div></li>`).join('')}</ul>` : ''}</div>
         <div>${miniGrid((now || b).grid)}</div></div>`}
     </div>

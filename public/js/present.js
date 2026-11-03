@@ -1,6 +1,6 @@
 // Presentation mode: a tailored deck for one lead, built from the research, with a presenter view in a second window.
 // Open /present.html#<leadId>. Presenter view: /present.html?presenter=1#<leadId>. Keys: arrows or space, F fullscreen, P presenter view.
-import { findProblems, recommendPlan, industryInfo, rankText, buildScript, roi } from './leadintel.js';
+import { findProblems, recommendPlan, industryInfo, rankText, buildScript, roi, top10Of } from './leadintel.js';
 import { ninetyDayPlan, reviewTarget } from './fulfill.js';
 import { INCLUDES, STANDARD_TERMS, PLAN_INFO } from './plancopy.js';
 import { qrSvg } from './qr.js';
@@ -59,14 +59,14 @@ function slides() {
     <div class="cols c2" style="align-items:start"><div class="pack anim"><div class="q">🔍 ${esc(kw)}</div>
       ${comps.map((c, i) => `<div class="row"><span class="pin">${String.fromCharCode(65 + i)}</span><div><b>${esc(c.title)}</b><br><span style="font-size:18px;color:#61716B">${c.rating ? stars(c.rating) : ''} (${c.reviews ?? 0})</span></div></div>`).join('') || '<div class="row">Run research to show the live map pack.</div>'}
       ${intel ? `<div class="row you"><span class="pin">${intel.rank && intel.rank <= 20 ? intel.rank : '?'}</span><div><b>${esc(lead.business)}</b><br><span style="font-size:18px;color:#61716B">You: ${esc(rankText(intel.rank))}${L.reviews != null ? ` · ${L.reviews} reviews` : ''}</span></div></div>` : ''}</div>
-      <div class="anim"><div class="box"><h3>Why the top 3 matters</h3><p>Most people call one of the first three businesses they see on the map. Those spots are earned with a complete Google profile, reviews, a website Google trusts, and steady activity. Every one of those is something we can work on.</p></div></div></div>`,
-  `Teach them something about their own market:\n"This is exactly what your customer sees when they search ${kw}. Most people call one of these first three and never scroll."\n${comps[0] ? `${comps[0].title} gets the first look with ${comps[0].reviews ?? 'a lot of'} reviews.\n` : ''}You come up ${intel ? rankText(intel.rank) : '(run research first)'}.\n\nAsk: "When you search your own service, where do you see yourself?"`);
+      <div class="anim"><div class="box"><h3>Why every spot matters</h3><p>Most people call one of the first businesses they see on the map, and few look past the first page. Each spot higher gets more of the calls. Spots are earned with a complete Google profile, reviews, a website Google trusts, and steady activity. Every one of those is something we can work on.</p></div></div></div>`,
+  `Teach them something about their own market:\n"This is exactly what your customer sees when they search ${kw}. Most people call one of the first few and few scroll past the first page."\n${comps[0] ? `${comps[0].title} gets the first look with ${comps[0].reviews ?? 'a lot of'} reviews.\n` : ''}You come up ${intel ? rankText(intel.rank) : '(run research first)'}.\n\nAsk: "When you search your own service, where do you see yourself?"`);
 
   if (intel?.grid) {
     const g = intel.grid;
     const band = (c) => (c.error ? 'err' : c.rank == null ? 'none' : c.rank <= 3 ? 'top3' : c.rank <= 10 ? 'top10' : 'top20');
     const mid = Math.floor(g.cells.length / 2);
-    add('grid', 'The scan', `<p class="kicker">The scan</p><h2>${g.top3 ? `Top 3 in ${g.top3} of ${g.points} spots` : 'Not in the top 3 anywhere we checked'}</h2>
+    add('grid', 'The scan', `<p class="kicker">The scan</p><h2>${top10Of(g) ? `First page in ${top10Of(g)} of ${g.points} spots` : 'Not on the first page anywhere we checked'}</h2>
       <div class="cols" style="grid-template-columns:auto 1fr;align-items:center;gap:72px">
         <div><div class="biggrid" id="biggrid" style="grid-template-columns:repeat(${g.size},1fr)">${g.cells.map((c, i) => `<span data-i="${i}" data-band="${band(c)}" class="${band(c)}${i === mid ? ' center' : ''}">${c.error ? '!' : c.rank ?? '20+'}</span>`).join('')}</div>
           <div class="legend"><span><i style="background:#23B07E"></i>Top 3</span><span><i style="background:#E8A33D"></i>4 to 10</span><span><i style="background:#E07B39"></i>11 to 20</span><span><i style="background:#D64545"></i>Not found</span><button class="replay" id="greplay" type="button">Replay</button></div></div>
@@ -74,19 +74,19 @@ function slides() {
           <div class="gphone" id="gphone" hidden></div>
           <div class="gstats" id="gstats" style="display:grid;gap:22px">
             <div class="box"><div class="num">${esc(rankText(intel.rank).replace('not in the top 20', '20+'))}</div><div class="label">at your own address for "${esc(kw)}"</div></div>
-            <div class="box"><div class="num">${g.top3}<small> of ${g.points}</small></div><div class="label">spots where you are in the top 3, within ${g.radiusMiles} miles</div></div>
+            <div class="box"><div class="num">${top10Of(g)}<small> of ${g.points}</small></div><div class="label">spots where you are on the first page (top 10), within ${g.radiusMiles} miles</div></div>
             <div class="box"><div class="num">${g.avg ?? '20+'}</div><div class="label">average rank across the area</div></div></div></div></div>`,
-    `Let the scan play. Narrate it:\n"I stood in ${g.points} spots around ${lead.business}, up to ${g.radiusMiles} miles out, and searched ${kw} on Google the way a customer does. Watch who comes up at each spot."\n\nWhen it finishes: "${g.top3} of ${g.points}. Every red and orange square is a customer who called someone else."\n\nThen ask and wait: "What do you think that's costing you?"\n\n(Press Replay on the slide to run it again.)`);
+    `Let the scan play. Narrate it:\n"I stood in ${g.points} spots around ${lead.business}, up to ${g.radiusMiles} miles out, and searched ${kw} on Google the way a customer does. Watch who comes up at each spot."\n\nWhen it finishes: "First page in ${top10Of(g)} of ${g.points}. Every red and orange square is a customer who called someone else."\n\nThen ask and wait: "What do you think that's costing you?"\n\n(Press Replay on the slide to run it again.)`);
   }
 
   if (comps.length) {
     const rows = [{ title: lead.business, rating: L.rating, reviews: L.reviews, category: L.category, site: L.url || lead.website, you: true }, ...comps.map((c) => ({ title: c.title, rating: c.rating, reviews: c.reviews, category: c.category, site: c.domain }))];
     const maxRev = Math.max(...rows.map((x) => x.reviews || 0));
-    add('vs', 'You vs the top 3', `<p class="kicker">You vs the top 3</p><h2>${comps[0].reviews > (L.reviews || 0) ? `${esc(comps[0].title)} has ${comps[0].reviews - (L.reviews || 0)} more reviews` : 'How you stack up'}</h2>
+    add('vs', 'You vs the leaders', `<p class="kicker">You vs the leaders</p><h2>${comps[0].reviews > (L.reviews || 0) ? `${esc(comps[0].title)} has ${comps[0].reviews - (L.reviews || 0)} more reviews` : 'How you stack up'}</h2>
       <table class="vs anim"><thead><tr><th>Business</th><th>Reviews</th><th>Rating</th><th>Google category</th><th>Website</th></tr></thead><tbody>
       ${rows.map((x) => `<tr class="${x.you ? 'you' : ''}"><td>${x.you ? '★ ' : ''}${esc(x.title)}</td><td class="${x.reviews === maxRev ? 'good' : x.you ? 'badv' : ''}">${x.reviews ?? '-'}</td><td>${x.rating ? stars(x.rating) : '-'}</td><td>${esc(x.category || '-')}</td><td>${x.site ? '✓' : '<span class="badv">None</span>'}</td></tr>`).join('')}
       </tbody></table>`,
-    `These are the businesses winning the most top 3 spots around you.\n${comps.map((c) => `${c.title}: ${c.reviews ?? '?'} reviews, ${c.rating ?? '?'} stars`).join('\n')}\nYou: ${L.reviews ?? '?'} reviews, ${L.rating ?? '?'} stars.\n\nAsk: "Do you know these guys? Is their work better than yours?" (Almost always no.)\nThen: "So the only difference is what Google sees. That part is fixable."`);
+    `These are the businesses showing up highest around you.\n${comps.map((c) => `${c.title}: ${c.reviews ?? '?'} reviews, ${c.rating ?? '?'} stars`).join('\n')}\nYou: ${L.reviews ?? '?'} reviews, ${L.rating ?? '?'} stars.\n\nAsk: "Do you know these guys? Is their work better than yours?" (Almost always no.)\nThen: "So the only difference is what Google sees. That part is fixable."`);
   }
 
   add('problems', 'What is holding you back', `<p class="kicker">What we found</p><h2>${probs.length ? `${probs.length} things holding ${esc(lead.business)} back` : 'Your foundation is solid'}</h2>
@@ -136,7 +136,7 @@ function slides() {
 
   add('app', 'Your app', `<p class="kicker">You see everything</p><h2>Your own Rightway app</h2>
     <div class="cols" style="grid-template-columns:auto 1fr;gap:80px;align-items:center">
-      <div class="phone"><div class="scr"><div class="tile"><b>${intel?.grid ? `${intel.grid.top3}/${intel.grid.points}` : '3/9'}</b>top 3 spots this month</div><div class="tile"><b>${L.reviews ?? 0}</b>Google reviews</div><div class="tile"><b>12</b>tasks done this month</div><div class="tile"><b>Send</b>a review request</div><div class="tile"><b>Post</b>a job photo</div></div></div>
+      <div class="phone"><div class="scr"><div class="tile"><b>${intel?.grid ? `${top10Of(intel.grid)}/${intel.grid.points}` : '5/9'}</b>first page spots this month</div><div class="tile"><b>${L.reviews ?? 0}</b>Google reviews</div><div class="tile"><b>12</b>tasks done this month</div><div class="tile"><b>Send</b>a review request</div><div class="tile"><b>Post</b>a job photo</div></div></div>
       <ul class="feat anim"><li><b>Rankings map every month</b><span>See exactly where you show up, compared to your starting point.</span></li>
         <li><b>Every task we do, logged</b><span>Posts, pages, citations, fixes. Nothing hidden.</span></li>
         <li><b>Review requests from your phone</b><span>Text or email a link in seconds, plus a counter QR code.</span></li>
@@ -218,7 +218,7 @@ function playGrid() {
     phone.innerHTML = `<div class="gwhere">${esc(where(g, c))}</div><div class="gbar">🔍 <span class="gtype" style="--n:${Math.min(36, kw.length)}">${esc(kw)}</span></div>
       <ol class="glist">${top.map((t, k) => `<li style="--k:${k}" class="${you && t.rank === you ? 'you' : ''}"><b>${t.rank}</b><span>${esc(t.title)}</span></li>`).join('')}</ol>
       ${you && you <= 3 ? '' : `<div class="gyou ${you ? (you <= 10 ? 'mid' : 'low') : 'none'}"><b>${you || '20+'}</b><span>${esc(D.lead.business)}</span></div>`}
-      <div class="gverdict ${you && you <= 3 ? 'good' : 'bad'}">${you && you <= 3 ? 'A customer here sees you in the top 3' : `A customer here calls ${esc(top[0]?.title || 'someone else')} first`}</div>`;
+      <div class="gverdict ${you && you <= 10 ? 'good' : 'bad'}">${you && you <= 3 ? 'A customer here sees you near the top' : you && you <= 10 ? `A customer here sees you at #${you}, on the first page` : `A customer here calls ${esc(top[0]?.title || 'someone else')} first`}</div>`;
     setTimeout(step, per);
   };
   setTimeout(step, 500);

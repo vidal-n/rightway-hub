@@ -120,7 +120,7 @@ route('POST', '/api/twilio/track-recording', async ({ env, request, url }) => {
   } else {
     await run(env, 'UPDATE tracked_calls SET rec_sid = ?, rec_secs = ? WHERE id = ?', p.RecordingSid || null, secs, id);
   }
-  return new Response('', { status: 204 });
+  return new Response(null, { status: 204 });
 }, { public: true });
 
 // ---------- managing numbers ----------

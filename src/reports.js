@@ -7,10 +7,11 @@ import { requireStaff, requireClientAccess } from './auth.js';
 import { route } from './router.js';
 import { PLANS, monthKey } from './plans.js';
 import { canEmail, sendEmail } from './email.js';
-import { leaderboard } from '../public/js/analysis.js';
+import { ladder, bands } from '../public/js/analysis.js';
 import { callStats } from './calltrack.js';
 import { linksForMonth } from './citations.js';
 import { analyzeReviews } from './reputation.js';
+import { notify } from './notify.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const monthLabel = (m) => { const [y, mo] = m.split('-').map(Number); return `${MONTHS[mo - 1]} ${y}`; };
@@ -30,7 +31,7 @@ function snap(row, data) {
   return {
     date: row.created_at, size: s.size ?? data?.size ?? null, radius: s.radius ?? data?.radius ?? null,
     top3Pct: s.top3Pct ?? 0, top10Pct: s.top10Pct ?? 0, avgRank: s.avgRank ?? null, centerRank: s.centerRank ?? null,
-    ranks: data?.points ? ranksOf(data.points) : null,
+    ranks: data?.points ? ranksOf(data.points) : null, bands: data?.points ? bands(data.points) : null,
   };
 }
 const loadData = async (env, id) => { const r = await first(env, 'SELECT data FROM scans WHERE id = ?', id); try { return r?.data ? JSON.parse(r.data) : null; } catch { return null; } };
@@ -72,11 +73,14 @@ export async function buildReport(env, client, month) {
     });
   }
 
+  // Who holds each spot in the top 10 for the main keyword, where the client sits, and what separates them from each one above.
   let leaders = [];
+  let climb = null;
   if (leadData?.points && leadData.target) {
-    const lb = leaderboard(leadData.points, leadData.target, 3);
-    leaders = [lb.target, ...lb.rows].filter(Boolean).sort((x, y) => y.top3Points - x.top3Points || x.avgRank - y.avgRank).slice(0, 4)
-      .map((r) => ({ title: r.title, sov: r.sov, isTarget: Boolean(r.isTarget), reviews: r.reviews ?? null, rating: r.rating ?? null }));
+    const lad = ladder(leadData.points, leadData.target, 10);
+    leaders = lad.rows.map((r) => ({ position: r.position, title: r.title, isTarget: r.isTarget, avgRank: r.avgRank, sov10: r.sov10, sov: r.sov3, reviews: r.reviews, rating: r.rating, gap: r.gapText || '' }));
+    if (lad.target && lad.position > 10) leaders.push({ position: lad.position, title: lad.target.title, isTarget: true, avgRank: lad.target.avgRank, sov10: lad.target.sov10, sov: lad.target.sov3, reviews: lad.target.reviews, rating: lad.target.rating, gap: '' });
+    climb = { position: lad.position, total: lad.total, next: lad.next.map((r) => ({ position: r.position, title: r.title, avgRank: r.avgRank, gap: r.gapText || '' })) };
   }
 
   const tracked = await first(env, 'SELECT COUNT(*) AS n FROM tracking_numbers WHERE client_id = ? AND created_at < ?', client.id, b).catch(() => null);
@@ -93,9 +97,18 @@ export async function buildReport(env, client, month) {
       replyRate: an.replyRate, unanswered: an.unansweredCount, themes: an.themes.slice(0, 4).map((t) => ({ label: t.label, pos: t.pos, neg: t.neg })),
     };
   }
+  // Google profile numbers when the profile is connected (Phase 5). Skipped quietly if Google refuses.
+  let gbp = null;
+  if (client.gbp_location) {
+    try {
+      const { gbpMetrics } = await import('./gbp.js');
+      const end = Math.min(b, now());
+      gbp = { ...(await gbpMetrics(env, null, client, a, end)), prev: await gbpMetrics(env, null, client, a - (b - a), a) };
+    } catch { gbp = null; }
+  }
   const [rr, tasks, posts, qr] = await Promise.all([
     first(env, 'SELECT COUNT(*) AS sent, SUM(CASE WHEN clicks > 0 THEN 1 ELSE 0 END) AS clicked FROM review_requests WHERE client_id = ? AND created_at >= ? AND created_at < ?', client.id, a, b),
-    all(env, 'SELECT kind, title, status, client_visible FROM tasks WHERE client_id = ? AND month = ? ORDER BY sort, created_at', client.id, month),
+    all(env, 'SELECT id, kind, title, status, client_visible, link, proof_key, done_at FROM tasks WHERE client_id = ? AND month = ? ORDER BY sort, created_at', client.id, month),
     first(env, 'SELECT COUNT(*) AS n FROM posts WHERE client_id = ? AND posted_at >= ? AND posted_at < ?', client.id, a, b),
     first(env, 'SELECT COUNT(*) AS n FROM kit_scans WHERE client_id = ? AND at >= ? AND at < ?', client.id, a, b),
   ]);
@@ -114,10 +127,15 @@ export async function buildReport(env, client, month) {
       requestsSent: rr?.sent || 0, requestsClicked: rr?.clicked || 0,
     },
     leaders,
+    climb,
+    gbp,
     work: {
       done: done.length, total: tasks.length,
       byKind: [...byKind.entries()].map(([kind, n]) => ({ kind, label: KIND[kind] || kind, n })).sort((x, y) => y.n - x.n),
       items: done.filter((t) => t.client_visible).slice(0, 14).map((t) => t.title),
+      // Proof: the live link or screenshot behind each finished task the client can see.
+      proof: done.filter((t) => t.client_visible && (t.proof_key || /^https?:\/\//.test(t.link || ''))).sort((x, y) => (x.done_at || 0) - (y.done_at || 0)).slice(0, 16)
+        .map((t) => ({ id: t.id, title: t.title, label: KIND[t.kind] || t.kind, link: /^https?:\/\//.test(t.link || '') ? t.link : null, shot: Boolean(t.proof_key) })),
     },
     posts: posts?.n || 0,
     qrScans: qr?.n || 0,
@@ -155,12 +173,13 @@ export function reportEmail(rep, url, note = '') {
   const d = rep;
   const first = (d.client.name || '').split(' ')[0];
   const kwRows = d.keywords.map((k) => `<tr><td style="padding:8px 10px;border-bottom:1px solid #DCE6E1">${h(k.keyword)}</td>
-      <td style="padding:8px 10px;border-bottom:1px solid #DCE6E1;text-align:right"><b>${k.now.top3Pct}%</b>${h(fmtChange(k.now.top3Pct, k.before?.top3Pct, false, '%'))}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #DCE6E1;text-align:right"><b>${k.now.top10Pct}%</b>${h(fmtChange(k.now.top10Pct, k.before?.top10Pct, false, '%'))}</td>
       <td style="padding:8px 10px;border-bottom:1px solid #DCE6E1;text-align:right">${k.now.centerRank ? `#${k.now.centerRank}` : '20+'}</td></tr>`).join('');
   const text = [
     `Your ${d.monthLabel} report from Rightway Growth`, '',
     note ? `${note}\n` : '',
-    ...d.keywords.map((k) => `${k.keyword}: top 3 in ${k.now.top3Pct}% of your area${fmtChange(k.now.top3Pct, k.before?.top3Pct, false, '%')}, ${k.now.centerRank ? `#${k.now.centerRank}` : 'not in the top 20'} at your address`),
+    ...d.keywords.map((k) => `${k.keyword}: first page (top 10) in ${k.now.top10Pct}% of your area${fmtChange(k.now.top10Pct, k.before?.top10Pct, false, '%')}, ${k.now.centerRank ? `#${k.now.centerRank}` : 'not in the top 20'} at your address`),
+    d.gbp ? `Google profile: ${d.gbp.calls} calls, ${d.gbp.directions} direction requests, ${d.gbp.website} website clicks` : '',
     d.reviews.count != null ? `Google reviews: ${d.reviews.count}${d.reviews.rating ? ` (${d.reviews.rating} stars)` : ''}` : '',
     d.calls ? `Calls: ${d.calls.total} (${d.calls.firstTime} new callers, ${d.calls.missed} missed)` : '',
     d.reputation ? `Google reviews: ${d.reputation.newThisMonth} new this month${d.reputation.rating ? `, ${d.reputation.rating} stars overall` : ''}` : '',
@@ -179,10 +198,11 @@ export function reportEmail(rep, url, note = '') {
       ${note ? `<p style="margin:0 0 16px;font-size:15px;line-height:1.5;background:#EAF8F1;border-radius:10px;padding:12px 14px">${h(note).replace(/\n/g, '<br>')}</p>` : ''}
       ${d.keywords.length ? `<table style="width:100%;border-collapse:collapse;font-size:14px"><thead><tr>
         <th style="text-align:left;padding:6px 10px;color:#5B6B65;font-weight:600;font-size:12px">Search</th>
-        <th style="text-align:right;padding:6px 10px;color:#5B6B65;font-weight:600;font-size:12px">Top 3 coverage</th>
+        <th style="text-align:right;padding:6px 10px;color:#5B6B65;font-weight:600;font-size:12px">First page (top 10)</th>
         <th style="text-align:right;padding:6px 10px;color:#5B6B65;font-weight:600;font-size:12px">At your address</th></tr></thead><tbody>${kwRows}</tbody></table>` : ''}
       <p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#33443E">
         ${d.reviews.count != null ? `Google reviews: <b>${d.reviews.count}</b>${d.reviews.rating ? `, ${d.reviews.rating} stars` : ''}<br>` : ''}
+        ${d.gbp ? `From your Google profile: <b>${d.gbp.calls}</b> calls, <b>${d.gbp.directions}</b> direction requests, <b>${d.gbp.website}</b> website clicks<br>` : ''}
         ${d.calls ? `Calls: <b>${d.calls.total}</b> (${d.calls.firstTime} new caller${d.calls.firstTime === 1 ? '' : 's'}, ${d.calls.missed} missed)<br>` : ''}
         Work done this month: <b>${d.work.done}</b> task${d.work.done === 1 ? '' : 's'}${d.posts ? `, <b>${d.posts}</b> Google post${d.posts === 1 ? '' : 's'}` : ''}</p>
       <p style="margin:22px 0 4px"><a href="${h(url)}" style="display:inline-block;background:#0F1B17;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:12px">See the full report</a></p>
@@ -199,6 +219,7 @@ async function markSent(env, rep, { to = null, by = null } = {}) {
   await run(env, `UPDATE tasks SET status = 'done', done_at = ?, done_by = ? WHERE client_id = ? AND month = ? AND kind IN ${kinds} AND status != 'done'`, now(), by, rep.client_id, rep.month);
   await run(env, 'INSERT INTO log (id, client_id, text, link, at, by) VALUES (?, ?, ?, ?, ?, ?)', newId('l_'), rep.client_id,
     `${monthLabel(rep.month)} report sent${to ? ` to ${to}` : ''}`, `/report.html#${rep.token}`, now(), by);
+  await notify(env, { to: { clientUsers: rep.client_id }, kind: 'update', title: `Your ${monthLabel(rep.month)} report is ready`, body: 'See where you show up on Google Maps this month.', url: `/report.html#${rep.token}`, slack: false }).catch(() => {});
 }
 
 export async function sendReport(env, rep, { to, origin, by = null, fetchImpl } = {}) {
@@ -282,5 +303,9 @@ route('GET', '/api/public/report/:token', async ({ env, params }) => {
   const r = await first(env, 'SELECT * FROM reports WHERE token = ?', params.token);
   if (!r) throw new HttpError('This report link is not valid.', 404);
   await run(env, 'UPDATE reports SET views = views + 1 WHERE id = ?', r.id);
+  if (!r.views && r.status === 'sent') {
+    const c = await first(env, 'SELECT name FROM clients WHERE id = ?', r.client_id);
+    await notify(env, { to: { client: r.client_id }, kind: 'client', title: `${c?.name || 'A client'} opened their ${monthLabel(r.month)} report`, body: 'Good time to follow up.', url: `/#/client/${r.client_id}/reports`, slack: false }).catch(() => {});
+  }
   return json({ report: JSON.parse(r.data), note: r.note || '', status: r.status });
 }, { public: true });

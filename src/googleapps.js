@@ -10,9 +10,9 @@ import { route } from './router.js';
 import { accessToken, googleReady, APP_SCOPES } from './google.js';
 import { buildPayments } from './payments.js';
 
-const LABEL = { sheets: 'Google Sheets', gsc: 'Search Console', ga: 'Google Analytics', ads: 'Google Ads' };
+const LABEL = { sheets: 'Google Sheets', gsc: 'Search Console', ga: 'Google Analytics', ads: 'Google Ads', gbp: 'Google Business Profile' };
 
-async function userFor(env, user, app) {
+export async function userFor(env, user, app) {
   if (!googleReady(env)) throw new HttpError('Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloudflare first.', 503);
   const scope = APP_SCOPES[app];
   const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);
@@ -22,7 +22,7 @@ async function userFor(env, user, app) {
   throw new HttpError(`Turn on ${LABEL[app]} on the Google page first.`, 400);
 }
 
-async function gfetch(env, row, url, { method = 'GET', body, headers = {}, label = 'Google' } = {}) {
+export async function gfetch(env, row, url, { method = 'GET', body, headers = {}, label = 'Google' } = {}) {
   const t = await accessToken(env, row);
   const res = await fetch(url, { method, headers: { authorization: `Bearer ${t}`, ...(body ? { 'content-type': 'application/json' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));

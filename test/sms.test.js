@@ -110,5 +110,6 @@ test('inbound call rings the owner phone, missed call plays a message', async ()
   // signature covers the full URL including the query, so the helper above signs without it: expect rejection, then sign properly.
   const url = `/api/twilio/voice-done?a=${a}`; const p = { DialCallStatus: 'no-answer', DialCallDuration: '0' };
   r = await t.call('POST', url, new URLSearchParams(p).toString(), { ...FORM, 'x-twilio-signature': await twilioSignature('tok', `https://hub.test${url}`, p) });
-  assert.match(r.data, /We missed you/);
+  assert.match(r.data, /Sorry we missed you/);
+  assert.match(r.data, /<Record maxLength="120"/);
 });

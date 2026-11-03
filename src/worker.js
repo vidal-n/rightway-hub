@@ -11,6 +11,8 @@ import { currentUser, isStaff } from './auth.js';
 import { autoScanTick } from './autoscan.js';
 import { auditTick, enqueueDueAudits } from './siteaudit.js';
 import { reviewTick } from './reputation.js';
+import { ensureMonthTasks } from './work.js';
+import { digestTick, meetingReminders } from './notify.js';
 
 // Runtime secrets (dashboard) win; build-time secrets fill any gaps.
 export function withSecrets(env, extra = baked) {
@@ -31,9 +33,13 @@ export default {
       await enqueueDueAudits(env).catch((e) => console.error('audit queue', e));
       if (used < 30) await auditTick(env, { budget: Math.min(15, 40 - used) }).catch((e) => console.error('audit', e));
       await reviewTick(env).catch((e) => console.error('reviews', e));
+      // Every active client gets this month's tasks on the 1st, the team gets a morning digest, and meeting reminders go out.
+      await ensureMonthTasks(env).catch((e) => console.error('task engine', e));
+      await digestTick(env).catch((e) => console.error('digest', e));
+      await meetingReminders(env).catch((e) => console.error('meeting reminders', e));
     })());
   },
-  async fetch(request, rawEnv) {
+  async fetch(request, rawEnv, execCtx) {
     const env = withSecrets(rawEnv || {});
     const url = new URL(request.url);
     if (url.pathname.startsWith('/r/')) {
@@ -49,7 +55,7 @@ export default {
       return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404 });
     }
     try {
-      const hub = await handleHub(request, env, url);
+      const hub = await handleHub(request, env, url, execCtx);
       if (hub) return hub;
       const runtimeKeys = Object.keys(rawEnv || {}).filter((k) => typeof rawEnv[k] === 'string' && rawEnv[k]);
       return await handleApi(request, env, url, runtimeKeys);

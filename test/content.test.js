@@ -46,7 +46,7 @@ test('sanitizer keeps page tags and drops anything risky', () => {
 });
 
 test('ideas come from services, cities and weak rankings, and skip pages already made', () => {
-  const scans = new Map([['roof repair', { keyword: 'roof repair', top3Pct: 6 }], ['roofer', { keyword: 'roofer', top3Pct: 70 }]]);
+  const scans = new Map([['roof repair', { keyword: 'roof repair', top10Pct: 6 }], ['roofer', { keyword: 'roofer', top10Pct: 70 }]]);
   const ideas = suggestTopics(CLIENT, [{ keyword: 'roof replacement hollywood' }], scans);
   assert.ok(ideas.length >= 6);
   assert.equal(ideas[0].keyword, 'roof repair hollywood');

@@ -21,7 +21,12 @@ const validQ = (q) => /^\d{4}-Q[1-4]$/.test(String(q || ''));
 // Pure: build the draft from the facts gathered below.
 export function draftFrom(f) {
   const goals = [];
-  for (const k of (f.keywords || []).slice(0, 3)) goals.push({ label: `Top 3 coverage for "${k.keyword}"`, now: `${k.top3Pct}%`, target: `${Math.min(100, Math.max(k.top3Pct + 15, Math.round(k.top3Pct * 1.5)))}%` });
+  for (const k of (f.keywords || []).slice(0, 3)) {
+    const now10 = k.top10Pct ?? 0;
+    goals.push({ label: `First page (top 10) coverage for "${k.keyword}"`, now: `${now10}%`, target: `${Math.min(100, Math.max(now10 + 15, Math.round(now10 * 1.4)))}%` });
+  }
+  const k0 = (f.keywords || [])[0];
+  if (k0?.avgRank != null && k0.avgRank > 1.5) goals.push({ label: `Average spot for "${k0.keyword}"`, now: `#${Math.round(k0.avgRank)}`, target: `#${Math.max(1, Math.round(k0.avgRank - Math.max(2, k0.avgRank * 0.25)))}` });
   if (f.reviews?.count != null) {
     const pace = Math.max(4, Math.ceil(f.reviews.gap ? f.reviews.gap / 6 : 4));
     goals.push({ label: 'Google reviews', now: String(f.reviews.count), target: String(f.reviews.count + pace * 3) });
@@ -31,8 +36,8 @@ export function draftFrom(f) {
   if (f.site?.score != null) goals.push({ label: 'Website health score', now: String(f.site.score), target: String(Math.max(90, f.site.score)) });
 
   const focus = [];
-  const weakest = [...(f.keywords || [])].sort((a, b) => a.top3Pct - b.top3Pct)[0];
-  if (weakest) focus.push(`Lift "${weakest.keyword}": top 3 in only ${weakest.top3Pct}% of the area today.`);
+  const weakest = [...(f.keywords || [])].sort((a, b) => (a.top10Pct ?? 0) - (b.top10Pct ?? 0))[0];
+  if (weakest) focus.push(`Lift "${weakest.keyword}": on the first page (top 10) in only ${weakest.top10Pct ?? 0}% of the area today.`);
   if (f.leader?.title && f.reviews?.gap) focus.push(`Close the review gap with ${f.leader.title}: ${f.reviews.gap} reviews behind.`);
   if (f.reviews?.unanswered) focus.push(`Reply to the ${f.reviews.unanswered} reviews of 3 stars or less that have no reply.`);
   for (const i of (f.site?.issues || []).filter((x) => x.severity === 'high').slice(0, 2)) focus.push(`Website: ${i.title.toLowerCase()}.`);
@@ -71,7 +76,7 @@ async function facts(env, c, q) {
     first(env, 'SELECT counts FROM citation_audits WHERE client_id = ? ORDER BY created_at DESC LIMIT 1', c.id).catch(() => null),
     all(env, 'SELECT keyword FROM content WHERE client_id = ?', c.id).catch(() => []),
   ]);
-  const scanInfo = new Map(keywords.map((k) => [k.keyword.toLowerCase(), { keyword: k.keyword, top3Pct: k.top3Pct }]));
+  const scanInfo = new Map(keywords.map((k) => [k.keyword.toLowerCase(), { keyword: k.keyword, top10Pct: k.top10Pct, top3Pct: k.top3Pct }]));
   const site = parse(audit?.result);
   const lead = rep?.pace?.competitors?.[0] || null;
   const count = rep?.pull?.total ?? rep?.pace?.mine?.reviews ?? null;

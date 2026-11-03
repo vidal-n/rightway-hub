@@ -7,6 +7,7 @@ import { route } from './router.js';
 import { cleanLead, insertLead, logActivity, rescore } from './crm.js';
 import { openSlots } from '../public/js/slots.js';
 import { dupKeys } from '../public/js/leadintel.js';
+import { notifyLater } from './notify.js';
 
 const SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/calendar.events'];
 // Extra Google apps a user can turn on. Each adds its scope on top of what they already granted.
@@ -15,6 +16,7 @@ export const APP_SCOPES = {
   gsc: 'https://www.googleapis.com/auth/webmasters.readonly',
   ga: 'https://www.googleapis.com/auth/analytics.readonly',
   ads: 'https://www.googleapis.com/auth/adwords',
+  gbp: 'https://www.googleapis.com/auth/business.manage',
 };
 export function grantedApps(scopeStr) {
   const s = String(scopeStr || '');
@@ -87,6 +89,19 @@ export async function createMeeting(env, owner, { summary, description, start, m
   return { id: ev.id, link: ev.htmlLink, meet };
 }
 
+export async function moveMeeting(env, owner, eventId, start, minutes, fetchImpl) {
+  return gcal(env, owner, `/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`, {
+    method: 'PATCH', fetchImpl, body: { start: { dateTime: new Date(start).toISOString() }, end: { dateTime: new Date(start + minutes * 60e3).toISOString() } },
+  });
+}
+
+export async function cancelEvent(env, owner, eventId, fetchImpl) {
+  const t = await accessToken(env, owner, fetchImpl);
+  const res = await (fetchImpl || fetch)(`${API}/calendars/primary/events/${encodeURIComponent(eventId)}?sendUpdates=all`, { method: 'DELETE', headers: { authorization: `Bearer ${t}` } });
+  if (!res.ok && res.status !== 410 && res.status !== 404) throw new HttpError(`Google Calendar: HTTP ${res.status}`, 502);
+  return true;
+}
+
 export async function busyTimes(env, owner, from, to, fetchImpl) {
   const q = new URLSearchParams({ timeMin: new Date(from).toISOString(), timeMax: new Date(to).toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '250' });
   const data = await gcal(env, owner, `/calendars/primary/events?${q}`, { fetchImpl });
@@ -109,7 +124,7 @@ export async function bookingConfig(env) {
   };
 }
 
-async function bookingOwner(env, cfg) {
+export async function bookingOwner(env, cfg) {
   if (cfg.owner) { const u = await first(env, 'SELECT * FROM users WHERE id = ? AND google_token IS NOT NULL', cfg.owner); if (u) return u; }
   return first(env, "SELECT * FROM users WHERE role = 'admin' AND google_token IS NOT NULL ORDER BY created_at LIMIT 1");
 }
@@ -241,7 +256,7 @@ route('GET', '/api/public/book', async ({ env }) => {
   return json({ ready: true, title: cfg.title, minutes: cfg.minutes, tz: cfg.tz, slots: openSlots({ ...cfg, from, busy }) });
 }, { public: true });
 
-route('POST', '/api/public/book', async ({ env, request }) => {
+route('POST', '/api/public/book', async ({ env, request, defer }) => {
   const b = await request.json().catch(() => ({}));
   if (b['company-url']) return json({ ok: true });
   const cfg = await bookingConfig(env);
@@ -267,5 +282,6 @@ route('POST', '/api/public/book', async ({ env, request }) => {
   const cols = Object.keys(set);
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), leadId);
   await logActivity(env, { lead_id: leadId, type: 'meeting', body: `Booked online for ${new Date(start).toISOString()}` });
+  await notifyLater({ env, defer }, { to: 'staff', kind: 'lead', title: `New booking: ${full.business}`, body: `${new Date(start).toLocaleString('en-US', { timeZone: cfg.tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`, url: '/#/pipeline' });
   return json({ ok: true, start, meet: m.meet, minutes: cfg.minutes });
 }, { public: true });

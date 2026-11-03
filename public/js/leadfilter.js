@@ -20,6 +20,7 @@ export function filterLeads(leads, p) {
     if (f.maxRating !== '' && f.maxRating != null && (l.rating ?? 0) > Number(f.maxRating)) return false;
     if (f.minScore && (l.score || 0) < Number(f.minScore)) return false;
     if (f.notTop3 && l.map_rank != null && l.map_rank <= 3) return false;
+    if (f.notTop10 && l.map_rank != null && l.map_rank <= 10) return false;
     if (f.callable && !l.callable_now) return false;
     return true;
   });

@@ -100,7 +100,7 @@ test('map projection and zoom fit', () => {
   assert.ok(b.x - a.x <= 480 - 72 + 1e-6);
 });
 
-import { leaderboard, reach, sides, findings, fixFirst, rankAt } from '../public/js/analysis.js';
+import { leaderboard, reach, sides, findings, fixFirst, rankAt, ladder, bands } from '../public/js/analysis.js';
 
 function scanGrid(rankFn, compFn) {
   const pts = gridPoints(26, -80, 5, 2);
@@ -121,7 +121,14 @@ test('leaderboard scores share of local voice', () => {
   assert.equal(b.rows[0].cid, 'c1');
   assert.equal(b.rows[0].sov, 100);
   assert.equal(b.target.top3Points, 1);
-  assert.equal(b.position, 2);
+  assert.ok(b.position >= 2);
+  // The top 10 ladder orders by average spot and says what separates the target from each business above it.
+  const lad = ladder(pts, T, 10);
+  assert.equal(lad.rows[0].cid === undefined ? lad.rows[0].position : lad.rows[0].position, 1);
+  assert.ok(lad.position > 1);
+  assert.ok(lad.next.length >= 1 && lad.next[0].position === lad.position - 1);
+  const bb = bands(pts);
+  assert.equal(bb.top3 + bb.page1 + bb.page2 + bb.none, 100);
   assert.equal(rankAt(pts[0], { cid: 'c2' }), 5);
   assert.equal(rankAt(pts[0], { cid: 'nobody' }), null);
 });
@@ -143,7 +150,7 @@ test('findings and fix list are plain and grounded', () => {
   const T = { cid: 't', title: 'Target', reviews: 480 };
   const board = leaderboard(pts, T, 3);
   const facts = findings({ target: T, points: pts, size: 5, radius: 2, keyword: 'roofer', board, comps: board.rows, checks: [], gaps: [] });
-  assert.match(facts[0], /isn't in Google's top 3/);
+  assert.match(facts[0], /isn't on the first page \(top 10\)/);
   assert.ok(facts.some((f) => /Review count is not the gap/.test(f)));
   const fixes = fixFirst([{ key: 'photos', status: 'gap' }, { key: 'primary', status: 'gap' }, { key: 'phone', status: 'good' }]);
   assert.deepEqual(fixes.map((f) => f.key), ['primary', 'photos']);

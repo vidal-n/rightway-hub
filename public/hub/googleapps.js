@@ -9,6 +9,7 @@ const APPS = [
   { k: 'gsc', name: 'Search Console', what: 'Clicks, impressions, average position and top searches for each client site, on the client Website tab.' },
   { k: 'ga', name: 'Google Analytics', what: 'Visitors, sessions, leads (key events) and where traffic comes from, for each client, on the Website tab.' },
   { k: 'ads', name: 'Google Ads', what: 'Spend, clicks, conversions and cost per lead by campaign for each client, on the Website tab.' },
+  { k: 'gbp', name: 'Google Business Profile', what: 'Publish posts and photos, reply to reviews, edit the description, phone and website, and see calls, direction requests and views, on each client\'s Google profile tab. Google has to approve API access for the project first.' },
 ];
 const LINKS = [
   ['Google Business Profile', 'https://business.google.com/locations'], ['Looker Studio', 'https://lookerstudio.google.com'], ['Tag Manager', 'https://tagmanager.google.com'],

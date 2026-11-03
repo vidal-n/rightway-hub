@@ -70,6 +70,7 @@ export function gridStats(points) {
     top10,
     top3Pct: n ? Math.round((100 * top3) / n) : 0,
     top10Pct: n ? Math.round((100 * top10) / n) : 0,
+    top20Pct: n ? Math.round((100 * ranked.length) / n) : 0,
     avgRank: avg == null ? null : Math.round(avg * 10) / 10,
     centerRank: center && center.status === 'done' ? center.rank : undefined,
   };

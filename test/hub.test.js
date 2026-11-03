@@ -104,7 +104,12 @@ test('full client flow: create, invite, client sees only their own data', async 
   assert.equal(r.data.created, 0);
   r = await owner.call('GET', `/api/clients/${c1}/tasks?month=2026-11`);
   const t = r.data.tasks.find((x) => x.kind === 'post');
-  await owner.call('PATCH', `/api/tasks/${t.id}`, { status: 'done', note: 'Posted the taco Tuesday photo' });
+  // Proof before close: a post task needs the live link or a screenshot.
+  let pr = await owner.call('PATCH', `/api/tasks/${t.id}`, { status: 'done', note: 'Posted the taco Tuesday photo' });
+  assert.equal(pr.status, 400);
+  assert.match(pr.data.error, /live link or a screenshot/);
+  pr = await owner.call('PATCH', `/api/tasks/${t.id}`, { status: 'done', link: 'https://g.page/orale/post/1' });
+  assert.equal(pr.data.task.status, 'done');
   const hidden = r.data.tasks.find((x) => x.kind === 'setup');
   await owner.call('PATCH', `/api/tasks/${hidden.id}`, { client_visible: false });
   r = await cl.call('GET', `/api/clients/${c1}/tasks?month=2026-11`);

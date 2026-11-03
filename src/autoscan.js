@@ -121,7 +121,7 @@ async function finish(env, job, client, data, at) {
   const id = newId('s_');
   await run(env, 'INSERT INTO scans (id, client_id, keyword, created_at, summary, data) VALUES (?, ?, ?, ?, ?, ?)', id, job.client_id, job.keyword, at, JSON.stringify(summary), JSON.stringify(scan));
   await run(env, 'INSERT INTO log (id, client_id, text, at, by) VALUES (?, ?, ?, ?, ?)', newId('l_'), job.client_id,
-    `Monthly ranking scan for "${job.keyword}": top 3 in ${stats.top3Pct}% of the area, average rank ${stats.avgRank ?? 'n/a'}`, at, job.by && job.by !== 'auto' ? job.by : null);
+    `Monthly ranking scan for "${job.keyword}": first page (top 10) in ${stats.top10Pct}% of the area, average rank ${stats.avgRank ?? 'n/a'}`, at, job.by && job.by !== 'auto' ? job.by : null);
   await run(env, "UPDATE scan_jobs SET status = 'done', scan_id = ?, cursor = ?, finished_at = ?, locked_until = NULL, data = NULL WHERE id = ?", id, points.length, at, job.id);
   // Last keyword for this client done: make (or refresh) this month's report.
   const left = await first(env, "SELECT COUNT(*) AS n FROM scan_jobs WHERE client_id = ? AND status IN ('queued','running')", job.client_id);

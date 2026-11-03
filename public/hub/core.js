@@ -148,5 +148,10 @@ export const icon = {
   menu: P('<path d="M4 7h16M4 12h16M4 17h16"/>'),
   close: P('<path d="M6 6l12 12M18 6L6 18"/>'),
   money: P('<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v4M18 10v4"/>'),
+  play: P('<path d="M7 4.5v15l12.5-7.5z"/>'),
+  stop: P('<rect x="6" y="6" width="12" height="12" rx="2"/>'),
+  bell: P('<path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/><path d="M10 20a2 2 0 004 0"/>'),
+  meet: P('<rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10l6-3v10l-6-3"/>'),
+  key: P('<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>'),
   apps: P('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'),
 };

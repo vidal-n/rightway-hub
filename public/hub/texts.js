@@ -72,14 +72,17 @@ export async function unreadBadge(root = document) {
   } catch { /* ignore */ }
 }
 
-export async function inboxPage(app, user) {
+const inboxTabs = (on, calls) => `<nav class="tabs"><a href="#/inbox" class="${on === 'texts' ? 'is-active' : ''}">Texts</a><a href="#/inbox/calls" class="${on === 'calls' ? 'is-active' : ''}">Calls and voicemail${calls ? ` <b class="nbadge">${calls}</b>` : ''}</a></nav>`;
+
+export async function inboxPage(app, user, sub) {
   const rep = (user?.name || '').split(' ')[0] || '';
   const view = staffShell(app, user, 'inbox');
+  if (sub === 'calls') return callsView(view, user);
   const draw = async () => {
-    let d;
-    try { d = await api('/api/inbox'); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+    let d, u = {};
+    try { [d, u] = await Promise.all([api('/api/inbox'), api('/api/inbox/unread').catch(() => ({}))]); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
     view.innerHTML = `
-      <div class="page-head"><div><p class="eyebrow">Texts</p><h1>Inbox</h1></div></div>
+      <div class="page-head"><div><p class="eyebrow">Texts</p><h1>Inbox</h1></div></div>${inboxTabs('texts', u.calls)}
       ${!d.twilio ? '<p class="badge warn" style="margin-bottom:12px">Add the Twilio keys in Cloudflare to send and receive texts.</p>' : ''}
       ${d.conversations.length ? `<ul class="list">${d.conversations.map((c) => `<li class="item inbox-row" data-id="${esc(c.id)}" tabindex="0">
         <span class="badge ${c.unread ? '' : 'gray'}">${c.unread ? `${c.unread} new` : c.direction === 'out' ? 'Sent' : 'Read'}</span>
@@ -99,3 +102,56 @@ export async function inboxPage(app, user) {
 }
 
 export const textIcon = icon.msg;
+
+// Calls to our numbers: answered, missed and voicemail. Play the voicemail, call back from the browser, add unknown callers as leads.
+async function callsView(view, user) {
+  let d;
+  try { d = await api('/api/calls/inbound'); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  const label = { voicemail: ['Voicemail', 'bad'], missed: ['Missed', 'warn'], inbound_answered: ['Answered', ''], inbound: ['Ringing', 'gray'] };
+  view.innerHTML = `
+    <div class="page-head"><div><p class="eyebrow">Calls</p><h1>Inbox</h1></div>${d.unseen ? '<button class="btn btn-ghost btn-sm" id="seenall">Mark all heard</button>' : ''}</div>
+    ${inboxTabs('calls', d.unseen)}
+    <p class="small muted">Missed calls to your numbers go to voicemail. Every teammate with notifications on gets a buzz, and owners get an email for each voicemail${user.role === 'admin' ? '' : ''}.</p>
+    ${d.calls.length ? `<ul class="list">${d.calls.map((c) => { const [l, tone] = label[c.status] || ['Call', 'gray']; return `<li class="item call-row${(c.status === 'voicemail' || c.status === 'missed') && !c.seen ? ' is-new' : ''}" data-id="${esc(c.id)}">
+      <span class="badge ${tone}">${l}</span>
+      <div><div class="item-title">${esc(c.lead?.business || c.fromPretty || 'Unknown caller')}</div>
+        <div class="item-sub">${esc(c.fromPretty || '')} · ${esc(fmt.ago(c.at))}${c.duration ? ` · ${c.duration}s` : ''}${c.calledBack ? ' · called back' : ''}</div>
+        ${c.voicemail ? `<audio controls preload="none" src="/api/voicemail/${esc(c.id)}/audio" style="width:100%;max-width:360px;margin-top:6px"></audio>` : ''}</div>
+      <div class="item-actions">${c.from ? `<button class="btn btn-primary btn-sm" data-call="${esc(c.from)}" data-lead="${esc(c.lead?.id || '')}" data-name="${esc(c.lead?.business || c.fromPretty)}">${icon.phone}Call back</button>` : ''}
+        ${c.lead ? `<button class="btn btn-ghost btn-sm" data-lead-open="${esc(c.lead.id)}">Lead</button>` : c.from ? '<button class="btn btn-ghost btn-sm" data-addlead>Add as lead</button>' : ''}
+        ${(c.status === 'voicemail' || c.status === 'missed') && !c.seen ? '<button class="icon-btn" data-seen title="Mark heard">' + icon.check + '</button>' : ''}</div></li>`; }).join('')}</ul>`
+      : '<div class="card empty"><h3>No calls yet</h3><p>Calls to your Twilio numbers show up here, with voicemails you can play.</p></div>'}
+    ${user.role === 'admin' ? `<div class="card"><div class="card-head"><h2>Voicemail greeting</h2>${d.custom ? '<span class="badge">Custom</span>' : '<span class="badge gray">Default</span>'}</div>
+      <form id="vmf" class="form-grid" style="grid-template-columns:1fr"><label class="field"><span>What callers hear (read by a voice)</span><textarea name="greeting" rows="3">${esc(d.greeting)}</textarea></label>
+        <label class="field"><span>Email voicemails to (comma separated, empty = every owner)</span><input name="alertTo" value="${esc(d.alertTo)}"></label>
+        <div class="row end"><button class="btn btn-primary btn-sm" type="submit">Save</button></div></form></div>` : ''}`;
+  const again = () => callsView(view, user);
+  $('#seenall', view)?.addEventListener('click', async () => { await api('/api/calls/inbound/seen-all', { method: 'POST' }); again(); });
+  $('#vmf', view)?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try { await api('/api/voicemail/settings', { method: 'PUT', body: Object.fromEntries(new FormData(e.target).entries()) }); toast('Saved'); again(); } catch (err) { toast(err.message, true); }
+  });
+  view.onclick = async (e) => {
+    const row = e.target.closest('.call-row');
+    if (!row) return;
+    const id = row.dataset.id;
+    const callBtn = e.target.closest('[data-call]');
+    try {
+      if (callBtn) {
+        await api(`/api/calls/inbound/${id}/seen`, { method: 'POST', body: {} }).catch(() => {});
+        const { placeCall } = await import('./phone.js');
+        return placeCall({ to: callBtn.dataset.call, leadId: callBtn.dataset.lead || undefined, name: callBtn.dataset.name });
+      }
+      const lo = e.target.closest('[data-lead-open]');
+      if (lo) { const { leadModal } = await import('./crm.js'); return leadModal(lo.dataset.leadOpen, again); }
+      if (e.target.closest('[data-seen]')) { await api(`/api/calls/inbound/${id}/seen`, { method: 'POST', body: {} }); return again(); }
+      if (e.target.closest('[data-addlead]')) {
+        const business = prompt('Business name (leave empty to fill in later)', '');
+        if (business === null) return;
+        await api(`/api/calls/inbound/${id}/lead`, { method: 'POST', body: { business } });
+        toast('Added as a lead');
+        return again();
+      }
+    } catch (err) { toast(err.message, true); }
+  };
+}

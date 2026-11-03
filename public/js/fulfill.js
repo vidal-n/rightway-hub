@@ -143,7 +143,8 @@ export function reviewTarget(intel = null) {
   return { mine, leader: top.title, leaderReviews: top.reviews, gap, perMonth, text: gap ? `${gap} reviews to pass ${top.title}. That is about ${perMonth} a month over six months.` : `Already ahead of ${top.title}. Keep at least ${perMonth} a month.` };
 }
 
-const FIX_WEEK = { not_found: 1, unclaimed: 1, no_hours: 1, few_photos: 2, few_reviews: 1, review_gap: 1, low_rating: 1, no_website: 2, site_down: 1, no_https: 2, weak_title: 2, no_click_to_call: 2, no_schema: 3, slow_site: 4, not_top3: 4, grid_weak: 6 };
+const t10 = (g) => (!g ? null : g.top10 != null ? g.top10 : (g.cells || []).filter((c) => !c.error && c.rank != null && c.rank <= 10).length);
+const FIX_WEEK = { not_found: 1, unclaimed: 1, no_hours: 1, few_photos: 2, few_reviews: 1, review_gap: 1, low_rating: 1, no_website: 2, site_down: 1, no_https: 2, weak_title: 2, no_click_to_call: 2, no_schema: 3, slow_site: 4, not_top3: 4, not_top10: 4, grid_weak: 6 };
 
 export function ninetyDayPlan(plan = 'growth', intel = null, lead = {}) {
   const probs = findProblems(intel, lead);
@@ -166,6 +167,7 @@ export function compareIntel(before, after) {
   return {
     rank: { before: before.rank, after: after.rank, better: before.rank == null ? after.rank != null : after.rank != null && after.rank < before.rank },
     top3: { before: before.grid?.top3 ?? null, after: after.grid?.top3 ?? null, change: d(before.grid?.top3, after.grid?.top3) },
+    top10: { before: t10(before.grid), after: t10(after.grid), change: d(t10(before.grid), t10(after.grid)) },
     reviews: { before: b.reviews ?? null, after: a.reviews ?? null, change: d(b.reviews, a.reviews) },
     rating: { before: b.rating ?? null, after: a.rating ?? null, change: d(b.rating, a.rating) },
     speed: { before: before.speed?.score ?? null, after: after.speed?.score ?? null, change: d(before.speed?.score, after.speed?.score) },

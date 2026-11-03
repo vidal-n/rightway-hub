@@ -7,7 +7,7 @@ export function sameBusiness(a, b) {
   return false;
 }
 
-// Businesses that show up most often in the top 3 across the grid.
+// Businesses that show up most often near the top across the grid (top 3 first, then appearances).
 export function topCompetitors(points, target, limit = 3) {
   const seen = new Map();
   for (const p of points) {
@@ -142,9 +142,8 @@ export function rankAt(point, biz) {
   return hit ? hit.rank : null;
 }
 
-// Every business seen in the grid, scored like Local Falcon / BrightLocal:
-// share of local voice = share of points where it's in the top 3.
-export function leaderboard(points, target, limit = 8) {
+// Every business seen in the grid with its rank at each point.
+function boardRows(points, target) {
   const done = points.filter((p) => p.status === 'done');
   const n = done.length || 1;
   const seen = new Map();
@@ -160,18 +159,87 @@ export function leaderboard(points, target, limit = 8) {
       if ((b.reviews ?? -1) > (e.biz.reviews ?? -1)) e.biz = { ...e.biz, ...b };
     }
   }
-  const rows = [...seen.values()].map((e) => {
+  return [...seen.values()].map((e) => {
     const ranks = done.map((p) => rankAt(p, e.biz));
     const top3 = ranks.filter((r) => r != null && r <= 3).length;
     const top10 = ranks.filter((r) => r != null && r <= 10).length;
     const found = ranks.filter((r) => r != null).length;
     const avg = ranks.reduce((s, r) => s + (r ?? UNRANKED_RANK), 0) / n;
-    return { ...e.biz, top3Points: top3, top10Points: top10, found, sov: Math.round((100 * top3) / n), avgRank: Math.round(avg * 10) / 10 };
+    return { ...e.biz, top3Points: top3, top10Points: top10, found, sov: Math.round((100 * top3) / n), sov10: Math.round((100 * top10) / n), avgRank: Math.round(avg * 10) / 10 };
   });
-  rows.sort((a, b) => b.top3Points - a.top3Points || a.avgRank - b.avgRank);
+}
+
+// Every business seen in the grid, ranked by how much of the area sees it on the first page (top 10), then by average rank.
+export function leaderboard(points, target, limit = 8) {
+  const rows = boardRows(points, target);
+  rows.sort((a, b) => b.top10Points - a.top10Points || a.avgRank - b.avgRank);
   const out = rows.filter((r) => !r.isTarget).slice(0, limit);
   const t = rows.find((r) => r.isTarget);
   return { rows: out, target: t, position: rows.indexOf(t) + 1, total: rows.length };
+}
+
+// What separates the client from a business above it, from the scan data only.
+export function gapTo(r, t) {
+  if (!r || !t || r.isTarget) return null;
+  const reviews = r.reviews != null && t.reviews != null ? Math.max(0, r.reviews - t.reviews + 1) : null;
+  const rating = r.rating != null && t.rating != null ? Math.round((r.rating - t.rating) * 10) / 10 : null;
+  const sameCategory = r.category && t.category ? r.category.toLowerCase() === t.category.toLowerCase() : null;
+  return { reviews, rating, coverage: (r.sov10 ?? 0) - (t.sov10 ?? 0), sameCategory };
+}
+
+export function gapText(r, t) {
+  const g = gapTo(r, t);
+  if (!g) return '';
+  const parts = [];
+  if (g.reviews) parts.push(`${g.reviews} more review${g.reviews === 1 ? '' : 's'} to pass their ${Number(r.reviews).toLocaleString('en-US')}`);
+  else if (g.reviews === 0) parts.push('you already have more reviews');
+  if (g.rating != null && g.rating > 0.05) parts.push(`their rating is ${g.rating.toFixed(1)} higher`);
+  if (g.sameCategory === false) parts.push(`they use "${r.category}" as the main category`);
+  if (g.coverage > 0) parts.push(`they reach ${g.coverage}% more of the area`);
+  return parts.join(', ');
+}
+
+// The top 10 ladder: who usually holds each spot from #1 to #10 (by average rank across the grid), where the client sits,
+// and what separates the client from each business above it. Facts from the scan; distance and relevance also decide rank,
+// so this shows what the businesses at each spot have, not a promise of a spot.
+export function ladder(points, target, limit = 10) {
+  const rows = boardRows(points, target).sort((a, b) => a.avgRank - b.avgRank || b.top10Points - a.top10Points);
+  rows.forEach((r, i) => { r.position = i + 1; });
+  const t = rows.find((r) => r.isTarget) || null;
+  const slim = (r) => ({
+    position: r.position, title: r.title, isTarget: Boolean(r.isTarget), avgRank: r.avgRank, sov10: r.sov10, sov3: r.sov, top10Points: r.top10Points,
+    reviews: r.reviews ?? null, rating: r.rating ?? null, category: r.category || null, gap: gapTo(r, t), gapText: gapText(r, t),
+  });
+  const top = rows.slice(0, limit).map(slim);
+  const above = t ? rows.filter((r) => r.position < t.position).slice(-3).reverse().map(slim) : [];
+  return { rows: top, target: t ? slim(t) : null, position: t?.position ?? null, total: rows.length, next: above };
+}
+
+// Share of the area in each band: top 3, 4 to 10, 11 to 20, not in the top 20.
+export function bands(points) {
+  const done = points.filter((p) => p.status === 'done');
+  const n = done.length;
+  const pct = (f) => (n ? Math.round((100 * done.filter(f).length) / n) : 0);
+  return {
+    n, top3: pct((p) => p.rank != null && p.rank <= 3), page1: pct((p) => p.rank != null && p.rank > 3 && p.rank <= 10),
+    page2: pct((p) => p.rank != null && p.rank > 10), none: pct((p) => p.rank == null),
+    top10: pct((p) => p.rank != null && p.rank <= 10), top20: pct((p) => p.rank != null),
+  };
+}
+
+// How to climb, band by band. Each band says where they are and what moves them up, in plain words.
+export const CLIMB = [
+  { key: 'found', label: 'Show up at all (top 20)', what: ['Complete, verified Google profile with the right main category', 'Same name, address and phone on the website and the main directories', 'Website linked on the profile with the main service and city on the home page'] },
+  { key: 'page1', label: 'First page (top 10)', what: ['A page on the website for each main service and each city served', 'New reviews every week, replied to', 'On-page fixes (titles, headings, click to call) and local links (chamber, trade groups, sponsors)', 'Weekly Google posts and fresh photos'] },
+  { key: 'top3', label: 'Top 3', what: ['Pass the businesses at #1 to #3 on reviews, rating and relevance', 'More pages and links than they have', 'Distance matters: the top 3 is easiest close to the address and hardest far out'] },
+];
+export function climbSteps(b, lad) {
+  const next = lad?.next?.[0] || null;
+  return CLIMB.map((step) => {
+    const have = step.key === 'found' ? b.top20 : step.key === 'page1' ? b.top10 : b.top3;
+    const status = have >= 60 ? 'strong' : have > 0 ? 'some' : 'none';
+    return { ...step, have, status, nextUp: step.key === 'page1' && next ? `#${next.position} ${next.title}${next.gapText ? `: ${next.gapText}` : ''}` : null };
+  });
 }
 
 // How far from the address the business holds a given rank (ring by ring, at least half the ring).
@@ -217,10 +285,11 @@ export function findings({ target, points, size, radius, keyword, board, comps, 
   const n = done.length;
   if (!n) return out;
   const top3 = done.filter((p) => p.rank != null && p.rank <= 3).length;
+  const top10 = done.filter((p) => p.rank != null && p.rank <= 10).length;
   const name = target.title;
 
-  if (top3 === 0) out.push(`${name} isn't in Google's top 3 for "${keyword}" anywhere in this ${n}-point area. The top 3 is where most calls go.`);
-  else out.push(`${name} is in the top 3 at ${top3} of ${n} points (${Math.round((100 * top3) / n)}% of the area).`);
+  if (top10 === 0) out.push(`${name} isn't on the first page (top 10) for "${keyword}" anywhere in this ${n}-point area.`);
+  else out.push(`${name} is on the first page (top 10) at ${top10} of ${n} points (${Math.round((100 * top10) / n)}% of the area), and in the top 3 at ${top3}.`);
 
   const r3 = reach(points, size, radius, 3);
   const r10 = reach(points, size, radius, 10);
@@ -230,8 +299,8 @@ export function findings({ target, points, size, radius, keyword, board, comps, 
   else out.push(`It stays on the first page (top 10) ${reachText(r10)} but doesn't hold the top 3 anywhere around its address.`);
 
   const leader = board?.rows?.[0];
-  if (leader && leader.top3Points > top3) {
-    let line = `${leader.title} owns the area: top 3 at ${leader.top3Points} of ${n} points`;
+  if (leader && leader.top10Points > top10) {
+    let line = `${leader.title} covers the most of the area: first page at ${leader.top10Points} of ${n} points`;
     if (leader.reviews != null && target.reviews != null) {
       line += `, with ${Number(leader.reviews).toLocaleString('en-US')} reviews vs ${Number(target.reviews).toLocaleString('en-US')}`;
       const ratio = target.reviews ? leader.reviews / target.reviews : Infinity;
@@ -258,7 +327,7 @@ const FIX = {
   claimed: { impact: 'High', text: 'Claim and verify the Google profile. Nothing else sticks until the owner controls it.' },
   primary: { impact: 'High', text: 'Review the primary category. It is the strongest relevance signal Google uses for the map pack.' },
   categories: { impact: 'High', text: 'Add the secondary categories competitors rank with, where they match real services.' },
-  website: { impact: 'High', text: 'Link a website with a page for the main service and city. Profiles without one rarely hold the top 3.' },
+  website: { impact: 'High', text: 'Link a website with a page for the main service and city. Profiles without one rarely reach the first page.' },
   reviews: { impact: 'Medium', text: 'Start a steady review request system so new reviews arrive every week, not in bursts.' },
   rating: { impact: 'Medium', text: 'Reply to every review and fix the issues behind low ratings. Rating affects clicks more than rank.' },
   photos: { impact: 'Medium', text: 'Upload real photos every month: team, jobs, storefront. It keeps the profile active and earns clicks.' },

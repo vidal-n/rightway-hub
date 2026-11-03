@@ -10,6 +10,8 @@ import { route } from './router.js';
 import { twilioReady, verifiedParams, twiml, xml } from './calls.js';
 import { browserIdentities, recordingOn } from './voice.js';
 import { trackedAnswer } from './calltrack.js';
+import { voicemailTwiml } from './voicemail.js';
+import { notify, notifyLater } from './notify.js';
 
 const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']);
 const START_WORDS = new Set(['start', 'unstop', 'yes']);
@@ -52,7 +54,8 @@ route('GET', '/api/inbox', async ({ env, user }) => {
 route('GET', '/api/inbox/unread', async ({ env, user }) => {
   requireStaff(user);
   const r = await first(env, "SELECT COUNT(*) AS n FROM messages WHERE direction = 'in' AND read = 0");
-  return json({ unread: r?.n || 0 });
+  const v = await first(env, "SELECT COUNT(*) AS n FROM activities WHERE type = 'call' AND status IN ('voicemail','missed') AND seen_at IS NULL AND at > ?", now() - 30 * 864e5).catch(() => null);
+  return json({ unread: (r?.n || 0) + (v?.n || 0), texts: r?.n || 0, calls: v?.n || 0 });
 });
 
 route('GET', '/api/leads/:id/messages', async ({ env, user, params }) => {
@@ -124,7 +127,7 @@ route('POST', '/api/twilio/sms-status', async ({ env, request }) => {
 }, { public: true });
 
 // A text arrived on the business number.
-route('POST', '/api/twilio/sms', async ({ env, request }) => {
+route('POST', '/api/twilio/sms', async ({ env, request, defer }) => {
   const p = await verifiedParams(env, request);
   const from = e164(p.From);
   const body = String(p.Body || '').slice(0, 1600);
@@ -144,30 +147,42 @@ route('POST', '/api/twilio/sms', async ({ env, request }) => {
   } else {
     await run(env, 'UPDATE leads SET updated_at = ? WHERE id = ?', now(), leadId);
     await logActivity(env, { lead_id: leadId, type: 'sms', status: 'in', body });
+    await notifyLater({ env, defer }, { to: 'staff', kind: 'text', title: `Text from ${lead.business || from}`, body: body.slice(0, 160), url: `/#/inbox`, tag: `text-${leadId}` });
   }
   return twiml(''); // Twilio sends the STOP and START confirmations itself.
 }, { public: true });
 
-// A call came in: ring the owner's phone, else say a short message.
-async function forwardNumber(env) {
-  const row = await first(env, "SELECT phone FROM users WHERE phone IS NOT NULL AND phone != '' AND role IN ('admin','team') ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END, created_at LIMIT 1").catch(() => null);
-  return row?.phone || null;
+// A call came in: ring every teammate's saved mobile at the same time as the open Hubs (up to 5 phones).
+async function forwardNumbers(env) {
+  const rows = await all(env, "SELECT phone FROM users WHERE phone IS NOT NULL AND phone != '' AND role IN ('admin','team') ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END, created_at LIMIT 5").catch(() => []);
+  return [...new Set(rows.map((r) => e164(r.phone)).filter(Boolean))];
 }
+const prettyNum = (n) => { const d = String(n || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : n || ''; };
 
-route('POST', '/api/twilio/voice', async ({ env, request, url }) => {
+route('POST', '/api/twilio/voice', async ({ env, request, url, defer }) => {
   const p = await verifiedParams(env, request);
   const tracked = await trackedAnswer(env, p, url.origin);
   if (tracked) return tracked;
   const from = e164(p.From);
   const lead = from && (await first(env, 'SELECT id, business FROM leads WHERE phone_digits = ? ORDER BY updated_at DESC LIMIT 1', digits(from)));
   const aid = await logActivity(env, { lead_id: lead?.id || null, type: 'call', status: 'inbound', body: from ? `Incoming call from ${from}` : 'Incoming call', call_sid: p.CallSid || null });
+  await run(env, 'UPDATE activities SET from_num = ?, to_num = ? WHERE id = ?', from || p.From || null, e164(p.To) || null, aid);
   // Ring every open Hub (browser phone) and the saved mobile, if any, at the same time. First to answer gets it.
   const clients = await browserIdentities(env);
-  const cell = await forwardNumber(env);
-  if (!clients.length && !cell) return twiml('<Say voice="Polly.Joanna">Thanks for calling Rightway Growth. Please send us a text and we will get right back to you.</Say><Hangup/>');
+  const cells = await forwardNumbers(env);
+  const who = lead?.business || prettyNum(from) || 'Unknown caller';
+  if (!clients.length && !cells.length) {
+    await run(env, "UPDATE activities SET status = 'missed' WHERE id = ?", aid);
+    return twiml(await voicemailTwiml(env, url.origin, aid));
+  }
+  // A callback: the rep sees who it is and when we last called them.
+  const last = lead ? await first(env, "SELECT at FROM activities WHERE lead_id = ? AND type = 'call' AND status NOT IN ('inbound','missed','voicemail','inbound_answered') ORDER BY at DESC LIMIT 1", lead.id) : null;
+  const back = last && now() - last.at < 30 * 864e5 ? `Calling back (you called ${agoText(last.at)})` : '';
   const param = (k, v) => (v ? `<Parameter name="${k}" value="${xml(v)}"/>` : '');
-  const nouns = clients.map((id) => `<Client><Identity>${xml(id)}</Identity>${param('caller', from)}${param('who', lead?.business)}${param('called', e164(p.To))}${param('leadId', lead?.id)}</Client>`).join('')
-    + (cell ? `<Number>${xml(cell)}</Number>` : '');
+  const nouns = clients.map((id) => `<Client><Identity>${xml(id)}</Identity>${param('caller', from)}${param('who', lead?.business)}${param('called', e164(p.To))}${param('leadId', lead?.id)}${param('context', back)}</Client>`).join('')
+    + cells.map((n) => `<Number>${xml(n)}</Number>`).join('');
+  // Phones and tablets with notifications on light up and buzz while it rings; saved mobiles ring as a normal call.
+  await notifyLater({ env, defer }, { to: 'staff', kind: 'call', title: `Incoming call: ${who}`, body: [prettyNum(from), back].filter(Boolean).join(' · ') || 'Answer in the Hub', url: '/#/inbox/calls', tag: `call-${aid}`, urgent: true, slack: false });
   const callerId = e164(p.To) || env.TWILIO_FROM;
   const rec = (await recordingOn(env))
     ? `record="record-from-answer-dual" recordingStatusCallback="${xml(`${url.origin}/api/twilio/recording?a=${aid}`)}" recordingStatusCallbackEvent="completed"`
@@ -175,10 +190,21 @@ route('POST', '/api/twilio/voice', async ({ env, request, url }) => {
   return twiml(`<Dial callerId="${xml(callerId)}" answerOnBridge="true" timeout="20" ${rec} action="${xml(`${url.origin}/api/twilio/voice-done?a=${aid}`)}">${nouns}</Dial>`);
 }, { public: true });
 
-route('POST', '/api/twilio/voice-done', async ({ env, request, url }) => {
+function agoText(at) {
+  const h = Math.round((now() - at) / 3600e3);
+  if (h < 1) return 'less than an hour ago';
+  if (h < 24) return `${h} hour${h === 1 ? '' : 's'} ago`;
+  const d = Math.round(h / 24);
+  return `${d} day${d === 1 ? '' : 's'} ago`;
+}
+
+route('POST', '/api/twilio/voice-done', async ({ env, request, url, defer }) => {
   const p = await verifiedParams(env, request);
   const status = p.DialCallStatus || 'completed';
-  await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', status === 'completed' ? 'inbound_answered' : 'missed', Number(p.DialCallDuration || 0), url.searchParams.get('a') || '');
+  const aid = url.searchParams.get('a') || '';
+  await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', status === 'completed' ? 'inbound_answered' : 'missed', Number(p.DialCallDuration || 0), aid);
   if (status === 'completed') return twiml('<Hangup/>');
-  return twiml('<Say voice="Polly.Joanna">Thanks for calling Rightway Growth. We missed you. Send us a text and we will get right back to you.</Say><Hangup/>');
+  const a = await first(env, 'SELECT a.from_num, l.business FROM activities a LEFT JOIN leads l ON l.id = a.lead_id WHERE a.id = ?', aid);
+  await notifyLater({ env, defer }, { to: 'staff', kind: 'voicemail', title: `Missed call: ${a?.business || prettyNum(a?.from_num) || 'Unknown caller'}`, body: 'They may leave a voicemail. Tap to call back.', url: '/#/inbox/calls', tag: `call-${aid}`, slack: false });
+  return twiml(await voicemailTwiml(env, url.origin, aid));
 }, { public: true });

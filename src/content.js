@@ -9,6 +9,7 @@ import { monthKey } from './plans.js';
 import { canEmail, sendEmail } from './email.js';
 import { cleanHtml, slugify, wordCount } from '../public/js/sanitize.js';
 import { leaderboard } from '../public/js/analysis.js';
+import { notify } from './notify.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
@@ -52,10 +53,10 @@ export function suggestTopics(client, existing = [], scanInfo = new Map()) {
     let weak = null;
     for (const [k, s] of scanInfo) {
       const kw = k.split(' ').filter((w) => w.length > 3);
-      if (kw.length && kw.every((w) => words.some((x) => x.startsWith(w.slice(0, 5))))) if (!weak || s.top3Pct < weak.top3Pct) weak = s;
+      if (kw.length && kw.every((w) => words.some((x) => x.startsWith(w.slice(0, 5))))) if (!weak || s.top10Pct < weak.top10Pct) weak = s;
     }
-    t.score = ({ service: 3, city: 2, article: 1 })[t.kind] + (weak ? (100 - weak.top3Pct) / 25 : 0);
-    t.reason = weak ? `Top 3 in only ${weak.top3Pct}% of the area for "${weak.keyword}"`
+    t.score = ({ service: 3, city: 2, article: 1 })[t.kind] + (weak ? (100 - weak.top10Pct) / 25 : 0);
+    t.reason = weak ? `First page (top 10) in only ${weak.top10Pct}% of the area for "${weak.keyword}"`
       : t.kind === 'city' ? `No page for ${t.city} yet` : t.kind === 'service' ? 'No page for this service yet' : 'Answers a question people search before they call';
   }
   return out.sort((a, b) => b.score - a.score).slice(0, 12);
@@ -246,7 +247,7 @@ const out = (it, staff = true) => ({
 async function scanInfo(env, clientId) {
   const rows = await all(env, 'SELECT id, keyword, summary, created_at FROM scans WHERE client_id = ? ORDER BY created_at DESC LIMIT 60', clientId);
   const m = new Map();
-  for (const r of rows) { const k = norm(r.keyword); if (!m.has(k)) m.set(k, { id: r.id, keyword: r.keyword, top3Pct: parse(r.summary)?.top3Pct ?? 0 }); }
+  for (const r of rows) { const k = norm(r.keyword); if (!m.has(k)) { const sm = parse(r.summary) || {}; m.set(k, { id: r.id, keyword: r.keyword, top10Pct: sm.top10Pct ?? 0, top3Pct: sm.top3Pct ?? 0 }); } }
   return m;
 }
 async function competitorsFor(env, info, keyword) {
@@ -346,6 +347,7 @@ route('POST', '/api/content/:id/review', async ({ env, user, params, url }) => {
   if (/\[(Write|Answer|Add) /.test(it.html || '')) throw new HttpError('Fill in the parts in [brackets] first.');
   await run(env, "UPDATE content SET status = 'review', client_note = NULL, updated_at = ? WHERE id = ?", now(), it.id);
   await log(env, it.client_id, `New page ready for your review: ${it.title}`, user.id);
+  await notify(env, { to: { clientUsers: it.client_id }, kind: 'update', title: 'A new page is ready for you to check', body: it.title, url: `/#/content/${it.id}`, slack: false }).catch(() => {});
   const c = await clientOr404(env, it.client_id);
   let emailed = false;
   if (c.contact_email && canEmail(env)) {
@@ -364,6 +366,7 @@ route('POST', '/api/content/:id/approve', async ({ env, user, params }) => {
   if (user.role === 'client' && it.status !== 'review') throw new HttpError('This page is not waiting for your review.');
   await run(env, "UPDATE content SET status = 'approved', updated_at = ? WHERE id = ?", now(), it.id);
   await log(env, it.client_id, `Page approved: ${it.title}`, user.id);
+  if (user.role === 'client') await notify(env, { to: { client: it.client_id }, kind: 'client', title: 'Page approved by the client', body: it.title, url: `/#/client/${it.client_id}/content` }).catch(() => {});
   return json({ item: out(await itemOr404(env, it.id), user.role !== 'client') });
 });
 
@@ -375,6 +378,7 @@ route('POST', '/api/content/:id/changes', async ({ env, user, params, body }) =>
   if (!note) throw new HttpError('Tell us what to change.');
   await run(env, "UPDATE content SET status = 'changes', client_note = ?, updated_at = ? WHERE id = ?", note, now(), it.id);
   await log(env, it.client_id, `Changes asked for on: ${it.title}`, user.id);
+  if (user.role === 'client') await notify(env, { to: { client: it.client_id }, kind: 'client', title: 'Client asked for changes', body: `${it.title}: ${note.slice(0, 140)}`, url: `/#/client/${it.client_id}/content` }).catch(() => {});
   return json({ item: out(await itemOr404(env, it.id), user.role !== 'client') });
 });
 

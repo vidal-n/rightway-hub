@@ -3,7 +3,7 @@ import { $, $$, esc, api, toast, copy, fmt, icon, busy, resizeImage, animateNumb
 import { qrSvg } from '../js/qr.js';
 import { createMap } from '../js/map.js';
 import { gridStats } from '../js/grid.js';
-import { leaderboard } from '../js/analysis.js';
+import { ladder, bands, climbSteps } from '../js/analysis.js';
 import { trendCard, scanProgress, runScanNow } from './scans.js';
 
 // ---------- activity ----------
@@ -223,9 +223,9 @@ export async function renderRankings(el, clientId, { staff = false } = {}) {
     <div class="card" id="rk-view"><div class="skeleton"></div></div>
     <div class="card">
       <div class="card-head"><h2>All scans</h2>${staff ? `<div class="row" style="gap:8px"><button class="btn btn-ghost btn-sm" id="rk-run">${icon.scan}Run scan now</button><a class="btn btn-primary btn-sm" href="/scan.html?client=${esc(clientId)}">New scan</a></div>` : ''}</div>
-      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Keyword</th><th>Top 3 coverage</th><th>Avg rank</th><th>At address</th></tr></thead>
+      <div class="table-wrap"><table><thead><tr><th>Date</th><th>Keyword</th><th>First page (top 10)</th><th>Top 3</th><th>Avg rank</th><th>At address</th></tr></thead>
       <tbody>${scans.map((s, i) => `<tr data-scan="${esc(s.id)}" style="cursor:pointer"${i === 0 ? ' class="is-you"' : ''}>
-        <td>${esc(fmt.date(s.created_at))}</td><td>${esc(s.keyword)}</td><td>${s.top3Pct ?? '-'}%</td><td>${s.avgRank ?? '-'}</td><td>${s.centerRank ? `#${s.centerRank}` : '20+'}</td></tr>`).join('')}</tbody></table></div>
+        <td>${esc(fmt.date(s.created_at))}</td><td>${esc(s.keyword)}</td><td><b>${s.top10Pct ?? '-'}%</b></td><td>${s.top3Pct ?? '-'}%</td><td>${s.avgRank ?? '-'}</td><td>${s.centerRank ? `#${s.centerRank}` : '20+'}</td></tr>`).join('')}</tbody></table></div>
     </div>`;
   }
   if (staff) {
@@ -241,8 +241,11 @@ export async function renderRankings(el, clientId, { staff = false } = {}) {
     try {
       const { scan } = await api(`/api/scans/${id}`);
       const s = gridStats(scan.points);
-      const board = leaderboard(scan.points, scan.target, 5);
-      const rows = [board.target, ...board.rows].filter(Boolean).sort((a, b) => b.top3Points - a.top3Points || a.avgRank - b.avgRank).slice(0, 6);
+      const lad = ladder(scan.points, scan.target, 10);
+      const b = bands(scan.points);
+      const steps = climbSteps(b, lad);
+      const rows = lad.target && lad.position > 10 ? [...lad.rows, lad.target] : lad.rows;
+      const seg = [['#23B07E', b.top3, 'Top 3'], ['#F2B544', b.page1, '4 to 10'], ['#E8833A', b.page2, '11 to 20'], ['#D64545', b.none, 'Not in top 20']].filter(([, v]) => v > 0);
       view.innerHTML = `
         <div class="card-head"><div><p class="eyebrow">Map scan, ${esc(fmt.date(Date.parse(scan.createdAt)))}</p><h2>"${esc(scan.keyword)}"</h2></div>
           <span class="badge gray">${scan.size} x ${scan.size}, ${scan.radius} mi</span></div>
@@ -251,16 +254,22 @@ export async function renderRankings(el, clientId, { staff = false } = {}) {
             <div class="legend"><span><i style="background:#23B07E"></i>Top 3</span><span><i style="background:#F2B544"></i>4 to 10</span><span><i style="background:#E8833A"></i>11 to 20</span><span><i style="background:#D64545"></i>Not in top 20</span></div></div>
           <div>
             <div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr))">
-              <div class="stat hero"><div class="stat-num" data-count="${s.top3Pct}" data-suffix="%">0</div><div class="stat-label">of the area sees you in the top 3</div></div>
+              <div class="stat hero"><div class="stat-num" data-count="${s.top10Pct}" data-suffix="%">0</div><div class="stat-label">of the area sees you on the first page (top 10)</div></div>
               <div class="stat"><div class="stat-num" data-count="${s.avgRank ?? 0}" data-dec="1">0</div><div class="stat-label">average rank</div></div>
-              <div class="stat"><div class="stat-num" data-count="${s.top10Pct}" data-suffix="%">0</div><div class="stat-label">on the first page</div></div>
+              <div class="stat"><div class="stat-num">${lad.position ? `#${lad.position}` : '-'}</div><div class="stat-label">of ${lad.total} businesses seen, by average spot</div></div>
               <div class="stat"><div class="stat-num">${s.centerRank ? `#${s.centerRank}` : '20+'}</div><div class="stat-label">at your address</div></div>
             </div>
-            <h3>Who holds the top 3</h3>
-            <div class="table-wrap"><table><thead><tr><th>Business</th><th>Top 3 share</th><th>Reviews</th></tr></thead>
-              <tbody>${rows.map((b) => `<tr class="${b.isTarget ? 'is-you' : ''}"><td>${esc(b.title)}${b.isTarget ? ' (you)' : ''}</td><td>${b.sov}%</td><td>${fmt.int(b.reviews)}</td></tr>`).join('')}</tbody></table></div>
+            <div class="band-bar" role="img" aria-label="${seg.map(([, v, l]) => `${l}: ${v}%`).join(', ')}">${seg.map(([c, v, l]) => `<span style="width:${v}%;background:${c}" title="${l}: ${v}%">${v >= 9 ? `${v}%` : ''}</span>`).join('')}</div>
           </div>
-        </div>`;
+        </div>
+        <h3 style="margin-top:18px">Who holds the top 10</h3>
+        <div class="table-wrap"><table><thead><tr><th>Spot</th><th>Business</th><th>First page share</th><th>Avg rank</th><th>Reviews</th><th>${staff ? 'To pass them' : 'Gap'}</th></tr></thead>
+          <tbody>${rows.map((r) => `<tr class="${r.isTarget ? 'is-you' : ''}"><td><b>#${r.position}</b></td><td>${esc(r.title)}${r.isTarget ? ' (you)' : ''}</td><td>${r.sov10}%</td><td>${r.avgRank}</td>
+            <td>${fmt.int(r.reviews)}${r.rating ? ` <span class="muted small">${Number(r.rating).toFixed(1)}</span>` : ''}</td><td class="small">${!r.isTarget && lad.target && r.position < lad.position ? esc(r.gapText || '-') : ''}</td></tr>`).join('')}</tbody></table></div>
+        <h3 style="margin-top:18px">How to climb</h3>
+        <div class="climb">${steps.map((st) => `<div class="climb-step is-${st.status}"><div class="row"><b>${esc(st.label)}</b><span class="spacer"></span><span class="badge ${st.status === 'strong' ? '' : st.status === 'some' ? 'warn' : 'gray'}">${st.have}% of the area</span></div>
+          <ul>${st.what.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>${st.nextUp ? `<p class="small"><b>Next spot up:</b> ${esc(st.nextUp)}</p>` : ''}</div>`).join('')}</div>
+        <p class="small muted">Rank also depends on how close a searcher is and how well the business matches the search. The gaps show what to work on, not a promised spot.</p>`;
       createMap($('#rk-map', view), scan.points, {});
       animateNumbers(view);
     } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; }

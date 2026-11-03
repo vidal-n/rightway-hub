@@ -61,7 +61,7 @@ test('review analysis: months, pace, reply rate, unanswered and themes', () => {
   assert.equal(pace.mine.perMonth, 6);
   assert.equal(pace.competitors[0].perMonth, 6);
   const slim = slimReviews([{ type: 'google_reviews_search', rating: { value: 5 }, review_text: 'Great', timestamp: '2026-10-01 14:00:00 +00:00', owner_answer: 'Thanks!' }, { type: 'google_reviews_search', rating: { value: 3 } }]);
-  assert.deepEqual(slim, [{ rating: 5, text: 'Great', at: Date.UTC(2026, 9, 1, 14), reply: true }]);
+  assert.deepEqual(slim, [{ rating: 5, text: 'Great', at: Date.UTC(2026, 9, 1, 14), reply: true, name: null, url: null }]);
 });
 
 test('quarter helpers and the plan draft', () => {
@@ -69,7 +69,7 @@ test('quarter helpers and the plan draft', () => {
   assert.equal(nextQuarter('2026-Q4'), '2027-Q1');
   assert.deepEqual(quarterMonths('2027-Q1').map((m) => m.label), ['January', 'February', 'March']);
   const d = draftFrom({
-    keywords: [{ keyword: 'roof repair', top3Pct: 18 }, { keyword: 'roofer', top3Pct: 40 }],
+    keywords: [{ keyword: 'roof repair', top10Pct: 18, avgRank: 12.4 }, { keyword: 'roofer', top10Pct: 40 }],
     reviews: { count: 52, gap: 160, replyRate: 60, unanswered: 4 }, leader: { title: 'Harborline', reviews: 212 },
     calls: { total: 30, missed: 6 }, site: { score: 61, issues: [{ severity: 'high', title: 'Site is not on https' }, { severity: 'medium', title: 'Thin pages' }] },
     citations: { mismatch: 2, missing: 5 }, ideas: [{ title: 'Roof repair in Davie' }, { title: 'Tile roofs in Hollywood' }, { title: 'Roofer in Miramar' }],
@@ -110,7 +110,7 @@ test('locations: added under the main business, no plan tasks, left out of reven
   const roll = r.data.rollup;
   assert.equal(roll.locations.length, 2);
   assert.ok(roll.locations[0].isMain);
-  assert.ok(roll.locations.every((l) => l.top3Avg != null));
+  assert.ok(roll.locations.every((l) => l.top10Avg != null));
   assert.equal(roll.totals.count, 2);
   r = await t.call('GET', `/api/clients/${loc.id}/locations`);
   assert.equal(r.data.isLocation, true);

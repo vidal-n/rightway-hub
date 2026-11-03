@@ -54,6 +54,13 @@ const INDUSTRIES = [
   [/doctor|clinic|medical|urgent care|dermatolog/i, 'Medical practice', 'doctor', 800],
 ];
 
+// First page (top 10) spots in a lead's research grid. Older research has no top10 field, so count the cells.
+export function top10Of(g) {
+  if (!g) return 0;
+  if (g.top10 != null) return g.top10;
+  return (g.cells || []).filter((c) => !c.error && c.rank != null && c.rank <= 10).length;
+}
+
 export function industryInfo(industry = '', category = '') {
   for (const text of [industry, category]) {
     if (!text) continue;
@@ -131,17 +138,21 @@ export function findProblems(intel, lead = {}) {
       'Claim and verify the profile, then optimize every field.');
   }
   const rank = intel.rank ?? null;
-  if (kw && (rank == null || rank > 3)) {
-    add('not_top3', 'high', `Not in the top 3 for "${kw}"`, `At your own address you show up ${rankText(rank)}.${top ? ` ${top.title} is #1.` : ''}`,
-      `I searched "${kw}" right from your address and you came up ${rankText(rank)}.${top ? ` ${top.title} is showing first.` : ''} Most calls go to the top 3.`,
-      'Profile optimization, local pages, citations, and review velocity to move into the 3-pack.');
+  if (kw && (rank == null || rank > 10)) {
+    add('not_top10', 'high', `Not on the first page for "${kw}"`, `At your own address you show up ${rankText(rank)}.${top ? ` ${top.title} is #1.` : ''}`,
+      `I searched "${kw}" right from your address and you came up ${rankText(rank)}.${top ? ` ${top.title} is showing first.` : ''} Most people never look past the first page of the map.`,
+      'Profile optimization, local pages, citations, and steady reviews to get onto the first page, then climb it.');
+  } else if (kw && rank > 3) {
+    add('not_top3', 'medium', `#${rank} for "${kw}" at your address`, `On the first page at your own address, with ${rank - 1} businesses above you.${top ? ` ${top.title} is #1.` : ''}`,
+      `I searched "${kw}" right from your address and you came up ${rankText(rank)}.${top ? ` ${top.title} is showing first.` : ''} Every spot higher on that list gets more of the calls.`,
+      'Reviews, local pages, and links to climb past the businesses above you.');
   }
   if (intel.grid && intel.grid.points > 1) {
-    const share = intel.grid.top3;
+    const share = top10Of(intel.grid);
     if (share / intel.grid.points < 0.5) {
-      add('grid_weak', share === 0 ? 'high' : 'medium', `Top 3 in only ${share} of ${intel.grid.points} nearby spots`,
+      add('grid_weak', share === 0 ? 'high' : 'medium', `First page in only ${share} of ${intel.grid.points} nearby spots`,
         `We checked ${intel.grid.points} points within ${intel.grid.radiusMiles} miles of the business. Average rank ${intel.grid.avg ?? 'outside the top 20'}.`,
-        `A mile or two from your shop, you drop out of the top 3 in ${intel.grid.points - share} of the ${intel.grid.points} spots we checked. That's where your competitors are picking up your calls.`,
+        `A mile or two from your shop, you drop off the first page in ${intel.grid.points - share} of the ${intel.grid.points} spots we checked. That's where your competitors are picking up your calls.`,
         'Service area pages, citations, and posts aimed at the weak areas.');
     }
   }
@@ -265,14 +276,14 @@ export function recommendPlan(lead = {}, intel = null) {
   } else if (info.tier === 'low' && high <= 1 && topReviews < 80) {
     plan = 'starter'; why.push('Lighter competition', 'Mostly profile fixes needed');
   } else {
-    why.push(high ? `${high} serious problems to fix` : 'Room to move into the top 3', 'Needs pages, links, and reviews, not only profile work');
+    why.push(high ? `${high} serious problems to fix` : 'Room to climb the first page', 'Needs pages, links, and reviews, not only profile work');
   }
   return { plan, why };
 }
 
 // ---------- call script ----------
 // One pitch from the first dial to the signature. The scan is the hook on the phone and the centerpiece of the meeting.
-// Plain words only: say "Google Maps", "the top 3", "calls". Never "SEO", "citations", "NAP", or "algorithm" to an owner.
+// Plain words only: say "Google Maps", "the first page", "calls". Never "SEO", "citations", "NAP", or "algorithm" to an owner.
 // Each step is one or more lines; lines that start with "Or:" are alternatives, "(" lines are coaching notes.
 export const SCRIPT_KEYS = [
   ['opener', 'Opener'], ['hook', 'The scan hook'], ['discovery', 'Questions'], ['gap', 'Sum up the gap'],
@@ -339,7 +350,7 @@ export const DEFAULT_OBJECTIONS = [
   ['Just send me an email', "Happy to. So it doesn't get buried, what part should I focus on? (Let them answer.) Honestly, the map makes way more sense on screen than in an email, and it's 15 minutes. Does {slot1} or {slot2} work?"],
   ['Not interested', "No problem, I appreciate you being straight with me. Is it that more calls from Google isn't a priority right now, or that you've been burned by marketing people before? (Listen. If burned, use that answer.) Would it be a bad idea if I just sent you the map so you have it?"],
   ['We have enough work / word of mouth', "That's the best problem to have, it means you do good work. Here's the thing: most referrals still Google you before they call. When they do, {top_name_or_them} is sitting right there with more reviews. We make sure the referral you earned doesn't end up calling them. And is the work you're getting the work you want, or would you take more of the bigger jobs?"],
-  ['We already have someone', "Good, that means you take it seriously. Quick question: do they show you a map like this every month? Right now you're in the top 3 in {top3_of_points} spots around you. Is that where you expected to be? Let me show you the scan as a free second opinion. If they're doing great, you'll know."],
+  ['We already have someone', "Good, that means you take it seriously. Quick question: do they show you a map like this every month? Right now you're on the first page in {top10_of_points} spots around you. Is that where you expected to be? Let me show you the scan as a free second opinion. If they're doing great, you'll know."],
   ["We tried SEO, it didn't work", "I get it, and a lot of owners we talk to felt the same way. They paid every month and never saw what was actually done. What they found with us is that everything is visible: every task in your app and a new map every month, so you can check our work yourself. What happened with the last company?"],
   ["I'm busy right now", "Totally get it, you're running a business. Is later today or tomorrow morning better for 2 minutes? I'll put it in my calendar and call right on time."],
   ['I need to talk to my partner', "Makes sense, this should be a joint decision. What do you think they'll ask? (Answer it now.) Let's get 15 minutes with both of you so they see the same map. Does {slot1} or {slot2} work?"],
@@ -354,7 +365,7 @@ export const DEFAULT_OBJECTIONS = [
 // The methods behind the script, so the team knows why each line is there. Ideas summarized in our own words.
 export const PLAYBOOK = [
   ['Ask permission to pitch', 'Jeb Blount, Fanatical Prospecting', 'Name the interruption and ask for 30 seconds. People relax when they feel in control.'],
-  ['Lead with something specific', 'Drew Eric Whitman, Cashvertising', 'Real numbers beat claims: "top 3 in 2 of 9 spots" lands harder than "you could rank better".'],
+  ['Lead with something specific', 'Drew Eric Whitman, Cashvertising', 'Real numbers beat claims: "first page in 2 of 9 spots" lands harder than "you could rank better".'],
   ['Use the 8 core wants', 'Drew Eric Whitman, Cashvertising', 'Owners want to win, to beat the guy across town, to stop worrying about slow months, and to be approved of. Point at the competitor by name.'],
   ['Teach them something new', 'Dixon and Adamson, The Challenger Sale', 'The map shows them something about their own business they did not know. That earns the meeting.'],
   ['Find the gap', 'Keenan, Gap Selling', 'Current state, the cost of it, and the future they want. The bigger the gap, the easier the yes.'],
@@ -396,8 +407,9 @@ export function scanLine(lead = {}, intel = null) {
   const top = intel?.competitors?.[0];
   if (g && g.points) {
     const where = `${g.points} spots around ${name}, up to ${g.radiusMiles} miles out`;
-    if (!g.top3) return `I searched "${kw}" on Google from ${where}, like a customer would. You didn't show up in the top 3 in any of them.${top ? ` ${top.title} did in ${top.wins} of ${g.points}.` : ''}`;
-    return `I searched "${kw}" on Google from ${where}, like a customer would. You were in the top 3 in ${g.top3} of ${g.points}.${top && top.wins > g.top3 ? ` ${top.title} was in ${top.wins}.` : ''}`;
+    const t10 = top10Of(g);
+    if (!t10) return `I searched "${kw}" on Google from ${where}, like a customer would. You didn't show up on the first page in any of them.${top ? ` ${top.title} was near the top in ${top.wins} of ${g.points}.` : ''}`;
+    return `I searched "${kw}" on Google from ${where}, like a customer would. You were on the first page in ${t10} of ${g.points}.${top && top.wins > g.top3 ? ` ${top.title} was near the top in ${top.wins}.` : ''}`;
   }
   if (intel?.found && intel.rank != null) return `When someone near your address searches "${kw}" on Google, you come up ${rankText(intel.rank)}.${top ? ` ${top.title} is above you.` : ''}`;
   if (intel?.found) return `When someone near your address searches "${kw}" on Google, you don't show up in the top 20.${top ? ` ${top.title} comes up first.` : ''}`;
@@ -432,6 +444,7 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
     top_name_or_them: top?.title || 'your top competitor',
     top_reviews: top?.reviews ?? '',
     top3_of_points: g ? `${g.top3} of ${g.points}` : 'only a few of the',
+    top10_of_points: g ? `${top10Of(g)} of ${g.points}` : 'only a few of the',
     reviews: intel?.listing?.reviews ?? lead.reviews ?? '',
     rating: intel?.listing?.rating ?? lead.rating ?? '',
     plan: PLAN_LABEL[plan],
@@ -446,10 +459,10 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
     // Only claim a scan when research actually ran.
     opener_reason: intel?.found ? `I ran ${lead.business || 'your business'} through our Google map scanner and found something you'll want to see.`
       : `I was looking at who shows up on Google Maps for ${kw ? `"${kw}"` : 'your service'} in ${lead.city || 'your area'}, and I have a quick question about ${lead.business || 'your business'}.`,
-    hook_impact: g && g.top3 < g.points / 2 ? `That means when someone in ${lead.city || 'your area'} needs ${kw ? `"${kw}"` : 'what you do'} today, a lot of them are calling ${top?.title || 'someone else'} before they ever see you.`
+    hook_impact: g && top10Of(g) < g.points / 2 ? `That means when someone in ${lead.city || 'your area'} needs ${kw ? `"${kw}"` : 'what you do'} today, a lot of them are calling ${top?.title || 'someone else'} before they ever see you.`
       : g ? `You're strong close to home, but there are spots in ${lead.city || 'your area'} where customers see someone else first.`
-      : 'Most people call one of the first three businesses they see on that map, so where you land decides who gets the call.',
-    vm_scan: intel?.found ? `I ran a Google map scan on ${lead.business || 'your business'}. ${g ? (top && top.wins > g.top3 ? `${top.title} is showing up ahead of you in most of ${lead.city || 'your area'}.` : `You're in the top 3 in ${g.top3} of ${g.points} spots around you, and I see a few quick wins.`) : 'I found a few quick wins.'} I'd like to show you the map.`
+      : 'Most people call one of the first businesses they see on that map, so every spot higher gets more of the calls.',
+    vm_scan: intel?.found ? `I ran a Google map scan on ${lead.business || 'your business'}. ${g ? (top && top.wins > g.top3 ? `${top.title} is showing up ahead of you in most of ${lead.city || 'your area'}.` : `You're on the first page in ${top10Of(g)} of ${g.points} spots around you, and I see a few quick wins.`) : 'I found a few quick wins.'} I'd like to show you the map.`
       : `I was looking at ${lead.business || 'your business'} on Google Maps and have a couple of ideas to get you more calls from it.`,
     hook: probs[0] ? probs[0].talk : scanLine(lead, intel),
     problems: probs.slice(0, 3).map((p) => p.talk).join(' ') || 'A few gaps on your Google profile and website are holding you back.',
