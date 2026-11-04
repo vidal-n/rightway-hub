@@ -206,8 +206,9 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
 - Booking page is "Book a consultation" (`/book.html`, default title "Book a free consultation", invite "Rightway Growth consultation"). The marketing
   site (rightwaygrowth.com) is not in this repo: V built it himself (was on Netlify). Its pricing comes off, website services go on, every call to
   action links to `/book.html` on the Hub.
-- BrightLocal: not integrated. It has no free API (paid plans only), and the scan tool already does the Local Search Grid. Citations in `public/js/fulfill.js` carry the
-  sign up link, cost, why, lookup link, and hidden address support, with trade lists that apply only when certified.
+- BrightLocal: not integrated. It has no free API (paid plans only), and the scan tool already does the Local Search Grid.
+- Citations in `public/js/fulfill.js` carry the sign up link, cost, why, lookup link, and hidden address support, with trade lists that apply only
+  when certified.
 - Onboarding (built): first month tasks created on convert, lead research becomes the client baseline, Onboarding tab (before vs now, fix list,
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).
 - GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.
