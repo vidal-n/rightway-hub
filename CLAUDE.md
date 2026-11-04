@@ -362,6 +362,21 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   (`canSeeCallBy`). Vault (`src/vault.js`, `public/hub/vault.js`, `#/vault`): zero knowledge, PBKDF2 310k master key in the browser, AES-GCM items, P-256 ECDH wrapped item
   keys for sharing (tables `vault_keys`, `vault_items`, `vault_access`), 10 minute idle lock. Google Setup tab has the Cloud checklist (enable APIs, test users, tick boxes).
 - Phone, Meetings tab (`public/hub/meet.js`, `#/phone/meet`): start a Google Meet now (`POST /api/meet/now`, falls back to meet.google.com/new without Google), join by link or code (`meetUrl`), schedule with a Meet link, and today's appointments with Join. Meet opens in its own window (`rw-meet`). Status `maintenance` (purple, `tone maint`) only for the primary owner (`isPrimary`: first owner account, `user.primary` in auth state).
+- Notifications, profile photos, budget, bento dashboard (Nov 2026): the rail has no Logout or Customize menu (profile bubble menu only). The command bar bell is the
+  Notifications panel (`public/hub/notifpanel.js`: filters All, Unread, Calls, Messages, Work, Sales; one color and icon per kind via `.k-*` classes; `rw-badges` event
+  refreshes dots); the page is `#/notifications` (`#/alerts` still routes, nav key `alerts`) with the same rows plus device and preference cards. Profile photos
+  (`src/avatar.js`, `public/hub/avatar.js`): the browser crops to a 256 px square JPEG, `PUT /api/me/avatar` (raw body) stores it in R2 `avatars/<userId>`, `users.avatar_at`
+  busts the cache, `GET /api/avatar/:id` (staff only), shown on the bubble, profile menu, hello header, Team floor and Agents cards; `DELETE /api/me/avatar`.
+  Costs (`src/costs.js`, `public/hub/budget.js`, Settings tab `#/settings/budget`, owners only): table `cost_daily` (day, vendor, kind, micro dollars, n) written by
+  `logCost` at the call site: `liveSerp` in `src/dataforseo.js` (DataForSEO reports each task's cost) and `logClaude` after each Anthropic call (tokens at list price by
+  model tier, `PRICE` table). Twilio spend is read live from Twilio usage records (cached 10 min), not logged. Settings `costs_budget` (monthly total plus per vendor caps)
+  and `costs_fixed` (subscriptions list). `GET /api/costs?days`, `PUT /api/costs/budget`. `costTick` in the cron notifies owners once at 80% and 100% (`costs_alerted`).
+  Dashboard card and Budget tab show month to date, projection, budget bar, daily stacked chart, per client and per search cost, margin vs MRR, cost per booked audit.
+  Scan tool: costs are blurred (`.money`, `body.costs-hidden`) with a Show costs button in its header; the choice lasts for the tab (sessionStorage). Dashboard
+  (`public/hub/home.js`) is a 12 column bento grid (`.bento`, `.w-3/4/6/8/12`): stat tiles with sparklines, 14 day calls line chart, goal ring, pipeline donut, conversion
+  funnel, lead quality bars, best hours bar chart, meetings, callbacks, payments with a revenue bar chart, budget, balances, team floor, clients with a work ring, activity.
+  Charts are pure in `public/js/charts.js` (`lineChart` area option, `stackBars`, `donut`, `ring`, `spark`). Accent palette `--c-blue/violet/amber/coral/teal/green/pink/slate`
+  (Skin v4 at the end of hub.css): colored menu icons, group colored page labels, pipeline column tops, widget top borders, tinted stat tiles.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

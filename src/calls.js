@@ -61,7 +61,7 @@ export async function verifiedParams(env, request) {
 
 route('GET', '/api/me', async ({ env, user }) => {
   requireStaff(user);
-  const u = await first(env, 'SELECT id, email, name, role, phone FROM users WHERE id = ?', user.id);
+  const u = await first(env, 'SELECT id, email, name, role, phone, avatar_at FROM users WHERE id = ?', user.id);
   return json({ user: u, twilio: twilioReady(env) });
 });
 

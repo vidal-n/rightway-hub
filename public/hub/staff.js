@@ -10,7 +10,7 @@ import { staffShell, initials } from './shell.js';
 export { staffShell, initials };
 
 // Settings holds the team too.
-export const settingsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a><a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Agents</a></nav>`;
+export const settingsTabs = (active, user) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a><a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Agents</a>${user?.role === 'admin' ? `<a href="#/settings/budget" class="${active === 'budget' ? 'is-active' : ''}">Budget and costs</a>` : ''}</nav>`;
 
 export const clientsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/clients" class="${active === 'all' ? 'is-active' : ''}">All clients</a><a href="#/clients/view" class="${active === 'view' ? 'is-active' : ''}">Client view</a></nav>`;
 
@@ -352,7 +352,7 @@ export async function teamPage(app, user) {
   let users;
   try { ({ users } = await api('/api/team')); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   view.innerHTML = `
-    <div class="page-head"><div><p class="eyebrow">Settings</p><h1>Agents</h1></div></div>${settingsTabs('team')}
+    <div class="page-head"><div><p class="eyebrow">Settings</p><h1>Agents</h1></div></div>${settingsTabs('team', user)}
     ${user.role === 'admin' ? `<div class="card"><h2>Invite an agent or owner</h2>
       <form id="tinv" class="form-grid"><label class="field"><span>Name</span><input name="name" required></label><label class="field"><span>Email</span><input name="email" type="email" required></label>
       <label class="field"><span>Role</span><select name="role"><option value="admin">Owner (full access)</option><option value="team">Agent (own calls, no owner settings)</option></select></label>

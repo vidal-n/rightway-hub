@@ -64,10 +64,10 @@ export async function currentUser(env, request) {
   const t = cookieValue(request);
   if (!t) return null;
   const row = await first(env,
-    `SELECT u.id, u.email, u.name, u.role, u.client_id, s.expires FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
+    `SELECT u.id, u.email, u.name, u.role, u.client_id, u.avatar_at, s.expires FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
     await sha256(t));
   if (!row || row.expires < now()) return null;
-  return { id: row.id, email: row.email, name: row.name, role: row.role, client_id: row.client_id };
+  return { id: row.id, email: row.email, name: row.name, role: row.role, client_id: row.client_id, avatar_at: row.avatar_at || null };
 }
 
 export async function endSession(env, request) {

@@ -3,6 +3,8 @@
 // Rules baked in: real services and cities, natural keywords (no stuffing), no phone numbers or links in Google posts,
 // a few relevant hashtags (not 30), no claims the business didn't make.
 
+import { logClaude } from './costs.js';
+
 const API = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
 
@@ -95,6 +97,7 @@ export async function generateCaptions(env, client, note, image, fetchImpl = fet
       body: JSON.stringify({ model: env.ANTHROPIC_MODEL || DEFAULT_MODEL, max_tokens: 1200, messages: [{ role: 'user', content }] }),
     });
     const data = await res.json().catch(() => null);
+    await logClaude(env, env.ANTHROPIC_MODEL || DEFAULT_MODEL, data, 'post captions');
     if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
     const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
     return parseCaptionJson(text);

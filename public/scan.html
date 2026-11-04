@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
+<body class="costs-hidden">
   <div class="sx">
   <aside class="sx-rail" id="topnav" aria-label="Main menu">
     <a class="sx-brand" href="/#/" aria-label="Rightway Hub home"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="140" height="24"></a>
@@ -24,6 +24,7 @@
     <button type="button" class="sx-ico sx-menu" id="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="topnav"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     <div class="sx-title"><small>Deliver</small><b>Scan tool</b></div>
     <a class="sx-back" href="/#/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Back to the Hub</span></a>
+    <button type="button" class="sx-back sx-cost" id="cost-toggle" aria-pressed="false" title="Costs are hidden while you present. Click to show them."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg><span id="cost-toggle-t">Show costs</span></button>
   </header>
   <div id="demo-banner" class="banner" hidden>
     <div class="wrap">Demo mode: DataForSEO isn't connected yet, so every result below is sample data. Nothing is being charged.</div>
@@ -50,7 +51,7 @@
         <label class="field"><span>City and state</span><input id="find-location" required maxlength="80" placeholder="e.g. Hollywood, FL"></label>
         <button class="btn btn-primary" type="submit" id="find-btn">Search</button>
       </form>
-      <p class="hint">Costs about $0.002 per search.</p>
+      <p class="hint">Costs about <span class="money">$0.002</span> per search.</p>
       <div id="find-status" class="status" role="status"></div>
       <ul id="find-results" class="results"></ul>
     </section>

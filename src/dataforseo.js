@@ -4,6 +4,7 @@
 // Docs: https://docs.dataforseo.com/v3/serp/google/local_finder/overview/
 //       https://docs.dataforseo.com/v3/serp/google/maps/live/advanced/
 import { HttpError } from './util.js';
+import { logCost } from './costs.js';
 
 const BASE = 'https://api.dataforseo.com/v3/serp/google';
 const MAPS = `${BASE}/maps/live/advanced`;
@@ -37,7 +38,9 @@ async function liveSerp(env, endpoint, task, fetchImpl = fetch) {
   const t = data.tasks?.[0];
   if (!t || t.status_code !== 20000) throw new HttpError(dfsMessage(t?.status_code, t?.status_message), 502);
   const r = t.result?.[0] || {};
-  return { items: Array.isArray(r.items) ? r.items : [], types: r.item_types || [], cost: Number(t.cost ?? data.cost ?? 0) };
+  const cost = Number(t.cost ?? data.cost ?? 0);
+  await logCost(env, 'dataforseo', endpoint.includes('local_finder') ? 'grid (local finder)' : endpoint.includes('/maps/') ? 'grid or lookup (maps)' : 'web search', cost);
+  return { items: Array.isArray(r.items) ? r.items : [], types: r.item_types || [], cost };
 }
 
 // Unpaid business listings only, in the order Google shows them.

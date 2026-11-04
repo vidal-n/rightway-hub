@@ -375,3 +375,10 @@ body { background-color: var(--bg); background-image: radial-gradient(circle at 
   .sx-back span { display: none; }
   .sx-back { padding: 0; width: 40px; justify-content: center; }
 }
+
+/* Costs blur while presenting; the Show costs button in the scan header reveals them. */
+.money { transition: filter .2s; }
+body.costs-hidden .money { filter: blur(7px); user-select: none; -webkit-user-select: none; pointer-events: none; }
+.sx-cost { margin-left: 8px; cursor: pointer; font-family: inherit; }
+.sx-cost[aria-pressed="true"] { background: var(--mint-soft); border-color: var(--mint-strong); }
+@media (max-width: 760px) { .sx-cost { margin-left: 6px; } }

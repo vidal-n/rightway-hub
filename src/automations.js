@@ -6,6 +6,7 @@ import { all, first, run, newId, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { sendEmail, canEmail } from './email.js';
+import { logClaude } from './costs.js';
 
 export const TRIGGERS = { booked: 'When an appointment is booked', before: 'Before the appointment', after: 'After a missed appointment (no show)' };
 export const VARS = ['first', 'business', 'date', 'time', 'when', 'link', 'rep', 'book', 'company'];
@@ -192,6 +193,7 @@ route('POST', '/api/automations/draft', async ({ env, user, body }) => {
     body: JSON.stringify({ model: env.ANTHROPIC_ASSIST_MODEL || env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001', max_tokens: 700, system: sys, messages: [{ role: 'user', content: `Write the ${purpose}. Tone: ${tone}.${b.notes ? ` Notes: ${String(b.notes).slice(0, 500)}` : ''}` }] }),
   });
   const d = await res.json().catch(() => ({}));
+  await logClaude(env, env.ANTHROPIC_ASSIST_MODEL || env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001', d, 'automation drafts');
   if (!res.ok) throw new HttpError(`Claude: ${d.error?.message || res.status}`, 502);
   const text = String(d.content?.[0]?.text || '').replace(/[–—]/g, ',').trim();
   if (channel === 'email') {

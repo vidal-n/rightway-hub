@@ -615,6 +615,8 @@ import './googlecheck.js';
 import './balances.js';
 import './agents.js';
 import './automations.js';
+import './costs.js';
+import './avatar.js';
 import './autoresearch.js';
 import './vault.js';
 import './appointments.js';

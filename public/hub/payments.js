@@ -2,6 +2,7 @@
 // Also the small snapshot card on the Dashboard.
 import { $, $$, esc, api, fmt, icon } from './core.js';
 import { staffShell } from './staff.js';
+import { barChart } from '/js/charts.js';
 
 const money = (cents) => fmt.money((cents || 0) / 100);
 const day = (t) => new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -104,5 +105,6 @@ export async function paymentsSnapshot(box) {
     <div class="mini3"><div><b>${d.mrr != null ? esc(money(d.mrr)) : 'n/a'}</b><span>recurring per month</span></div>
       <div><b>${d.collectedThisMonth != null ? esc(money(d.collectedThisMonth)) : 'n/a'}</b><span>collected this month</span></div>
       <div><b class="${behind ? 'bad-text' : ''}">${behind}</b><span>behind on payment</span></div></div>
+    ${d.months?.some((m) => m.cents) ? `<div class="bg-chart" style="margin-top:12px">${barChart(d.months.map((m) => m.label), [{ name: 'Collected', color: 'var(--c-green)', values: d.months.map((m) => Math.round(m.cents / 100)) }], { h: 120, pad: 30 })}</div>` : ''}
     <p class="small" style="margin-top:12px">${d.nextPayout ? `Next payout ${esc(money(d.nextPayout.amount))} arrives ${esc(day(d.nextPayout.arrival))}.` : d.balance ? `${esc(money(d.balance.available))} available in Stripe.` : ''}</p>`;
 }

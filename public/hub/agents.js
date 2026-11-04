@@ -6,6 +6,7 @@ import { setMyStatus, onStatus } from './shell.js';
 import { joinCall, onPhoneState, phoneState, pretty } from './phone.js';
 import { STATUSES, statusLabel, statusTone, statusesFor, clock, pct } from '/js/callstats.js';
 import { lineChart, barChart, legend } from '/js/charts.js';
+import { avatarUrl } from './avatar.js';
 
 const TONE_COLOR = { good: '#23B07E', warn: '#E8A33D', info: '#4E7FD8', gray: '#9AA8A2', live: '#D64545', maint: '#8B5CF6' };
 const stColor = (k) => TONE_COLOR[statusTone(k)] || '#9AA8A2';
@@ -49,7 +50,7 @@ export async function agentsPage(app, user, sub) {
       const c = a.call;
       const talking = c && c.status === 'in-progress';
       return `<article class="ag" data-tone="${tone}">
-        <div class="ag-top"><div class="ag-av">${esc(initials(a))}<i class="dot ${tone}"></i></div>
+        <div class="ag-top"><div class="ag-av">${esc(initials(a))}${a.avatar ? `<img class="pimg" src="${avatarUrl(a.id, a.avatar)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<i class="dot ${tone}"></i></div>
           <div style="min-width:0;flex:1"><div class="ag-name">${esc(a.name)}${a.id === d.me ? ' <span class="badge gray">You</span>' : ''}</div>
             <div class="ag-st">${esc(statusLabel(a.status))}${a.status !== 'offline' && a.since ? ` · ${ago(a.since)}` : a.lastSeen ? ` · seen ${ago(a.lastSeen)} ago` : ''} · ${a.role === 'admin' ? 'Owner' : 'Team'}</div></div></div>
         ${c ? `<div class="ag-call"><div><b>${esc(c.business || pretty(c.number) || 'Dialing')}</b> <span class="small">${talking ? `talking ${clock((Date.now() - (c.answeredAt || c.at)) / 1000)}` : 'ringing'}${c.monitoredBy ? ` · ${c.mine ? `you are ${c.mode === 'barge' ? 'on the call' : `${c.mode}ing`}` : 'an owner is listening'}` : ''}</span></div>

@@ -73,7 +73,7 @@ route('GET', '/api/agents', async ({ env, user }) => {
   requireStaff(user);
   const t = now();
   const day = dayStart(t);
-  const users = await all(env, "SELECT id, name, email, role, status, status_at, last_seen FROM users WHERE role IN ('admin','team') ORDER BY name");
+  const users = await all(env, "SELECT id, name, email, role, status, status_at, last_seen, avatar_at FROM users WHERE role IN ('admin','team') ORDER BY name");
   const live = await all(env, `SELECT a.id, a.at, a.status, a.answered_at, a.to_num, a.from_num, a.by, a.conf_sid, a.mon_by, a.mon_mode, l.business, l.id AS lead_id
     FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
     WHERE a.type IN ('call','manual_call') AND a.status IN (${LIVE.map(() => '?').join(',')}) AND a.at > ? ORDER BY a.at DESC`, ...LIVE, t - 3 * 3600e3);
@@ -87,7 +87,7 @@ route('GET', '/api/agents', async ({ env, user }) => {
     const st = statusTime(mine, day, t, online ? t : Math.min(t, (u.last_seen || t) + 45e3));
     const s = stats.agents.find((a) => a.key === u.id);
     return {
-      id: u.id, name: u.name || u.email, email: u.email, role: u.role, online: Boolean(online),
+      id: u.id, name: u.name || u.email, email: u.email, role: u.role, avatar: u.avatar_at || null, online: Boolean(online),
       status: call ? 'on_call' : online ? u.status : 'offline', picked: u.status || 'offline', since: call ? call.answered_at || call.at : u.status_at, lastSeen: u.last_seen,
       call: call ? { id: call.id, business: call.business, leadId: call.lead_id, number: call.to_num, status: call.status, answeredAt: call.answered_at, at: call.at, canJoin: Boolean(call.conf_sid) && call.by !== user.id && u.role !== 'admin', monitoredBy: call.mon_by, mode: call.mon_mode, mine: call.mon_by === user.id } : null,
       today: { login: st.login, per: st.per, dials: s?.dials || 0, connects: s?.connects || 0, booked: s?.booked || 0, talk: s?.talk || 0, avgHandle: s?.avgHandle || 0, avgTalk: s?.avgTalk || 0 },

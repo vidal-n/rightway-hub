@@ -763,7 +763,7 @@ export async function settingsPage(app, user) {
   const pill = (on) => `<span class="badge ${on ? '' : 'gray'}">${on ? 'Connected' : 'Not connected'}</span>`;
   const formUrl = `${location.origin}/api/public/lead`;
   view.innerHTML = `
-    <div class="page-head"><h1>Settings</h1></div>${settingsTabs('general')}
+    <div class="page-head"><h1>Settings</h1></div>${settingsTabs('general', user)}
     ${isAdmin ? '<div class="card" id="setbal"></div><div class="card" id="setrs"></div>' : ''}
     <div id="stripesetup"></div>
     <div class="card"><div class="card-head"><h2>Stripe payment links</h2>${pill(c.stripe)}</div>

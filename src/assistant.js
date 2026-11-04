@@ -10,6 +10,7 @@ import { planOf, monthKey } from './plans.js';
 import { INCLUDES } from '../public/js/plancopy.js';
 import { guideFor } from '../public/js/guides.js';
 import { savedGuides } from './work.js';
+import { logClaude } from './costs.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
@@ -79,6 +80,7 @@ export async function askClaude(env, { system, messages, maxTokens = 1500 }, fet
     body: JSON.stringify({ model: env.ANTHROPIC_ASSIST_MODEL || env.ANTHROPIC_CONTENT_MODEL || env.ANTHROPIC_MODEL || DEFAULT_MODEL, max_tokens: maxTokens, system, messages }),
   });
   const data = await res.json().catch(() => null);
+  await logClaude(env, env.ANTHROPIC_ASSIST_MODEL || env.ANTHROPIC_CONTENT_MODEL || env.ANTHROPIC_MODEL || DEFAULT_MODEL, data, 'Ask Claude');
   if (!res.ok) throw new HttpError(`Claude: ${data?.error?.message || `HTTP ${res.status}`}`, 502);
   return (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
 }

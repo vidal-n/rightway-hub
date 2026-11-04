@@ -9,6 +9,7 @@ import { route } from './router.js';
 import { googleReady } from './google.js';
 import { userFor, gfetch } from './googleapps.js';
 import { markAccess } from './work.js';
+import { logClaude } from './costs.js';
 
 const INFO = 'https://mybusinessbusinessinformation.googleapis.com/v1';
 const ACCT = 'https://mybusinessaccountmanagement.googleapis.com/v1';
@@ -261,6 +262,7 @@ route('POST', '/api/clients/:id/review-reply', async ({ env, user, params, body 
       }),
     });
     const d = await res.json();
+    await logClaude(env, env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001', d, 'review replies');
     const reply = String(d.content?.[0]?.text || '').replace(/[–—]/g, ',').trim();
     return json({ reply: reply || fallback, ai: Boolean(reply) });
   } catch { return json({ reply: fallback, ai: false }); }

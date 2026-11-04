@@ -149,6 +149,7 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS automation_log (id TEXT PRIMARY KEY, auto_id TEXT NOT NULL, lead_id TEXT NOT NULL, meet_at INTEGER NOT NULL, channel TEXT, status TEXT, error TEXT, to_addr TEXT, at INTEGER NOT NULL, UNIQUE (auto_id, lead_id, meet_at))`,
   `CREATE TABLE IF NOT EXISTS vault_keys (user_id TEXT PRIMARY KEY, salt TEXT NOT NULL, iters INTEGER NOT NULL, check_iv TEXT NOT NULL, check_ct TEXT NOT NULL, priv_iv TEXT NOT NULL, priv_ct TEXT NOT NULL, pub TEXT NOT NULL, at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS vault_items (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, iv TEXT NOT NULL, ct TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS cost_daily (day TEXT NOT NULL, vendor TEXT NOT NULL, kind TEXT NOT NULL, micro INTEGER NOT NULL DEFAULT 0, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, vendor, kind))`,
   `CREATE TABLE IF NOT EXISTS vault_access (item_id TEXT NOT NULL, user_id TEXT NOT NULL, eph TEXT NOT NULL, wiv TEXT NOT NULL, wkey TEXT NOT NULL, PRIMARY KEY (item_id, user_id))`,
 ];
 
@@ -174,7 +175,7 @@ const ADD_COLUMNS = [
   ['users', 'slack_id TEXT'], ['users', 'slack_prefs TEXT'], ['users', 'slack_token TEXT'], ['users', 'slack_uid TEXT'], ['users', 'slack_scopes TEXT'], ['users', 'slack_snooze INTEGER'], ['clients', 'chat_tried INTEGER'], ['users', 'nav_prefs TEXT'], ['clients', 'chat_channel TEXT'], ['clients', 'chat_channel_name TEXT'], ['clients', 'slack_channel TEXT'], ['clients', 'slack_channel_name TEXT'], ['clients', 'drive_folder TEXT'],
   ['users', 'status TEXT'], ['users', 'status_at INTEGER'], ['users', 'last_seen INTEGER'], ['activities', 'ended_at INTEGER'], ['activities', 'dispo_at INTEGER'],
   ['leads', 'deep_scan TEXT'], ['users', 'training TEXT'], ['leads', 'research_tried INTEGER'], ['leads', 'scrub TEXT'],
-  ['users', 'fwd_calls INTEGER'], ['users', 'fwd_texts INTEGER'],
+  ['users', 'fwd_calls INTEGER'], ['users', 'fwd_texts INTEGER'], ['users', 'avatar_at INTEGER'],
 ];
 
 let ready = null;

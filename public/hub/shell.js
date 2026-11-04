@@ -3,6 +3,7 @@
 import { $, $$, esc, api, toast, icon } from './core.js';
 import { navItems, wireNav, activeKey, customizeMenu, NAV, GROUPS, groupOf } from './nav.js';
 import { STATUSES, statusLabel, statusTone, statusesFor } from '/js/callstats.js';
+import { avatarHtml, wireAvatars, pickAvatar, removeAvatar } from './avatar.js';
 
 export const initials = (u) => String(u.name || u.email || '?').trim().split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 
@@ -90,19 +91,18 @@ export function staffShell(app, user, active, inner) {
         <div class="rail-head"><a class="rail-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="140" height="24"></a>
           <button type="button" class="cmd-ico rail-close" id="menu-close" aria-label="Close menu">${icon.close}</button></div>
         <nav aria-label="Main">${railLinks(user, active)}</nav>
-        <div class="rail-foot"><button type="button" id="navcust">${icon.edit || ''}Customize menu</button><button type="button" id="logout">${icon.back || ''}Log out</button></div>
       </aside>
       <div class="deck">
         <header class="cmd">
           <button type="button" class="cmd-ico cmd-menu" id="menu-open" aria-label="Open menu">${icon.menu}</button>
-          <div class="cmd-title"><small>${esc(grp ? grp[1] : 'Hub')}</small><b>${esc(item ? item[3] : '')}</b></div>
+          <div class="cmd-title" data-grp="${esc(groupOf(active))}"><small>${esc(grp ? grp[1] : 'Hub')}</small><b>${esc(item ? item[3] : '')}</b></div>
           <button type="button" class="cmd-search" id="cmdk" aria-label="Search">${icon.search}<span>Search leads, clients, pages</span><kbd>Ctrl K</kbd></button>
           <div class="cmd-right">
             <button type="button" class="stpill" data-stpill aria-label="Your status">${pillHtml()}</button>
             <a class="cmd-ico warn" href="#/settings" data-wallet hidden aria-label="A wallet is low">${icon.money}</a>
-            <a class="cmd-ico" href="#/alerts" aria-label="Alerts">${icon.bell}<b class="nbadge" data-badge="alerts" hidden></b></a>
+            <button type="button" class="cmd-ico" id="notifbtn" aria-label="Notifications" aria-haspopup="dialog" title="Notifications">${icon.bell}<b class="nbadge" data-badge="alerts" hidden></b></button>
             <a class="cmd-ico hide-s" href="#/settings" aria-label="Settings">${icon.cog}</a>
-            <button type="button" class="pbub" data-pbub title="${esc(user.name || user.email || 'Profile')}" aria-label="Profile menu">${esc(initials(user))}</button>
+            <button type="button" class="pbub" data-pbub title="${esc(user.name || user.email || 'Profile')}" aria-label="Profile menu">${avatarHtml(user, initials(user))}</button>
           </div>
         </header>
         <main class="main" id="view">${inner || '<div class="skeleton"></div>'}</main>
@@ -128,9 +128,9 @@ export function staffShell(app, user, active, inner) {
   document.addEventListener('keydown', onKey);
   window.addEventListener('hashchange', () => { document.removeEventListener('keydown', onKey); document.body.classList.remove('menu-open'); }, { once: true });
   wireNav(app, user, active, () => setOpen(true));
-  $('#navcust').addEventListener('click', () => { setOpen(false); customizeMenu(user, () => location.reload()); });
   const logout = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/login'; location.reload(); };
-  $('#logout').addEventListener('click', logout);
+  wireAvatars(app);
+  $('#notifbtn').addEventListener('click', (e) => { e.stopPropagation(); const btn = e.currentTarget; import('./notifpanel.js').then((m) => m.notifPanel(btn)).catch((err) => toast(err.message, true)); });
   $('#cmdk').addEventListener('click', () => palette(user));
   $$('[data-stpill]', app).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); statusMenu(b); }));
   $$('[data-pbub]', app).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); profileMenu(b, user, logout); }));
@@ -168,12 +168,14 @@ function profileMenu(b, user, logout) {
   m.style.top = `${r.bottom + 8}px`;
   m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
   const tone = statusTone(me.onCall ? 'on_call' : me.status || 'available');
-  m.innerHTML = `<div class="pmenu-who"><span class="pbub big">${esc(initials(user))}</span><div><b>${esc(user.name || 'You')}</b><div class="small muted">${esc(user.email || '')}</div>
+  m.innerHTML = `<div class="pmenu-who"><button type="button" class="pbub big" data-pm="photo" title="Change photo" aria-label="Change profile photo">${avatarHtml(user, initials(user))}<span class="pcam">${icon.camera}</span></button><div><b>${esc(user.name || 'You')}</b><div class="small muted">${esc(user.email || '')}</div>
       <span class="badge gray"><i class="dot ${tone}"></i>${esc(statusLabel(me.onCall ? 'on_call' : me.status || 'available'))} · ${user.role === 'admin' ? 'Owner' : 'Agent'}</span></div></div>
     <button type="button" data-pm="status" role="menuitem">${icon.clock}Change status</button>
     <a href="#/agents" role="menuitem">${icon.headset || icon.users}My numbers today</a>
     <a href="#/settings" role="menuitem">${icon.cog}Settings</a>
-    <a href="#/alerts" role="menuitem">${icon.bell}Alerts and notifications</a>
+    <a href="#/notifications" role="menuitem">${icon.bell}Notifications</a>
+    <button type="button" data-pm="photo" role="menuitem">${icon.camera}${user.avatar_at ? 'Change profile photo' : 'Add a profile photo'}</button>
+    ${user.avatar_at ? `<button type="button" data-pm="nophoto" role="menuitem">${icon.trash}Remove photo</button>` : ''}
     ${user.role === 'admin' ? `<a href="#/settings/team" role="menuitem">${icon.users}Agents</a><button type="button" data-pm="mt" role="menuitem">${icon.cog}Maintenance mode</button>` : ''}
     <button type="button" data-pm="nav" role="menuitem">${icon.edit || icon.cog}Customize menu</button>
     <button type="button" data-pm="out" role="menuitem">${icon.close}Log out</button>`;
@@ -182,6 +184,9 @@ function profileMenu(b, user, logout) {
   setTimeout(() => document.addEventListener('click', close), 0);
   m.querySelector('[data-pm="nav"]').onclick = () => { close(); customizeMenu(user, () => location.reload()); };
   m.querySelector('[data-pm="out"]').onclick = logout;
+  wireAvatars(m);
+  m.querySelectorAll('[data-pm="photo"]').forEach((x) => { x.onclick = () => { close(); pickAvatar(user, initials(user)); }; });
+  const np = m.querySelector('[data-pm="nophoto"]'); if (np) np.onclick = () => { close(); removeAvatar(user, initials(user)); };
   const mt = m.querySelector('[data-pm="mt"]');
   if (mt) mt.onclick = async () => {
     close();
@@ -211,7 +216,7 @@ const PAGES = [
   ['Recordings', '#/phone/recordings'], ['Agents', '#/agents'], ['Call analytics', '#/agents/analytics'], ['Pipeline', '#/pipeline'], ['My work', '#/work'],
   ['Hours', '#/work/hours'], ['Task guides', '#/work/guides'], ['Clients', '#/clients'], ['Client view', '#/clients/view'], ['Scan tool', '/scan.html'],
   ['Training', '#/training'], ['Scripts', '#/training/scripts'], ['Objection drills', '#/training/drills'], ['Slack', '#/slack'], ['Gmail', '#/google/mail'],
-  ['Calendar', '#/google/calendar'], ['Drive', '#/google/drive'], ['Google setup', '#/google'], ['Alerts', '#/alerts'], ['Settings', '#/settings'], ['Team', '#/settings/team'],
+  ['Calendar', '#/google/calendar'], ['Drive', '#/google/drive'], ['Google setup', '#/google'], ['Notifications', '#/notifications'], ['Settings', '#/settings'], ['Team', '#/settings/team'],
   ['Payments', '#/payments', 'admin'], ['Phone setup', '#/phone/setup', 'admin'], ['Booking page', '/book.html'],
 ];
 let paletteOpen = false;

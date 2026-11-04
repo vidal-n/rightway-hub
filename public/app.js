@@ -193,7 +193,7 @@ function updateCost() {
   const source = $('#scan-source').value;
   const n = Math.max(1, parseKeywords($('#scan-keyword').value).length);
   const note = state.demo ? ' Demo mode: free.' : '';
-  $('#scan-cost').textContent = `${n} keyword${n > 1 ? 's' : ''} x ${size * size} checks = ${n * size * size} searches, about ${cents(n * (estimateCost(size, source) + 0.006))} in DataForSEO credit.${note}`;
+  $('#scan-cost').innerHTML = `${n} keyword${n > 1 ? 's' : ''} x ${size * size} checks = ${n * size * size} searches<span class="money">, about ${cents(n * (estimateCost(size, source) + 0.006))} in DataForSEO credit</span>.${note}`;
   $('#zoom-field').hidden = source !== 'maps';
 }
 ['#scan-size', '#scan-source'].forEach((s) => $(s).addEventListener('change', updateCost));
@@ -607,7 +607,7 @@ function updateLive(scan) {
   const label = $('#r-progress-label');
   if (label && s.done + s.errors < s.total) label.textContent = `Checked ${s.done + s.errors} of ${s.total} points...`;
   const cost = $('#r-cost');
-  if (cost) cost.textContent = scan.demo ? 'Demo data, no charge.' : `DataForSEO cost: ${cents(scan.cost)}`;
+  if (cost) cost.innerHTML = scan.demo ? 'Demo data, no charge.' : `<span class="money">DataForSEO cost: ${cents(scan.cost)}</span>`;
   renderStats(scan, s, false);
 }
 
@@ -1012,3 +1012,20 @@ $('#nav-toggle')?.addEventListener('click', (e) => {
 
 window.__rw = { state };
 init();
+
+// Costs stay blurred while you present. The button reveals them; the choice lasts until the tab closes.
+(() => {
+  const btn = document.getElementById('cost-toggle');
+  if (!btn) return;
+  const set = (show) => {
+    document.body.classList.toggle('costs-hidden', !show);
+    btn.setAttribute('aria-pressed', String(show));
+    const t = document.getElementById('cost-toggle-t');
+    if (t) t.textContent = show ? 'Hide costs' : 'Show costs';
+    try { sessionStorage.setItem('rw-show-costs', show ? '1' : ''); } catch { /* ignore */ }
+  };
+  let on = false;
+  try { on = sessionStorage.getItem('rw-show-costs') === '1'; } catch { /* ignore */ }
+  set(on);
+  btn.addEventListener('click', () => set(document.body.classList.contains('costs-hidden')));
+})();

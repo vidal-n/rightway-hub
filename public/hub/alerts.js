@@ -2,6 +2,7 @@
 // ringing a saved mobile for incoming calls, and (owners) posting alerts to a Slack channel.
 import { $, $$, esc, api, toast, busy, fmt, icon } from './core.js';
 import { staffShell } from './staff.js';
+import { notifRow, openUrl } from './notifpanel.js';
 
 const supported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -57,7 +58,7 @@ export async function pushPrompt(box, text) {
 
 export async function alertsPage(app, user) {
   const view = staffShell(app, user, 'alerts');
-  view.innerHTML = '<div class="page-head"><div><p class="eyebrow">Notifications</p><h1>Alerts</h1></div></div><div class="skeleton"></div>';
+  view.innerHTML = '<div class="page-head"><div><p class="eyebrow">Updates</p><h1>Notifications</h1></div></div><div class="skeleton"></div>';
   let cfg, list, me;
   try { [cfg, list, me] = await Promise.all([api('/api/notify/config'), api('/api/notifications'), api('/api/me').catch(() => ({ user: {} }))]); } catch (e) { view.insertAdjacentHTML('beforeend', `<p class="err-text">${esc(e.message)}</p>`); return; }
   const sub = await currentSub();
@@ -65,7 +66,7 @@ export async function alertsPage(app, user) {
   const devTxt = !supported() ? 'This browser cannot get notifications.' : isIos() && !standalone() ? 'On iPhone and iPad: add the Hub to your Home Screen (Share, Add to Home Screen), open it from there, then turn notifications on.'
     : sub ? 'On for this device.' : Notification.permission === 'denied' ? 'Blocked for this site. Allow notifications in the browser settings, then come back.' : 'Off for this device.';
   view.innerHTML = `
-    <div class="page-head"><div><p class="eyebrow">Notifications</p><h1>Alerts</h1></div>${list.unread ? '<button class="btn btn-ghost btn-sm" id="readall">Mark all read</button>' : ''}</div>
+    <div class="page-head"><div><p class="eyebrow">Updates</p><h1>Notifications</h1></div>${list.unread ? '<button class="btn btn-ghost btn-sm" id="readall">Mark all read</button>' : ''}</div>
     <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
       <div class="card"><div class="card-head"><h2>This device</h2><span class="badge ${sub ? '' : 'gray'}">${sub ? 'On' : 'Off'}</span></div>
         <p class="small">${esc(devTxt)} Turn it on for each phone, tablet and computer you use. ${cfg.devices ? `${cfg.devices} device${cfg.devices === 1 ? '' : 's'} on for you now.` : ''}</p>
@@ -79,9 +80,9 @@ export async function alertsPage(app, user) {
         <p class="small muted" style="margin-top:8px">Everything still shows in the list below. These switches only decide what buzzes your devices.</p></div>
     </div>
     <div id="slackbox"></div>
-    <div class="card"><div class="card-head"><h2>Recent</h2></div>
-      ${list.notifications.length ? `<ul class="list">${list.notifications.map((n) => `<li class="item alert-row${n.read_at ? '' : ' is-new'}" data-id="${esc(n.id)}" data-url="${esc(n.url || '')}"><span class="badge ${n.read_at ? 'gray' : ''}">${esc(cfg.kinds[n.kind] ? cfg.kinds[n.kind].split(' ')[0] : n.kind)}</span>
-        <div><div class="item-title">${esc(n.title)}</div>${n.body ? `<div class="item-sub">${esc(n.body)}</div>` : ''}</div><span class="small">${esc(fmt.ago(n.created_at))}</span></li>`).join('')}</ul>` : '<p class="muted">Nothing yet. Calls, texts, voicemails, new tasks and client updates show up here.</p>'}</div>`;
+    <div class="card"><div class="card-head"><h2>Everything that happened</h2><span class="badge gray">${list.notifications.length}</span></div>
+      <div class="np-tabs" id="nf-tabs"></div>
+      <div class="np-list np-page" id="nf-list"></div></div>`;
   const again = () => alertsPage(app, user);
   $('#pon', view)?.addEventListener('click', async (e) => { busy(e.target, true); try { await enablePush(); toast('Notifications are on for this device'); again(); } catch (err) { toast(err.message, true); busy(e.target, false); } });
   $('#poff', view)?.addEventListener('click', async () => { await disablePush(); toast('Off for this device'); again(); });
@@ -95,10 +96,21 @@ export async function alertsPage(app, user) {
     e.preventDefault();
     try { await api('/api/me/phone', { method: 'PUT', body: { phone: e.target.phone.value } }); toast(e.target.phone.value ? 'Saved. Your phone rings for incoming calls.' : 'Removed'); } catch (err) { toast(err.message, true); }
   });
-  $$('.alert-row', view).forEach((r) => r.addEventListener('click', async () => {
-    await api('/api/notifications/read', { method: 'POST', body: { ids: [r.dataset.id] } }).catch(() => {});
-    const u = r.dataset.url;
-    if (u.startsWith('/#/')) location.hash = u.slice(1); else if (u.startsWith('/')) window.open(u, '_blank'); else again();
-  }));
+  const FIL = [['all', 'All', null], ['unread', 'Unread', null], ['calls', 'Calls', ['call', 'voicemail']], ['msgs', 'Messages', ['text', 'slack']], ['work', 'Work', ['task', 'client', 'meeting']], ['sales', 'Sales', ['lead', 'money']]];
+  let fil = 'all';
+  const drawList = () => {
+    const f = FIL.find((x) => x[0] === fil);
+    const rows = list.notifications.filter((n) => (fil === 'all' ? true : fil === 'unread' ? !n.read_at : f[2].includes(n.kind)));
+    $('#nf-tabs', view).innerHTML = FIL.map(([k, l]) => `<button type="button" data-f="${k}" class="${fil === k ? 'is-on' : ''}">${l}</button>`).join('');
+    $('#nf-list', view).innerHTML = rows.length ? rows.map(notifRow).join('') : '<p class="np-empty">Nothing here. Calls, texts, voicemails, tasks, leads, payments and client updates show up as they happen.</p>';
+    $$('#nf-tabs [data-f]', view).forEach((b) => b.addEventListener('click', () => { fil = b.dataset.f; drawList(); }));
+    $$('.np-row', view).forEach((r) => r.addEventListener('click', async () => {
+      await api('/api/notifications/read', { method: 'POST', body: { ids: [r.dataset.id] } }).catch(() => {});
+      document.dispatchEvent(new Event('rw-badges'));
+      const u = r.dataset.url;
+      if (u) openUrl(u); else again();
+    }));
+  };
+  drawList();
   import('./slack.js').then((m) => m.slackCards($('#slackbox', view), user, again)).catch((e) => toast(e.message, true));
 }

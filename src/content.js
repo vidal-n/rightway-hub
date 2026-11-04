@@ -10,6 +10,7 @@ import { canEmail, sendEmail } from './email.js';
 import { cleanHtml, slugify, wordCount } from '../public/js/sanitize.js';
 import { leaderboard } from '../public/js/analysis.js';
 import { notify } from './notify.js';
+import { logClaude } from './costs.js';
 
 const API = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
@@ -179,6 +180,7 @@ export async function writeDraft(env, client, brief, fetchImpl = fetch) {
     body: JSON.stringify({ model: env.ANTHROPIC_CONTENT_MODEL || env.ANTHROPIC_MODEL || DEFAULT_MODEL, max_tokens: 4096, messages: [{ role: 'user', content: draftPrompt(client, brief) }] }),
   });
   const data = await res.json().catch(() => null);
+  await logClaude(env, env.ANTHROPIC_CONTENT_MODEL || env.ANTHROPIC_MODEL || DEFAULT_MODEL, data, 'page drafts');
   if (!res.ok) throw new HttpError(`Claude could not write the draft: ${data?.error?.message || `HTTP ${res.status}`}`, 502);
   const text = (data.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
   return { ...parseDraft(text), ai: true };

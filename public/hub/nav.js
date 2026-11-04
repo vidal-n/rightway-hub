@@ -8,7 +8,7 @@ export const NAV = [
   ['agents', '#/agents', 'headset', 'Agents'], ['automations', '#/automations', 'send', 'Automations'],
   ['work', '#/work', 'check', 'My work'], ['clients', '#/clients', 'users', 'Clients'], ['scan', '/scan.html', 'grid', 'Scan tool'],
   ['training', '#/training', 'book', 'Training'], ['vault', '#/vault', 'key', 'Vault'], ['slack', '#/slack', 'slack', 'Slack'], ['google', '#/google', 'apps', 'Google'],
-  ['payments', '#/payments', 'money', 'Payments', 'admin'], ['alerts', '#/alerts', 'bell', 'Alerts'], ['settings', '#/settings', 'cog', 'Settings'],
+  ['payments', '#/payments', 'money', 'Payments', 'admin'], ['alerts', '#/notifications', 'bell', 'Notifications'], ['settings', '#/settings', 'cog', 'Settings'],
 ];
 // The rail groups the menu by the job: selling, delivering, the team, and running the business.
 export const GROUPS = [['sell', 'Sell'], ['deliver', 'Deliver'], ['team', 'Team'], ['run', 'Run']];
@@ -16,7 +16,7 @@ const GROUP_OF = { home: 'sell', phone: 'sell', pipeline: 'sell', calendar: 'sel
 export const groupOf = (k) => GROUP_OF[k] || 'run';
 // Which dot belongs to which menu item.
 const BADGE_KEY = { work: 'work', slack: 'slack', phone: 'phone', pipeline: 'pipeline', alerts: 'alerts' };
-const ALIAS = { dialer: 'phone', inbox: 'phone', team: 'settings', clientview: 'clients', client: 'clients' };
+const ALIAS = { notifications: 'alerts', dialer: 'phone', inbox: 'phone', team: 'settings', clientview: 'clients', client: 'clients' };
 export const activeKey = (k) => ALIAS[k] || k;
 
 let prefs = null;
@@ -101,6 +101,7 @@ export async function refreshBadges(force = false) {
   return last;
 }
 export const badgeCache = () => last;
+document.addEventListener('rw-badges', () => refreshBadges(true));
 
 // ---------- customize ----------
 export function customizeMenu(user, onSaved) {

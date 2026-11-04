@@ -28,6 +28,17 @@ const env = {
   MEDIA: process.env.NO_DB ? undefined : r2(),
 };
 
+// SEED_COSTS=1 fills the cost ledger with 40 days of sample spend so the Budget charts have something to draw.
+if (process.env.SEED_COSTS && env.DB) {
+  const { ensureSchema } = await import('../src/db.js');
+  await ensureSchema(env);
+  for (let i = 0; i < 40; i++) {
+    const day = new Date(Date.now() - i * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const rows = [['dataforseo', 'grid (local finder)', (3 + ((i * 7) % 9)) * 0.45, 40 + ((i * 7) % 9) * 10], ['dataforseo', 'web search', 0.1 + (i % 4) * 0.05, 20], ['claude', 'Ask Claude', 0.08 + (i % 5) * 0.06, 6], ['claude', 'page drafts', i % 6 === 0 ? 0.42 : 0, 1]];
+    for (const [v, k, usd, n] of rows) if (usd > 0) await env.DB.prepare('INSERT INTO cost_daily (day, vendor, kind, micro, n) VALUES (?, ?, ?, ?, ?)').bind(day, v, k, Math.round(usd * 1e6), n).run();
+  }
+}
+
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/r/')) {
