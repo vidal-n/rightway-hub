@@ -163,12 +163,13 @@ const TZ_SHORT = { 'America/New_York': 'ET', 'America/Chicago': 'CT', 'America/D
 // Booked appointments: owners see every one; teammates only see the ones they booked (or, for older rows, on their own leads).
 export function canSeeAppt(user, l) {
   if (!user || user.role === 'admin') return true;
+  if (l.closer_id && l.closer_id === user.id) return true;
   return l.meet_by ? l.meet_by === user.id : Boolean(l.owner_id) && l.owner_id === user.id;
 }
 export function apptScope(user, alias = '') {
   if (!user || user.role === 'admin') return { sql: '', args: [] };
   const a = alias ? `${alias}.` : '';
-  return { sql: ` AND (${a}meet_by = ? OR (${a}meet_by IS NULL AND ${a}owner_id = ?))`, args: [user.id, user.id] };
+  return { sql: ` AND (${a}meet_by = ? OR ${a}closer_id = ? OR (${a}meet_by IS NULL AND ${a}owner_id = ?))`, args: [user.id, user.id, user.id] };
 }
 function seeAppt(l, user) {
   if (!l || canSeeAppt(user, l)) return l;
@@ -181,7 +182,7 @@ function decorate(l) {
 }
 const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, website, city, state, zip, timezone, industry, category, tags, source, stage, plan,
   next_action_at, next_action, owner_id, attempts, last_call_at, dnc, sms_consent, client_id, score, grade, rating, reviews, map_rank, problems,
-  intel_at, meet_at, meet_link, meet_by, created_at, updated_at`;
+  intel_at, meet_at, meet_link, meet_by, closer_id, created_at, updated_at`;
 
 async function updateLead(env, id, set) {
   const cols = Object.keys(set);

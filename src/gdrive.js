@@ -51,20 +51,24 @@ export function slimFile(f) {
 }
 const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
+// Drive's orderBy only takes its own sort keys (folder, modifiedTime, name, ...), never an expression. An expression like
+// "mimeType = '...folder' desc" is what made the Drive page fail with "Invalid Value" while the about call in the check worked.
+export const SORT_KEYS = ['createdTime', 'folder', 'modifiedByMeTime', 'modifiedTime', 'name', 'name_natural', 'quotaBytesUsed', 'recency', 'sharedWithMeTime', 'starred', 'viewedByMeTime'];
+export function listParams({ folder = 'root', q = '', sort = 'modifiedTime desc', cursor = '' } = {}) {
+  const where = q ? `name contains '${esc(q)}' and trashed = false` : `'${esc(folder)}' in parents and trashed = false`;
+  return new URLSearchParams({
+    q: where, pageSize: '60', orderBy: q ? 'modifiedTime desc' : `folder,${sort}`, // folders first, then the chosen sort
+    fields: `nextPageToken,files(${FIELDS})`, spaces: 'drive', ...(cursor ? { pageToken: cursor } : {}),
+  });
+}
+
 route('GET', '/api/google/drive/files', async ({ env, user, url }) => {
   requireStaff(user);
   const me = await ownFor(env, user, 'drive');
   const folder = url.searchParams.get('folder') || 'root';
   const q = (url.searchParams.get('q') || '').trim();
   const sort = url.searchParams.get('sort') === 'name' ? 'name' : 'modifiedTime desc';
-  const where = q
-    ? `name contains '${esc(q)}' and trashed = false`
-    : `'${esc(folder)}' in parents and trashed = false`;
-  const d = await drive(env, me, `/files?${new URLSearchParams({
-    q: where, pageSize: '60', orderBy: q ? 'modifiedTime desc' : `mimeType = '${GOOGLE_TYPE.folder}' desc, ${sort}`,
-    fields: `nextPageToken, files(${FIELDS})`, spaces: 'drive',
-    ...(url.searchParams.get('cursor') ? { pageToken: url.searchParams.get('cursor') } : {}),
-  })}`);
+  const d = await drive(env, me, `/files?${listParams({ folder, q, sort, cursor: url.searchParams.get('cursor') })}`);
   let crumbs = [];
   if (!q && folder !== 'root') {
     // Walk up to five levels up so the person can see where they are.

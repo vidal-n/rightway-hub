@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import worker from '../src/worker.js';
 import { resetSchemaCache, run, first } from '../src/db.js';
 import { d1, r2 } from './shims.mjs';
-import { slimFile, GOOGLE_TYPE } from '../src/gdrive.js';
+import { slimFile, GOOGLE_TYPE, SORT_KEYS, listParams } from '../src/gdrive.js';
 
 test('a Drive file is slimmed down to what the page shows', () => {
   const folder = slimFile({ id: 'f1', name: 'Sunrise Plumbing', mimeType: GOOGLE_TYPE.folder, modifiedTime: '2026-11-01T10:00:00Z' });
@@ -48,7 +48,7 @@ function fakeDrive() {
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { /* urlencoded */ } }
     else if (body instanceof Uint8Array) body = new TextDecoder().decode(body);
     calls.push({ u, body, method: init.method || 'GET' });
-    const j = (o) => new Response(JSON.stringify(o), { status: 200, headers: { 'content-type': 'application/json' } });
+    const j = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json' } });
     if (u.includes('oauth2.googleapis.com/token')) return j({ access_token: 'at1', expires_in: 3600 });
     if (u.startsWith('https://www.googleapis.com/upload/drive')) return j({ id: 'up1', name: 'uploaded', mimeType: 'application/pdf' });
     if (u.includes('/permissions') && init.method === 'POST') return j({ id: 'perm1' });
@@ -63,7 +63,10 @@ function fakeDrive() {
     }
     if (/\/files\/[^/?]+/.test(u) && init.method === 'PATCH') return j({ id: 'f9', name: body?.name || 'renamed', mimeType: 'application/pdf' });
     if (u.includes('/files?')) {
-      if (u.includes('mimeType+%3D') || u.includes(encodeURIComponent(GOOGLE_TYPE.folder))) {
+      // Drive refuses an orderBy that is not one of its own sort keys ("Invalid Value"), like the real API.
+      const ob = new URL(u).searchParams.get('orderBy');
+      if (ob && ob.split(',').some((k) => !SORT_KEYS.includes(k.trim().replace(/ desc$/, '')))) return j({ error: { code: 400, message: 'Invalid Value' } }, 400);
+      if (u.includes('mimeType+%3D') || u.includes(encodeURIComponent(GOOGLE_TYPE.folder)) || ob?.startsWith('folder')) {
         return j({ files: u.includes('Sunrise') && u.includes('name+%3D') ? [{ id: 'cf1', name: 'Sunrise Plumbing', mimeType: GOOGLE_TYPE.folder }] : [
           { id: 'f1', name: 'Sunrise Plumbing', mimeType: GOOGLE_TYPE.folder, modifiedTime: '2026-11-01T10:00:00Z' },
           { id: 'd1', name: 'Pitch notes', mimeType: GOOGLE_TYPE.doc, modifiedTime: '2026-11-02T10:00:00Z', webViewLink: 'https://docs/d1' },
@@ -173,4 +176,13 @@ test('Drive stays off until the person turns it on', async () => {
     assert.equal(r.status, 400);
     assert.match(r.data.error, /Turn on Google Drive/);
   } finally { g.done(); }
+});
+
+test('Drive list call only uses sort keys Google accepts', () => {
+  for (const sort of ['modifiedTime desc', 'name']) {
+    const ob = listParams({ sort }).get('orderBy');
+    assert.ok(ob.split(',').every((k) => SORT_KEYS.includes(k.trim().replace(/ desc$/, ''))), ob);
+  }
+  assert.equal(listParams({ q: 'plan' }).get('orderBy'), 'modifiedTime desc');
+  assert.match(listParams({ folder: "a'b" }).get('q'), /'a\\'b' in parents/);
 });

@@ -247,7 +247,7 @@ test('booking: personal link fills in, Google invite with Meet, rep assigned, co
   const l = d.lead || d;
   assert.equal(l.city, 'Hollywood', 'what they typed fills the gap');
   assert.equal(l.stage, 'audit_booked');
-  assert.ok(l.meet_by, 'round robin gave it to someone');
+  assert.ok(l.closer_id, 'round robin gave it to someone');
   assert.equal(l.sms_consent, 1);
   const leads = (await t.call('GET', '/api/leads')).data.leads;
   assert.equal(leads.length, 1, 'the personal link books the same lead, no duplicate');
@@ -282,4 +282,117 @@ test('booking still works when Google fails, with the backup link and a calendar
   assert.match(confirm.text, /calendar\.google\.com\/calendar\/render/);
   const alerts = (await t.call('GET', '/api/notifications')).data.notifications;
   assert.ok(alerts.some((n) => /Google Calendar failed/.test(n.body || '')), 'the team is told Google failed');
+});
+
+// ---------- closers, double booking and the shared team calendar ----------
+test('team calendar: closers, double booking guard, invites from the closer, copies on the master calendar', async () => {
+  const t = setup({ ...G, RESEND_API_KEY: 're_test' });
+  await owner(t);
+  await connectGoogle(t, 'openid email https://www.googleapis.com/auth/calendar');
+  const me = (await t.call('GET', '/api/me')).data.user;
+  // A teammate (the closer) with their own Google connected.
+  const kid = 'u_kiron';
+  await t.env.DB.prepare("INSERT INTO users (id, email, name, role, created_at, pass_hash) VALUES (?, 'kiron@rightwaygrowth.com', 'Kiron Lee', 'team', ?, 'x')").bind(kid, Date.now()).run();
+  await t.env.DB.prepare("UPDATE users SET google_token = ?, google_email = 'kiron@rightwaygrowth.com', google_scopes = 'openid email https://www.googleapis.com/auth/calendar' WHERE id = ?").bind(await seal(t.env, 'refresh-k'), kid).run();
+
+  const made = [], patched = [], acl = [], master = [];
+  let n = 0;
+  const f = stubFetch((u, init) => {
+    if (u.startsWith('https://oauth2.googleapis.com/token')) return jres({ access_token: `at${String(init.body).includes('refresh-k') ? 'k' : 'v'}`, expires_in: 3600 });
+    if (u.includes('/calendars') && init.method === 'POST' && /\/calendars$/.test(u.split('?')[0])) return jres({ id: 'team@group.calendar.google.com', summary: 'Rightway Appointments' });
+    if (u.includes('/users/me/calendarList') && init.method === 'POST') return jres({});
+    if (u.includes('/acl')) { acl.push(JSON.parse(init.body)); return jres({}); }
+    if (u.includes('/calendars/team%40group.calendar.google.com/events')) {
+      if (init.method === 'DELETE') { master.push(['del', u]); return new Response(null, { status: 204 }); }
+      master.push([init.method, JSON.parse(init.body || '{}')]);
+      return jres({ id: `m${++n}` });
+    }
+    if (u.includes('/calendars/primary/events?conferenceDataVersion=1')) { made.push([init.headers.authorization, JSON.parse(init.body)]); return jres({ id: `ev${++n}`, hangoutLink: 'https://meet.google.com/kkk-kkkk-kkk' }); }
+    if (/\/calendars\/primary\/events\/[^?]+\?sendUpdates=all/.test(u)) { patched.push(JSON.parse(init.body)); return jres({ id: 'ev1' }); }
+    if (/\/calendars\/primary\/events\/[^?]+$/.test(u)) return jres({ id: 'ev1', attendees: [{ email: 'ana@coastal.com' }] });
+    if (u.includes('/calendars/primary/events?')) return jres({ items: [] });
+    if (u.includes('resend.com')) return jres({ id: 'e1' });
+    return null;
+  });
+  try {
+    // Set up the team calendar: made in the owner's Google, shared with the team.
+    let r = await t.call('POST', '/api/team-cal', { name: 'Rightway Appointments' });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+
+    assert.deepEqual(acl.map((a) => [a.scope.value, a.role]), [['kiron@rightwaygrowth.com', 'reader']]);
+
+    const a = (await t.call('POST', '/api/leads', { business: 'Coastal Roof Pros', contact_name: 'Ana Ruiz', phone: '9545550300', email: 'ana@coastal.com', state: 'FL' })).data.lead;
+    const b = (await t.call('POST', '/api/leads', { business: 'Diaz Dental', contact_name: 'Bo Diaz', phone: '3055550111', email: 'bo@diaz.com', state: 'FL' })).data.lead;
+    const at = new Date(Date.now() + 2 * 864e5); at.setUTCHours(15, 0, 0, 0);
+    // The setter books it for Kiron: the invite comes from Kiron's calendar, the team calendar gets "Kiron: Coastal Roof Pros".
+    r = await t.call('POST', `/api/leads/${a.id}/meeting`, { start: at.toISOString(), minutes: 30, closer_id: kid });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.google, true);
+    assert.equal(made[0][0], 'Bearer atk', 'sent from the closer’s own Google');
+    assert.equal(made[0][1].attendees[0].email, 'ana@coastal.com');
+    const copy = master.find(([m, body]) => m === 'POST' && /Coastal/.test(body.summary));
+    assert.equal(copy[1].summary, 'Kiron: Coastal Roof Pros');
+    assert.equal(copy[1].attendees, undefined, 'the copy invites nobody');
+    let l = (await t.call('GET', `/api/leads/${a.id}`)).data.lead;
+    assert.equal(l.closer_id, kid);
+    assert.equal(l.meet_by, me.id);
+
+    // Same time for Kiron again: refused, unless forced.
+    r = await t.call('POST', `/api/leads/${b.id}/meeting`, { start: at.toISOString(), minutes: 30, closer_id: kid });
+    assert.equal(r.status, 409);
+    assert.equal(r.data.conflict, true);
+    assert.match(r.data.error, /Kiron already has Coastal Roof Pros/);
+    const free = await t.call('GET', `/api/closers/free?start=${at.getTime()}`);
+    assert.ok(free.data.closers.find((c) => c.id === kid).clash);
+    assert.equal(free.data.closers.find((c) => c.id === me.id).clash, null);
+    // So it goes to the owner instead.
+    r = await t.call('POST', `/api/leads/${b.id}/meeting`, { start: at.toISOString(), minutes: 30, closer_id: me.id });
+    assert.equal(r.status, 200);
+
+    // Hand Diaz Dental to Kiron: a clash, so it asks first.
+    r = await t.call('PUT', `/api/leads/${b.id}/closer`, { closer_id: kid });
+    assert.equal(r.status, 409);
+    r = await t.call('PUT', `/api/leads/${b.id}/closer`, { closer_id: kid, force: true });
+    assert.equal(r.status, 200);
+    assert.ok(patched.some((p) => p.attendees.some((x) => x.email === 'kiron@rightwaygrowth.com')), 'Kiron was added to the invite');
+
+    // Hub appointments go on the team calendar too, and leave it when deleted.
+    const ev = await t.call('POST', '/api/events', { title: 'Walkthrough with Maria', start: at.getTime() + 3 * 3600e3, minutes: 30 });
+    assert.ok(master.some(([m, body]) => m === 'POST' && body.summary === 'Vidal: Walkthrough with Maria'));
+    await t.call('DELETE', `/api/events/${ev.data.id}`);
+    assert.ok(master.some(([m]) => m === 'del'));
+
+    // The cron keeps it in step: a lead marked lost drops off the team calendar.
+    await t.env.DB.prepare("UPDATE leads SET stage = 'lost', meet_at = NULL WHERE id = ?").bind(a.id).run();
+    r = await t.call('POST', '/api/team-cal/sync');
+    assert.ok(r.data.synced >= 1);
+    l = (await t.call('GET', `/api/leads/${a.id}`)).data.lead;
+    const row = await t.env.DB.prepare('SELECT master_event_id FROM leads WHERE id = ?').bind(a.id).first();
+    assert.equal(row.master_event_id, null);
+    const st = await t.call('GET', '/api/team-cal');
+    assert.equal(st.data.master.name, 'Rightway Appointments');
+  } finally { f.done(); }
+});
+
+test('booking page round robin only offers a time to someone free, and books them', async () => {
+  const t = setup();
+  await owner(t);
+  const me = (await t.call('GET', '/api/me')).data.user;
+  await t.env.DB.prepare("INSERT INTO users (id, email, name, role, created_at, pass_hash) VALUES ('u_k', 'k@rightwaygrowth.com', 'Kiron Lee', 'team', ?, 'x')").bind(Date.now()).run();
+  await t.call('PUT', '/api/google/booking', { rep: 'rr' });
+  let info = await t.anon('/api/public/book').then((x) => x.json());
+  const slot = info.slots[0];
+  const ok = { business: 'Ace Plumbing', email: 'a@ace.com', phone: '9545550101', city: 'Hollywood', state: 'FL' };
+  let r = await t.call('POST', '/api/public/book', { ...ok, name: 'Al Ace', start: slot });
+  assert.equal(r.status, 200);
+  info = await t.anon('/api/public/book').then((x) => x.json());
+  assert.ok(info.slots.includes(slot), 'still open: the other closer is free');
+  r = await t.call('POST', '/api/public/book', { ...ok, business: 'Bee Roofing', email: 'b@bee.com', phone: '9545550102', name: 'Bea Bee', start: slot });
+  assert.equal(r.status, 200);
+  const leads = (await t.call('GET', '/api/leads')).data.leads.filter((l) => l.meet_at === slot);
+  assert.deepEqual(new Set(leads.map((l) => l.closer_id)), new Set([me.id, 'u_k']), 'one each, nobody double booked');
+  info = await t.anon('/api/public/book').then((x) => x.json());
+  assert.ok(!info.slots.includes(slot), 'now everyone is busy then');
+  r = await t.call('POST', '/api/public/book', { ...ok, business: 'Cee Co', email: 'c@cee.com', phone: '9545550103', name: 'Cy Cee', start: slot });
+  assert.equal(r.status, 409);
 });

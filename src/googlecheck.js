@@ -5,11 +5,13 @@ import { first } from './db.js';
 import { requireStaff } from './auth.js';
 import { route } from './router.js';
 import { accessToken, googleReady, hasScope, APP_SCOPES, calendarFull, calendarAny } from './google.js';
+import { listParams } from './gdrive.js';
 
 const CHECKS = [
   { app: 'calendar', label: 'Calendar', api: 'Google Calendar API', url: 'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1', scope: (s) => calendarAny(s) },
-  { app: 'mail', label: 'Gmail', api: 'Gmail API', url: 'https://gmail.googleapis.com/gmail/v1/users/me/profile' },
-  { app: 'drive', label: 'Drive', api: 'Google Drive API', url: 'https://www.googleapis.com/drive/v3/about?fields=user' },
+  { app: 'mail', label: 'Gmail', api: 'Gmail API', url: 'https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=1&labelIds=INBOX' },
+  // The same file list call the Drive page makes, so a check that passes means the page works.
+  { app: 'drive', label: 'Drive', api: 'Google Drive API', url: `https://www.googleapis.com/drive/v3/files?${listParams({}).toString().replace('pageSize=60', 'pageSize=1')}` },
   // No document to read, so a made up id: 404 means the API answered (on); 403 with "disabled" means it is off.
   { app: 'docs', label: 'Docs', api: 'Google Docs API', url: 'https://docs.googleapis.com/v1/documents/rw-connection-check', okStatus: [404, 400] },
   { app: 'sheets', label: 'Sheets', api: 'Google Sheets API', url: 'https://sheets.googleapis.com/v4/spreadsheets/rw-connection-check', okStatus: [404, 400] },

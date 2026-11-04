@@ -17,6 +17,7 @@ import { ensureClientChats } from './chat.js';
 import { automationTick } from './automations.js';
 import { researchTick } from './autoresearch.js';
 import { costTick } from './costs.js';
+import { masterTick, inviteTick } from './teamcal.js';
 
 // Runtime secrets (dashboard) win; build-time secrets fill any gaps.
 export function withSecrets(env, extra = baked) {
@@ -44,6 +45,9 @@ export default {
       await digestTick(env).catch((e) => console.error('digest', e));
       await meetingReminders(env).catch((e) => console.error('meeting reminders', e));
       await costTick(env).catch((e) => console.error('budget check', e));
+      // Lead invites for bookings made without one, then the shared team calendar kept in step with the Hub (a few Google calls each run).
+      if (used < 35) await inviteTick(env, 2).catch((e) => console.error('invites', e));
+      if (used < 35) await masterTick(env, 6).catch((e) => console.error('team calendar', e));
       // Clients without their private chat get one (one per run, about 5 Slack calls each).
       if (used < 35) await ensureClientChats(env, 1).catch((e) => console.error('client chats', e));
     })());

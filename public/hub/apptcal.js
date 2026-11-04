@@ -91,7 +91,7 @@ async function feedPanel(box) {
   box.innerHTML = '<div class="skeleton"></div>';
   let f;
   try { f = await api('/api/me/calendar-feed'); } catch (e) { box.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
-  box.innerHTML = `<p class="small" style="margin:0 0 10px">Subscribe once and every appointment you can see (booked audits, client meetings, the ones you add here) shows up in your own calendar by itself. It is read only: add or change things here in the Hub.</p>
+  box.innerHTML = `<p class="small" style="margin:0 0 10px">With Google connected, the team calendar in Settings is the better way: every booking lands on one shared Google calendar. This link works without Google. Subscribe once and every appointment you can see (booked audits, client meetings, the ones you add here) shows up in your own calendar by itself. It is read only: add or change things here in the Hub.</p>
     <div class="row" style="gap:8px"><input id="feedurl" readonly value="${esc(f.url)}" style="flex:1 1 280px;font-family:var(--mono);font-size:12px"><button class="btn btn-primary btn-sm" id="feedcopy">Copy link</button><a class="btn btn-ghost btn-sm" href="${esc(f.webcal)}">Open in Apple Calendar</a></div>
     <ol class="small" style="margin:12px 0 0;padding-left:18px;display:grid;gap:4px">
       <li><b>Google Calendar</b> (computer): click the plus next to "Other calendars", choose <b>From URL</b>, paste the link, Add calendar. Google refreshes subscribed calendars on its own schedule, so new appointments can take hours to appear there.</li>
@@ -131,10 +131,11 @@ export async function apptCalendarPage(app, user, sub) {
     try { d = await api(`/api/appointments?from=${from}&to=${to}`); } catch (e) { $('#calb', view).innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
     const byKey = new Map(d.items.map((x) => [`${x.kind}:${x.id}:${x.start}`, x]));
     const key = (x) => esc(`${x.kind}:${x.id}:${x.start}`);
-    const tip = (x) => esc(`${x.title} · ${x.by}`);
+    const tip = (x) => esc(x.kind === 'audit' ? `${x.title} · ${x.closer ? `${x.closer} runs it` : 'nobody assigned'} · booked by ${x.by}` : `${x.title} · ${x.by}`);
+    const label = (x) => (x.kind === 'audit' && x.closer ? `${x.closer}: ${x.title}` : x.title);
     const chip = (x) => (x.kind === 'event'
       ? `<button type="button" class="ac-chip event${x.start < Date.now() ? ' past' : ''}" data-ev="${key(x)}" title="${tip(x)}"><b>${esc(timeOf(x.start))}</b> ${esc(x.title)}</button>`
-      : `<${x.open ? 'a' : 'span'} class="ac-chip ${x.kind}${x.start < Date.now() ? ' past' : ''}" ${x.open ? `href="${esc(hrefOf(x))}"` : ''} title="${tip(x)}"><b>${esc(timeOf(x.start))}</b> ${esc(x.title)}</${x.open ? 'a' : 'span'}>`);
+      : `<${x.open ? 'a' : 'span'} class="ac-chip ${x.kind}${x.start < Date.now() ? ' past' : ''}" ${x.open ? `href="${esc(hrefOf(x))}"` : ''} title="${tip(x)}"><b>${esc(timeOf(x.start))}</b> ${esc(label(x))}</${x.open ? 'a' : 'span'}>`);
     const wire = () => {
       $$('[data-ev]', view).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); const x = byKey.get(b.dataset.ev); if (x?.edit) eventModal({ ev: x, onDone: draw }); else toast('That one belongs to someone else.'); }));
       $$('[data-ics]', view).forEach((b) => b.addEventListener('click', () => { const x = byKey.get(b.dataset.ics); if (x) download(`${x.title.replace(/[^\w]+/g, '-').slice(0, 40) || 'appointment'}.ics`, icsFor(x)); }));
@@ -145,7 +146,7 @@ export async function apptCalendarPage(app, user, sub) {
       $('#calb', view).innerHTML = days.size ? [...days.entries()].map(([k, xs]) => `<div class="card" style="margin-bottom:10px"><div class="card-head"><h3>${esc(new Date(k).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }))}</h3><span class="badge gray">${xs.length}</span></div>
         ${xs.map((x) => `<div class="row" style="flex-wrap:wrap;gap:12px;padding:8px 0;border-top:1px solid var(--line)"><span class="mono" style="min-width:76px">${esc(timeOf(x.start))}</span>
           <span class="badge ${x.kind === 'audit' ? '' : 'gray'}">${KIND[x.kind]}</span><b style="flex:1;min-width:140px">${x.open ? `<a href="${esc(hrefOf(x))}">${esc(x.title)}</a>` : x.kind === 'event' && x.edit ? `<a href="#" data-ev="${key(x)}">${esc(x.title)}</a>` : esc(x.title)}</b>
-          <span class="small">${esc([x.who, x.city, x.by].filter(Boolean).join(' · '))}</span>${x.link ? `<a class="btn btn-ghost btn-sm" href="${esc(x.link)}" target="_blank" rel="noopener">Join</a>` : ''}
+          <span class="small">${esc((x.kind === 'audit' ? [x.who, x.city, x.closer ? `${x.closer} runs it` : 'Nobody assigned', `booked by ${x.by}`] : [x.who, x.city, x.by]).filter(Boolean).join(' · '))}</span>${x.link ? `<a class="btn btn-ghost btn-sm" href="${esc(x.link)}" target="_blank" rel="noopener">Join</a>` : ''}
           ${x.kind === 'audit' && x.open ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(x.id)}" target="_blank" rel="noopener">Present</a>` : ''}
           <a class="btn btn-ghost btn-sm" href="${esc(gUrl(x))}" target="_blank" rel="noopener" title="Add this one to Google Calendar">+ Google</a><button class="btn btn-ghost btn-sm" type="button" data-ics="${key(x)}" title="Download a calendar file for Apple Calendar or Outlook">.ics</button></div>`).join('')}</div>`).join('')
         : '<div class="card empty"><h3>Nothing booked in the next 30 days</h3><p>Add an appointment above, or book audits from the dialer. They show here for the whole team.</p></div>';

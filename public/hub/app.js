@@ -136,11 +136,12 @@ async function route() {
   if (parts[0] === 'alerts' || parts[0] === 'notifications') return import('./alerts.js').then((m) => m.alertsPage(app, u));
   if (parts[0] === 'payments') return paymentsPage(app, u);
   if (parts[0] === 'mail') return import('./gstate.js').then((g) => g.hasGoogle('mail')).then((gm) => (gm ? import('./mail.js').then((m) => m.mailPage(app, u, parts[1] || '', parts[2] || '')) : import('./hubmail.js').then((m) => m.mailPage(app, u))));
-  if (parts[0] === 'files') return import('./files.js').then((m) => m.filesPage(app, u, parts[1] || ''));
+  if (parts[0] === 'files') { location.replace(`#/settings/files${parts[1] ? `/${parts[1]}` : ''}`); return; }
   if (parts[0] === 'google' && parts[1] === 'drive') return import('./gdrive.js').then((m) => m.drivePage(app, u, parts[2] || ''));
   if (parts[0] === 'google' && parts[1] === 'calendar') return import('./gcal.js').then((m) => m.calendarPage(app, u, parts[2] || ''));
   if (parts[0] === 'google' && parts[1] === 'mail') return import('./mail.js').then((m) => m.mailPage(app, u, parts[2] || '', parts[3] || ''));
   if (parts[0] === 'google') return googlePage(app, u);
+  if (parts[0] === 'settings' && parts[1] === 'files') return import('./files.js').then((m) => m.filesPage(app, u, parts[2] || ''));
   if (parts[0] === 'settings' && parts[1] === 'budget') return import('./budget.js').then((m) => m.budgetPage(app, u));
   if (parts[0] === 'settings') return settingsPage(app, u);
   if (parts[0] === 'client' && parts[1]) return clientPage(app, u, parts[1], parts[2] || 'overview', { ...state, sub: parts[3] });

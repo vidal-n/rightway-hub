@@ -129,7 +129,8 @@ const b64 = (s) => { const b = new TextEncoder().encode(s); let t = ''; for (let
 async function context(env, lead) {
   const s = await getSettings(env);
   const origin = s.hub_origin || s.autoscan_origin || '';
-  const rep = lead.meet_by ? (await first(env, 'SELECT name FROM users WHERE id = ?', lead.meet_by))?.name || '' : '';
+  const repId = lead.closer_id || lead.meet_by;
+  const rep = repId ? (await first(env, 'SELECT name FROM users WHERE id = ?', repId))?.name || '' : '';
   const bt = await bookToken(env, lead);
   return { lead, start: lead.meet_at, rep: rep.split(' ')[0] ? `${rep.split(' ')[0]}, RightWay Growth` : '', tz: s.book_tz || TZ_DEFAULT, bookUrl: origin ? `${origin}/book.html${bt ? `?l=${bt}` : ''}` : '', origin };
 }

@@ -5,34 +5,32 @@ import { all, first, run, now } from './db.js';
 import { requireStaff } from './auth.js';
 import { route } from './router.js';
 import { createMeeting, googleReady, bookingOwner, bookingConfig } from './google.js';
+import { closerConflict, inviteLead, mirrorLead } from './teamcal.js';
 
-// After a Booked result with a time: put it on the booker's Google Calendar with a Meet link (if they connected Google).
+// After a Booked result with a time: whoever logged it runs the call unless someone else was already set; the invite with Meet goes out from the
+// closer's Google calendar and the team calendar gets a copy. A clash does not undo the booking (the call is already logged), it comes back as a warning.
 export async function bookOnCalendar(env, userId, leadId) {
-  if (!googleReady(env)) return null;
   const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', leadId);
-  if (!lead?.meet_at || lead.stage !== 'audit_booked' || lead.gcal_event_id || lead.meet_at < now()) return null;
-  const me = await first(env, 'SELECT * FROM users WHERE id = ?', userId);
-  const owner = me?.google_token ? me : await bookingOwner(env, await bookingConfig(env));
-  if (!owner) return null;
-  const m = await createMeeting(env, owner, {
-    summary: `RightWay Growth: Google clarity audit with ${lead.business}`,
-    description: `Free Google clarity audit (15 minutes, screen share).\nLead in the Hub: open Present before the call.`,
-    start: lead.meet_at, minutes: 30, attendees: [lead.email], leadId: lead.id,
-  });
-  await run(env, 'UPDATE leads SET gcal_event_id = ?, meet_link = COALESCE(meet_link, ?) WHERE id = ?', m.id, m.meet, lead.id);
-  return m;
+  if (!lead?.meet_at || lead.stage !== 'audit_booked' || lead.meet_at < now()) return null;
+  const closerId = lead.closer_id || userId;
+  if (!lead.closer_id) await run(env, 'UPDATE leads SET closer_id = ? WHERE id = ?', closerId, leadId);
+  const warning = await closerConflict(env, closerId, lead.meet_at, 30, { leadId });
+  let g = { google: false };
+  try { g = googleReady(env) ? await inviteLead(env, leadId) : g; } catch (e) { g = { google: false, error: e.message }; }
+  await mirrorLead(env, leadId).catch(() => false);
+  return { ...g, warning };
 }
 
 // Everything on the team calendar between two times: booked audits, client meetings and the appointments people add by hand.
 // Owners see all of it; teammates only theirs. Used by the calendar page and the calendar feed.
 export async function appointmentItems(env, user, from, to) {
   const users = Object.fromEntries((await all(env, 'SELECT id, name, email FROM users')).map((u) => [u.id, (u.name || u.email || '').split(' ')[0]]));
-  const leads = await all(env, `SELECT id, business, contact_name, city, meet_at, meet_link, meet_by, owner_id, stage FROM leads WHERE meet_at >= ? AND meet_at < ? ORDER BY meet_at LIMIT 500`, from, to);
+  const leads = await all(env, `SELECT id, business, contact_name, city, meet_at, meet_link, meet_by, closer_id, owner_id, stage FROM leads WHERE meet_at >= ? AND meet_at < ? ORDER BY meet_at LIMIT 500`, from, to);
   const mtgs = await all(env, `SELECT m.id, m.client_id, m.title, m.start_at, m.minutes, m.meet_link, c.name AS client FROM meetings m LEFT JOIN clients c ON c.id = m.client_id WHERE m.start_at >= ? AND m.start_at < ? ORDER BY m.start_at LIMIT 300`, from, to).catch(() => []);
   const evs = await all(env, `SELECT e.*, l.business AS lead_name, c.name AS client_name FROM events e LEFT JOIN leads l ON l.id = e.lead_id LEFT JOIN clients c ON c.id = e.client_id WHERE e.start_at >= ? AND e.start_at < ? ${user.role === 'admin' ? '' : 'AND e.owner_id = ?'} ORDER BY e.start_at LIMIT 500`, from, to, ...(user.role === 'admin' ? [] : [user.id])).catch(() => []);
-  const mine = (l) => user.role === 'admin' || l.meet_by === user.id || (!l.meet_by && l.owner_id === user.id);
+  const mine = (l) => user.role === 'admin' || l.meet_by === user.id || l.closer_id === user.id || (!l.meet_by && l.owner_id === user.id);
   return [
-    ...leads.map((l) => ({ kind: 'audit', id: l.id, title: l.business, who: (l.contact_name || '').split(' ')[0], city: l.city, start: l.meet_at, minutes: 30, by: users[l.meet_by] || 'Booking page', stage: l.stage, link: mine(l) ? l.meet_link : null, open: mine(l) })),
+    ...leads.map((l) => ({ kind: 'audit', id: l.id, title: l.business, who: (l.contact_name || '').split(' ')[0], city: l.city, start: l.meet_at, minutes: 30, by: users[l.meet_by] || 'Booking page', closer: users[l.closer_id || l.meet_by] || '', closer_id: l.closer_id || l.meet_by || null, stage: l.stage, link: mine(l) ? l.meet_link : null, open: mine(l) })),
     ...mtgs.map((m) => ({ kind: 'client', id: m.client_id, title: m.client || m.title, who: m.title, start: m.start_at, minutes: m.minutes || 30, by: 'Client meeting', link: user.role !== 'client' ? m.meet_link : null, open: true })),
     ...evs.map((e) => ({ kind: 'event', id: e.id, title: e.title, who: e.lead_name || e.client_name || '', start: e.start_at, minutes: e.minutes, by: users[e.owner_id] || '', link: e.link, note: e.note, guest_email: e.guest_email, lead_id: e.lead_id, client_id: e.client_id, lead_name: e.lead_name, open: false, edit: user.role === 'admin' || e.owner_id === user.id })),
   ].sort((a, b) => a.start - b.start);

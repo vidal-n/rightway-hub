@@ -1,6 +1,7 @@
 // Files in the Hub: company files and a folder per client, stored in the Hub itself (no Google Drive).
 import { $, $$, esc, api, toast, modal, icon } from './core.js';
 import { staffShell } from './shell.js';
+import { settingsTabs } from './staff.js';
 
 const fmtSize = (n) => (n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`);
 const when = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric', year: new Date(t).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
@@ -101,13 +102,14 @@ export async function clientFilesTab(el, c) {
 }
 
 export async function filesPage(app, user, sub = '') {
-  const view = staffShell(app, user, 'files');
+  const view = staffShell(app, user, 'settings');
   let clients = [];
   try { clients = (await api('/api/clients')).clients || []; } catch { /* company files still work */ }
-  view.innerHTML = `<div class="page-head"><div><p class="eyebrow">Team</p><h1>Files</h1></div>
+  view.innerHTML = `<div class="page-head"><div><p class="eyebrow">Settings</p><h1>Files</h1></div>
       <label class="field" style="margin:0"><span class="small muted">Show</span><select id="fscope"><option value="">Company files</option>${clients.filter((c) => !c.sample).map((c) => `<option value="${esc(c.id)}"${c.id === sub ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label></div>
-    <p class="small muted" style="margin:-8px 0 14px">Stored in the Hub. Drop files in, make folders, and share any file with a private link. Up to 25 MB each.</p>
+    ${settingsTabs('files', user)}
+    <p class="small muted" style="margin:0 0 14px">Stored in the Hub. Drop files in, make folders, and share any file with a private link. Up to 25 MB each.</p>
     <div class="card" id="fbox"></div>`;
   filesWidget($('#fbox', view), { client: sub });
-  $('#fscope', view).addEventListener('change', (e) => { location.hash = e.target.value ? `#/files/${e.target.value}` : '#/files'; });
+  $('#fscope', view).addEventListener('change', (e) => { location.hash = e.target.value ? `#/settings/files/${e.target.value}` : '#/settings/files'; });
 }

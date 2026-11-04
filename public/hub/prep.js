@@ -140,25 +140,51 @@ export async function bookModal(lead, onDone) {
   let g = null;
   try { g = await api('/api/google/status'); } catch { g = null; }
   const noGoogle = !g?.ready || (!g.connected && !g.booking?.ownerEmail);
+  let team = [];
+  try { team = ((await api('/api/team')).users || []).filter((u) => u.role === 'admin' || u.role === 'team'); } catch { team = []; }
+  const me = window.__rwUser?.id;
+  const pickId = lead.closer_id || me;
   const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0);
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
   const m = modal(`<div class="card-head"><h2>Book the Google clarity audit: ${esc(lead.business)}</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
-    ${noGoogle ? '<p class="muted">Google Calendar is not connected, so this books it in the Hub. Paste a Zoom or Meet link if you have one, then send them the invite text below.</p>' : `<p class="muted">Creates the event on ${esc(g.email || g.booking.ownerEmail)} with a Google Meet link and emails the invite to the lead.</p>`}
+    ${noGoogle ? '<p class="muted">Google Calendar is not connected, so this books it in the Hub. Paste a Zoom or Meet link if you have one, then send them the invite text below.</p>' : `<p class="muted">The lead gets a Google invite with a Meet link from the calendar of whoever runs the call (or ${esc(g.email || g.booking.ownerEmail)} if they have not connected Google), and it goes on the team calendar.</p>`}
     <form id="bkf" class="form-grid">
       <label class="field"><span>Date and time (your time)</span><input type="datetime-local" name="start" value="${local}" required></label>
+      <label class="field"><span>Who runs the call</span><select name="closer_id">${team.map((u) => `<option value="${esc(u.id)}"${u.id === pickId ? ' selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select></label>
+      <p class="small span-all" id="bkfree" style="margin:-4px 0 0"></p>
       <label class="field"><span>Length</span><select name="minutes"><option value="20">20 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label>
       <label class="field span-all"><span>Their email${noGoogle ? ' (optional)' : ' for the invite'}</span><input type="email" name="email" value="${esc(lead.email || '')}"${noGoogle ? '' : ' required'}></label>
       ${noGoogle ? '<label class="field span-all"><span>Meeting link (optional: Zoom, Meet, or leave blank for a phone call)</span><input name="link" inputmode="url" placeholder="https://"></label>' : ''}
       <label class="field span-all"><span>Note in the invite (optional)</span><input name="note" placeholder="Anything they should have ready"></label>
       <div class="span-all row end"><button class="btn btn-primary" type="submit">${noGoogle ? 'Book it' : 'Book with Google Meet'}</button></div>
     </form><div id="bkout"></div>`);
+  // Who is free at that time: busy people are marked, and the chosen person's clash is spelled out before booking.
+  const bf = $('#bkf', m.el);
+  const checkFree = async () => {
+    const t = new Date(bf.start.value).getTime();
+    if (!t || !bf.closer_id) return;
+    try {
+      const r = await api(`/api/closers/free?start=${t}&minutes=${bf.minutes.value}&lead=${encodeURIComponent(lead.id)}`);
+      const by = new Map(r.closers.map((c) => [c.id, c]));
+      [...bf.closer_id.options].forEach((o) => { const c = by.get(o.value); o.textContent = `${c?.name || o.textContent.replace(/ \(busy\)$/, '')}${c?.clash ? ' (busy)' : ''}`; });
+      const c = by.get(bf.closer_id.value);
+      $('#bkfree', m.el).innerHTML = c?.clash ? `<span class="err-text">${esc(c.clash)}</span>` : `<span class="muted">${esc((c?.name || 'They').split(' ')[0])} is free then.</span>`;
+    } catch { /* booking still works */ }
+  };
+  ['start', 'closer_id', 'minutes'].forEach((k) => bf[k]?.addEventListener('change', checkFree));
+  checkFree();
   $('#bkf', m.el).addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target).entries());
     const btn = e.target.querySelector('button[type=submit]');
     busy(btn, true, 'Booking...');
     try {
-      const r = await api(`/api/leads/${lead.id}/meeting`, { method: 'POST', body: { ...f, start: new Date(f.start).toISOString() } });
+      let r;
+      try { r = await api(`/api/leads/${lead.id}/meeting`, { method: 'POST', body: { ...f, start: new Date(f.start).toISOString() } }); }
+      catch (err) {
+        if (err.status !== 409 || !confirm(`${err.message}\n\nBook it anyway?`)) throw err;
+        r = await api(`/api/leads/${lead.id}/meeting`, { method: 'POST', body: { ...f, start: new Date(f.start).toISOString(), force: true } });
+      }
       const when = new Date(r.start).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
       const invite = `Hi ${(lead.contact_name || '').split(' ')[0] || 'there'}, this is ${r.rep || 'your rep'} with RightWay Growth. You're booked for your free Google clarity audit on ${when}.${r.meet ? ` Join here: ${r.meet}` : ' I will call you at this number and send the screen share link.'} Talk soon!`;
       $('#bkout', m.el).innerHTML = `<div class="card" style="box-shadow:none;background:var(--mint-soft);margin-top:12px"><h3>Booked for ${esc(when)}</h3>

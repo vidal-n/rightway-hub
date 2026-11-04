@@ -9,6 +9,7 @@ import { appointmentItems } from './appointments.js';
 import { canEmail, sendEmail } from './email.js';
 import { logActivity } from './crm.js';
 import { icsCalendar, googleAddUrl } from '../public/js/ics.js';
+import { mirrorEvent, unmirror } from './teamcal.js';
 
 const b64 = (s) => { const b = new TextEncoder().encode(s); let t = ''; for (let i = 0; i < b.length; i += 8192) t += String.fromCharCode(...b.subarray(i, i + 8192)); return btoa(t); };
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -55,7 +56,7 @@ async function mine(env, user, id) {
   return e;
 }
 
-route('POST', '/api/events', async ({ env, user, body }) => {
+route('POST', '/api/events', async ({ env, user, body, defer }) => {
   requireStaff(user);
   const b = await body();
   const e = clean(b);
@@ -65,10 +66,11 @@ route('POST', '/api/events', async ({ env, user, body }) => {
   if (e.lead_id) await logActivity(env, { lead_id: e.lead_id, type: 'note', body: `Appointment added: ${e.title}`, by: user.id });
   let invited = false, inviteError = null;
   if (b.invite && e.guest) { try { invited = await invite(env, user, { ...e, id }); } catch (err) { inviteError = err.message; } }
+  await defer(mirrorEvent(env, id).catch(() => false));
   return json({ id, invited, inviteError, noEmail: Boolean(b.invite && e.guest && !canEmail(env)) });
 });
 
-route('PUT', '/api/events/:id', async ({ env, user, params, body }) => {
+route('PUT', '/api/events/:id', async ({ env, user, params, body, defer }) => {
   requireStaff(user);
   const cur = await mine(env, user, params.id);
   const b = await body();
@@ -77,13 +79,15 @@ route('PUT', '/api/events/:id', async ({ env, user, params, body }) => {
     e.title, e.start, e.minutes, e.lead_id, e.client_id, e.guest || null, e.link || null, e.note || null, now(), cur.id);
   let invited = false, inviteError = null;
   if (b.invite && e.guest) { try { invited = await invite(env, user, { ...e, id: cur.id }, 'update'); } catch (err) { inviteError = err.message; } }
+  await defer(mirrorEvent(env, cur.id).catch(() => false));
   return json({ ok: true, invited, inviteError });
 });
 
-route('DELETE', '/api/events/:id', async ({ env, user, params }) => {
+route('DELETE', '/api/events/:id', async ({ env, user, params, defer }) => {
   requireStaff(user);
   const cur = await mine(env, user, params.id);
   await run(env, 'DELETE FROM events WHERE id = ?', cur.id);
+  await defer(unmirror(env, cur.master_event_id));
   return json({ ok: true });
 });
 

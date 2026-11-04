@@ -229,7 +229,7 @@ const PAGES = [
   ['Recordings', '#/phone/recordings'], ['Agents', '#/agents'], ['Call analytics', '#/agents/analytics'], ['Pipeline', '#/pipeline'], ['My work', '#/work'],
   ['Hours', '#/work/hours'], ['Task guides', '#/work/guides'], ['Clients', '#/clients'], ['Client view', '#/clients/view'], ['Scan tool', '/scan.html'],
   ['Training', '#/training'], ['Scripts', '#/training/scripts'], ['Objection drills', '#/training/drills'], ['Slack', '#/slack'], ['Mail', '#/mail'],
-  ['Calendar', '#/calendar'], ['New appointment', '#/calendar'], ['Files', '#/files'], ['Gmail', '#/google/mail'], ['Google Calendar', '#/google/calendar'], ['Google Drive', '#/google/drive'], ['Google setup', '#/google'], ['Notifications', '#/notifications'], ['Settings', '#/settings'], ['Team', '#/settings/team'],
+  ['Calendar', '#/calendar'], ['New appointment', '#/calendar'], ['Files', '#/settings/files'], ['Team calendar', '#/settings'], ['Gmail', '#/google/mail'], ['Google Calendar', '#/google/calendar'], ['Google Drive', '#/google/drive'], ['Google setup', '#/google'], ['Notifications', '#/notifications'], ['Settings', '#/settings'], ['Team', '#/settings/team'],
   ['Payments', '#/payments', 'admin'], ['Phone setup', '#/phone/setup', 'admin'], ['Booking page', '/book.html'],
 ];
 let paletteOpen = false;

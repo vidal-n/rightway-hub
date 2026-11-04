@@ -10,7 +10,7 @@ import { staffShell, initials } from './shell.js';
 export { staffShell, initials };
 
 // Settings holds the team too.
-export const settingsTabs = (active, user) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a><a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Agents</a>${user?.role === 'admin' ? `<a href="#/settings/budget" class="${active === 'budget' ? 'is-active' : ''}">Budget and costs</a>` : ''}</nav>`;
+export const settingsTabs = (active, user) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a><a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Agents</a><a href="#/settings/files" class="${active === 'files' ? 'is-active' : ''}">Files</a>${user?.role === 'admin' ? `<a href="#/settings/budget" class="${active === 'budget' ? 'is-active' : ''}">Budget and costs</a>` : ''}</nav>`;
 
 export const clientsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/clients" class="${active === 'all' ? 'is-active' : ''}">All clients</a><a href="#/clients/view" class="${active === 'view' ? 'is-active' : ''}">Client view</a></nav>`;
 

@@ -6,6 +6,7 @@ import { requireStaff, requireAdmin, cleanEmail } from './auth.js';
 import { route } from './router.js';
 import { cleanLead, insertLead, logActivity, rescore, apptScope, stateCode } from './crm.js';
 import { automationTick, bookToken } from './automations.js';
+import { closerConflict, inviteLead, mirrorLead } from './teamcal.js';
 import { openSlots } from '../public/js/slots.js';
 import { dupKeys } from '../public/js/leadintel.js';
 import { notifyLater } from './notify.js';
@@ -159,7 +160,7 @@ export async function bookingOwner(env, cfg) {
   return first(env, "SELECT * FROM users WHERE role = 'admin' AND google_token IS NOT NULL ORDER BY created_at LIMIT 1");
 }
 
-const AGENDA = (business) => [
+export const AGENDA = (business) => [
   `Rightway Growth consultation${business ? ` for ${business}` : ''}`,
   '',
   'What we will cover (about 20 minutes):',
@@ -246,8 +247,9 @@ route('PUT', '/api/google/booking', async ({ env, user, body }) => {
   return json({ ok: true, booking: await bookingConfig(env) });
 });
 
-// Book from a lead: Google event with a Meet link, invite sent to the lead, lead moved to Audit booked.
-route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body }) => {
+// Book from a lead: the closer runs it (default: whoever books), the time is checked against the closer's other appointments and Google calendar,
+// the lead gets a Google invite with Meet from the closer's calendar (or the booker's, or the booking calendar's), and the team calendar gets a copy.
+route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body, defer }) => {
   requireStaff(user);
   const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', params.id);
   if (!lead) throw new HttpError('Lead not found.', 404);
@@ -256,30 +258,31 @@ route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body }) => {
   if (!start || start < now() - 3600e3) throw new HttpError('Pick a time in the future.');
   const minutes = Math.min(120, Math.max(15, Number(b.minutes) || 30));
   const email = b.email ? cleanEmail(b.email) : lead.email;
-  const me = googleReady(env) ? await first(env, 'SELECT * FROM users WHERE id = ?', user.id) : null;
-  const owner = me?.google_token ? me : googleReady(env) ? await bookingOwner(env, await bookingConfig(env)) : null;
-  if (!owner) {
-    // No Google yet: still book it in the Hub with a pasted meeting link (Zoom, Meet, or a phone call), so booking never stops.
-    const link = /^https:\/\//.test(String(b.link || '').trim()) ? String(b.link).trim().slice(0, 400) : null;
-    const set = { stage: 'audit_booked', meet_at: start, meet_link: link, gcal_event_id: null, meet_by: user.id, next_action_at: start, next_action: 'Clarity call: open Present', updated_at: now() };
-    if (email && !lead.email) set.email = email;
-    Object.assign(set, rescore({ ...lead, ...set }));
-    const cols = Object.keys(set);
-    await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), lead.id);
-    await logActivity(env, { lead_id: lead.id, type: 'meeting', body: `Clarity call booked for ${new Date(start).toISOString()} (Hub only${link ? ', link added' : ''})`, by: user.id });
-    return json({ ok: true, meet: link, start, google: false, rep: String(user.name || '').split(' ')[0] });
+  const closerId = b.closer_id ? (await first(env, "SELECT id FROM users WHERE id = ? AND role IN ('admin','team')", b.closer_id))?.id : user.id;
+  if (!closerId) throw new HttpError('Pick who runs the call.');
+  if (!b.force) {
+    const clash = await closerConflict(env, closerId, start, minutes, { leadId: lead.id });
+    if (clash) return json({ error: `${clash} Pick another time or someone else.`, conflict: true }, 409);
   }
-  const m = await createMeeting(env, owner, {
-    summary: `Rightway Growth consultation: ${lead.business}`, description: [AGENDA(lead.business), b.note ? `\nNote: ${String(b.note).slice(0, 500)}` : ''].join(''),
-    start, minutes, attendees: [email], leadId: lead.id,
-  });
-  const set = { stage: 'audit_booked', meet_at: start, meet_link: m.meet, gcal_event_id: m.id, meet_by: user.id, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
+  const link = /^https:\/\//.test(String(b.link || '').trim()) ? String(b.link).trim().slice(0, 400) : null;
+  const moved = lead.meet_at && lead.meet_at !== start;
+  const set = { stage: 'audit_booked', meet_at: start, meet_by: user.id, closer_id: closerId, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
+  if (link) set.meet_link = link;
   if (email && !lead.email) set.email = email;
   Object.assign(set, rescore({ ...lead, ...set }));
   const cols = Object.keys(set);
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), lead.id);
-  await logActivity(env, { lead_id: lead.id, type: 'meeting', body: `Audit booked for ${new Date(start).toISOString()}${m.meet ? ` with Google Meet` : ''}${email ? `, invite sent to ${email}` : ''}`, by: user.id });
-  return json({ ok: true, meet: m.meet, link: m.link, start });
+  let g = { google: false }, gErr = null;
+  try { g = await inviteLead(env, lead.id, { minutes, note: b.note }); } catch (e) { gErr = e.message; }
+  await defer(mirrorLead(env, lead.id).catch(() => false));
+  const closer = await first(env, 'SELECT name FROM users WHERE id = ?', closerId);
+  await logActivity(env, { lead_id: lead.id, type: 'meeting', by: user.id,
+    body: `Audit ${moved ? 'moved to' : 'booked for'} ${new Date(start).toISOString()}${closerId !== user.id ? `, ${closer?.name || 'a teammate'} runs it` : ''}${g.google ? ', Google invite sent' : gErr ? ` (Google failed: ${gErr})` : ' (Hub only)'}` });
+  if (closerId !== user.id) {
+    await notifyLater({ env, defer }, { to: [closerId], kind: 'meeting', title: `You have a new audit: ${lead.business}`, body: new Date(start).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }), url: `/#/pipeline/${lead.id}` });
+  }
+  const after = await first(env, 'SELECT meet_link FROM leads WHERE id = ?', lead.id);
+  return json({ ok: true, meet: after?.meet_link || null, start, google: Boolean(g.google), googleError: gErr, rep: String(closer?.name || user.name || '').split(' ')[0] });
 });
 
 route('GET', '/api/calendar/upcoming', async ({ env, user }) => {
@@ -317,11 +320,34 @@ async function bookingBusy(env, cfg, owner) {
   return [...g, ...await hubBusy(env, from, to, cfg.minutes, fixedRep(cfg))];
 }
 
-// Who gets an online booking: the person set in booking settings, or round robin (fewest upcoming audits), or nobody (owners see it).
-export async function pickRep(env, cfg) {
-  if (fixedRep(cfg)) return (await first(env, "SELECT id FROM users WHERE id = ? AND role IN ('admin','team')", cfg.rep))?.id || null;
-  if (cfg.rep !== 'rr') return null;
-  const rows = await all(env, "SELECT u.id, (SELECT COUNT(*) FROM leads l WHERE l.meet_by = u.id AND l.meet_at > ?) AS n FROM users u WHERE u.role IN ('admin','team') ORDER BY n, u.created_at", now());
+// Who can take online bookings: one person, everyone on the team (round robin), or nobody in particular (one booking per time, company wide).
+async function closersFor(env, cfg) {
+  if (fixedRep(cfg)) { const u = await first(env, "SELECT id FROM users WHERE id = ? AND role IN ('admin','team')", cfg.rep); return u ? [u.id] : null; }
+  if (cfg.rep === 'rr') return (await all(env, "SELECT id FROM users WHERE role IN ('admin','team') ORDER BY created_at")).map((u) => u.id);
+  return null;
+}
+// One closer's busy times: their audits, their Hub appointments and their own Google calendar when connected.
+async function closerBusy(env, cid, from, to, minutes) {
+  const lo = from - 3 * 3600e3;
+  const leads = await all(env, 'SELECT meet_at FROM leads WHERE meet_at >= ? AND meet_at < ? AND (closer_id = ? OR (closer_id IS NULL AND meet_by = ?))', lo, to, cid, cid);
+  const evs = await all(env, 'SELECT start_at, minutes FROM events WHERE owner_id = ? AND start_at >= ? AND start_at < ?', cid, lo, to).catch(() => []);
+  const u = googleReady(env) ? await first(env, 'SELECT * FROM users WHERE id = ? AND google_token IS NOT NULL', cid) : null;
+  const g = u ? await busyTimes(env, u, from, to).catch(() => []) : [];
+  return [...leads.map((r) => [r.meet_at, r.meet_at + minutes * 60e3]), ...evs.map((r) => [r.start_at, r.start_at + (r.minutes || 30) * 60e3]), ...g];
+}
+// Open times, and who is free at each one.
+async function openTimes(env, cfg, owner) {
+  const list = await closersFor(env, cfg);
+  if (!list) return { slots: openSlots({ ...cfg, from: now(), busy: await bookingBusy(env, cfg, owner) }), free: null };
+  const from = now(), to = from + (cfg.days + 1) * 864e5;
+  const free = new Map();
+  for (const cid of list) for (const t of openSlots({ ...cfg, from, busy: await closerBusy(env, cid, from, to, cfg.minutes) })) { if (!free.has(t)) free.set(t, []); free.get(t).push(cid); }
+  return { slots: [...free.keys()].sort((x, y) => x - y), free };
+}
+// Of the people free at that time, the one with the fewest upcoming audits.
+async function pickCloser(env, ids) {
+  if (!ids?.length) return null;
+  const rows = await all(env, `SELECT u.id, (SELECT COUNT(*) FROM leads l WHERE (l.closer_id = u.id OR (l.closer_id IS NULL AND l.meet_by = u.id)) AND l.meet_at > ?) AS n FROM users u WHERE u.id IN (${ids.map(() => '?').join(',')}) ORDER BY n, u.created_at`, now(), ...ids);
   return rows[0]?.id || null;
 }
 
@@ -340,12 +366,12 @@ const okTz = (z) => { if (!z || typeof z !== 'string' || z.length > 64) return f
 route('GET', '/api/public/book', async ({ env, url }) => {
   const cfg = await bookingConfig(env);
   const owner = googleReady(env) ? await bookingOwner(env, cfg) : null;
-  const busy = await bookingBusy(env, cfg, owner);
+  const { slots } = await openTimes(env, cfg, owner);
   // A personal link (?l=) fills in what we already know, so the person only types what is missing.
   const t = String(url.searchParams.get('l') || '');
   const l = t.length >= 16 ? await first(env, 'SELECT contact_name, business, email, phone, website, city, state, industry, meet_at FROM leads WHERE book_token = ?', t) : null;
   const lead = l ? { name: l.contact_name || '', business: /^Unknown /.test(l.business || '') ? '' : l.business || '', email: l.email || '', phone: l.phone || '', website: l.website || '', city: l.city || '', state: l.state || '', industry: l.industry || '', booked: l.meet_at && l.meet_at > now() ? l.meet_at : null } : null;
-  return json({ ready: true, google: Boolean(owner), title: cfg.title, minutes: cfg.minutes, tz: cfg.tz, slots: openSlots({ ...cfg, from: now(), busy }), required: BOOK_FIELDS.map(([k]) => k), lead });
+  return json({ ready: true, google: Boolean(owner), title: cfg.title, minutes: cfg.minutes, tz: cfg.tz, slots, required: BOOK_FIELDS.map(([k]) => k), lead });
 }, { public: true });
 
 route('POST', '/api/public/book', async ({ env, request, defer }) => {
@@ -356,9 +382,9 @@ route('POST', '/api/public/book', async ({ env, request, defer }) => {
   const cfg = await bookingConfig(env);
   const owner = googleReady(env) ? await bookingOwner(env, cfg) : null;
   const start = Number(b.start);
-  const busy = await bookingBusy(env, cfg, owner);
+  const { slots, free } = await openTimes(env, cfg, owner);
   const taken = { error: 'That time was just taken. Pick another one.', field: 'time' };
-  if (!openSlots({ ...cfg, from: now(), busy }).includes(start)) return json(taken, 409);
+  if (!slots.includes(start)) return json(taken, 409);
   const email = String(b.email).trim().toLowerCase();
   const tz = okTz(b.tz) ? b.tz : null;
   const data = cleanLead({ business: b.business || b.name, contact_name: b.name, email, phone: b.phone, website: b.website, city: b.city, state: b.state, industry: b.industry, source: 'booking', notes: b.note ? `Booking note: ${b.note}` : null });
@@ -374,27 +400,27 @@ route('POST', '/api/public/book', async ({ env, request, defer }) => {
   if (!leadId) leadId = await insertLead(env, { ...data, stage: 'audit_booked', ...(tz ? { timezone: tz } : {}) }, null);
   const full = await first(env, 'SELECT * FROM leads WHERE id = ?', leadId);
   // Two people on the page at once: the second one to press Book gets a fresh list instead of a double booking.
-  if (await first(env, 'SELECT id FROM leads WHERE id != ? AND meet_at > ? AND meet_at < ?', leadId, start - cfg.minutes * 60e3, start + cfg.minutes * 60e3)) return json(taken, 409);
-  const rep = await pickRep(env, cfg);
-  // Google first: a calendar event with a Meet link and Google's own invite. If Google fails, the booking still stands in the Hub.
-  let m = { meet: null, id: null }, gErr = null;
-  if (owner) {
-    try {
-      if (full.gcal_event_id && full.meet_at) { await moveMeeting(env, owner, full.gcal_event_id, start, cfg.minutes); m = { id: full.gcal_event_id, meet: full.meet_link }; }
-      else m = await createMeeting(env, owner, { summary: `Rightway Growth consultation: ${full.business}`, description: AGENDA(full.business), start, minutes: cfg.minutes, attendees: [email], leadId });
-    } catch (e) { gErr = e.message; m = { meet: null, id: null }; }
-  }
-  const link = m.meet || cfg.link || null;
-  const set = { stage: 'audit_booked', meet_at: start, meet_link: link, gcal_event_id: m.id || null, meet_by: rep, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
-  if (rep && !full.owner_id) set.owner_id = rep;
+  const closer = free ? await pickCloser(env, free.get(start)) : null;
+  if (free && (!closer || await closerConflict(env, closer, start, cfg.minutes, { leadId, google: false }))) return json(taken, 409);
+  if (!free && await first(env, 'SELECT id FROM leads WHERE id != ? AND meet_at > ? AND meet_at < ?', leadId, start - cfg.minutes * 60e3, start + cfg.minutes * 60e3)) return json(taken, 409);
+  const set = { stage: 'audit_booked', meet_at: start, meet_by: full.meet_by || null, closer_id: closer || full.closer_id || null, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
+  if (closer && !full.owner_id) set.owner_id = closer;
   for (const k of ['contact_name', 'email', 'phone', 'phone_digits', 'website', 'city', 'state', 'industry']) if (data[k] && !full[k]) set[k] = data[k];
   if (tz) set.timezone = tz;
   if (b.sms_consent && !full.sms_stop) set.sms_consent = 1;
   Object.assign(set, rescore({ ...full, ...set, source: full.source || 'booking' }));
   const cols = Object.keys(set);
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), leadId);
+  // Google first: the invite with Meet comes from the closer's calendar (or the booking calendar). If Google fails the booking still stands.
+  let m = { google: false }, gErr = null;
+  if (owner || closer) { try { m = await inviteLead(env, leadId, { minutes: cfg.minutes }); } catch (e) { gErr = e.message; } }
+  const meet = (await first(env, 'SELECT meet_link FROM leads WHERE id = ?', leadId))?.meet_link;
+  const link = (m.google && meet) || (full.meet_at ? meet : null) || cfg.link || null;
+  if (link !== meet) await run(env, 'UPDATE leads SET meet_link = ? WHERE id = ?', link, leadId);
+  await defer(mirrorLead(env, leadId).catch(() => false));
+  const rep = set.closer_id;
   const repName = rep ? ((await first(env, 'SELECT name FROM users WHERE id = ?', rep))?.name || '').split(' ')[0] : '';
-  await logActivity(env, { lead_id: leadId, type: 'meeting', body: `${full.meet_at ? 'Rebooked' : 'Booked'} online for ${new Date(start).toISOString()}${repName ? ` with ${repName}` : ''}${m.id ? ', Google invite sent' : ''}${b.sms_consent ? ', agreed to text reminders' : ''}` });
+  await logActivity(env, { lead_id: leadId, type: 'meeting', body: `${full.meet_at ? 'Rebooked' : 'Booked'} online for ${new Date(start).toISOString()}${repName ? ` with ${repName}` : ''}${m.google ? ', Google invite sent' : ''}${b.sms_consent ? ', agreed to text reminders' : ''}` });
   const when = new Date(start).toLocaleString('en-US', { timeZone: cfg.tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const note = gErr ? ` Google Calendar failed (${gErr}) so the time is held in the Hub without a Meet link: reconnect Google on the Google page and send them a link.`
     : !link ? ' No meeting link: call them at the time, or send a link.' : '';
@@ -402,7 +428,7 @@ route('POST', '/api/public/book', async ({ env, request, defer }) => {
   // Confirmation email (with the calendar file) and text go out now, not on the next cron minute.
   // In the Worker this finishes after the response (waitUntil); without it (tests, local) it is awaited.
   await defer(automationTick(env).catch(() => 0));
-  return json({ ok: true, start, meet: link, minutes: cfg.minutes, title: cfg.title, google: Boolean(m.id), confirm: !link });
+  return json({ ok: true, start, meet: link, minutes: cfg.minutes, title: cfg.title, google: Boolean(m.google), confirm: !link });
 }, { public: true });
 
 // A private booking link for one lead (lead panel "Booking link", and {book} in automations).

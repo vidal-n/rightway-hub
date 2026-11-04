@@ -316,6 +316,7 @@ export async function leadModal(id, onChange) {
       ${l.email ? `<button class="btn btn-ghost" id="lmailbtn">${icon.mail}Email</button>` : ''}
       <button class="btn btn-ghost" id="lmeetbtn">Add appointment</button>
       <button class="btn btn-ghost" id="lbooklink" title="A personal booking page link for this lead">Booking link</button>
+      ${l.meet_at ? '<span id="lcloserbox" class="row small" style="gap:6px"></span>' : ''}
       ${l.website ? `<a class="btn btn-ghost" href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}" target="_blank" rel="noopener">Website</a>` : ''}
       <a class="btn btn-ghost" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''} ${l.state || ''}`)}" target="_blank" rel="noopener">Google Maps</a>
       ${l.phone ? '<button class="btn btn-ghost" id="ltexts">Texts</button>' : ''}
@@ -378,6 +379,21 @@ export async function leadModal(id, onChange) {
     if (gmail) import('./mail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth` }));
     else import('./hubmail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth`, lead_id: l.id }));
   });
+  // Who runs the booked call. Changing it checks they are free, updates the lead's invite and the team calendar.
+  const cbox = $('#lcloserbox', m.el);
+  if (cbox) api('/api/team').then(({ users }) => {
+    const team = (users || []).filter((u) => u.role === 'admin' || u.role === 'team');
+    const cur = l.closer_id || l.meet_by || '';
+    cbox.innerHTML = `<label class="row small" style="gap:6px">Runs the call <select id="lcloser"><option value="">Nobody yet</option>${team.map((u) => `<option value="${esc(u.id)}"${u.id === cur ? ' selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select></label>`;
+    $('#lcloser', cbox).addEventListener('change', async (e) => {
+      const send = (force) => api(`/api/leads/${l.id}/closer`, { method: 'PUT', body: { closer_id: e.target.value || null, force } });
+      try { await send(false); toast('Handed over. The invite and team calendar are updated.'); changed = true; }
+      catch (err) {
+        if (err.status === 409 && confirm(`${err.message}\n\nGive it to them anyway?`)) { try { await send(true); toast('Handed over'); changed = true; } catch (x) { toast(x.message, true); } }
+        else { toast(err.message, true); e.target.value = cur; }
+      }
+    });
+  }).catch(() => {});
   $('#lbooklink', m.el)?.addEventListener('click', async (e) => {
     try { const r = await api(`/api/leads/${l.id}/book-link`); await copy(r.url, 'Booking link copied. It fills in what we know and asks for the rest.'); } catch (err) { toast(err.message, true); }
   });
@@ -396,7 +412,7 @@ export async function leadModal(id, onChange) {
     const when = $('#lwhen', m.el).value;
     if ((acts === 'callback' || acts === 'booked') && !when) return toast('Pick the date and time first.', true);
     busy(b, true);
-    try { await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note: $('#lnote', m.el).value, callbackAt: when || null } }); toast('Logged'); done(); }
+    try { const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note: $('#lnote', m.el).value, callbackAt: when || null } }); toast(r.calendar?.warning ? `Logged. Heads up: ${r.calendar.warning}` : 'Logged', Boolean(r.calendar?.warning)); done(); }
     catch (err) { toast(err.message, true); busy(b, false); }
   }));
   $('#lnotebtn', m.el).addEventListener('click', async () => {
@@ -738,7 +754,7 @@ export async function dialerPage(app, user) {
     if (acts === 'booked' && !when && !alreadyBooked) return bookModal(l, () => logOutcome(outcome, btn, true));
     busy(btn, true);
     try {
-      if (!(alreadyBooked && acts === 'booked')) await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note: $('#dnote', view).value, callbackAt: when || null } });
+      if (!(alreadyBooked && acts === 'booked')) { const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note: $('#dnote', view).value, callbackAt: when || null } }); if (r.calendar?.warning) toast(`Heads up: ${r.calendar.warning} Hand it to someone else on the lead.`, true); }
       else if ($('#dnote', view).value) await api(`/api/leads/${l.id}/note`, { method: 'POST', body: { text: $('#dnote', view).value } });
       q.stats.dials++;
       if (['conversation', 'booked', 'callback', 'not_interested'].includes(acts)) q.stats.talks++;
@@ -816,6 +832,7 @@ export async function settingsPage(app, user) {
         <label class="field span-all"><span>Meeting link when Google is not connected (Zoom or a Meet room; empty means you call them)</span><input name="link" placeholder="https://" value="${esc(bk.link || '')}"${isAdmin ? '' : ' disabled'}></label>
         ${isAdmin ? `<div class="span-all row end">${g?.connected ? '<label class="row small" style="gap:6px"><input type="checkbox" name="ownerSelf"> Book on my Google Calendar</label>' : ''}<button class="btn btn-primary" type="submit">Save booking settings</button></div>` : ''}
       </form></div>
+    <div class="card" id="teamcal"></div>
     <div class="card"><div class="card-head"><h2>Call script</h2></div>
       <p class="muted">The dialer and the presentation fill these in for each lead. One line per thing to say. Start a line with "Or:" for an alternative, and wrap coaching notes in (parentheses).</p>
       <p class="small mono">{first} {rep} {my_number} {business} {city} {industry} {keyword} {scan_line} {hook_impact} {opener_reason} {vm_scan} {rank} {top_name} {top_name_or_them} {top_reviews} {top3_of_points} {top10_of_points} {reviews} {rating} {plan} {plan_why} {price} {setup} {starter_price} {ticket} {breakeven} {breakeven_jobs} {problems} {slot1} {slot2} {email_or_phone} {email_or_ask}</p>
@@ -847,6 +864,7 @@ export async function settingsPage(app, user) {
     $('#rssave', box).addEventListener('click', async () => { try { await api('/api/research/settings', { method: 'PUT', body: { on: $('#rson', box).checked, cap: Number($('#rscap', box).value) } }); toast('Saved'); } catch (e) { toast(e.message, true); } });
   }).catch(() => {});
   stripeSetup($('#stripesetup', view), user);
+  import('./teamcal.js').then((x) => x.teamCalCard($('#teamcal', view), user)).catch(() => {});
   autoScanCard($('#autoscan', view), user);
   $$('[data-copy]', view).forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, 'Copied')));
   $('#gdisc', view)?.addEventListener('click', async () => { try { await api('/api/google/disconnect', { method: 'POST' }); toast('Disconnected'); settingsPage(app, user); } catch (err) { toast(err.message, true); } });

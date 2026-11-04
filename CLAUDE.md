@@ -387,7 +387,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   for Google, Apple and Outlook; guest invites with the .ics attached (`sendEmail` takes `attachments`, `from`). `public/js/ics.js` is pure. Files `#/files` and the
   client Files tab (`src/files.js`, `public/hub/files.js`): R2 `files/<id>`, tables `hub_files`, `file_folders`, share links `/api/public/f/<token>`, 25 MB; the client
   tab also shows the Drive folder when Drive is on. Mail (`src/hubmail.js`, `public/hub/hubmail.js`): Resend as "Name (Rightway Growth)", Reply-To the person, logged
-  in `mail_log` and on timelines. Google comes first when connected (`public/hub/gstate.js` `hasGoogle(app)`, 60 s cache of `/api/google/status`): the Mail menu item
+  in `mail_log` and on timelines. Google comes first when connected (`public/hub/gstate.js` `hasGoogle(app)`, 60 s cache of `/api/google/status`): `#/mail`
   opens Gmail, lead and client Email buttons use the Gmail composer, "Add appointment" and the client calendar button make a Google event with Meet; otherwise
   the Hub versions. Google menu item is back.
 - Google Calendar scope fix (Nov 2026): the base scope is now full `https://www.googleapis.com/auth/calendar` (`CAL_SCOPE`). With only `calendar.events` Google
@@ -404,6 +404,21 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   `hubBusy` also blocks Hub `events` of that person (or owners). Double booking guard re-checks right before saving (409). Confirmations go out at once
   (`automationTick` through `defer`), and automation emails for booked/before carry the .ics plus a Google Calendar link unless Google already sent an invite
   (`gcal_event_id`). Settings "Online booking" card is always shown (meeting name, hours, days, buffer, notice, window, time zone, who takes bookings, backup link).
+- Drive fix (Nov 2026): the Drive page sent `orderBy=mimeType = '...folder' desc, ...`, which Drive refuses ("Invalid Value"); `listParams` in `src/gdrive.js`
+  now sorts `folder,<sort>` using only `SORT_KEYS`. "Check connection" runs that same list call for Drive (and an INBOX threads call for Gmail), so a passing
+  check means the page works. The Drive test mock rejects unknown sort keys like Google does.
+- Team calendar and closers (Nov 2026, `src/teamcal.js`, `public/hub/teamcal.js` Settings card): `leads.closer_id` = who runs the call (`meet_by` stays the booker;
+  `closerOf` falls back to meet_by). `closerConflict` checks the closer's other audits, Hub `events` and their Google busy times; the lead booking modal has
+  "Who runs the call" with busy people marked (`GET /api/closers/free`) and a 409 `{conflict}` that asks "Book it anyway?" (`force`); the lead panel has "Runs the
+  call" (`PUT /api/leads/:id/closer`, same check, adds the closer to the invite, notifies them). `inviteLead` sends the lead's Google invite with Meet from the closer's
+  calendar, else the booker's, else the booking owner's, with the closer as a guest; moves and handovers PATCH the same event (`gcal_owner`, `gcal_cal`). Master
+  calendar (settings `master_cal` {id, name, owner}): "Make the team calendar" creates it in the owner's Google (or pick an existing one) and shares it (ACL: owners
+  writer, teammates reader). Every lead appointment and Hub event gets a copy there, titled "Closer: Business", coloured per closer, no guests, `sendUpdates=none`
+  (`leads.master_event_id`/`master_sig`, `events.master_event_id`/`master_sig`); copies are written right away and reconciled by `masterTick` in the cron (6 a run,
+  "Sync now" 15); lost or cleared appointments are removed. `inviteTick` sends invites for booked leads that never got one (dial out Booked, teammates without
+  Google). Booking page: `book_rep` one person or `rr` gives per closer free times (`openTimes`, `closerBusy`) and books someone free (`pickCloser`, fewest upcoming);
+  owners mode stays one booking per time. Visibility (`canSeeAppt`, `apptScope`, Hub calendar) includes the closer; Hub calendar labels audits "Closer: Business".
+  Menu: Mail removed (Gmail lives under Google; `#/mail` still routes), Files moved to Settings (`#/settings/files`, `#/files` redirects).
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 
