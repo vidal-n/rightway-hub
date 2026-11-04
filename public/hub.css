@@ -1578,3 +1578,11 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .fl-drop.over { border-color: var(--mint-strong); background: var(--mint-soft); }
 .empty-note { padding: 28px 8px; text-align: center; color: var(--muted, #5b6b64); }
 .jobs-key { margin-top: 14px; padding: 10px 12px; background: var(--surface-2); border-radius: 10px; } .jobs-key p { margin: 0 0 4px; }
+
+/* Lead scrubber: data score pills, the lead data card, call list chips */
+.dscore { display: inline-block; min-width: 30px; text-align: center; font: 700 12px/1.6 var(--mono); border-radius: 999px; padding: 0 7px; }
+.dscore.da { background: #DDF6EA; color: #0A6B4C; } .dscore.db { background: #E7F1FB; color: #1D4F86; } .dscore.dc { background: #FFF4D6; color: #7A5300; } .dscore.dd { background: #FBEBEB; color: #9B2C2C; }
+.ldata .kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 10px; margin: 8px 0 0; font-size: 14px; }
+.ldata .kv dt { color: var(--muted); } .ldata .kv dd { margin: 0; overflow-wrap: anywhere; }
+.chips.lists { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 12px; }
+@media (prefers-color-scheme: dark) { .dscore.da { background: rgba(35, 176, 126, .2); color: #9DEBCB; } .dscore.db { background: rgba(90, 150, 230, .2); color: #B8D4F5; } .dscore.dc { background: rgba(232, 163, 23, .18); color: #F7DA9C; } .dscore.dd { background: rgba(214, 69, 69, .2); color: #F6C9C9; } }

@@ -450,6 +450,22 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   `book_rep` and `/api/closers/free` list closers and owners only. `canSeeAppt`/`apptScope`/`appointmentItems`/Hub events: `can(user, 'schedule')` sees all.
   UI: NAV fifth field is 'admin' or an ability, router sends agents away from work/clients pages, palette skips them, lead panel hides Close the deal and
   Present, pickers offer "First free closer". Agents page: Job on invite and per agent (`PUT /api/users/:id/job`); `currentUser` and `/api/me` return `job`.
+- Data scrubber (Nov 2026, our own Outscraper style cleanup; pure part `public/js/scrub.js`, server `src/scrub.js`): `cleanName` (SEO tails after
+  | - : separators with filler words, city or state, parenthetical filler, LLC/Inc/Corp endings, all caps or all lowercase to title case; mixed case and
+  brand names with the city inside are left alone), `phoneInfo` (NANP shape, toll free, premium; same problem words as `scrubReason`), `emailInfo` and
+  `pickEmail` (role, free, disposable, placeholder from site code; own domain person first), `extractContacts` (mailto and text emails, Facebook,
+  Instagram, LinkedIn, YouTube, TikTok, X, Yelp, Nextdoor, Google links, tel links, owner name from schema founder and Owner/Founder/"founded by" text),
+  `contactLinks` (same site contact and about pages), `dataScore` (0 to 100 plus what is missing). `scrubLead` reads the home page plus up to two
+  contact or about pages, checks email domains for MX over Cloudflare DNS over HTTPS (free), optional Twilio Lookup line type (settings `scrub_lookup`,
+  about $0.008 a number) and saves `business` (original kept in `business_raw`), `phone_type`, `phone_carrier`, `email` (only if empty),
+  `email_status`, `owner_name` (and `contact_name` if empty), `socials`, `data_score`, `scrub_data`, `scrubbed_at`; bad and toll free numbers on
+  untouched leads are scrubbed out. New leads get the name cleaned at insert (`cleanNewLead` in `insertLead` and import) and are queued
+  (`scrub_queued`, settings `scrub_auto` on by default); `scrubTick` runs 3 per cron run and 2 per `POST /api/scrub/tick` (the open dialer nudges it).
+  Routes: `POST /api/leads/:id/scrub`, `POST /api/scrub/queue {ids | all (owners)}`, `GET /api/scrub/status`, `PUT /api/scrub/settings`.
+  UI: pipeline "Call lists" chips (best data, mobile, owner known, email a person, no website, under 20 reviews, not on page one; switch to list view,
+  sorted), data filters (phone type, email, owner, scrubbed, data score), Data column, bulk Scrub and "Scrub the N not scrubbed yet" (browser runs 3 at
+  a time, over 400 goes to the background queue), Lead data card on the lead panel, dialer Data filter (mobile, owner known, has email; the queue sorts
+  better data first among equals; "Dial this list" carries it), scrubber settings under Lead research in Settings.
 - Script DO notes (Nov 2026): coaching notes are no longer grey italic. Hub call prep and the Training reader show them upright on a yellow strip with a
   black DO tag (`.say-note`, `.script-read .cue`, `.do-tag`); notes inside a spoken line get an inline DO mark via `markCues` in `public/js/scriptprint.js`
   (spoken asides like "No stress if not" stay). PDFs use the same style (scratchpad `final/gen.mjs`). The Docs mark them with a bold "DO:" on their own line.

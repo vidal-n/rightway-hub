@@ -9,6 +9,7 @@ import { resolveDispo } from './dispo.js';
 import { notifyLater } from './notify.js';
 import { autoChatFor } from './chat.js';
 import { can } from '../public/js/jobs.js';
+import { cleanNewLead, queueScrub } from './scrub.js';
 
 export const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won', 'not_now', 'lost', 'dnc'];
 const CALLABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
@@ -145,7 +146,7 @@ async function leadOr404(env, id) {
 }
 
 export async function insertLead(env, data, by = null) {
-  const l = { ...data, id: newId('ld_'), created_at: now(), updated_at: now(), owner_id: by };
+  const l = { ...cleanNewLead(data), id: newId('ld_'), created_at: now(), updated_at: now(), owner_id: by };
   if (!l.stage) l.stage = 'new';
   Object.assign(l, rescore(l));
   const cols = Object.keys(l);
@@ -178,12 +179,12 @@ function seeAppt(l, user) {
 }
 function decorate(l) {
   const tz = l.timezone || null;
-  const { intel, ...rest } = l;
-  return { ...rest, researched: Boolean(l.intel_at), tz_short: TZ_SHORT[tz] || null, local_time: localTime(tz), callable_now: !l.dnc && inCallingHours(tz), tz_known: Boolean(tz) };
+  const { intel, scrub_data, ...rest } = l;
+  return { ...rest, scrubbed: Boolean(l.scrubbed_at), researched: Boolean(l.intel_at), tz_short: TZ_SHORT[tz] || null, local_time: localTime(tz), callable_now: !l.dnc && inCallingHours(tz), tz_known: Boolean(tz) };
 }
 const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, website, city, state, zip, timezone, industry, category, tags, source, stage, plan,
   next_action_at, next_action, owner_id, attempts, last_call_at, dnc, sms_consent, client_id, score, grade, rating, reviews, map_rank, problems,
-  intel_at, meet_at, meet_link, meet_by, closer_id, created_at, updated_at`;
+  intel_at, meet_at, meet_link, meet_by, closer_id, created_at, updated_at, business_raw, phone_type, email_status, owner_name, data_score, scrubbed_at, scrub`;
 
 async function updateLead(env, id, set) {
   const cols = Object.keys(set);
@@ -216,6 +217,7 @@ route('POST', '/api/leads', async ({ env, user, body }) => {
   const dup = await findDuplicate(env, data);
   if (dup) throw new HttpError(`This looks like a lead you already have: ${dup.business}.`, 409);
   const id = await insertLead(env, data, user.id);
+  await queueScrub(env, [id]);
   await logActivity(env, { lead_id: id, type: 'stage', body: 'Lead created', by: user.id });
   return json({ lead: seeAppt(decorate(await leadOr404(env, id)), user) });
 });
@@ -251,7 +253,7 @@ route('POST', '/api/leads/import', async ({ env, user, body }) => {
     const hit = ks.find((k) => keys.has(k));
     if (hit) { const prev = keys.get(hit); skipped[prev?.dnc ? 'dnc' : reason[hit[0]]]++; continue; }
     if (tagText) d.tags = [d.tags, tagText].filter(Boolean).join(', ');
-    const l = { ...d, id: newId('ld_'), stage: 'new', created_at: now(), updated_at: now(), owner_id: user.id };
+    const l = { ...cleanNewLead(d), id: newId('ld_'), stage: 'new', created_at: now(), updated_at: now(), owner_id: user.id };
     Object.assign(l, rescore(l));
     for (const k of ks) keys.set(k, l);
     const cols = Object.keys(l);
@@ -267,6 +269,8 @@ route('POST', '/api/leads/import', async ({ env, user, body }) => {
     if (why) { scrubbed++; const set = { scrub: why, stage: 'lost', next_action: `Scrubbed: ${why}` }; for (const [k, v] of Object.entries(set)) { const i = cols.indexOf(k); if (i >= 0) it[i + 1] = v; else { cols.push(k); it.push(v); } } it[0] = `INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`; }
   }
   for (let i = 0; i < items.length; i += 100) await batch(env, items.slice(i, i + 100));
+  // The full scrub (website emails, owner name, email check) runs in the background for everything that is still open.
+  await queueScrub(env, items.filter((it) => !it[0].includes(' scrub,') && !it[0].includes(', scrub)')).map((it) => it[1 + it[0].match(/\(([^)]*)\)/)[1].split(', ').indexOf('id')]));
   const total = Object.values(skipped).reduce((a, b) => a + b, 0);
   return json({ imported: items.length, skipped: total, skippedBy: skipped, scrubbed });
 });
@@ -337,7 +341,9 @@ route('GET', '/api/leads/:id', async ({ env, user, params }) => {
   const orders = await all(env, 'SELECT id, token, plan, kind, setup_cents, monthly_cents, status, signed_name, signed_at, paid_at, created_at FROM work_orders WHERE lead_id = ? ORDER BY created_at DESC', l.id);
   let intel = null;
   try { intel = l.intel ? JSON.parse(l.intel) : null; } catch { intel = null; }
-  return json({ lead: seeAppt(decorate(l), user), intel, activities, orders });
+  let scrub = null;
+  try { scrub = l.scrub_data ? JSON.parse(l.scrub_data) : null; } catch { scrub = null; }
+  return json({ lead: seeAppt(decorate(l), user), intel, scrub, activities, orders });
 });
 
 route('PATCH', '/api/leads/:id', async ({ env, user, params, body }) => {
@@ -446,7 +452,7 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const rows = await all(env, `SELECT * FROM leads WHERE dnc = 0 AND stage IN (${CALLABLE.map(() => '?').join(',')})
     AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...CALLABLE, t);
   const priority = { callback: 0, audit_requested: 1, no_show: 2, follow_up: 3, new: 4, attempting: 5, not_now: 6 };
-  const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
+  const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier', 'data'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
   const minScore = Number(url.searchParams.get('minScore')) || 0;
   const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
   const ready = rows
@@ -455,7 +461,8 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
     .filter((l) => (!f.tz || l.tz_short === f.tz) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())
       && has(`${l.industry} ${l.category}`, f.industry) && has(l.tags, f.tag) && has(l.city, f.city) && (l.score || 0) >= minScore)
     .filter((l) => !f.tier || tierOf(l) === f.tier)
-    .sort((a, b) => (priority[a.stage] ?? 9) - (priority[b.stage] ?? 9) || (b.score || 0) - (a.score || 0) || (a.next_action_at || 0) - (b.next_action_at || 0));
+    .filter((l) => !f.data || (f.data === 'mobile' ? l.phone_type === 'mobile' : f.data === 'owner' ? Boolean(l.owner_name || l.contact_name) : f.data === 'email' ? Boolean(l.email) && !['bad', 'no_mail_server'].includes(l.email_status) : true))
+    .sort((a, b) => (priority[a.stage] ?? 9) - (priority[b.stage] ?? 9) || (b.score || 0) - (a.score || 0) || (b.data_score || 0) - (a.data_score || 0) || (a.next_action_at || 0) - (b.next_action_at || 0));
   const now_ = ready.filter((l) => l.callable_now);
   // Sub queues by lead quality, counted on everything callable now (ignores the tier filter so the tabs always show their size).
   const tiers = { hot: 0, good: 0, maybe: 0, low: 0, fresh: 0 };

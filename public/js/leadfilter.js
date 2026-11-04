@@ -22,6 +22,17 @@ export function filterLeads(leads, p) {
     if (f.notTop3 && l.map_rank != null && l.map_rank <= 3) return false;
     if (f.notTop10 && l.map_rank != null && l.map_rank <= 10) return false;
     if (f.callable && !l.callable_now) return false;
+    // Scrubbed data: phone line type, email, owner name, data score.
+    if (f.phoneType && (f.phoneType === 'unknown' ? l.phone_type : l.phone_type !== f.phoneType)) return false;
+    const goodEmail = Boolean(l.email) && !['bad', 'no_mail_server'].includes(l.email_status);
+    if (f.email === 'yes' && !goodEmail) return false;
+    if (f.email === 'person' && (!goodEmail || l.email_status === 'role')) return false;
+    if (f.email === 'no' && goodEmail) return false;
+    if (f.owner === 'yes' && !(l.owner_name || l.contact_name)) return false;
+    if (f.owner === 'no' && (l.owner_name || l.contact_name)) return false;
+    if (f.scrubbed === 'yes' && !l.scrubbed_at) return false;
+    if (f.scrubbed === 'no' && l.scrubbed_at) return false;
+    if (f.minData && (l.data_score || 0) < Number(f.minData)) return false;
     return true;
   });
 }

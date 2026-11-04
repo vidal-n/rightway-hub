@@ -12,6 +12,7 @@ import { filterLeads } from '/js/leadfilter.js';
 import { quoteFor, recommendPlan } from '/js/leadintel.js';
 import { SERVICE_LIST } from '/js/plancopy.js';
 import { can, canRunCalls } from '/js/jobs.js';
+import { PHONE_TYPE_LABEL } from '/js/scrub.js';
 
 export const STAGE_LABEL = {
   new: 'New lead', attempting: 'Attempting', callback: 'Callback set', audit_requested: 'Audit requested', audit_booked: 'Audit booked',
@@ -103,6 +104,7 @@ export async function pipelinePage(app, user, openId) {
         <button class="btn btn-ghost btn-sm" id="fmore">Filters${activeFilters ? ` (${activeFilters})` : ''}</button>
         <div class="seg"><button class="${p.view === 'board' ? 'is-on' : ''}" data-view="board">Board</button><button class="${p.view === 'list' ? 'is-on' : ''}" data-view="list">List</button></div>
       </div>
+      <div class="chips lists" aria-label="Call lists"><span class="small muted">Call lists:</span>${CALL_LISTS.map(([k, n]) => `<button class="chip ${p.list === k ? 'on' : ''}" data-list="${k}">${n}</button>`).join('')}</div>
       <div class="card filters" id="fpanel" ${p.open ? '' : 'hidden'}>
         <div class="form-grid filt">
           <label class="field"><span>State</span><select data-f="state"><option value="">Any</option>${states.map((s) => `<option${f.state === s ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
@@ -117,13 +119,18 @@ export async function pipelinePage(app, user, openId) {
           <label class="field"><span>Reviews up to</span><input type="number" min="0" data-f="maxReviews" value="${esc(f.maxReviews ?? '')}"></label>
           <label class="field"><span>Rating up to</span><input type="number" min="1" max="5" step="0.1" data-f="maxRating" value="${esc(f.maxRating ?? '')}"></label>
           <label class="field"><span>Score at least</span><input type="number" min="0" max="100" data-f="minScore" value="${esc(f.minScore ?? '')}"></label>
+          <label class="field"><span>Phone type</span><select data-f="phoneType"><option value="">Any</option>${[['mobile', 'Mobile'], ['landline', 'Landline'], ['voip', 'Internet phone'], ['unknown', 'Not checked']].map(([k, n]) => `<option value="${k}"${f.phoneType === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+          <label class="field"><span>Email</span><select data-f="email"><option value="">Any</option>${[['yes', 'Has a good email'], ['person', 'A person, not info@'], ['no', 'No good email']].map(([k, n]) => `<option value="${k}"${f.email === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+          <label class="field"><span>Owner name</span><select data-f="owner"><option value="">Any</option><option value="yes"${f.owner === 'yes' ? ' selected' : ''}>Known</option><option value="no"${f.owner === 'no' ? ' selected' : ''}>Unknown</option></select></label>
+          <label class="field"><span>Scrubbed</span><select data-f="scrubbed"><option value="">Any</option><option value="yes"${f.scrubbed === 'yes' ? ' selected' : ''}>Yes</option><option value="no"${f.scrubbed === 'no' ? ' selected' : ''}>Not yet</option></select></label>
+          <label class="field"><span>Data score at least</span><input type="number" min="0" max="100" data-f="minData" value="${esc(f.minData ?? '')}"></label>
         </div>
         <div class="row" style="margin-top:10px"><label class="row small" style="gap:6px"><input type="checkbox" data-f="callable"${f.callable ? ' checked' : ''}> Callable right now</label>
           <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop3"${f.notTop3 ? ' checked' : ''}> Not in the top 3</label>
           <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop10"${f.notTop10 ? ' checked' : ''}> Not on the first page</label>
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
       </div>
-      <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)</button></div>
+      <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)</button>${rows.some((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)) ? ` · <button class="linkbtn" id="scruball">Scrub the ${rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length} not scrubbed yet (free)</button>` : ''}</div>
       <div id="pbody"></div>`;
     const body = $('#pbody', view);
     if (p.view === 'list') renderList(body, rows); else renderBoard(body, by);
@@ -157,22 +164,23 @@ export async function pipelinePage(app, user, openId) {
   };
 
   const COLS = [['grade', 'Grade', '-score'], ['business', 'Business', 'business'], ['city', 'Area', 'city'], ['tz_short', 'TZ', 'tz_short'], ['industry', 'Industry', 'industry'],
-    ['reviews', 'Reviews', '-reviews'], ['rating', 'Rating', 'rating'], ['map_rank', 'Map rank', 'map_rank'], ['stage', 'Stage', 'stage'], ['next', 'Next', 'next_action_at']];
+    ['reviews', 'Reviews', '-reviews'], ['rating', 'Rating', 'rating'], ['map_rank', 'Map rank', 'map_rank'], ['data_score', 'Data', '-data_score'], ['stage', 'Stage', 'stage'], ['next', 'Next', 'next_action_at']];
   const renderList = (el, rows) => {
     const sorted = sortLeads(rows, p.sort);
     const groups = new Map();
     if (p.group) for (const l of sorted) { const k = String(l[p.group] ?? '') || 'None'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(l); }
     else groups.set('', sorted);
     const row = (l) => `<tr data-id="${esc(l.id)}"><td><input type="checkbox" class="sel" data-id="${esc(l.id)}"${selected.has(l.id) ? ' checked' : ''}></td>
-      <td>${gradeBadge(l.grade, l.score)}</td><td><b>${esc(l.business)}</b><div class="small">${esc([l.contact_name, l.phone].filter(Boolean).join(' · '))}</div></td>
+      <td>${gradeBadge(l.grade, l.score)}</td><td><b>${esc(l.business)}</b><div class="small">${esc([l.contact_name || l.owner_name, l.phone, PHONE_TYPE_LABEL[l.phone_type]].filter(Boolean).join(' · '))}</div></td>
       <td>${esc([l.city, l.state].filter(Boolean).join(', '))}${l.zip ? ` <span class="small">${esc(l.zip)}</span>` : ''}</td>
       <td>${l.tz_short ? `<span class="badge ${l.callable_now ? '' : 'gray'}">${esc(l.tz_short)} ${esc(l.local_time)}</span>` : '<span class="small">?</span>'}</td>
       <td>${esc(l.industry || l.category || '')}</td><td>${l.reviews ?? ''}</td><td>${l.rating ?? ''}</td><td>${l.map_rank == null ? '' : l.map_rank > 20 ? '20+' : `#${l.map_rank}`}</td>
+      <td>${l.data_score == null ? '<span class="small muted">not yet</span>' : `<span class="dscore d${l.data_score >= 80 ? 'a' : l.data_score >= 60 ? 'b' : l.data_score >= 40 ? 'c' : 'd'}">${l.data_score}</span>`}</td>
       <td><span class="badge gray">${esc(STAGE_LABEL[l.stage])}</span></td><td class="small">${esc(dueText(l.next_action_at))}</td></tr>`;
     el.innerHTML = `
       <div class="row" style="margin-bottom:10px"><label class="field" style="flex:0 1 220px"><select id="grp">${GROUPS.map(([k, n]) => `<option value="${k}"${p.group === k ? ' selected' : ''}>Group: ${n}</option>`).join('')}</select></label>
         <div class="bulk" id="bulk" ${selected.size ? '' : 'hidden'}><b id="selc">${selected.size} selected</b>
-          <button class="btn btn-ghost btn-sm" data-bulk="research">Research</button><button class="btn btn-ghost btn-sm" data-bulk="callnow">Call next</button>
+          <button class="btn btn-ghost btn-sm" data-bulk="research">Research</button><button class="btn btn-ghost btn-sm" data-bulk="scrub">Scrub</button><button class="btn btn-ghost btn-sm" data-bulk="callnow">Call next</button>
           <select id="bstage"><option value="">Move to...</option>${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
           <button class="btn btn-ghost btn-sm" data-bulk="tag">Tag</button><button class="btn btn-danger btn-sm" data-bulk="delete">Delete</button></div></div>
       <div class="table-wrap"><table class="leads-table"><thead><tr><th><input type="checkbox" id="selall"></th>${COLS.map(([k, n, s]) => `<th><button class="th" data-sort="${s}">${n}${p.sort.replace('-', '') === s.replace('-', '') ? (p.sort.startsWith('-') ? ' ↓' : ' ↑') : ''}</button></th>`).join('')}</tr></thead>
@@ -190,6 +198,7 @@ export async function pipelinePage(app, user, openId) {
     $$('[data-bulk]', el).forEach((b) => b.addEventListener('click', () => {
       const a = b.dataset.bulk;
       if (a === 'research') return researchMany(all.filter((l) => selected.has(l.id)), reload);
+      if (a === 'scrub') return scrubMany(all.filter((l) => selected.has(l.id)), reload);
       if (a === 'tag') { const t = prompt('Tag to add'); if (t) bulk('tag', t); return; }
       if (a === 'delete' && !confirm(`Delete ${selected.size} leads and their history?`)) return;
       bulk(a);
@@ -200,7 +209,7 @@ export async function pipelinePage(app, user, openId) {
     $('#addl', view).addEventListener('click', () => leadForm(null, reload));
     $('#imp', view).addEventListener('click', () => importModal(reload));
     $('#dups', view).addEventListener('click', () => duplicatesModal(reload));
-    $('#godial', view).addEventListener('click', () => { try { localStorage.setItem('rw-dial-filter', JSON.stringify({ tz: p.tz === '?' ? '' : p.tz, grade: (p.f.grades || []).join(','), state: p.f.state || '', industry: p.f.industry || '', tag: p.f.tag || '', city: p.f.city || '' })); } catch { /* ignore */ } });
+    $('#godial', view).addEventListener('click', () => { try { localStorage.setItem('rw-dial-filter', JSON.stringify({ tz: p.tz === '?' ? '' : p.tz, grade: (p.f.grades || []).join(','), state: p.f.state || '', industry: p.f.industry || '', tag: p.f.tag || '', city: p.f.city || '', data: p.f.phoneType === 'mobile' ? 'mobile' : p.f.owner === 'yes' ? 'owner' : p.f.email ? 'email' : '' })); } catch { /* ignore */ } });
     $$('[data-tz]', view).forEach((b) => b.addEventListener('click', () => { p.tz = b.dataset.tz; render(); }));
     $$('[data-grade]', view).forEach((b) => b.addEventListener('click', () => { const g = b.dataset.grade; const s = new Set(p.f.grades || []); if (s.has(g)) s.delete(g); else s.add(g); p.f.grades = [...s]; render(); }));
     $$('[data-view]', view).forEach((b) => b.addEventListener('click', () => { p.view = b.dataset.view; render(); }));
@@ -208,7 +217,16 @@ export async function pipelinePage(app, user, openId) {
     let t;
     $('#fq', view).addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { p.f.q = e.target.value; render(); const i = $('#fq', view); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); });
     $$('[data-f]', view).forEach((i) => i.addEventListener('change', () => { p.f[i.dataset.f] = i.type === 'checkbox' ? i.checked : i.value; render(); }));
-    $('#fclear', view).addEventListener('click', () => { p.f = {}; p.tz = ''; render(); });
+    $('#fclear', view).addEventListener('click', () => { p.list = ''; p.f = {}; p.tz = ''; render(); });
+    $$('[data-list]', view).forEach((b) => b.addEventListener('click', () => {
+      const k = b.dataset.list;
+      const off = p.list === k;
+      for (const key of LIST_KEYS) delete p.f[key];
+      p.list = off ? '' : k;
+      if (!off) { Object.assign(p.f, CALL_LIST_F[k]); p.view = 'list'; p.sort = CALL_LIST_SORT[k] || '-data_score'; }
+      render();
+    }));
+    $('#scruball', view)?.addEventListener('click', () => scrubMany(filterLeads(all, p).filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)), reload));
     $('#resall', view).addEventListener('click', () => researchMany(filterLeads(all, p).filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).slice(0, 50), reload));
   };
   render();
@@ -299,6 +317,62 @@ export function leadForm(lead, onSaved) {
   });
 }
 
+// Call lists: the scrubbed data turned into who to call first.
+const CALL_LISTS = [['best', 'Best data first'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Email a person'], ['nosite', 'No website'], ['few', 'Under 20 reviews'], ['page2', 'Not on page one']];
+const CALL_LIST_F = { best: { minData: 60 }, mobile: { phoneType: 'mobile' }, owner: { owner: 'yes' }, email: { email: 'person' }, nosite: { site: 'no' }, few: { maxReviews: 20 }, page2: { notTop10: true } };
+const CALL_LIST_SORT = { few: 'reviews', page2: '-score' };
+const LIST_KEYS = ['minData', 'phoneType', 'owner', 'email', 'site', 'maxReviews', 'notTop10'];
+
+// Scrub from the browser: three at a time with a progress bar. Free (website reads and an email check); line type only when an owner turned it on.
+export function scrubMany(leads, onDone) {
+  if (!leads.length) return toast('Nothing to scrub in this view.');
+  if (leads.length > 400) {
+    api('/api/scrub/queue', { method: 'POST', body: { ids: leads.map((l) => l.id) } }).then((r) => toast(`${r.queued} leads queued. They scrub in the background, a few a minute.`)).catch((e) => toast(e.message, true));
+    return;
+  }
+  let stop = false, done = 0, found = 0;
+  const m = modal(`<div class="card-head"><h2>Scrubbing ${leads.length} leads</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+    <p class="muted">Cleans the business names, checks the numbers, reads each website for emails, social pages and the owner's name, and checks the emails take mail.</p>
+    <div class="progress"><span id="scbar" style="width:0%"></span></div><p class="small" id="sctxt">Starting...</p>
+    <div class="row end"><button class="btn btn-ghost btn-sm" id="scstop">Stop</button></div>`, { onClose: () => { stop = true; onDone?.(); } });
+  $('#scstop', m.el).addEventListener('click', () => { stop = true; });
+  const queue = leads.slice();
+  const worker = async () => {
+    while (queue.length && !stop) {
+      const l = queue.shift();
+      let note = '';
+      try { const r = await api(`/api/leads/${l.id}/scrub`, { method: 'POST' }); const s = r.scrub; if (s.owner || s.emails?.some((x) => x.ok)) found++; note = s.name?.changed ? `${s.name.raw} is now ${s.name.clean}` : r.lead.business; }
+      catch (e) { note = `${l.business}: ${e.message}`; }
+      done++;
+      $('#scbar', m.el).style.width = `${Math.round((done / leads.length) * 100)}%`;
+      $('#sctxt', m.el).textContent = `${done} of ${leads.length} done. Found an owner or email on ${found}. Last: ${note}`;
+    }
+  };
+  Promise.all([worker(), worker(), worker()]).then(() => { if (!stop) $('#sctxt', m.el).textContent += ' All done.'; });
+}
+
+// The scrubbed data on a lead: cleaned name, phone type, emails, owner, social pages, data score and what is missing.
+function leadDataCard(box, l, scrub, onChange) {
+  let socials = {};
+  try { socials = JSON.parse(l.socials || '{}'); } catch { socials = {}; }
+  const emails = (scrub?.emails || []).filter((x) => x.ok);
+  box.innerHTML = `<div class="card ldata" style="box-shadow:none"><div class="card-head"><h3 style="margin:0">Lead data ${l.data_score == null ? '' : `<span class="dscore d${l.data_score >= 80 ? 'a' : l.data_score >= 60 ? 'b' : l.data_score >= 40 ? 'c' : 'd'}">${l.data_score}</span>`}</h3>
+      <button class="btn btn-ghost btn-sm" id="lscrub">${l.scrubbed_at ? 'Scrub again' : 'Scrub now'}</button></div>
+    ${!l.scrubbed_at ? '<p class="small muted">Not scrubbed yet. Scrub reads their website for the owner, emails and social pages, and checks the number.</p>' : `<dl class="kv">
+      ${l.business_raw && l.business_raw !== l.business ? `<dt>Name on Google</dt><dd>${esc(l.business_raw)}</dd>` : ''}
+      <dt>Phone</dt><dd>${esc(PHONE_TYPE_LABEL[l.phone_type] || 'Type not checked')}${l.phone_carrier ? ` · ${esc(l.phone_carrier)}` : ''}</dd>
+      <dt>Owner</dt><dd>${esc(l.owner_name || l.contact_name || 'Not found')}</dd>
+      <dt>Email</dt><dd>${emails.length ? emails.slice(0, 4).map((x) => `${esc(x.email)} <span class="badge ${x.mx === false ? 'bad' : x.role ? 'warn' : ''}">${esc(x.mx === false ? 'no mail server' : x.role ? 'shared inbox' : x.mx ? 'valid' : 'not checked')}</span>`).join('<br>') : 'None found'}</dd>
+      ${Object.keys(socials).length ? `<dt>Social</dt><dd>${Object.entries(socials).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(k === 'x' ? 'X' : k.charAt(0).toUpperCase() + k.slice(1))}</a>`).join(' · ')}</dd>` : ''}
+      ${scrub?.site && !scrub.site.ok ? `<dt>Website</dt><dd class="err-text">${esc(scrub.site.error || 'Did not load')}</dd>` : ''}
+      ${scrub?.missing?.length ? `<dt>Missing</dt><dd class="small muted">${esc(scrub.missing.join(', '))}</dd>` : ''}</dl>`}</div>`;
+  $('#lscrub', box).addEventListener('click', async (e) => {
+    busy(e.target, true, 'Scrubbing...');
+    try { const r = await api(`/api/leads/${l.id}/scrub`, { method: 'POST' }); Object.assign(l, r.lead, { scrubbed_at: Date.now() }); leadDataCard(box, l, r.scrub, onChange); onChange?.(); toast(r.scrub.name?.changed ? `Name cleaned: ${r.lead.business}` : 'Scrubbed'); }
+    catch (err) { toast(err.message, true); busy(e.target, false); }
+  });
+}
+
 // ---------- lead details ----------
 export async function leadModal(id, onChange) {
   let changed = false;
@@ -362,6 +436,7 @@ export async function leadModal(id, onChange) {
           <button class="btn btn-ghost btn-sm" data-wo="${esc(o.token)}">Copy link</button></li>`).join('')}</ul>` : ''}
       </div>
       <div>
+        <div id="ldata" style="margin-bottom:16px"></div>
         <h3>Next step</h3>
         <p>${l.next_action ? `${esc(l.next_action)} <span class="badge gray">${esc(dueText(l.next_action_at))}</span>` : '<span class="muted">None set</span>'}</p>
         ${l.notes ? `<h3>Notes</h3><div class="caption">${esc(l.notes)}</div>` : ''}
@@ -381,6 +456,7 @@ export async function leadModal(id, onChange) {
     if (gmail) import('./mail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth` }));
     else import('./hubmail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth`, lead_id: l.id }));
   });
+  leadDataCard($('#ldata', m.el), l, data.scrub, () => { changed = true; });
   // Who runs the booked call. Changing it checks they are free, updates the lead's invite and the team calendar.
   const cbox = $('#lcloserbox', m.el);
   if (cbox) api('/api/team').then(({ users }) => {
@@ -660,6 +736,7 @@ export async function dialerPage(app, user) {
       ${dialTabs('queue', user)}
       <div class="tiers">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
         .map(([k, n, t]) => `<button type="button" data-tier="${k}" title="${esc(t)}" class="${(flt.tier || '') === k ? 'is-on' : ''}">${n}<b>${k ? (q.tiers?.[k] ?? 0) : Object.values(q.tiers || {}).reduce((a, b) => a + b, 0)}</b></button>`).join('')}</div>
+      <div class="row small" style="margin:-4px 0 10px;gap:8px">Data: <div class="seg">${[['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Has an email']].map(([k, n]) => `<button type="button" data-dq="${k}" class="${(flt.data || '') === k ? 'is-on' : ''}">${n}</button>`).join('')}</div></div>
       <div id="rsx" class="small muted" style="margin:-6px 0 12px"></div>
       ${filterText ? `<div class="row small" style="margin:-6px 0 14px">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}
       <div class="stats">
@@ -706,6 +783,7 @@ export async function dialerPage(app, user) {
       </div>`}`;
     $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
     $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
+    $$('[data-dq]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, data: b.dataset.dq }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $$('[data-tier]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, tier: b.dataset.tier }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $('#pdgo', view)?.addEventListener('click', () => { power = !power; if (power) { pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
@@ -747,6 +825,7 @@ export async function dialerPage(app, user) {
   const rsTick = async () => {
     if (!document.body.contains(view)) return clearInterval(rsTimer);
     try { rs = await api('/api/research/status'); paintResearch(); if (rs.on && rs.connected && rs.left && rs.done < rs.cap) await api('/api/research/tick', { method: 'POST' }); } catch { /* ignore */ }
+    api('/api/scrub/tick', { method: 'POST' }).catch(() => {});
   };
   const rsTimer = setInterval(rsTick, 20e3);
   setTimeout(rsTick, 1500);
@@ -883,6 +962,17 @@ export async function settingsPage(app, user) {
         <label class="row small" style="gap:6px">Daily cap <input id="rscap" type="number" min="0" max="5000" value="${r.cap}" style="width:100px"> leads (about $${(r.cap * 0.04).toFixed(0)} a day at most)</label>
         <button class="btn btn-ghost btn-sm" id="rssave">Save</button></div>`;
     $('#rssave', box).addEventListener('click', async () => { try { await api('/api/research/settings', { method: 'PUT', body: { on: $('#rson', box).checked, cap: Number($('#rscap', box).value) } }); toast('Saved'); } catch (e) { toast(e.message, true); } });
+    api('/api/scrub/status').then((sc) => {
+      const d = document.createElement('div');
+      d.innerHTML = `<h3 style="margin-top:18px">Data scrubber</h3>
+        <p class="small">Cleans business names (SEO stuffing, LLC, all caps), checks every number, reads each website for the owner's name, emails and social pages, and checks the emails take mail. Free. ${sc.scrubbed} scrubbed, ${sc.notYet} open leads not yet${sc.queued ? `, ${sc.queued} in the queue` : ''}.</p>
+        <div class="row"><label class="row" style="gap:8px"><input type="checkbox" id="scauto"${sc.auto ? ' checked' : ''}> Scrub every new lead automatically</label>
+          <label class="row" style="gap:8px"><input type="checkbox" id="sclook"${sc.lookup ? ' checked' : ''}${sc.twilio ? '' : ' disabled'}> Check mobile or landline (Twilio Lookup, about $0.008 a number)${sc.twilio ? '' : ' (needs Twilio)'}</label>
+          <button class="btn btn-ghost btn-sm" id="scsave">Save</button>${sc.notYet ? `<button class="btn btn-ghost btn-sm" id="scall">Scrub all ${sc.notYet} open leads</button>` : ''}</div>`;
+      box.appendChild(d);
+      $('#scsave', d).addEventListener('click', async () => { try { await api('/api/scrub/settings', { method: 'PUT', body: { auto: $('#scauto', d).checked, lookup: $('#sclook', d).checked } }); toast('Saved'); } catch (e) { toast(e.message, true); } });
+      $('#scall', d)?.addEventListener('click', async (e) => { try { const r = await api('/api/scrub/queue', { method: 'POST', body: { all: true } }); toast(`${r.queued} leads queued. They scrub in the background, faster while the dialer is open.`); e.target.remove(); } catch (err) { toast(err.message, true); } });
+    }).catch(() => {});
   }).catch(() => {});
   stripeSetup($('#stripesetup', view), user);
   import('./teamcal.js').then((x) => x.teamCalCard($('#teamcal', view), user)).catch(() => {});

@@ -637,6 +637,7 @@ import './meetings.js';
 import './assistant.js';
 import './googlecheck.js';
 import './balances.js';
+import './scrub.js';
 import './agents.js';
 import './automations.js';
 import './costs.js';
