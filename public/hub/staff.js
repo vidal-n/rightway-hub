@@ -10,7 +10,7 @@ import { staffShell, initials } from './shell.js';
 export { staffShell, initials };
 
 // Settings holds the team too.
-export const settingsTabs = (active, user) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a><a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Agents</a><a href="#/settings/files" class="${active === 'files' ? 'is-active' : ''}">Files</a>${user?.role === 'admin' ? `<a href="#/settings/budget" class="${active === 'budget' ? 'is-active' : ''}">Budget and costs</a>` : ''}</nav>`;
+export const settingsTabs = (active, user) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a>${user?.role === 'admin' ? `<a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Agents</a><a href="#/settings/files" class="${active === 'files' ? 'is-active' : ''}">Files</a>` : ''}${user?.role === 'admin' ? `<a href="#/settings/budget" class="${active === 'budget' ? 'is-active' : ''}">Budget and costs</a>` : ''}</nav>`;
 
 export const clientsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/clients" class="${active === 'all' ? 'is-active' : ''}">All clients</a><a href="#/clients/view" class="${active === 'view' ? 'is-active' : ''}">Client view</a></nav>`;
 
@@ -31,7 +31,7 @@ export async function dashboard(app, user) {
       <button class="btn btn-primary" id="add-client">${icon.plus}Add client</button></div>
     ${clientsTabs('all')}
     <div class="stats">
-      <div class="stat hero"><div class="stat-num" data-count="${mrr}" data-prefix="$">0</div><div class="stat-label">monthly recurring revenue (${active.length} active)</div></div>
+      ${user.role === 'admin' ? `<div class="stat hero"><div class="stat-num" data-count="${mrr}" data-prefix="$">0</div><div class="stat-label">monthly recurring revenue (${active.length} active)</div></div>` : `<div class="stat hero"><div class="stat-num" data-count="${active.length}">0</div><div class="stat-label">active clients</div></div>`}
       <div class="stat"><div class="stat-num" data-count="${tot.total ? Math.round((100 * tot.done) / tot.total) : 0}" data-suffix="%">0</div><div class="stat-label">of this month's work done (${tot.done} of ${tot.total})</div></div>
       <div class="stat"><div class="stat-num" data-count="${tot.rr}">0</div><div class="stat-label">review requests this month</div></div>
       <div class="stat"><div class="stat-num" data-count="${tot.pend}">0</div><div class="stat-label">posts waiting to go out</div></div>
@@ -133,7 +133,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
     <div class="page-head"><div><p class="eyebrow"><a href="#/clients">Clients</a> / ${c.parent ? `Location of <a href="#/client/${esc(c.parent.id)}/locations">${esc(c.parent.name)}</a>` : esc(PLAN_NAMES[c.plan])}</p><h1>${esc(c.name)}</h1>
       <div class="small">${esc(c.address || '')}</div></div>
       <div class="row"><label class="small row" style="gap:6px">Account manager <select id="cowner" aria-label="Account manager"><option value="">Nobody</option></select></label><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(c.status)}</span><a class="btn btn-ghost btn-sm" href="/scan.html?client=${esc(c.id)}">${icon.scan}Scan</a><button class="btn btn-ghost btn-sm" id="cslack">${icon.slack}Slack</button>${c.contact_email ? `<button class="btn btn-ghost btn-sm" id="cmail">${icon.mail}Email</button>` : ''}<button class="btn btn-ghost btn-sm" id="ccal">Meeting</button><button class="btn btn-mint btn-sm" id="cclaude">Ask Claude</button></div></div>
-    <nav class="tabs">${tabsFor(c).map(([k, n]) => `<a href="#/client/${esc(id)}/${k}" class="${tab === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>
+    <nav class="tabs">${tabsFor(c).filter(([k]) => k !== 'billing' || user.role === 'admin').map(([k, n]) => `<a href="#/client/${esc(id)}/${k}" class="${tab === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>
     <section id="tab"></section>`;
   const el = $('#tab', view);
   // Keep the open tab in view when the tab row scrolls sideways.
@@ -169,7 +169,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   if (tab === 'citations') return import('./citations.js').then((m) => m.citationsTab(el, c));
   if (tab === 'profile') return profileTab(el, c);
   if (tab === 'access') return accessTab(el, c);
-  if (tab === 'billing') return billingTab(el, c);
+  if (tab === 'billing') return user.role === 'admin' ? billingTab(el, c) : (el.innerHTML = '<div class="card"><p class="muted">Billing is for owners.</p></div>');
   if (tab === 'website') return import('./googleapps.js').then((m) => m.websiteTab(el, c));
   if (tab === 'onboarding') return onboardingTab(el, c);
 }

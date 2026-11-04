@@ -3,6 +3,8 @@
 import { HttpError, json } from './util.js';
 import { all, first, run, newId, token, now } from './db.js';
 import { requireStaff } from './auth.js';
+// Company files (no client) are for owners; a client's folder is open to the whole team.
+const scopeGuard = (user, client) => { if (!client && user.role !== 'admin') throw new HttpError('Company files are for owners.', 403); };
 import { route } from './router.js';
 
 const MAX = 25 * 1024 * 1024;
@@ -27,6 +29,7 @@ const fileRow = (f, users) => ({ id: f.id, name: f.name, mime: f.mime, size: f.s
 route('GET', '/api/files', async ({ env, user, url }) => {
   requireStaff(user);
   const client = scopeOf(url.searchParams.get('client'));
+  scopeGuard(user, client);
   const folder = scopeOf(url.searchParams.get('folder'));
   const q = (url.searchParams.get('q') || '').trim().toLowerCase();
   const users = Object.fromEntries((await all(env, 'SELECT id, name, email FROM users')).map((u) => [u.id, (u.name || u.email || '').split(' ')[0]]));
@@ -46,6 +49,7 @@ route('GET', '/api/files', async ({ env, user, url }) => {
 route('GET', '/api/files/folders', async ({ env, user, url }) => {
   requireStaff(user);
   const client = scopeOf(url.searchParams.get('client'));
+  scopeGuard(user, client);
   const rows = await all(env, `SELECT id, parent_id, name FROM file_folders WHERE ${client ? 'client_id = ?' : 'client_id IS NULL'} ORDER BY lower(name)`, ...(client ? [client] : []));
   const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
   const path = (r) => { const p = []; let x = r; for (let i = 0; x && i < 12; i++) { p.unshift(x.name); x = byId[x.parent_id]; } return p.join(' / '); };
@@ -55,6 +59,7 @@ route('GET', '/api/files/folders', async ({ env, user, url }) => {
 route('POST', '/api/files/folder', async ({ env, user, body }) => {
   requireStaff(user);
   const b = await body();
+  scopeGuard(user, scopeOf(b.client_id));
   const name = cleanName(b.name);
   if (!name) throw new HttpError('Give the folder a name.');
   const id = newId('fd_');
@@ -64,6 +69,7 @@ route('POST', '/api/files/folder', async ({ env, user, body }) => {
 
 route('PATCH', '/api/files/folder/:id', async ({ env, user, params, body }) => {
   requireStaff(user);
+  scopeGuard(user, (await first(env, 'SELECT client_id FROM file_folders WHERE id = ?', params.id))?.client_id);
   const b = await body();
   const name = cleanName(b.name);
   if (!name) throw new HttpError('Give the folder a name.');
@@ -73,6 +79,7 @@ route('PATCH', '/api/files/folder/:id', async ({ env, user, params, body }) => {
 
 route('DELETE', '/api/files/folder/:id', async ({ env, user, params }) => {
   requireStaff(user);
+  scopeGuard(user, (await first(env, 'SELECT client_id FROM file_folders WHERE id = ?', params.id))?.client_id);
   const used = (await first(env, 'SELECT (SELECT COUNT(*) FROM hub_files WHERE folder_id = ?) + (SELECT COUNT(*) FROM file_folders WHERE parent_id = ?) AS n', params.id, params.id))?.n || 0;
   if (used) throw new HttpError('Empty the folder first, then delete it.');
   await run(env, 'DELETE FROM file_folders WHERE id = ?', params.id);
@@ -84,6 +91,7 @@ route('POST', '/api/files', async ({ env, user, url, request }) => {
   requireStaff(user);
   if (user.viewAs) throw new HttpError('Client view is read only.', 403);
   if (!env.MEDIA) noStore();
+  scopeGuard(user, scopeOf(url.searchParams.get('client')));
   const name = cleanName(url.searchParams.get('name'));
   if (!name) throw new HttpError('That file has no name.');
   const bytes = new Uint8Array(await request.arrayBuffer());
@@ -101,6 +109,7 @@ route('PATCH', '/api/files/:id', async ({ env, user, params, body }) => {
   requireStaff(user);
   const f = await first(env, 'SELECT * FROM hub_files WHERE id = ?', params.id);
   if (!f) throw new HttpError('File not found.', 404);
+  scopeGuard(user, f.client_id);
   const b = await body();
   const name = 'name' in b ? cleanName(b.name) : f.name;
   if (!name) throw new HttpError('Give the file a name.');
@@ -117,6 +126,7 @@ route('DELETE', '/api/files/:id', async ({ env, user, params }) => {
   requireStaff(user);
   const f = await first(env, 'SELECT * FROM hub_files WHERE id = ?', params.id);
   if (!f) return json({ ok: true });
+  scopeGuard(user, f.client_id);
   if (user.role !== 'admin' && f.owner_id !== user.id) throw new HttpError('Only the person who uploaded it, or an owner, can delete a file.', 403);
   if (env.MEDIA) await env.MEDIA.delete(`files/${f.id}`).catch(() => {});
   await run(env, 'DELETE FROM hub_files WHERE id = ?', f.id);
@@ -135,6 +145,7 @@ route('GET', '/api/files/:id/download', async ({ env, user, params, url }) => {
   requireStaff(user);
   const f = await first(env, 'SELECT * FROM hub_files WHERE id = ?', params.id);
   if (!f) throw new HttpError('File not found.', 404);
+  scopeGuard(user, f.client_id);
   return send(env, f, url.searchParams.get('view') === '1');
 });
 
@@ -142,6 +153,7 @@ route('POST', '/api/files/:id/share', async ({ env, user, params, body }) => {
   requireStaff(user);
   const f = await first(env, 'SELECT * FROM hub_files WHERE id = ?', params.id);
   if (!f) throw new HttpError('File not found.', 404);
+  scopeGuard(user, f.client_id);
   const b = await body();
   const t = b.on === false ? null : f.share_token || token(24);
   await run(env, 'UPDATE hub_files SET share_token = ? WHERE id = ?', t, f.id);

@@ -69,21 +69,41 @@ test('problems, score, plan, and script come from the research', () => {
   assert.equal(recommendPlan(lead, INTEL).plan, 'authority');
   assert.equal(recommendPlan({ ...lead, industry: 'Salon' }, { ...INTEL, competitors: [{ title: 'Y', reviews: 30 }], listing: { ...INTEL.listing, claimed: true, rating: 4.6 }, grid: { ...INTEL.grid, top3: 6 }, rank: 2, speed: null, website: null }).plan, 'starter');
   const s = buildScript(lead, INTEL, { rep: 'Vidal' });
-  assert.match(s.steps[0].lines[0], /Bob, this is Vidal, I'm a consultant with RightWay Growth/);
-  assert.match(s.steps[0].lines[1], /free Google clarity audits for roofing businesses/i);
-  assert.doesNotMatch(s.steps.map((x) => x.lines.join(' ')).join(' '), /analyst|Do you have 30 seconds/);
-  assert.equal(s.steps[0].group, 'cold');
-  assert.match(s.steps.find((x) => x.id === 'k_frame').lines.join(' '), /ten clients at a time/);
-  assert.ok(s.steps.filter((x) => x.group === 'clarity').some((x) => x.lines.some((l) => /^\(SCREEN:/.test(l))), 'clarity call has screen cues');
-  const step = (sc, id) => sc.steps.find((x) => x.id === id).lines.join('\n');
+  const spokenAll = (sc, g = 'cold') => sc.steps.filter((x) => x.group === g).flatMap((x) => x.lines).filter((l) => !/^\(/.test(l)).join(' ');
+  const step = (sc, id) => (sc.steps.find((x) => x.id === id)?.lines || []).join('\n');
   const step0 = step;
-  assert.match(step0(s, 'k_hook'), /I already ran the first part on Summit Roofing/);
+  // Cold call v10: casual pattern interrupt, the intro slipped in, never "consultant".
+  assert.equal(s.steps[0].id, 'k_open');
+  assert.match(s.steps[0].lines[0], /^Hey, is this Bob\?$/);
+  assert.equal(s.steps[0].group, 'cold');
+  assert.match(step(s, 'k_hook'), /Oh, I'm Vidal by the way, with RightWay Growth/);
+  assert.match(step(s, 'k_why'), /I\/we actually looked you guys up and used your info to build an automated, tailored strategy/);
+  assert.match(step(s, 'k_why'), /book you a plan today, completely free/);
+  assert.match(step(s, 'k_teach'), /We're gonna look into all your competitors/);
+  // Agent or owner: lines about work someone else may have done say I/we, never a role the reader might not have.
+  assert.doesNotMatch(spokenAll(s), /\bI built\b|\bI looked\b|\bI'll show you\b|share my screen/);
+  assert.doesNotMatch(spokenAll(s, 'clarity'), /\bI used to work\b|\bI built RightWay\b|\bI ran\b|scan I ran/);
+  assert.match(step(s, 'c_story'), /I\/our founder used to work inside/);
+  assert.match(step(s, 'k_after'), /typical job worth/);
+  const spoken = s.steps.filter((x) => x.group === 'cold').flatMap((x) => x.lines).filter((l) => !/^\(/.test(l)).join(' ');
+  assert.doesNotMatch(spoken, /consultant|analyst|Do you have 30 seconds|how are you/i);
+  assert.ok(!s.steps.some((x) => x.lines.some((l) => /\[[a-z ]+\]/.test(l) && !/\[(day and time|my number)\]/.test(l))), 'no unfilled blanks');
+  assert.ok(s.steps.filter((x) => x.group === 'clarity').some((x) => x.lines.some((l) => /^\(SCREEN:/.test(l))), 'clarity call has screen cues');
+  // A business with a website never hears the website opener; one without does. Hours missing on Google: the opener says so, truthfully.
+  assert.equal(step(s, 'k_site'), '');
+  const noSite = buildScript({ ...lead, website: '' }, { ...INTEL, listing: { ...INTEL.listing, url: '' } }, { rep: 'Vidal' });
+  assert.match(step(noSite, 'k_site'), /couldn't find your website online/);
+  assert.match(step(s, 'k_hook'), INTEL.listing.hours === false ? /Google doesn't show your hours/ : /still open, right\?/);
+  // Without research the call never claims the business was looked up.
+  const nores = buildScript(lead, null, { rep: 'Vidal' });
+  assert.doesNotMatch(step(nores, 'k_why'), /^So I actually looked you guys up/m);
+  assert.match(step(nores, 'k_why'), /Research hasn't run/);
+  assert.doesNotMatch(step(nores, 'voicemail') + step(nores, 'gatekeeper'), /looked .* up on Google/);
   assert.match(step0(s, 'c_open'), /Google clarity audit/);
-  // The real listing check feeds the cold hook and the clarity call; nothing is claimed when it has not run.
-  assert.doesNotMatch(step(s, 'k_hook'), /directories/);
-  assert.ok(!step(s, 'k_hook').split('\n').some((l) => !l.trim()), 'no empty lines when a variable is blank');
+  // The real listing check feeds the cold call and the clarity call; nothing is claimed when it has not run.
+  assert.doesNotMatch(step(s, 'k_why'), /directories/);
   const withL = buildScript({ ...lead, listings: JSON.stringify({ counts: { mismatch: 3, missing: 2, match: 1 }, results: [{ name: 'Yelp', status: 'mismatch' }, ...Array(14).fill({ name: 'X', status: 'match' })] }) }, INTEL, { rep: 'Vidal' });
-  assert.match(step(withL, 'k_hook'), /5 of 15 have you wrong or missing, Yelp for one/);
+  assert.match(step(withL, 'k_why'), /5 of 15 directories Google checks have you wrong or missing, Yelp for one/);
   assert.match(step(withL, 'c_listings'), /5 of the 15 directories I checked/);
   assert.match(step(withL, 'c_open'), /ten clients at a time/);
   assert.match(step(withL, 'c_discovery'), /Scan tool tab/);

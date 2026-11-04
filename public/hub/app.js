@@ -124,6 +124,9 @@ async function route() {
     if (sub === 'calls') return inboxPage(app, u, 'calls');
     return dialerPage(app, u);
   }
+  // Owner areas: agents are sent back to their dashboard (the server refuses these for them too).
+  const ownerOnly = ['automations', 'vault', 'payments'].includes(parts[0]) || (parts[0] === 'settings' && ['team', 'files', 'budget'].includes(parts[1])) || parts[0] === 'team';
+  if (ownerOnly && u.role !== 'admin') { location.replace('#/'); return; }
   if (parts[0] === 'automations') return import('./automations.js').then((m) => m.automationsPage(app, u));
   if (parts[0] === 'calendar') return import('./apptcal.js').then((m) => m.apptCalendarPage(app, u, parts[1] || ''));
   if (parts[0] === 'vault') return import('./vault.js').then((m) => m.vaultPage(app, u));

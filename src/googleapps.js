@@ -20,7 +20,9 @@ export async function userFor(env, user, app) {
   const scope = APP_SCOPES[app];
   const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);
   if (me?.google_token && hasScope(me.google_scopes, scope)) return me;
-  const other = await first(env, "SELECT * FROM users WHERE google_token IS NOT NULL AND google_scopes LIKE ? AND role IN ('admin','team') ORDER BY CASE role WHEN 'admin' THEN 0 ELSE 1 END LIMIT 1", `%${scope}%`);
+  // Shared client data (Search Console, Analytics, Ads, Business Profile) may fall back to an owner's account, never a teammate's:
+  // a teammate's Google is only ever used for that teammate.
+  const other = await first(env, "SELECT * FROM users WHERE google_token IS NOT NULL AND google_scopes LIKE ? AND role = 'admin' ORDER BY created_at LIMIT 1", `%${scope}%`);
   if (other) return other;
   throw new HttpError(`Turn on ${LABEL[app]} on the Google page first.`, 400);
 }
@@ -88,6 +90,7 @@ const EXPORTS = {
 };
 
 route('POST', '/api/google/sheets/export', async ({ env, user, body }) => {
+  requireAdmin(user); // exports of leads, clients, calls and payments: owners only
   requireStaff(user);
   const what = (await body()).what;
   const ex = EXPORTS[what];

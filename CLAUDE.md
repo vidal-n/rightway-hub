@@ -419,6 +419,26 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Google). Booking page: `book_rep` one person or `rr` gives per closer free times (`openTimes`, `closerBusy`) and books someone free (`pickCloser`, fewest upcoming);
   owners mode stays one booking per time. Visibility (`canSeeAppt`, `apptScope`, Hub calendar) includes the closer; Hub calendar labels audits "Closer: Business".
   Menu: Mail removed (Gmail lives under Google; `#/mail` still routes), Files moved to Settings (`#/settings/files`, `#/files` redirects).
+- Cold call v10 and I/we (Nov 2026, `SCRIPT_VERSION` 10, `public/js/leadintel.js`): V's frame. Steps `k_open` (owner picks up, "you broke up there" only when true),
+  `k_site` (no website opener, only shows when the lead has no site, only use when the demo site is built), `k_hook` (pattern interrupt "you guys are still open, right?",
+  truthful hours version when Google shows no hours, then the intro slipped in, never "consultant"), `k_why` (free tailored plan; the "looked you up" line only after
+  research, `strategy_note` otherwise), `k_value`, `k_teach` (competitor breakdown before booking), `k_book` (book on this call, `nextSlots` offers today), `k_after`
+  (7 discovery questions after booking), `k_lock`, gatekeeper, voicemail; vars in `coldVars`. Lines that are only an empty variable are dropped, and empty steps too.
+  Agent or owner: work someone else may have done reads "I/we", team facts "we", the founder story "I/our founder" (owner says I, others "our founder, Vidal").
+  Print copy: `PRINT_VARS` in `public/js/scriptprint.js`; PDFs in `public/training/` made from the scratchpad generator (`final/gen.mjs` + Playwright `page.pdf`).
+  Docs updated: "Rightway Growth Cold Call Script" and "Google Clarity Call Script".
+- Automation sets (Nov 2026, `AUTOMATION_SETS` in `src/automations.js`, picker on the Automations page, settings `automation_set`): Email only (now, until A2P),
+  Text only, Email and text. Each: confirmation at booking with the Meet link, the morning of (`morning` trigger: clock time in the lead's time zone, only when the
+  meeting is 4+ hours later), 3 hours before, 10 minutes before, in V's words. Texts with `fallback` go as email when the text cannot go. A line that is only a
+  meeting link becomes a Join button (`emailHtml`). `{meet_line}`, `{meet_or_call}`, `{rep_first}`. Switching sets marks booked confirmations for already booked
+  leads as skipped. Booked sends wait up to 3 minutes for the Google Meet link.
+- Google is personal, owners are the agency (Nov 2026): every user connects their own Google (dashboard prompt, agent Settings card); a teammate's account is only
+  used for that teammate (`userFor` falls back to owners only; `inviteLead` uses the closer's own calendar or the owner booking calendar, never a booker's).
+  `googleHealthTick` (cron, every 6 h) alerts once when a sign in ends (`users.google_alerted`), owners too when it is the booking or team calendar account.
+- Agent lockdown (Nov 2026): role `team` never reaches the Vault (`requireAdmin`), Payments, Budget, Automations, company Files (client folders stay open), the
+  master lead export, Sheets exports, client billing, Stripe ids or MRR (stripped from `/api/clients`, `/api/clients/:id`, `/api/dashboard`), or the settings back end
+  (`GET /api/settings` returns only the script and voicemail number for agents). Menus hide Vault and Automations; the router sends agents away from owner pages;
+  agent Settings shows only their Google, their dialer phone and the team calendar.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

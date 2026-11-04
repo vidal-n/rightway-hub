@@ -176,6 +176,14 @@ function prettyPhone(e) {
 route('GET', '/api/settings', async ({ env, user }) => {
   requireStaff(user);
   const s = await getSettings(env);
+  if (user.role !== 'admin') {
+    return json({
+      number: s.company_phone || prettyPhone(env.TWILIO_FROM),
+      script: s.script && Number(s.script_version) === SCRIPT_VERSION ? JSON.parse(s.script) : null,
+      objections: s.objections && Number(s.script_version) === SCRIPT_VERSION ? JSON.parse(s.objections) : null,
+      limited: true,
+    });
+  }
   return json({
     links: Object.fromEntries(PLAN_LINK_KEYS.map((k) => [k, s[`pay_link_${k}`] || ''])),
     company_phone: s.company_phone || '',
@@ -241,6 +249,7 @@ route('POST', '/api/leads/:id/payment-link', async ({ env, user, params, body })
 // ---------- client billing ----------
 route('GET', '/api/clients/:id/billing', async ({ env, user, params }) => {
   requireClientAccess(user, params.id);
+  if (user.role === 'team') throw new HttpError('Billing is for owners.', 403);
   const c = await first(env, 'SELECT * FROM clients WHERE id = ?', params.id);
   if (!c) throw new HttpError('Client not found.', 404);
   const base = { connected: Boolean(env.STRIPE_SECRET_KEY), linked: Boolean(c.stripe_customer_id), status: c.billing_status, mrr_cents: c.mrr_cents };

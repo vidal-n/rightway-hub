@@ -1,7 +1,7 @@
 // "Check connection" on the Google page: one small read per Google app with the asking person's own account, so a failure
 // comes back as a plain reason and the fix (API turned off in Google Cloud, box not ticked on Google's screen, connection expired).
 import { json } from './util.js';
-import { first } from './db.js';
+import { first, all, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff } from './auth.js';
 import { route } from './router.js';
 import { accessToken, googleReady, hasScope, APP_SCOPES, calendarFull, calendarAny } from './google.js';
@@ -63,3 +63,33 @@ route('GET', '/api/google/check', async ({ env, user }) => {
   return json({ ready: true, connected: true, email: me.google_email, scopes: granted.split(/\s+/).filter(Boolean).length, results,
     summary: bad ? `${bad} Google app${bad === 1 ? ' needs' : 's need'} a fix. Each one says how.` : 'Every Google app you turned on is working.' });
 });
+
+// Every 6 hours: is each teammate's Google sign in still good? While the Google app is in Testing mode Google ends it every 7 days.
+// When it ends, invites, Meet links and team calendar copies made with that account stop, so the person (and the owners, when it is the
+// account the booking page or the team calendar uses) get one alert with the fix. Signing in again clears it.
+export async function googleHealthTick(env, t = now()) {
+  if (!googleReady(env)) return 0;
+  const s = await getSettings(env);
+  if (Number(s.google_health_at || 0) > t - 6 * 3600e3) return 0;
+  await setSetting(env, 'google_health_at', String(t));
+  let master = null;
+  try { master = JSON.parse(s.master_cal || 'null'); } catch { master = null; }
+  const rows = await all(env, "SELECT * FROM users WHERE google_token IS NOT NULL AND role IN ('admin','team')");
+  const { notify } = await import('./notify.js');
+  let n = 0;
+  for (const u of rows) {
+    try {
+      await accessToken(env, u);
+      if (u.google_alerted) await run(env, 'UPDATE users SET google_alerted = NULL WHERE id = ?', u.id);
+    } catch (e) {
+      if (u.google_alerted) continue;
+      await run(env, 'UPDATE users SET google_alerted = ? WHERE id = ?', t, u.id);
+      const shared = master?.owner === u.id || s.book_owner === u.id || (!s.book_owner && u.role === 'admin');
+      const body = `${String(u.name || 'Your').split(' ')[0]}'s Google sign in ended. Invites and Meet links ${shared ? 'for bookings and the team calendar ' : ''}pause until they sign in again: Google page, Turn on all.`;
+      await notify(env, { to: shared ? 'admins' : [u.id], kind: 'meeting', title: 'Google needs a new sign in', body, url: '/#/google', tag: `google-${u.id}` }).catch(() => {});
+      if (shared && u.role !== 'admin') await notify(env, { to: [u.id], kind: 'meeting', title: 'Google needs a new sign in', body, url: '/#/google', tag: `google-${u.id}` }).catch(() => {});
+      n++;
+    }
+  }
+  return n;
+}

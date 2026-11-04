@@ -65,12 +65,12 @@ export async function closerConflict(env, closerId, start, minutes = 30, { leadI
 }
 
 // ---------- the lead's invite (with Meet) ----------
-// Sent from the closer's own calendar when they connected Google, else the booker's, else the booking calendar owner's, with the closer as a guest.
+// Sent from the closer's own calendar when they connected Google (it is their meeting), else from the owner's booking calendar with the
+// closer as a guest. A teammate's Google is never used for someone else's meeting.
 export async function inviteLead(env, leadId, { minutes = 30, note = '' } = {}) {
   const l = await first(env, 'SELECT * FROM leads WHERE id = ?', leadId);
   if (!l?.meet_at || !googleReady(env)) return { google: false };
   const closer = await userRow(env, closerOf(l));
-  const booker = l.meet_by && l.meet_by !== closer?.id ? await userRow(env, l.meet_by) : null;
   const closerEmail = closer ? (closer.google_email || closer.email || '').toLowerCase() : '';
   const start = { dateTime: new Date(l.meet_at).toISOString() };
   const end = { dateTime: new Date(l.meet_at + minutes * 60e3).toISOString() };
@@ -78,7 +78,7 @@ export async function inviteLead(env, leadId, { minutes = 30, note = '' } = {}) 
   if (l.gcal_event_id) {
     // Moving or handing over an existing invite: change it where it lives, so the lead gets an update, not a second invite.
     let org = await userRow(env, l.gcal_owner);
-    if (!canCal(org)) org = canCal(booker) ? booker : canCal(closer) ? closer : await bookingOwner(env, await bookingConfig(env));
+    if (!canCal(org)) org = canCal(closer) ? closer : await bookingOwner(env, await bookingConfig(env));
     if (!org) return { google: false };
     const cal = encodeURIComponent(l.gcal_cal || 'primary');
     const ev = await gc(env, org, `/calendars/${cal}/events/${encodeURIComponent(l.gcal_event_id)}`);
@@ -87,7 +87,7 @@ export async function inviteLead(env, leadId, { minutes = 30, note = '' } = {}) 
     const made = await gc(env, org, `/calendars/${cal}/events/${encodeURIComponent(l.gcal_event_id)}?sendUpdates=all`, { method: 'PATCH', body: { start, end, attendees: [...have.values()] } });
     return { google: true, id: made.id, meet: l.meet_link || made.hangoutLink || null, organizer: org.id };
   }
-  const org = canCal(closer) ? closer : canCal(booker) ? booker : await bookingOwner(env, await bookingConfig(env));
+  const org = canCal(closer) ? closer : await bookingOwner(env, await bookingConfig(env));
   if (!org) return { google: false };
   const attendees = [l.email, org.id !== closer?.id ? closerEmail : ''].filter(Boolean).map((email) => ({ email }));
   const made = await gc(env, org, '/calendars/primary/events?conferenceDataVersion=1&sendUpdates=all', {

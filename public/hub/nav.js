@@ -5,9 +5,9 @@ import { $, $$, esc, api, toast, modal, icon } from './core.js';
 
 export const NAV = [
   ['home', '#/', 'dash', 'Dashboard'], ['phone', '#/phone', 'phone', 'Phone'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['calendar', '#/calendar', 'cal', 'Calendar'],
-  ['agents', '#/agents', 'headset', 'Agents'], ['automations', '#/automations', 'send', 'Automations'],
+  ['agents', '#/agents', 'headset', 'Agents'], ['automations', '#/automations', 'send', 'Automations', 'admin'],
   ['work', '#/work', 'check', 'My work'], ['clients', '#/clients', 'users', 'Clients'], ['scan', '/scan.html', 'grid', 'Scan tool'],
-  ['training', '#/training', 'book', 'Training'], ['vault', '#/vault', 'key', 'Vault'], ['slack', '#/slack', 'slack', 'Slack'], ['google', '#/google', 'apps', 'Google'],
+  ['training', '#/training', 'book', 'Training'], ['vault', '#/vault', 'key', 'Vault', 'admin'], ['slack', '#/slack', 'slack', 'Slack'], ['google', '#/google', 'apps', 'Google'],
   ['payments', '#/payments', 'money', 'Payments', 'admin'], ['alerts', '#/notifications', 'bell', 'Notifications'], ['settings', '#/settings', 'cog', 'Settings'],
 ];
 // The rail groups the menu by the job: selling, delivering, the team, and running the business.

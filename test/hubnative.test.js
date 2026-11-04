@@ -396,3 +396,78 @@ test('booking page round robin only offers a time to someone free, and books the
   r = await t.call('POST', '/api/public/book', { ...ok, business: 'Cee Co', email: 'c@cee.com', phone: '9545550103', name: 'Cy Cee', start: slot });
   assert.equal(r.status, 409);
 });
+
+test('automation sets: switching on texts later does not send late confirmations; a text that cannot go falls back to email', async () => {
+  const t = setup({ RESEND_API_KEY: 're_test', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM: '+13055073393' });
+  await owner(t);
+  let r = await t.call('GET', '/api/automations');
+  assert.equal(r.data.set, 'email');
+  assert.deepEqual(Object.keys(r.data.sets), ['email', 'sms', 'both']);
+  const lead = (await t.call('POST', '/api/leads', { business: 'Coastal Roof Pros', contact_name: 'Ana Ruiz', phone: '9545550300', email: 'ana@coastal.com', state: 'FL' })).data.lead;
+  const at = Date.now() + 2 * 864e5;
+  await t.env.DB.prepare("UPDATE leads SET stage = 'audit_booked', meet_at = ?, meet_link = 'https://meet.google.com/abc-defg-hij', updated_at = ? WHERE id = ?").bind(at, Date.now() - 600e3, lead.id).run();
+  r = await t.call('PUT', '/api/automations', { set: 'both' });
+  assert.equal(r.data.set, 'both');
+  const skipped = await t.env.DB.prepare("SELECT auto_id FROM automation_log WHERE lead_id = ? AND status = 'skipped'").bind(lead.id).all();
+  assert.deepEqual(skipped.results.map((x) => x.auto_id), ['confirm_text_short'], 'already booked: no late text confirmation');
+  // Run the cron: the email confirmation still goes (it was already in the email set, never sent yet).
+  const sent = [];
+  const f = stubFetch((u, init) => { if (u.includes('resend.com')) { sent.push(JSON.parse(init.body)); return jres({ id: 'e' }); } if (u.includes('twilio.com')) return jres({ sid: 'SM1', status: 'queued' }); return null; });
+  const { automationTick } = await import('../src/automations.js');
+  try { await automationTick(t.env); } finally { f.done(); }
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].html, /Join the Google Meet/);
+  // 10 minutes before, no permission to text yet: the 10 minute text goes as an email.
+  sent.length = 0;
+  const f2 = stubFetch((u, init) => { if (u.includes('resend.com')) { sent.push(JSON.parse(init.body)); return jres({ id: 'e' }); } return null; });
+  try { await automationTick(t.env, at - 9 * 60e3); } finally { f2.done(); }
+  const log = await t.env.DB.prepare("SELECT auto_id, status, to_addr FROM automation_log WHERE lead_id = ? AND auto_id = 'ten_min_text'").bind(lead.id).first();
+  assert.equal(log.status, 'sent');
+  assert.match(log.to_addr, /ana@coastal\.com \(email/);
+  assert.ok(sent.some((e) => /super excited to chat with you/.test(e.text)));
+});
+
+test('an expired Google sign in raises one alert, and signing in again clears it', async () => {
+  const t = setup(G);
+  await owner(t);
+  await connectGoogle(t, 'openid email https://www.googleapis.com/auth/calendar');
+  const { googleHealthTick } = await import('../src/googlecheck.js');
+  const f = stubFetch((u) => (u.startsWith('https://oauth2.googleapis.com/token') ? jres({ error: 'invalid_grant' }, 400) : null));
+  try {
+    assert.equal(await googleHealthTick(t.env), 1);
+    assert.equal(await googleHealthTick(t.env), 0, 'checked at most every 6 hours');
+    assert.equal(await googleHealthTick(t.env, Date.now() + 7 * 3600e3), 0, 'one alert, not one every run');
+  } finally { f.done(); }
+  const alerts = (await t.call('GET', '/api/notifications')).data.notifications;
+  assert.ok(alerts.some((n) => n.title === 'Google needs a new sign in'));
+});
+
+test('agents never reach owner areas: vault, money, exports, company files, automations, settings back end', async () => {
+  const t = setup({ STRIPE_SECRET_KEY: 'rk_test' });
+  await owner(t);
+  const c = (await t.call('POST', '/api/clients', { name: 'Coastal Roof Pros', plan: 'growth' })).data;
+  const cid = c.client?.id || c.id;
+  await t.env.DB.prepare('UPDATE clients SET mrr_cents = 44900, stripe_customer_id = ? WHERE id = ?').bind('cus_123', cid).run();
+  await t.call('POST', '/api/files?name=Contract.pdf&client=&folder=', new Uint8Array([1, 2]), { 'content-type': 'application/pdf' });
+  const inv = await t.call('POST', '/api/team/invite', { email: 'kiron@rightwaygrowth.com', name: 'Kiron', role: 'team' });
+  await t.call('POST', '/api/auth/logout', {});
+  const acc = await t.call('POST', '/api/auth/invite/accept', { token: inv.data.inviteUrl.split('/#/invite/')[1], name: 'Kiron', password: 'another long password' });
+  assert.equal(acc.status, 200);
+  for (const [m, path] of [['GET', '/api/vault/me'], ['GET', '/api/vault/items'], ['GET', '/api/payments'], ['GET', '/api/costs'], ['GET', '/api/balances'],
+    ['GET', '/api/analytics/master'], ['GET', '/api/automations'], ['GET', '/api/automations/log'], ['GET', '/api/files?client='], ['GET', `/api/clients/${cid}/billing`],
+    ['POST', '/api/google/sheets/export'], ['PUT', '/api/settings'], ['GET', '/api/stripe/setup'], ['GET', '/api/voice/setup']]) {
+    const r = await t.call(m, path, m === 'GET' ? undefined : {});
+    assert.ok([401, 403].includes(r.status), `${m} ${path} gave ${r.status}`);
+  }
+  const s = (await t.call('GET', '/api/settings')).data;
+  assert.equal(s.links, undefined, 'no payment links');
+  assert.equal(s.connected, undefined, 'no connection details');
+  assert.ok('script' in s, 'the script still loads for the dialer');
+  const list = (await t.call('GET', '/api/clients')).data.clients;
+  assert.equal(list[0].mrr_cents, null);
+  assert.equal(list[0].stripe_customer_id, null);
+  assert.equal((await t.call('GET', `/api/clients/${cid}`)).data.client?.mrr_cents ?? null, null);
+  assert.equal((await t.call('GET', '/api/dashboard')).data.clients.mrr, null);
+  // Client folders stay open to the team.
+  assert.equal((await t.call('GET', `/api/files?client=${cid}`)).status, 200);
+});

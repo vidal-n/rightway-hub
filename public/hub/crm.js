@@ -781,6 +781,23 @@ export async function settingsPage(app, user) {
   try { [s, me, g, team] = await Promise.all([api('/api/settings'), api('/api/me'), api('/api/google/status').catch(() => null), api('/api/team').then((r) => r.users || []).catch(() => [])]); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const gmsg = new URLSearchParams(location.search).get('google');
   if (gmsg) { toast(gmsg === 'ok' ? 'Google connected' : gmsg, gmsg !== 'ok'); history.replaceState(null, '', `${location.pathname}${location.hash}`); }
+  // Agents get their own settings only: their Google, their phone for the dialer, and the team calendar. The rest is for owners.
+  if (user.role !== 'admin') {
+    view.innerHTML = `<div class="page-head"><h1>Settings</h1></div>${settingsTabs('general', user)}
+      <div class="card"><div class="card-head"><h2>Your Google</h2><span class="badge ${g?.connected ? '' : 'gray'}">${g?.connected ? 'Connected' : 'Not connected'}</span></div>
+        <p>Connect your own Google account so your calendar, Gmail and Drive work inside the Hub, and invites for your calls come from your calendar. It's yours only: nobody else on the team can read it.</p>
+        <a class="btn btn-primary" href="#/google">${g?.connected ? 'Open the Google page' : 'Connect my Google'}</a></div>
+      <div class="card"><div class="card-head"><h2>Your phone for the dialer</h2></div>
+        <form id="myphone" class="row"><input name="phone" value="${esc(me.user.phone || '')}" placeholder="Your mobile number" style="flex:1 1 220px"><button class="btn btn-primary" type="submit">Save</button></form></div>
+      <div class="card" id="teamcal"></div>
+      <p class="small muted">Everything else in Settings is for owners.</p>`;
+    $('#myphone', view).addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try { await api('/api/me/phone', { method: 'PUT', body: { phone: e.target.phone.value } }); toast('Saved'); } catch (err) { toast(err.message, true); }
+    });
+    import('./teamcal.js').then((x) => x.teamCalCard($('#teamcal', view), user)).catch(() => {});
+    return;
+  }
   const { DEFAULT_SCRIPT, DEFAULT_OBJECTIONS, SCRIPT_KEYS } = await import('/js/leadintel.js');
   const sc = { ...DEFAULT_SCRIPT, ...(s.script || {}) };
   const obs = s.objections || DEFAULT_OBJECTIONS;

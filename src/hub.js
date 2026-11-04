@@ -256,7 +256,9 @@ route('GET', '/api/clients', async ({ env, user, url }) => {
   requireStaff(user);
   const month = monthOk(url.searchParams.get('month'));
   const clients = await all(env, "SELECT * FROM clients ORDER BY status = 'active' DESC, name");
-  const out = await Promise.all(clients.map(async ({ wp_pass, ...c }) => ({ ...c, overview: await overview(env, c, month, true) })));
+  // Agents see the work, not the money or the Stripe ids.
+  const money = (c) => (user.role === 'admin' ? c : { ...c, mrr_cents: null, stripe_customer_id: null, stripe_subscription_id: null, billing_status: null });
+  const out = await Promise.all(clients.map(async ({ wp_pass, ...c }) => ({ ...money(c), overview: await overview(env, c, month, true) })));
   return json({ clients: out, month });
 });
 
@@ -278,6 +280,7 @@ route('GET', '/api/clients/:id', async ({ env, user, params, url }) => {
   const month = monthOk(url.searchParams.get('month'));
   if (!staff) delete c.notes;
   delete c.wp_pass; // sealed WordPress password never leaves the server
+  if (user.role !== 'admin' && staff) { c.mrr_cents = null; c.stripe_customer_id = null; c.stripe_subscription_id = null; }
   const parent = c.parent_id ? await first(env, 'SELECT id, name FROM clients WHERE id = ?', c.parent_id) : null;
   const locations = (await first(env, 'SELECT COUNT(*) AS n FROM clients WHERE parent_id = ?', c.id))?.n || 0;
   return json({

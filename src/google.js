@@ -215,7 +215,7 @@ route('GET', '/api/google/callback', async ({ env, user, url }) => {
   if (!res.ok || !data.refresh_token) return back(data.error_description || 'Google did not return a connection. Remove the Hub under your Google account permissions and try again.');
   let email = null;
   try { const part = data.id_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); email = JSON.parse(atob(part + '='.repeat((4 - (part.length % 4)) % 4))).email || null; } catch { email = null; }
-  await run(env, 'UPDATE users SET google_token = ?, google_email = ?, google_scopes = ? WHERE id = ?', await seal(env, data.refresh_token), email, data.scope || null, user.id);
+  await run(env, 'UPDATE users SET google_token = ?, google_email = ?, google_scopes = ?, google_alerted = NULL WHERE id = ?', await seal(env, data.refresh_token), email, data.scope || null, user.id);
   cache.delete(user.id);
   // Google's consent screen has a checkbox per app. If one was left unticked, say which, instead of failing later.
   return back(missingText(data.scope, (st.apps || '').split(',').filter(Boolean)) || 'ok');

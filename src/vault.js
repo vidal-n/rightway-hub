@@ -4,21 +4,21 @@
 // it is shared with, so only they can open it.
 import { HttpError, json } from './util.js';
 import { all, first, run, newId, now } from './db.js';
-import { requireStaff } from './auth.js';
+import { requireAdmin } from './auth.js';
 import { route } from './router.js';
 
 const B64 = /^[A-Za-z0-9+/=_-]{8,200000}$/;
 const need = (v, name) => { if (typeof v !== 'string' || !B64.test(v)) throw new HttpError(`Bad ${name}.`); return v; };
 
 route('GET', '/api/vault/me', async ({ env, user }) => {
-  requireStaff(user);
+  requireAdmin(user); // owners only: agents never reach the vault
   const k = await first(env, 'SELECT salt, iters, check_iv, check_ct, priv_iv, priv_ct, pub FROM vault_keys WHERE user_id = ?', user.id);
   return json({ setup: Boolean(k), keys: k || null });
 });
 
 // First time: the browser sends its salt, a check value and the key pair, all encrypted except the public key.
 route('POST', '/api/vault/setup', async ({ env, user, body }) => {
-  requireStaff(user);
+  requireAdmin(user); // owners only: agents never reach the vault
   const b = await body();
   const have = await first(env, 'SELECT 1 AS x FROM vault_keys WHERE user_id = ?', user.id);
   if (have && !b.reset) throw new HttpError('Your vault is already set up.', 409);
@@ -39,13 +39,13 @@ route('POST', '/api/vault/setup', async ({ env, user, body }) => {
 
 // Teammates who have a vault (public keys only), for sharing.
 route('GET', '/api/vault/people', async ({ env, user }) => {
-  requireStaff(user);
-  const rows = await all(env, "SELECT u.id, u.name, u.email, v.pub FROM vault_keys v JOIN users u ON u.id = v.user_id WHERE u.role IN ('admin','team') AND u.id != ?", user.id);
+  requireAdmin(user); // owners only: agents never reach the vault
+  const rows = await all(env, "SELECT u.id, u.name, u.email, v.pub FROM vault_keys v JOIN users u ON u.id = v.user_id WHERE u.role = 'admin' AND u.id != ?", user.id);
   return json({ people: rows.map((r) => ({ id: r.id, name: r.name || r.email, pub: JSON.parse(r.pub) })) });
 });
 
 route('GET', '/api/vault/items', async ({ env, user }) => {
-  requireStaff(user);
+  requireAdmin(user); // owners only: agents never reach the vault
   const rows = await all(env, `SELECT i.id, i.owner_id, i.iv, i.ct, i.updated_at, a.eph, a.wiv, a.wkey, u.name AS owner_name
     FROM vault_access a JOIN vault_items i ON i.id = a.item_id LEFT JOIN users u ON u.id = i.owner_id WHERE a.user_id = ? ORDER BY i.updated_at DESC LIMIT 2000`, user.id);
   const shares = await all(env, `SELECT a.item_id, a.user_id FROM vault_access a JOIN vault_items i ON i.id = a.item_id WHERE i.owner_id = ? AND a.user_id != ?`, user.id, user.id);
@@ -54,7 +54,7 @@ route('GET', '/api/vault/items', async ({ env, user }) => {
 
 // Save an item: ciphertext plus the item key wrapped for each person who may open it (always including the owner).
 route('POST', '/api/vault/items', async ({ env, user, body }) => {
-  requireStaff(user);
+  requireAdmin(user); // owners only: agents never reach the vault
   const b = await body();
   const id = b.id || newId('vi_');
   const ex = b.id ? await first(env, 'SELECT owner_id FROM vault_items WHERE id = ?', b.id) : null;
@@ -75,7 +75,7 @@ route('POST', '/api/vault/items', async ({ env, user, body }) => {
 });
 
 route('DELETE', '/api/vault/items/:id', async ({ env, user, params }) => {
-  requireStaff(user);
+  requireAdmin(user); // owners only: agents never reach the vault
   const ex = await first(env, 'SELECT owner_id FROM vault_items WHERE id = ?', params.id);
   if (!ex) throw new HttpError('Item not found.', 404);
   if (ex.owner_id !== user.id) { await run(env, 'DELETE FROM vault_access WHERE item_id = ? AND user_id = ?', params.id, user.id); return json({ ok: true, left: true }); }

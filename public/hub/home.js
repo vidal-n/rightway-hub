@@ -44,6 +44,7 @@ export async function homePage(app, user) {
   view.innerHTML = `
     <div class="page-head"><div class="hello"><span class="hello-av">${avatarHtml(user, initials(user))}</span><div><p class="eyebrow">${esc(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))}</p><h1>${esc(hello())}${first ? `, ${esc(first)}` : ''}</h1></div></div>
       <div class="row"><a class="btn btn-mint" href="#/phone">${icon.phone}Start dialing</a><a class="btn btn-ghost" href="#/pipeline">${icon.chart}Pipeline</a></div></div>
+    <div id="gprompt"></div>
     <div class="bento">
       <div class="stat tile hero w-3"><div class="tile-top"><div class="stat-num mono" data-count="${d.me.dials}">0</div>${daily.length > 1 ? `<div class="tile-spark">${spark(lastN('dials'), { color: 'var(--mint)' })}</div>` : ''}</div><div class="stat-label">dials today, goal ${DIAL_TARGET}</div><div class="progress" style="margin-top:10px"><span data-w="${pctDials}"></span></div></div>
       ${tile('tint-blue w-3', d.me.talks, 'owner conversations today', lastN('contacts'), 'var(--c-blue)')}
@@ -79,7 +80,7 @@ export async function homePage(app, user) {
       ${admin ? '<div class="card w-4 wc-green" id="paysnap"><div class="card-head"><h2>Payments</h2></div><div class="skeleton" style="height:70px"></div></div><div class="card w-4 wc-violet" id="budsnap"><div class="card-head"><h2>Budget and costs</h2></div><div class="skeleton" style="height:120px"></div></div><div class="card w-4 wc-amber" id="balsnap"></div>' : ''}
       <div class="card w-4 wc-teal" id="floor"><div class="card-head"><h2>Team floor</h2><a class="btn btn-ghost btn-sm" href="#/agents">Agents</a></div><div class="skeleton" style="height:70px"></div></div>
       <div class="card w-4 wc-green"><div class="card-head"><h2>Clients</h2><a class="btn btn-ghost btn-sm" href="#/clients">Open</a></div>
-        <div class="cl-row">${ring(workPct, { size: 104, thick: 12, color: 'var(--c-green)', center: `${workPct}%`, sub: 'work done' })}<div class="cl-nums"><div><b class="mono">${fmt.money(d.clients.mrr)}</b><span>monthly revenue</span></div><div><b class="mono">${d.clients.active}</b><span>active clients</span></div><div><b class="mono">${d.orders.signed}</b><span>signed this month</span></div></div></div>
+        <div class="cl-row">${ring(workPct, { size: 104, thick: 12, color: 'var(--c-green)', center: `${workPct}%`, sub: 'work done' })}<div class="cl-nums">${d.clients.mrr != null ? `<div><b class="mono">${fmt.money(d.clients.mrr)}</b><span>monthly revenue</span></div>` : ''}<div><b class="mono">${d.clients.active}</b><span>active clients</span></div><div><b class="mono">${d.orders.signed}</b><span>signed this month</span></div></div></div>
         <p class="small" style="margin-top:10px">${d.work.postsWaiting} post${d.work.postsWaiting === 1 ? '' : 's'} waiting to go out. ${d.orders.sent} agreement${d.orders.sent === 1 ? '' : 's'} out, ${d.orders.paid} paid.</p>
         <div class="row" style="margin-top:6px">${d.clients.sample ? `<a class="btn btn-ghost btn-sm" href="#/clients/view/${esc(d.clients.sample)}">${icon.device}See the sample client app</a>` : `<button class="btn btn-ghost btn-sm" id="mk-sample">${icon.device}Create a sample client</button>`}<a class="btn btn-ghost btn-sm" href="#/phone/texts">${icon.msg}${d.unread} unread</a></div></div>
       <div class="card w-12 wc-blue"><div class="card-head"><h2>Recent activity</h2></div>
@@ -109,6 +110,22 @@ export async function homePage(app, user) {
     busy(e.currentTarget, true, 'Creating...');
     try { const r = await api('/api/sample-client', { method: 'POST' }); location.hash = `#/clients/view/${r.id}`; } catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
   });
+  googlePrompt($('#gprompt', view), user);
+}
+
+// Everyone on the team connects their own Google (their calendar, Gmail and Drive in the Hub, for their own use). Asked until they do or say later.
+async function googlePrompt(box, user) {
+  const key = `rw-gprompt-${user.id}`;
+  try { if (Number(localStorage.getItem(key) || 0) > Date.now()) return; } catch { /* ignore */ }
+  let g;
+  try { g = await api('/api/google/status'); } catch { return; }
+  if (!g.ready || (g.connected && g.apps?.includes('calendar'))) return;
+  const again = g.connected; // signed in before the Hub asked for full Calendar access
+  box.innerHTML = `<div class="card gprompt"><div class="row" style="gap:14px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1 1 280px"><b>${again ? 'Sign in to Google once more' : 'Connect your own Google'}</b><div class="small muted">${again ? 'The Hub needs one more Calendar permission. Takes 20 seconds.' : 'Your calendar, Gmail and Drive inside the Hub, and invites for your calls sent from your own calendar. It is yours only: nobody else on the team can read it.'}</div></div>
+      <a class="btn btn-primary btn-sm" href="/api/google/connect?back=google&apps=mail,drive,docs,sheets">${again ? 'Sign in again' : 'Connect my Google'}</a>
+      <button class="btn btn-ghost btn-sm" type="button" id="glater">Later</button></div></div>`;
+  $('#glater', box).addEventListener('click', () => { try { localStorage.setItem(key, String(Date.now() + 3 * 864e5)); } catch { /* ignore */ } box.innerHTML = ''; });
 }
 
 const PORTAL_TABS = [['', 'Home'], ['messages', 'Messages'], ['reviews', 'Reviews'], ['post', 'Post'], ['results', 'Results'], ['start', 'Get started']];

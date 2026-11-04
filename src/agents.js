@@ -2,7 +2,7 @@
 // who is on a call right now (owners can listen, whisper or barge from the Agents page), and call analytics for the team and lead quality.
 import { HttpError, json } from './util.js';
 import { all, first, run, newId, now } from './db.js';
-import { requireStaff } from './auth.js';
+import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { getDispos } from './dispo.js';
 import { STATUS_KEYS, callStats, statusTime } from '../public/js/callstats.js';
@@ -168,7 +168,7 @@ route('PUT', '/api/me/training', async ({ env, user, body }) => {
 
 // Master sheet: every lead with every detail and its call history rolled up, for sorting, filtering and export.
 route('GET', '/api/analytics/master', async ({ env, user }) => {
-  requireStaff(user);
+  requireAdmin(user); // the whole lead list: owners only
   const leads = await all(env, `SELECT id, business, contact_name, phone, email, website, city, state, zip, timezone, industry, category, source, tags, stage, grade, score,
       rating, reviews, map_rank, problems, attempts, last_call_at, next_action_at, next_action, meet_at, meet_by, owner_id, scrub, created_at, intel_at, quote, dnc
     FROM leads ORDER BY updated_at DESC LIMIT 5000`);
