@@ -254,3 +254,35 @@ export async function linksForMonth(env, clientId, a, b) {
   const rows = await all(env, "SELECT type, name FROM link_log WHERE client_id = ? AND status = 'live' AND live_at >= ? AND live_at < ? ORDER BY live_at", clientId, a, b).catch(() => []);
   return { citations: rows.filter((r) => r.type === 'citation').map((r) => r.name), links: rows.filter((r) => r.type === 'link').map((r) => r.name) };
 }
+
+// ---------- prospects: the real inconsistencies, for the clarity call ----------
+// The same directory check, run on a lead before or during the call: which directories list them, which show a different
+// phone or ZIP, and which are missing. One Google search per directory (about $0.002 each), 15 directories, saved on the lead.
+export function leadAsClient(lead, intel) {
+  const L = intel?.listing || {};
+  const address = L.address || [lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(', ');
+  return { name: lead.business, phone: lead.phone || L.phone || '', address, city: lead.city || L.city || '', state: lead.state || '', category: L.category || lead.category || lead.industry || '' };
+}
+
+route('POST', '/api/leads/:id/listings', async ({ env, user, params }) => {
+  requireStaff(user);
+  const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', params.id);
+  if (!lead) throw new HttpError('Lead not found.', 404);
+  const intel = parse(lead.intel);
+  const c = leadAsClient(lead, intel);
+  if (!c.name) throw new HttpError('The lead needs a business name.');
+  const dirs = directoryList({ name: c.name, address: c.address, city: c.city, state: c.state, category: c.category }).filter((d) => SITES[d.name]).slice(0, 15);
+  let cost = 0;
+  const results = await Promise.all(dirs.map(async (d) => {
+    try {
+      const r = await search(env, `site:${SITES[d.name]} "${c.name}"${c.city ? ` ${c.city}` : ''}`);
+      cost += r.cost || 0;
+      return { name: d.name, site: SITES[d.name], ...judgeListing(r.results, c) };
+    } catch (e) { return { name: d.name, site: SITES[d.name], status: 'error', error: e.message }; }
+  }));
+  if (results.length && results.every((r) => r.status === 'error')) throw new HttpError(results[0].error, 502);
+  const counts = results.reduce((o, r) => ({ ...o, [r.status]: (o[r.status] || 0) + 1 }), {});
+  const out = { at: now(), counts, results, phone: c.phone, address: c.address, google: { phone: intel?.listing?.phone || null, address: intel?.listing?.address || null }, cost: Math.round(cost * 10000) / 10000, demo: isDemo(env) };
+  await run(env, 'UPDATE leads SET listings = ?, updated_at = ? WHERE id = ?', JSON.stringify(out), now(), lead.id);
+  return json(out);
+});

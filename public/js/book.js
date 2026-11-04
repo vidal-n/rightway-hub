@@ -18,7 +18,7 @@ async function load() {
   let day = days[0], pick = null;
   box.innerHTML = `${head}
     <div><h1 style="font-size:clamp(28px,4vw,40px);margin-bottom:6px">${esc(info.title)}</h1>
-      <p class="muted" style="margin:0">${info.minutes} minutes on Google Meet. We show you where you show up on Google across your area, where it is inconsistent, who is getting your calls, and what we would fix. Websites, Google profile and local SEO. No cost and no pressure.</p></div>
+      <p class="muted" style="margin:0">${info.minutes} minutes on a screen share. We show you where you show up on Google across your area, where it is inconsistent, who is getting your calls, and what we would fix. Websites, Google profile and local SEO. No cost and no pressure.</p></div>
     <div class="bk-grid">
       <div class="card"><h2>Pick a time</h2><p class="small">Times shown in your time zone (${esc(viewerTz.replace(/_/g, ' '))}).</p><div class="days" id="days"></div><div class="times" id="times"></div></div>
       <form class="card form-grid" id="f" style="grid-template-columns:1fr">
@@ -63,7 +63,7 @@ async function load() {
       if (!res.ok) throw new Error(data.error || 'Could not book that time.');
       box.innerHTML = `${head}<div class="card" style="text-align:center;padding:40px 20px"><h1 style="font-size:32px">You're booked</h1>
         <p style="font-size:18px">${esc(new Date(data.start).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: viewerTz }))}</p>
-        <p class="muted">A Google Calendar invite with the Meet link is on its way to your email.</p>${data.meet ? `<a class="btn btn-mint" href="${esc(data.meet)}">Google Meet link</a>` : ''}</div>`;
+        <p class="muted">${data.confirm ? 'We will text or email you shortly to confirm and send the screen share link.' : 'A Google Calendar invite with the Meet link is on its way to your email.'}</p>${data.meet ? `<a class="btn btn-mint" href="${esc(data.meet)}">Google Meet link</a>` : ''}</div>`;
     } catch (err) {
       document.getElementById('err').textContent = err.message;
       btn.disabled = false; btn.textContent = 'Book my consultation';

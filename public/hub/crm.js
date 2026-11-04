@@ -576,6 +576,8 @@ export async function dialerPage(app, user) {
     prepPanel(el, l, intelCache.get(l.id), { rep: REP, onResearched: (next, intel) => { Object.assign(l, next); intelCache.set(l.id, intel); const gg = $('#dgrade', view); if (gg) gg.innerHTML = gradeBadge(l.grade, l.score); } });
   };
   const upcoming = (cal.meetings || []).filter((m) => m.meet_at > Date.now() - 3600e3).slice(0, 4);
+  // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.
+  setTimeout(() => api('/api/balances/status').then((b) => { const el = document.getElementById('lowbal'); if (el && b.low?.length) el.innerHTML = `<div class="card" style="border-color:#E8A33D;margin-bottom:12px"><b>${b.low.map((x) => esc(x.name)).join(' and ')} balance ${b.low.some((x) => x.empty) ? 'is empty' : 'is low'}.</b> <span class="small">${b.low.some((x) => x.key === 'twilio') ? 'Calls and texts stop when Twilio runs out. ' : ''}${b.low.some((x) => x.key === 'dataforseo') ? 'Research and scans stop when DataForSEO runs out. ' : ''}An owner can add funds from the Dashboard.</span></div>`; }).catch(() => {}), 50);
   const filterText = Object.entries(flt).filter(([, v]) => v).map(([k, v]) => `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`).join(' · ');
   const render = () => {
     const l = q.queue[idx];
@@ -591,6 +593,7 @@ export async function dialerPage(app, user) {
         <div class="stat"><div class="stat-num">${q.stats.booked}</div><div class="stat-label">audits booked</div></div>
         <div class="stat"><div class="stat-num">${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</div><div class="stat-label">contact rate</div></div>
       </div>
+      <div id="lowbal"></div>
       ${upcoming.length ? `<div class="card upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(new Date(m.meet_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }))} ${esc(m.business)}</span>
         ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>`).join('')}</div>` : ''}
       ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
@@ -701,6 +704,7 @@ export async function settingsPage(app, user) {
   const formUrl = `${location.origin}/api/public/lead`;
   view.innerHTML = `
     <div class="page-head"><h1>Settings</h1></div>${settingsTabs('general')}
+    ${isAdmin ? '<div class="card" id="setbal"></div>' : ''}
     <div id="stripesetup"></div>
     <div class="card"><div class="card-head"><h2>Stripe payment links</h2>${pill(c.stripe)}</div>
       <p class="muted">The Stripe setup above fills these in for you. You can also paste each plan's payment link from Stripe (Payment Links, Copy link) to use your own. Work orders and the "Payment link" button use these, tagged with the lead, so payment marks the deal won and creates the client automatically.</p>
@@ -756,6 +760,7 @@ export async function settingsPage(app, user) {
       <p class="muted">Point the audit form on rightwaygrowth.com here and requests land in the pipeline as "Audit requested", at the top of the call queue.</p>
       <div class="copybox"><code>${esc(formUrl)}</code><button class="btn btn-ghost btn-sm" id="cpf">Copy</button></div></div>`;
   $('#cpf', view).addEventListener('click', () => copy(formUrl, 'Form address copied'));
+  if (isAdmin) import('./balances.js').then((m) => m.balancesCard($('#setbal', view)));
   stripeSetup($('#stripesetup', view), user);
   autoScanCard($('#autoscan', view), user);
   $$('[data-copy]', view).forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, 'Copied')));

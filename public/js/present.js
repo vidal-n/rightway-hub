@@ -4,6 +4,7 @@ import { findProblems, recommendPlan, industryInfo, rankText, buildScript, roi, 
 import { ninetyDayPlan, reviewTarget } from './fulfill.js';
 import { PLAN_INFO, SERVICE_LIST } from './plancopy.js';
 import { qrSvg } from './qr.js';
+import { parseListings, listingsLine, listingsTable } from './listings.js';
 
 const root = document.getElementById('root');
 const id = decodeURIComponent(location.hash.slice(1));
@@ -110,6 +111,13 @@ function slides() {
     `${s != null ? `Google scores the site ${s} out of 100 on mobile.${intel.speed.lcp ? ` The main content takes ${intel.speed.lcp} to show.` : ''}` : ''}\nMost of their customers search on a phone.\n${checks.filter(([ok]) => !ok).map(([, t]) => `Missing: ${t}`).join('\n')}`);
   }
 
+  const LS = parseListings(lead.listings);
+  const lc = LS?.counts || {};
+  add('listings', 'Inconsistencies', `<p class="kicker">Inconsistencies</p><h2>${LS ? `${(lc.mismatch || 0) + (lc.missing || 0)} of ${LS.results.length} directories Google checks have you wrong or missing` : 'Where Google double checks you'}</h2>
+    ${LS ? `<p class="lead" style="margin:-6px 0 18px">${esc(listingsLine(LS))}</p><div class="anim lstwrap">${listingsTable(LS, { max: 12, links: true })}</div>`
+      : `<p class="lead">Google checks your name, address and phone against dozens of sites before it trusts you. Let's see what it finds for ${esc(lead.business)}.</p><button class="btn" id="run-lst" style="margin-top:26px">Run the listing check now</button><div id="lst-out" class="lstwrap" style="margin-top:20px"></div>`}`,
+  `SCREEN: this slide. Point at each red row first, then the yellow ones.\n\n${LS ? listingsLine(LS) : 'Press "Run the listing check now" (about 3 cents, 15 directories). It takes about 10 seconds.'}\n\n${say('c_listings')}`);
+
   add('worth', 'What it is worth', `<p class="kicker">What it's worth</p><h2>What a few more jobs a month means for you</h2>
     <div class="calc"><div class="anim"><label>Average job value<input id="in-ticket" type="number" min="0" step="50" value="${state.ticket}"></label>
       <label>Extra jobs a month from Google<input id="in-jobs" type="number" min="0" step="1" value="${state.jobs}"></label></div>
@@ -142,13 +150,14 @@ function slides() {
 
   add('app', 'Your app', `<p class="kicker">You see everything</p><h2>Your own Rightway app</h2>
     <div class="cols" style="grid-template-columns:auto 1fr;gap:80px;align-items:center">
-      <div class="phone"><div class="scr"><div class="tile"><b>${intel?.grid ? `${top10Of(intel.grid)}/${intel.grid.points}` : '5/9'}</b>first page spots this month</div><div class="tile"><b>${L.reviews ?? 0}</b>Google reviews</div><div class="tile"><b>12</b>tasks done this month</div><div class="tile"><b>Send</b>a review request</div><div class="tile"><b>Post</b>a job photo</div></div></div>
+      <div class="phone live"><iframe id="appframe" title="The Rightway client app" src="about:blank" loading="lazy"></iframe><div class="phone-hint">Tap around: this is the real app</div></div>
       <ul class="feat anim"><li><b>Rankings map every month</b><span>See exactly where you show up, compared to your starting point.</span></li>
         <li><b>Every task we do, logged</b><span>Posts, pages, citations, fixes. Nothing hidden.</span></li>
         <li><b>Review requests from your phone</b><span>Text or email a link in seconds, plus a counter QR code.</span></li>
         <li><b>Snap a photo, we post it</b><span>We write the post for Google, Facebook, and Instagram.</span></li>
-        <li><b>A monthly results meeting</b><span>We go over the numbers and the next month's plan.</span></li></ul></div>`,
-  `This answers "how do I know you will do the work?" before they ask it.\n\n${say('c_story')}\n\nThen the trial close:\n${say('c_trial')}`);
+        <li><b>A monthly results meeting</b><span>We go over the numbers and the next month's plan.</span></li>
+        <li><b>Always getting better</b><span>We add new features every month. You get them free, automatically.</span></li></ul></div>`,
+  `SCREEN: this slide. The phone is the real client app (a sample business). Tap Home, then Rankings, then Reviews (send a request), then Post a photo, then Tasks. Say: "This is what you get on day one, and we keep adding to it."\n\nThis answers "how do I know you will do the work?" before they ask it.\n\n${say('c_story')}\n\nThen the trial close:\n${say('c_trial')}`);
 
   add('price', 'Investment', `<p class="kicker">Your investment</p><h2>Built for ${esc(lead.business)}, not a package</h2>
     <div class="invest anim">
@@ -166,6 +175,9 @@ function slides() {
     <div class="signbox" id="signbox"><div style="font:600 22px var(--display)">Scan to review and sign</div><div style="width:300px;height:300px;display:grid;place-items:center;color:#9AA8A2;text-align:center">Press "Send the work order" to make their link</div></div></div>`,
   `${say('c_post')}\n\nPress the button, have them scan the code or send the link.\n\n${say('c_onboard')}`, true);
 
+  // Same order as the clarity call script, so the screen cues line up slide by slide.
+  const ORDER = ['cover', 'agenda', 'pack', 'grid', 'vs', 'problems', 'listings', 'site', 'app', 'plan', 'days', 'reviews', 'worth', 'price', 'next'];
+  out.sort((a, b) => (ORDER.indexOf(a.key) + 1 || 99) - (ORDER.indexOf(b.key) + 1 || 99));
   return out;
 }
 
@@ -243,6 +255,7 @@ function go(n, broadcast = true) {
   const p = document.getElementById('prog'); if (p) p.style.width = `${((state.i + 1) / list.length) * 100}%`;
   if (broadcast) chan?.postMessage({ type: 'slide', i: state.i, plan: state.plan, ticket: state.ticket, jobs: state.jobs });
   if (!presenter && list[state.i]?.key === 'grid' && (prev !== state.i || !broadcast)) playGrid();
+  if (!presenter && list[state.i]?.key === 'app') loadApp();
 }
 
 function updateCalc() {
@@ -250,6 +263,26 @@ function updateCalc() {
   const set = (sel, t) => { const el = document.getElementById(sel); if (el) el.textContent = t; };
   set('out-month', money(r.monthly)); set('out-year', money(r.yearly));
   set('out-mult', r.multiple >= 1 ? `${r.multiple.toFixed(1)}x your monthly investment` : `Pays for itself at ${r.breakeven} jobs a month`);
+}
+
+// The app slide shows the real client app (the sample business), so the owner can tap through it during the meeting.
+let appSrc = null;
+async function loadApp() {
+  const f = document.getElementById('appframe');
+  if (!f) return;
+  if (!appSrc) {
+    try { const r = await api('/api/sample-client', { method: 'POST' }); appSrc = `/?as=${encodeURIComponent(r.id)}#/`; } catch { appSrc = ''; }
+  }
+  if (appSrc && f.getAttribute('src') !== appSrc) f.setAttribute('src', appSrc);
+}
+
+async function runListings(btn) {
+  btn.disabled = true; btn.textContent = 'Checking 15 directories...';
+  try {
+    const r = await api(`/api/leads/${encodeURIComponent(id)}/listings`, { method: 'POST' });
+    D.lead.listings = r;
+    renderDeck();
+  } catch (e) { btn.disabled = false; btn.textContent = e.message; }
 }
 
 // The investment slide starts blank; what the rep types becomes the quote the work order uses.
@@ -308,6 +341,7 @@ function wireDeck() {
   if (t) t.oninput = () => { state.ticket = Number(t.value) || 0; updateCalc(); };
   if (j) j.oninput = () => { state.jobs = Number(j.value) || 0; updateCalc(); };
   const wo = document.getElementById('send-wo'); if (wo) wo.onclick = () => sendWorkOrder(wo);
+  const rl = document.getElementById('run-lst'); if (rl) rl.onclick = () => runListings(rl);
   const rp = document.getElementById('greplay'); if (rp) rp.onclick = () => playGrid();
 }
 

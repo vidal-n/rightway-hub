@@ -587,6 +587,7 @@ import './onboarding.js';
 import './meetings.js';
 import './assistant.js';
 import './googlecheck.js';
+import './balances.js';
 import './voicemail.js';
 import './gbp.js';
 import './gmail.js';

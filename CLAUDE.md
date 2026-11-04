@@ -315,6 +315,24 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   views (last 30 vs previous 30, and in the monthly report), reviews list and reply, publish posts (`/api/posts/:id/gbp`, closes a post task with the live link)
   and photos from uploads, via signed public media links `/api/public/m/...`. Reply drafts (`/api/clients/:id/review-reply`, Claude or templates). Not tested
   against live Google: needs Google's Business Profile API access approval for the Cloud project. Q&A is not in the API.
+- Cold calling and booking ready (Nov 2026):
+  Balances (`src/balances.js`, `public/hub/balances.js`): DataForSEO (`appendix/user_data`) and Twilio (`Balance.json`) wallet balances,
+  5 min cache, low at $5 and $10 (`LOW`); `GET /api/balances` (owners, card on Dashboard and Settings with links for Anthropic, Stripe, Resend),
+  `GET /api/balances/status` (staff, low flags only, red banner on the dialer). `dfsMessage` in `src/dataforseo.js` turns an empty DataForSEO
+  wallet (40200/40210, payment words) into a plain "add funds" error.
+  Profile bubble (`profileButtons` in `public/hub/staff.js`): settings cog plus initials bubble top right (`.ptop` desktop, `.ptop-m` phone header)
+  with name, role, Settings, Alerts, Team, Customize menu, Log out. `modal()` closes on hashchange (a modal used to stay open across pages).
+  Prospect listing check: `POST /api/leads/:id/listings` (`leadAsClient` in `src/citations.js`) checks 15 directories with `judgeListing`, saved
+  on `leads.listings`; `public/js/listings.js` (pure: `listingsLine`, `listingsTable`). Shown in call prep ("Listings Google double checks") and
+  the presentation's `listings` slide (real wrong and missing directories with links, or a "Run the listing check now" button).
+  Presentation app slide is the live sample client app in a phone frame (`/?as=<sampleId>`, clickable) with an "Always getting better" line.
+  Scan tool `?lead=<id>` prefills the lead's keyword and business. Script v4: `SCRIPT_GROUPS` cold (k_* steps: open, small group frame, hook,
+  qualify, book, lock) and clarity (c_*), "(SCREEN: ...)" cues rendered as Screen lines in prep and presenter notes; prep opens the Clarity tab
+  when the lead is booked or a meeting is within 3 hours. Frame: small group of clients, quality over cookie cutter, why most fail at marketing.
+  Booking without Google: `/api/leads/:id/meeting` saves the appointment in the Hub (optional pasted Zoom or Meet link, email optional) and the
+  modal gives invite text to text, email or copy; `/book.html` offers slots from the booking settings minus Hub appointments (`hubBusy`, leads
+  `meet_at` and `meetings`), holds the time, and alerts the team to confirm and send the link (`confirm: true`). With Google it also checks
+  Google busy times and sends the Meet invite as before.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

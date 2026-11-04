@@ -69,7 +69,10 @@ test('problems, score, plan, and script come from the research', () => {
   assert.equal(recommendPlan(lead, INTEL).plan, 'authority');
   assert.equal(recommendPlan({ ...lead, industry: 'Salon' }, { ...INTEL, competitors: [{ title: 'Y', reviews: 30 }], listing: { ...INTEL.listing, claimed: true, rating: 4.6 }, grid: { ...INTEL.grid, top3: 6 }, rank: 2, speed: null, website: null }).plan, 'starter');
   const s = buildScript(lead, INTEL, { rep: 'Vidal' });
-  assert.match(s.steps[0].lines[0], /Hey Bob, this is Vidal with Rightway Growth/);
+  assert.match(s.steps[0].lines[0], /Hey Bob, this is Vidal with RightWay Growth/i);
+  assert.equal(s.steps[0].group, 'cold');
+  assert.match(s.steps.find((x) => x.id === 'k_frame').lines.join(' '), /small group of businesses/);
+  assert.ok(s.steps.filter((x) => x.group === 'clarity').some((x) => x.lines.some((l) => /^\(SCREEN:/.test(l))), 'clarity call has screen cues');
   assert.match(s.steps[0].lines[0], /Google clarity check on Summit Roofing/);
   const step = (sc, id) => sc.steps.find((x) => x.id === id).lines.join('\n');
   assert.match(step(s, 'c_scan'), /from \d+ spots around Summit Roofing/);
@@ -264,12 +267,20 @@ test('API: merge fills blanks and moves history', async () => {
   assert.equal(r.status, 404);
 });
 
-test('API: Google booking reports not ready without keys; settings save the script', async () => {
+test('API: booking works without Google (Hub times, team confirms); settings save the script', async () => {
   const t = setup();
   let r = await t.call('GET', '/api/public/book');
-  assert.equal(r.data.ready, false);
-  r = await t.call('POST', '/api/public/book', { name: 'X', email: 'x@y.com', start: Date.now() + 864e5 });
-  assert.equal(r.status, 503);
+  assert.equal(r.data.ready, true);
+  assert.equal(r.data.google, false);
+  assert.ok(r.data.slots.length > 10);
+  const slot = r.data.slots[0];
+  r = await t.call('POST', '/api/public/book', { name: 'Maria Lopez', business: 'Orale Mexican', email: 'maria@orale.com', phone: '9545550999', start: slot });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.confirm, true);
+  r = await t.call('GET', '/api/public/book');
+  assert.ok(!r.data.slots.includes(slot), 'a booked time is no longer offered');
+  r = await t.call('POST', '/api/public/book', { name: 'Late', email: 'l@y.com', start: slot });
+  assert.equal(r.status, 409);
   await owner(t);
   r = await t.call('GET', '/api/google/status');
   assert.equal(r.data.ready, false);
@@ -288,8 +299,13 @@ test('API: Google booking reports not ready without keys; settings save the scri
   assert.equal(r.data.objections[0][0], 'Busy');
   assert.equal(r.data.research_radius, 3);
   const lead = (await t.call('POST', '/api/leads', { business: 'Coastal', phone: '9545550300', state: 'FL' })).data.lead;
-  r = await t.call('POST', `/api/leads/${lead.id}/meeting`, { start: new Date(Date.now() + 864e5).toISOString(), email: 'a@b.com' });
-  assert.equal(r.status, 400);
+  r = await t.call('POST', `/api/leads/${lead.id}/meeting`, { start: new Date(Date.now() + 864e5).toISOString(), email: 'a@b.com', link: 'https://zoom.us/j/123' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.google, false);
+  assert.equal(r.data.meet, 'https://zoom.us/j/123');
+  r = await t.call('GET', `/api/leads/${lead.id}`);
+  assert.equal(r.data.lead.stage, 'audit_booked');
+  assert.ok(r.data.lead.meet_at);
 });
 
 test('API: Google connect redirects to consent and booking creates a Meet event', async () => {

@@ -233,9 +233,19 @@ route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body }) => {
   if (!start || start < now() - 3600e3) throw new HttpError('Pick a time in the future.');
   const minutes = Math.min(120, Math.max(15, Number(b.minutes) || 30));
   const email = b.email ? cleanEmail(b.email) : lead.email;
-  const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);
-  const owner = me?.google_token ? me : await bookingOwner(env, await bookingConfig(env));
-  if (!owner) throw new HttpError('Connect Google in Settings to send calendar invites with a Meet link.', 400);
+  const me = googleReady(env) ? await first(env, 'SELECT * FROM users WHERE id = ?', user.id) : null;
+  const owner = me?.google_token ? me : googleReady(env) ? await bookingOwner(env, await bookingConfig(env)) : null;
+  if (!owner) {
+    // No Google yet: still book it in the Hub with a pasted meeting link (Zoom, Meet, or a phone call), so booking never stops.
+    const link = /^https:\/\//.test(String(b.link || '').trim()) ? String(b.link).trim().slice(0, 400) : null;
+    const set = { stage: 'audit_booked', meet_at: start, meet_link: link, gcal_event_id: null, meet_by: user.id, next_action_at: start, next_action: 'Clarity call: open Present', updated_at: now() };
+    if (email && !lead.email) set.email = email;
+    Object.assign(set, rescore({ ...lead, ...set }));
+    const cols = Object.keys(set);
+    await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), lead.id);
+    await logActivity(env, { lead_id: lead.id, type: 'meeting', body: `Clarity call booked for ${new Date(start).toISOString()} (Hub only${link ? ', link added' : ''})`, by: user.id });
+    return json({ ok: true, meet: link, start, google: false, rep: String(user.name || '').split(' ')[0] });
+  }
   const m = await createMeeting(env, owner, {
     summary: `Rightway Growth consultation: ${lead.business}`, description: [AGENDA(lead.business), b.note ? `\nNote: ${String(b.note).slice(0, 500)}` : ''].join(''),
     start, minutes, attendees: [email], leadId: lead.id,
@@ -266,13 +276,24 @@ route('GET', '/api/calendar/upcoming', async ({ env, user }) => {
 });
 
 // ---------- public booking page ----------
+// Hub appointments as busy times, so the booking page works without Google (and never double books with Google).
+async function hubBusy(env, from, to, minutes) {
+  const leads = await all(env, 'SELECT meet_at FROM leads WHERE meet_at >= ? AND meet_at < ?', from - 3 * 3600e3, to).catch(() => []);
+  const mtgs = await all(env, 'SELECT start_at, minutes FROM meetings WHERE start_at >= ? AND start_at < ?', from - 3 * 3600e3, to).catch(() => []);
+  return [...leads.map((r) => [r.meet_at, r.meet_at + minutes * 60e3]), ...mtgs.map((r) => [r.start_at, r.start_at + (r.minutes || 30) * 60e3])];
+}
+
+async function bookingBusy(env, cfg, owner) {
+  const from = now(), to = from + (cfg.days + 1) * 864e5;
+  const g = owner ? await busyTimes(env, owner, from, to).catch(() => []) : [];
+  return [...g, ...await hubBusy(env, from, to, cfg.minutes)];
+}
+
 route('GET', '/api/public/book', async ({ env }) => {
   const cfg = await bookingConfig(env);
   const owner = googleReady(env) ? await bookingOwner(env, cfg) : null;
-  if (!owner) return json({ ready: false, title: cfg.title });
-  const from = now();
-  const busy = await busyTimes(env, owner, from, from + (cfg.days + 1) * 864e5).catch(() => []);
-  return json({ ready: true, title: cfg.title, minutes: cfg.minutes, tz: cfg.tz, slots: openSlots({ ...cfg, from, busy }) });
+  const busy = await bookingBusy(env, cfg, owner);
+  return json({ ready: true, google: Boolean(owner), title: cfg.title, minutes: cfg.minutes, tz: cfg.tz, slots: openSlots({ ...cfg, from: now(), busy }) });
 }, { public: true });
 
 route('POST', '/api/public/book', async ({ env, request, defer }) => {
@@ -280,9 +301,8 @@ route('POST', '/api/public/book', async ({ env, request, defer }) => {
   if (b['company-url']) return json({ ok: true });
   const cfg = await bookingConfig(env);
   const owner = googleReady(env) ? await bookingOwner(env, cfg) : null;
-  if (!owner) throw new HttpError('Online booking is not set up yet. Call us instead.', 503);
   const start = Number(b.start);
-  const busy = await busyTimes(env, owner, now(), now() + (cfg.days + 1) * 864e5);
+  const busy = await bookingBusy(env, cfg, owner);
   if (!openSlots({ ...cfg, from: now(), busy }).includes(start)) throw new HttpError('That time was just taken. Pick another one.', 409);
   const email = cleanEmail(b.email);
   if (!email) throw new HttpError('Add your email so we can send the invite.');
@@ -294,13 +314,15 @@ route('POST', '/api/public/book', async ({ env, request, defer }) => {
   let leadId = lead?.id;
   if (!leadId) leadId = await insertLead(env, { ...data, stage: 'audit_booked' }, null);
   const full = await first(env, 'SELECT * FROM leads WHERE id = ?', leadId);
-  const m = await createMeeting(env, owner, { summary: `Rightway Growth consultation: ${full.business}`, description: AGENDA(full.business), start, minutes: cfg.minutes, attendees: [email], leadId });
+  // Without Google the time is held in the Hub and the team sends the link (owners get an alert to confirm).
+  const m = owner ? await createMeeting(env, owner, { summary: `Rightway Growth consultation: ${full.business}`, description: AGENDA(full.business), start, minutes: cfg.minutes, attendees: [email], leadId }) : { meet: null, id: null };
   const set = { stage: 'audit_booked', meet_at: start, meet_link: m.meet, gcal_event_id: m.id, meet_by: null, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
   if (!full.email) set.email = email;
   Object.assign(set, rescore({ ...full, ...set, source: full.source || 'booking' }));
   const cols = Object.keys(set);
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), leadId);
   await logActivity(env, { lead_id: leadId, type: 'meeting', body: `Booked online for ${new Date(start).toISOString()}` });
-  await notifyLater({ env, defer }, { to: 'staff', kind: 'lead', title: `New booking: ${full.business}`, body: `${new Date(start).toLocaleString('en-US', { timeZone: cfg.tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`, url: '/#/pipeline' });
-  return json({ ok: true, start, meet: m.meet, minutes: cfg.minutes });
+  const when = new Date(start).toLocaleString('en-US', { timeZone: cfg.tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  await notifyLater({ env, defer }, { to: 'staff', kind: 'lead', title: `New booking: ${full.business}`, body: owner ? when : `${when}. Google is not connected: confirm with them and send the meeting link.`, url: `/#/pipeline/${leadId}` });
+  return json({ ok: true, start, meet: m.meet, minutes: cfg.minutes, confirm: !owner });
 }, { public: true });

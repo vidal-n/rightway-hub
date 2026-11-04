@@ -330,9 +330,16 @@ export function quoteFor(lead = {}, intel = null, saved = null) {
 // Plain words to the owner: "Google", "the map", "the first page", "calls". Never "SEO", "NAP", "citations" or "algorithm".
 // Each step is one or more lines; lines that start with "Or:" are alternatives, "(" lines are coaching notes for the rep.
 // Never claim a scan when no research ran: the {..._reason} and {scan_...} lines change on their own.
-export const SCRIPT_VERSION = 3;
+export const SCRIPT_VERSION = 4;
 
+// Two scripts, one story. Cold call: earn 30 seconds, frame us as a small group agency, hook with the scan, qualify, book the
+// clarity call (or start it right there). Clarity call: the screen share that ends in a signed work order.
+export const SCRIPT_GROUPS = [
+  ['cold', 'Cold call', ['k_open', 'k_frame', 'k_hook', 'k_qualify', 'k_book', 'k_lock', 'voicemail', 'gatekeeper']],
+  ['clarity', 'Clarity call', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
+];
 export const SCRIPT_KEYS = [
+  ['k_open', 'Cold: opener'], ['k_frame', 'Cold: who we are'], ['k_hook', 'Cold: the hook'], ['k_qualify', 'Cold: qualify'], ['k_book', 'Cold: book the clarity call'], ['k_lock', 'Cold: lock it in'],
   ['c_open', 'Opener: the Google clarity call'], ['c_frame', 'Set the frame'], ['c_discovery', 'Discovery (write it down)'],
   ['c_verify', 'Verify the business'], ['c_scan', 'The clarity scan'], ['c_live', 'Search together'], ['c_why', 'Why they are up there (slow down)'],
   ['c_listings', 'Inconsistencies'], ['c_story', 'Why Rightway'], ['c_program', 'How it works'], ['c_process', 'What we need from you'],
@@ -341,6 +348,40 @@ export const SCRIPT_KEYS = [
 ];
 
 export const DEFAULT_SCRIPT = {
+  k_open: [
+    "Hi, is this {first_or_owner}? ... Hey {first}, this is {rep} with RightWay Growth. I know I'm catching you in the middle of your day, so I'll be quick. {opener_reason} Do you have 30 seconds?",
+    "Or: Hey {first}, {rep} with RightWay Growth. Honest answer, this is a cold call. Would it be a terrible idea if I took 30 seconds to tell you why I called, and you tell me if it's worth another minute?",
+    '(Smile when you dial. Slow, low, certain. Stop talking after the question.)',
+  ].join('\n'),
+  k_frame: [
+    "Real quick on who we are. We're a local marketing company out of Hollywood, and we only take on a small group of businesses at a time. That way we can do quality work, instead of the cookie cutter, one size fits all stuff.",
+    "Honestly, that's why most businesses fail at marketing. They get dropped into a package that was never built for them, and nobody looks at their actual situation. So I'm not calling everybody. I'm calling a few {industry} businesses in {city} where I see a clear gap.",
+  ].join('\n'),
+  k_hook: [
+    '{scan_line}',
+    '{hook_impact}',
+    'Quick question: when a new customer finds you now, is it mostly referrals, or do they find you on Google?',
+    '(Let them talk. Write down what they say. You will use it on the clarity call.)',
+  ].join('\n'),
+  k_qualify: [
+    "Before I take more of your time, three quick ones so I know it's even worth it.",
+    "You're the one who makes the marketing decisions there, right? (If not: who is, and can we get them on the call?)",
+    "Are you looking to take on more customers right now, or are you booked solid? (Booked solid: is it the work you want, or would you take more of the bigger jobs?)",
+    "Ballpark, what's a typical job worth to you? (Starting guess for {industry}: {ticket}.)",
+    '(Owner, wants more work, job worth it: book it. Not the owner: get the name and a time. Truly not a fit: thank them and move on.)',
+  ].join('\n'),
+  k_book: [
+    "Here's what I'd suggest. Let me do a quick Google clarity call with you: 15 minutes on a screen share. I'll show you the scan street by street, who's getting your calls and why, and exactly what I'd fix. If it's a fit, great. If not, you keep the scan. Fair?",
+    'Do you have 15 minutes right now? Or is {slot1} or {slot2} better?',
+    '(IF RIGHT NOW: go straight to the clarity call, Set the frame. IF LATER: book it from the lead with Book meeting, so they get the Google Meet invite.)',
+  ].join('\n'),
+  k_lock: [
+    "Perfect. I'm sending a calendar invite with the screen share link to {email_or_ask}. What's the best email?",
+    "Is there anyone else who makes marketing decisions with you? Let's get them on the same call so they see the same map.",
+    'Is it OK if I text you a reminder and the link? (If yes, tap "They said yes to texts".)',
+    'Before we talk, search "{keyword}" from your phone and see who comes up. We\'ll go over it together.',
+  ].join('\n'),
+
   c_open: [
     "Hi, is this {first_or_owner}? ... Hey {first}, this is {rep} with Rightway Growth. {opener_reason} How's everything going today?",
     "(Let them answer. Smile. Then:) Good. So this is a quick Google clarity call. I'm not here to sell you a website or a magic button. I want to show you exactly what a customer sees when they look for you on Google, and where the inconsistencies are. Fair?",
@@ -350,6 +391,7 @@ export const DEFAULT_SCRIPT = {
     "I just want to confirm, is {email_or_ask} still the best email for you? Perfect. I'm sending you a link to my screen right now. That way you see the exact same thing I see, and nothing gets lost in translation, OK?",
     "(Send the Meet link from the lead. Then:) It's coming from Rightway Growth. Let me know when you see it. Since we're on the phone, you don't need video or audio, just the screen.",
     "Here's what we'll do today. First, I'll confirm your business info. Then I'll show you {frame_scan}, and we'll do a couple of searches together, live. But before I even start, I want to take a minute to get to know you and the business, if that's OK.",
+      '(SCREEN: share your screen. Presentation, cover slide. Then the agenda slide, and leave it up while you ask the discovery questions.)',
   ].join('\n'),
   c_discovery: [
     '(Ask while they connect. Write every answer down. Make it conversational: you are the first person who cared to know.)',
@@ -371,12 +413,14 @@ export const DEFAULT_SCRIPT = {
     "Let me quickly verify your information. I have {business}{city_suffix}. Is that the exact name customers know you by? Address and service area? Hours? And the best phone number for customers?",
     "Now, when a customer needs you, what would they search? (Write their keywords down. Then:) And {keyword}, is that one of your money searches?",
     '(Find what gets them excited. Ask more questions. The keywords they pick are the keywords you scan and pitch on.)',
+      '(SCREEN: the "How customers find you" slide: their listing next to the top 3. Or open Google Maps on their listing.)',
   ].join('\n'),
   c_scan: [
     "OK, so we're all set to keep moving. {scan_intro} {scan_line}",
     '{scan_spread}',
     "This is the part most owners never see. Google doesn't show the same results to everybody. It changes block by block, depending on where your customer is standing. So you can look great at your shop and be invisible two miles down the road.",
     '{scan_meaning}',
+      '(SCREEN: "The scan" slide. Press Replay so they watch every spot. Point at their address first, then the farthest red square. Other money searches: open the Scan tool from the lead and run them live.)',
   ].join('\n'),
   c_live: [
     "Now, we can reference the scan, but I also want to jump over to Google with these searches and see pretty much what a customer sees.",
@@ -385,6 +429,7 @@ export const DEFAULT_SCRIPT = {
     "IF THEY ARE ON THE FIRST PAGE: OK, perfect, there you are, right where you want to be. Now let's move out into your service area. (Search an area the scan shows them weak.) See what happens? A few miles out and you drop off. (No pause.) Again, these are the guys getting those calls first, and it only gets worse the further out we go.",
     "And you know, conservatively, let's say there are about 4 or 5 people searching for this every single week. If just half of them go with {top_name_or_them}, that's like 2 or 3 jobs every single week going to the competitor. And that's just in your zip code. I wouldn't even want to guess what that number looks like further out.",
     '(Try to get them to give you the numbers instead of telling them. Get them to feel the pain of not showing up.)',
+      '(SCREEN: new tab, google.com. Search the keyword the way a customer would, then click Maps. Point at the top 3. Then back to the presentation, "You vs the leaders" slide: reviews, rating and category side by side.)',
   ].join('\n'),
   c_why: [
     '(SLOW DOWN. Stern, steady tone.)',
@@ -392,19 +437,22 @@ export const DEFAULT_SCRIPT = {
     "When someone searches {keyword}, Google looks at three things: how relevant your business is to that search, how close you are to the person searching, and how much Google trusts you. Trust comes from your Google profile being complete and active, your reviews, a website that backs it up, and your business information matching everywhere it shows up online.",
     "When those pieces don't line up, Google gets less sure about you, and it plays it safe by showing someone else. Does that make sense?",
     '{problems}',
+      '(SCREEN: "What is holding you back" slide. One row at a time, plain words.)',
   ].join('\n'),
   c_listings: [
     "Here's what I mean by inconsistencies. Google checks your business against dozens of other sites: Apple Maps, Bing, Yelp, Facebook, the BBB, and a lot of directories you've probably never heard of. Most people never search on those. But Google uses them to double check you.",
     "If one says one phone number, another says an old address, and another has the name a little different, Google flags it. That doesn't fix itself with time either. Bad information gets copied from site to site.",
     "So the first thing we do is clean it up and make it match everywhere, so Google stops doubting you. The way I want you to see this: the more consistent references Google sees, the more it trusts you, and that's what moves you up and brings in more business. Does that make sense? PERFECT.",
+      '(SCREEN: "Inconsistencies" slide: their real listing check. Point at each red row, then the yellow ones. Click a row to open that directory and show the wrong phone or address. Not checked yet? Press Run the listing check now.)',
   ].join('\n'),
   c_story: [
     "Right, and that's pretty much why we're having this conversation. Whenever a business owner has inconsistencies in where they show up like this, we want to point them out, and of course give you a solution.",
     "(Slow down. This is the most personal part of the call.) Can I be straight with you for a second, {first}?",
     "Before I started RightWay, I worked inside marketing companies. I saw how this industry treats business owners. Year long contracts. Reports nobody can read. Promises of number one on Google. And when it didn't work, the owner was stuck paying anyway.",
     "I started RightWay Growth to do it the right way. You see every single task we do in your own app. You see the map every month. Nothing hidden. And after the first three months, you can leave any time with 30 days notice.",
-    "And there's no package here. Every business is different, so I only put together what yours actually needs to get where you want to go.",
+    "And that's why we only work with a small group of clients at a time. Quality work, not a cookie cutter, one size fits all package. That's honestly why most businesses fail at marketing: they get a package that was never built for them. Every business is different, so I only put together what yours actually needs to get where you want to go.",
     "I want to keep you because your phone is ringing, not because a contract says you can't leave. That's the standard I hold us to.",
+      '(SCREEN: "Your own Rightway app" slide. Tap through the live app: Home, Rankings, Reviews, Post a photo. Say we keep adding features every month.)',
   ].join('\n'),
   c_program: [
     "So let me explain what we actually do, because it's not as easy as typing your info into a few websites. If it were, I'd be out of a job.",
@@ -412,6 +460,7 @@ export const DEFAULT_SCRIPT = {
     "After that it's steady work every month: posts on your profile, new photos, reviews coming in and getting answered, pages on your website for the services and cities you want, and local links that back you up.",
     "We start close to home and build a strong foundation, then we push out into the rest of your service area month after month. This is a marathon, not a sprint. We do it by Google's rules, so we never put your profile at risk.",
     "And every month you get a new map just like this one, so you can see exactly where you're climbing. Does that make sense?",
+      '(SCREEN: "What gets you results" slide: only the services they need. Then "What happens after you say yes".)',
   ].join('\n'),
   c_process: [
     "Here's how it works on your end. It's simple, but I need you involved.",
@@ -420,10 +469,12 @@ export const DEFAULT_SCRIPT = {
     "Three: when you finish a job, send the customer your review link. Takes five seconds from your phone with the app we give you.",
     "Four: we meet once a month for 15 to 30 minutes on a screen share like today. I show you the work, the map, and what's next. We can do all the work behind the scenes, but without you as the owner, it goes nowhere fast.",
     "Can you do those four things?",
+      '(SCREEN: stay on "What happens after you say yes".)',
   ].join('\n'),
   c_trial: [
     "So after seeing where you are and doing a few searches, I'd say you're a strong fit for this. How do you feel about it? Do you think it would help you grow?",
     '(Let them answer. Then:) OK, great. So you can see it helps, and really it just comes down to cost at the end of the day, right?',
+      '(SCREEN: "What a few more jobs a month means for you" slide. Type their job value and how many extra jobs a month.)',
   ].join('\n'),
   c_price: [
     "Perfect. Based on everything you told me, here's what gets you where you want to go: {services_list}. (Walk each one and why it gets them onto the first page in more of their area.)",
@@ -431,6 +482,7 @@ export const DEFAULT_SCRIPT = {
     '{price_anchor}',
     "For what you need, the buildout is {setup} and the monthly is {price}. Total today is {today_total}, and your next payment isn't for 30 days.",
     "And look, you told me a typical job is worth about {ticket}. {breakeven_jobs} a month pays for the whole thing. Everything after that is yours. Honestly, I think not doing this costs you a lot more than doing it, just from the calls you're already missing in your own backyard.",
+      '(SCREEN: "Your investment" slide. The amounts start blank: type the buildout and monthly you just decided. They save when you go to the next slide.)',
   ].join('\n'),
   c_close: [
     "So after looking at everything and hearing what your goals are, from where I'm sitting this is the right way to get you there. How do you feel about it? Wouldn't you agree?",
@@ -444,12 +496,14 @@ export const DEFAULT_SCRIPT = {
     "(When it shows Signed:) Awesome, I see it signed. It takes you straight to the secure payment page by Stripe. That's the same card we use each month, and you can update it any time from your app or by asking your account manager.",
     '(When the payment goes through, the Hub marks the deal won and makes the client.) Payment went through. You will have a receipt in your email.',
     "Now remember, three months is the minimum because that's how long the buildout takes to really show. After that it's month to month. This is a marathon, not a sprint, so set your expectations for steady progress, not overnight. OK?",
+      '(SCREEN: "Start this week" slide. Press Send the work order: they scan the QR code or you text or email the link.)',
   ].join('\n'),
   c_onboard: [
     "Last thing: let's book your onboarding call. This is THE most important appointment in the whole process. It's where we get access to your Google profile and website and set everything up. It takes 30 to 45 minutes, and I'd really recommend being at a computer for it. Do you prefer mornings or afternoons?",
     "It takes us a few business days to get everything organized before that first call, so you can hit the ground running.",
     "(After booking:) You're booked for [day and time]. Here's your homework before then. One, read the confirmation email, it walks you through the first call. Two, put your best work photos in one folder so we can add them right away. Three, sometimes Google asks a business to verify again. If that happens we'll need proof the business is yours, like your business license or LLC papers and a utility bill in the business name. Have them handy. It's the difference between fixing it in 1 or 2 days instead of 1 or 2 weeks.",
     "Alright {first}, you're all set. Anything else I can help with? Thank you for the vote of confidence. We're going to do great work for you, and you're going to see it.",
+      '(SCREEN: stop sharing. Book the onboarding call from the client page, Meetings tab.)',
   ].join('\n'),
   c_book: [
     "(If they can't do the screen share right now.) No problem at all. The clarity scan really needs your eyes on it, it's 15 minutes. Does {slot1} or {slot2} work better for a quick consultation?",
@@ -469,6 +523,9 @@ export const DEFAULT_SCRIPT = {
 
 // [objection, answer]. Before price, after price, then the closes. Write their discovery answers into these.
 export const DEFAULT_OBJECTIONS = [
+  ['Cold: Not interested', "No problem, I appreciate you being straight with me. Is it that more customers from Google isn't a priority right now, or that you've been burned by marketing people before? (Listen. If burned:) That's exactly why we keep it to a small group and show you everything. Would it be a bad idea if I just sent you the scan so you have it?"],
+  ["Cold: We're booked out", "That's the best problem to have. Is it the work you want, though, or would you take more of the bigger jobs if they came in? (Listen.) The clarity call shows you who's getting those bigger jobs in your area right now. 15 minutes. Does {slot1} or {slot2} work?"],
+  ['Cold: What is this about?', "Fair question. I ran a Google clarity check on {business} and found some inconsistencies in where you show up for {keyword}. I'd like to show you on a quick screen share. It's 15 minutes, and you keep the scan either way."],
   ["I don't need another sales pitch", "Look, I completely understand. As a business owner you probably get more calls than you can count, all trying to sell you something you don't need. This is a clarity call. What I'm showing you is a problem that's already costing {business} calls every single month. If there's a way to fix it and get those calls back, it's at least worth a look, right?"],
   ["I know where this is going, I'm not buying anything today", "I hear you, and if I were in your shoes I'd be burnt out too. I'm not here to sell you a widget or a new website. I want to show you what's costing you calls and how it gets fixed, so at least you understand the problem AND the solution. If it all makes sense and it doesn't cost an arm and a leg, we'll probably end up working together. Fair?"],
   ['I already have someone handling my Google', "Good, that means you take it seriously. Quick question: do they show you a map like this every month? Right now you're on the first page in {top10_of_points} spots around you. Is that where you expected to be? (Let them answer.) I'm not going to talk badly about anyone. I'll just show you how we're different, and you decide. (Back to script.)"],
@@ -669,7 +726,8 @@ export function buildScript(lead, intel, ctx = {}, custom = {}) {
   const v = scriptVars(lead, intel, { ...ctx, number: ctx.number || custom.number });
   return {
     vars: v,
-    steps: SCRIPT_KEYS.map(([id, title]) => ({ id, title, lines: asLines(S[id]).map((q) => fill(q, v)) })),
+    steps: SCRIPT_KEYS.map(([id, title]) => ({ id, title: title.replace(/^Cold: /, ''), group: SCRIPT_GROUPS.find((g) => g[2].includes(id))?.[0] || 'clarity', lines: asLines(S[id]).map((q) => fill(q, v)) })),
+    groups: SCRIPT_GROUPS.map(([key, name]) => ({ key, name })),
     objections: objections.map(([q, a]) => ({ q, a: fill(a, v) })),
     playbook: PLAYBOOK.map(([name, from, use]) => ({ name, from, use })),
   };

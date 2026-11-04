@@ -903,7 +903,25 @@ async function hubSession() {
     const s = await hubApi('/api/auth/state');
     if (s.user && (s.user.role === 'admin' || s.user.role === 'team')) state.staff = s.user;
   } catch { /* hub not connected yet */ }
-  const clientId = new URLSearchParams(location.search).get('client');
+  const qs = new URLSearchParams(location.search);
+  const clientId = qs.get('client');
+  const leadId = qs.get('lead');
+  // Opened from a lead during a call: their business and their money search are ready, one click to scan.
+  if (state.staff && leadId && !clientId) {
+    try {
+      const { lead: l, intel } = await hubApi(`/api/leads/${encodeURIComponent(leadId)}`);
+      if (intel?.keyword) { $('#scan-keyword').value = [intel.keyword, ...(qs.get('more') || '').split(',').filter(Boolean)].slice(0, MAX_KEYWORDS).join(', '); updateCost(); }
+      const L = intel?.listing;
+      if (L && typeof L.lat === 'number' && typeof L.lng === 'number') {
+        pickBusiness({ title: L.title || l.business, cid: L.cid || '', place_id: L.place_id || '', lat: L.lat, lng: L.lng, address: L.address || '', category: L.category || '',
+          url: L.url || l.website || '', domain: '', phone: L.phone || l.phone || '', additional_categories: [], rating: L.rating ?? null, reviews: L.reviews ?? null, claimed: L.claimed ?? null, photos: L.photos ?? null, hours: Boolean(L.hours) });
+      } else {
+        $('#find-name').value = l.business;
+        setStatus($('#find-status'), `Find ${l.business} on Google, then run the scan.`);
+      }
+    } catch (err) { setStatus($('#find-status'), err.message, true); }
+    return;
+  }
   if (!state.staff || !clientId) return;
   try {
     const { client: c } = await hubApi(`/api/clients/${encodeURIComponent(clientId)}`);

@@ -109,7 +109,7 @@ test('searchBusinesses maps fields and DataForSEO errors surface clearly', async
   assert.equal(out.results[0].reviews, 101);
   assert.equal(out.results[0].hours, true);
   const broke = async () => new Response(JSON.stringify({ status_code: 20000, tasks: [{ status_code: 40200, status_message: 'Payment Required.' }] }), { status: 200 });
-  await assert.rejects(searchBusinesses(env, { name: 'Biz', location: 'x' }, broke), /Payment Required/);
+  await assert.rejects(searchBusinesses(env, { name: 'Biz', location: 'x' }, broke), /balance is empty/);
 });
 
 test('slim handles missing fields', () => {

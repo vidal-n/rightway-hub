@@ -11,6 +11,13 @@ const LOCAL = `${BASE}/local_finder/live/advanced`;
 const ORGANIC = `${BASE}/organic/live/advanced`;
 const US = 2840;
 
+// DataForSEO errors in plain words. 40200 and "payment required" mean the balance ran out, the usual reason a scan fails.
+export function dfsMessage(code, msg = '') {
+  if (code === 40200 || code === 40210 || /payment|insufficient|balance|funds/i.test(msg)) return 'DataForSEO balance is empty, so the scan could not run. Add funds at app.dataforseo.com (Billing), then try again. Owners see the balance on the Dashboard.';
+  if (code === 40100 || code === 40101) return 'DataForSEO rejected the login. Check DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Cloudflare.';
+  return `DataForSEO: ${msg || 'no result'}`;
+}
+
 async function liveSerp(env, endpoint, task, fetchImpl = fetch) {
   const auth = btoa(`${env.DATAFORSEO_LOGIN}:${env.DATAFORSEO_PASSWORD}`);
   let res;
@@ -26,12 +33,9 @@ async function liveSerp(env, endpoint, task, fetchImpl = fetch) {
   const data = await res.json().catch(() => null);
   if (res.status === 401) throw new HttpError('DataForSEO rejected the login. Check DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD.', 502);
   if (!res.ok || !data) throw new HttpError(`DataForSEO error (HTTP ${res.status}).`, 502);
-  if (data.status_code !== 20000) throw new HttpError(`DataForSEO: ${data.status_message}`, 502);
+  if (data.status_code !== 20000) throw new HttpError(dfsMessage(data.status_code, data.status_message), 502);
   const t = data.tasks?.[0];
-  if (!t || t.status_code !== 20000) {
-    // 40200 = payment required (balance empty)
-    throw new HttpError(`DataForSEO: ${t?.status_message || 'no result'}`, 502);
-  }
+  if (!t || t.status_code !== 20000) throw new HttpError(dfsMessage(t?.status_code, t?.status_message), 502);
   const r = t.result?.[0] || {};
   return { items: Array.isArray(r.items) ? r.items : [], types: r.item_types || [], cost: Number(t.cost ?? data.cost ?? 0) };
 }

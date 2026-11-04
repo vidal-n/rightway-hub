@@ -106,6 +106,8 @@ export function modal(html, { onClose } = {}) {
   const close = () => { if (closed) return; closed = true; bg.remove(); onClose?.(); };
   bg.addEventListener('click', (e) => { if (e.target === bg || e.target.closest('[data-close]')) close(); });
   document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } });
+  // Going to another page closes the panel, so it never sits on top of the next page.
+  window.addEventListener('hashchange', close, { once: true });
   document.body.appendChild(bg);
   return { el: bg.firstElementChild, close };
 }
@@ -161,6 +163,7 @@ export const icon = {
   next: P('<path d="M9 5l7 7-7 7"/>'),
   reply: P('<path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 016 6v1"/>'),
   stop: P('<rect x="6" y="6" width="12" height="12" rx="2"/>'),
+  cog: P('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/>'),
   bell: P('<path d="M6 16V11a6 6 0 0112 0v5l2 2H4z"/><path d="M10 20a2 2 0 004 0"/>'),
   meet: P('<rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10l6-3v10l-6-3"/>'),
   key: P('<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>'),
