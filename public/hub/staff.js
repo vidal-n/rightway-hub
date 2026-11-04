@@ -10,7 +10,7 @@ import { staffShell, initials } from './shell.js';
 export { staffShell, initials };
 
 // Settings holds the team too.
-export const settingsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a><a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Team</a></nav>`;
+export const settingsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a><a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Agents</a></nav>`;
 
 export const clientsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/clients" class="${active === 'all' ? 'is-active' : ''}">All clients</a><a href="#/clients/view" class="${active === 'view' ? 'is-active' : ''}">Client view</a></nav>`;
 
@@ -352,17 +352,17 @@ export async function teamPage(app, user) {
   let users;
   try { ({ users } = await api('/api/team')); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   view.innerHTML = `
-    <div class="page-head"><div><p class="eyebrow">Settings</p><h1>Team</h1></div></div>${settingsTabs('team')}
-    ${user.role === 'admin' ? `<div class="card"><h2>Invite a teammate</h2>
+    <div class="page-head"><div><p class="eyebrow">Settings</p><h1>Agents</h1></div></div>${settingsTabs('team')}
+    ${user.role === 'admin' ? `<div class="card"><h2>Invite an agent or owner</h2>
       <form id="tinv" class="form-grid"><label class="field"><span>Name</span><input name="name" required></label><label class="field"><span>Email</span><input name="email" type="email" required></label>
-      <label class="field"><span>Role</span><select name="role"><option value="admin">Owner (full access)</option><option value="team">Team (no team settings)</option></select></label>
+      <label class="field"><span>Role</span><select name="role"><option value="admin">Owner (full access)</option><option value="team">Agent (own calls, no owner settings)</option></select></label>
       <div class="span-all row end"><button class="btn btn-primary" type="submit">Create invite link</button></div></form><div id="tout"></div></div>` : ''}
-    <div class="card"><h2>Rightway team</h2><ul class="list">${users.map((u) => `<li class="item"><span class="badge ${u.active ? '' : 'warn'}">${u.role === 'admin' ? 'Owner' : 'Team'}</span>
-      <div><div class="item-title">${esc(u.name || u.email)}${u.id === user.id ? ' (you)' : ''}</div><div class="item-sub">${esc(u.email)}${u.active ? '' : ' · invite pending'}</div></div>${user.role === 'admin' && u.id !== user.id ? `<button type="button" class="btn btn-ghost btn-sm" data-role="${esc(u.id)}" data-to="${u.role === 'admin' ? 'team' : 'admin'}">${u.role === 'admin' ? 'Make team' : 'Make owner'}</button>` : '<span></span>'}</li>`).join('')}</ul>
-      <p class="small muted" style="margin:12px 0 0">Owners can listen to live calls, hear every recording, change phone settings and manage the team. Team members only see their own calls.</p></div>`;
+    <div class="card"><h2>Owners and agents</h2><ul class="list">${users.map((u) => `<li class="item"><span class="badge ${u.active ? '' : 'warn'}">${u.role === 'admin' ? 'Owner' : 'Agent'}</span>
+      <div><div class="item-title">${esc(u.name || u.email)}${u.id === user.id ? ' (you)' : ''}</div><div class="item-sub">${esc(u.email)}${u.active ? '' : ' · invite pending'}</div></div>${user.role === 'admin' && u.id !== user.id ? `<button type="button" class="btn btn-ghost btn-sm" data-role="${esc(u.id)}" data-to="${u.role === 'admin' ? 'team' : 'admin'}">${u.role === 'admin' ? 'Make agent' : 'Make owner'}</button>` : '<span></span>'}</li>`).join('')}</ul>
+      <p class="small muted" style="margin:12px 0 0">Owners can listen to agents' calls, hear agents' recordings, change phone settings and manage agents. Owners never see each other's personal line, recordings or vault. Agents only see their own calls and numbers.</p></div>`;
   $$('[data-role]', view).forEach((b) => b.addEventListener('click', async () => {
     if (b.dataset.to === 'admin' && !b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Click again to confirm'; setTimeout(() => { if (document.body.contains(b)) { delete b.dataset.sure; b.textContent = 'Make owner'; } }, 4000); return; }
-    try { await api(`/api/users/${b.dataset.role}/role`, { method: 'PUT', body: { role: b.dataset.to } }); toast(b.dataset.to === 'admin' ? 'Now an owner' : 'Now team'); teamPage(app, user); }
+    try { await api(`/api/users/${b.dataset.role}/role`, { method: 'PUT', body: { role: b.dataset.to } }); toast(b.dataset.to === 'admin' ? 'Now an owner' : 'Now an agent'); teamPage(app, user); }
     catch (err) { toast(err.message, true); }
   }));
   $('#tinv', view)?.addEventListener('submit', async (e) => {

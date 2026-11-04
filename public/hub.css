@@ -1405,3 +1405,9 @@ a.tr-card:hover { border-color: var(--mint-strong); transform: translateY(-1px);
 @media (max-width: 900px) { .aib { bottom: calc(84px + env(safe-area-inset-bottom)); right: 14px; width: 50px; height: 50px; } }
 .tbl.sheet th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .tbl.sheet td { white-space: nowrap; font-size: 13px; padding: 7px 10px; }
+
+/* Pages that refresh themselves (Agents, dialer, dashboard) redraw without replaying the entrance animation, so nothing blinks. */
+body.settled .card, body.settled .stat, body.settled .item, body.settled .post, body.settled .lead-card, body.settled .ag, body.settled .client-card, body.settled .tr-card { animation: none !important; }
+.mtbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; z-index: 115; background: #E8A33D; color: #0F1B17; font: 600 13.5px var(--body); padding: 10px 14px; border-radius: 12px; box-shadow: 0 12px 30px rgba(6, 14, 11, .3); display: flex; gap: 10px; align-items: center; }
+.mtbar button { border: 0; background: #0F1B17; color: #fff; border-radius: 8px; padding: 6px 10px; font: 600 13px var(--body); cursor: pointer; }
+@media (max-width: 900px) { .mtbar { bottom: calc(84px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); } }

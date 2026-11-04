@@ -77,6 +77,10 @@ export function staffShell(app, user, active, inner) {
   active = activeKey(active);
   startPresence(user);
   document.body.classList.add('hubbg');
+  // Entrance animation plays once per page; refreshes after that redraw quietly.
+  document.body.classList.remove('settled');
+  clearTimeout(window.__rwSettle);
+  window.__rwSettle = setTimeout(() => document.body.classList.add('settled'), 900);
   const item = NAV.find((n) => n[0] === active);
   const grp = GROUPS.find((g) => g[0] === groupOf(active));
   app.innerHTML = `
@@ -131,6 +135,7 @@ export function staffShell(app, user, active, inner) {
   $$('[data-stpill]', app).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); statusMenu(b); }));
   $$('[data-pbub]', app).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); profileMenu(b, user, logout); }));
   paintWallet(app);
+  if (user.role === 'admin' && !window.__rwMt) { window.__rwMt = 1; api('/api/auth/state').then((st) => paintMaint(st.maintenance?.on)).catch(() => {}); }
   // Ask Claude, owners only for now: bottom right on every page. On a client page it knows that client.
   if (user.role === 'admin' && !document.querySelector('.aib')) {
     const b = document.createElement('button');
@@ -164,12 +169,12 @@ function profileMenu(b, user, logout) {
   m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
   const tone = statusTone(me.onCall ? 'on_call' : me.status || 'available');
   m.innerHTML = `<div class="pmenu-who"><span class="pbub big">${esc(initials(user))}</span><div><b>${esc(user.name || 'You')}</b><div class="small muted">${esc(user.email || '')}</div>
-      <span class="badge gray"><i class="dot ${tone}"></i>${esc(statusLabel(me.onCall ? 'on_call' : me.status || 'available'))} · ${user.role === 'admin' ? 'Owner' : 'Team'}</span></div></div>
+      <span class="badge gray"><i class="dot ${tone}"></i>${esc(statusLabel(me.onCall ? 'on_call' : me.status || 'available'))} · ${user.role === 'admin' ? 'Owner' : 'Agent'}</span></div></div>
     <button type="button" data-pm="status" role="menuitem">${icon.clock}Change status</button>
     <a href="#/agents" role="menuitem">${icon.headset || icon.users}My numbers today</a>
     <a href="#/settings" role="menuitem">${icon.cog}Settings</a>
     <a href="#/alerts" role="menuitem">${icon.bell}Alerts and notifications</a>
-    ${user.role === 'admin' ? `<a href="#/settings/team" role="menuitem">${icon.users}Team</a>` : ''}
+    ${user.role === 'admin' ? `<a href="#/settings/team" role="menuitem">${icon.users}Agents</a><button type="button" data-pm="mt" role="menuitem">${icon.cog}Maintenance mode</button>` : ''}
     <button type="button" data-pm="nav" role="menuitem">${icon.edit || icon.cog}Customize menu</button>
     <button type="button" data-pm="out" role="menuitem">${icon.close}Log out</button>`;
   document.body.appendChild(m);
@@ -177,7 +182,27 @@ function profileMenu(b, user, logout) {
   setTimeout(() => document.addEventListener('click', close), 0);
   m.querySelector('[data-pm="nav"]').onclick = () => { close(); customizeMenu(user, () => location.reload()); };
   m.querySelector('[data-pm="out"]').onclick = logout;
+  const mt = m.querySelector('[data-pm="mt"]');
+  if (mt) mt.onclick = async () => {
+    close();
+    const st = await api('/api/auth/state').catch(() => ({}));
+    const on = !st.maintenance?.on;
+    const msg = on ? (prompt('Message agents and clients see while you work (optional):', 'The Hub is being updated. Back in a few minutes.') ?? null) : '';
+    if (on && msg === null) return;
+    try { await api('/api/maintenance', { method: 'PUT', body: { on, msg } }); toast(on ? 'Maintenance mode on. Only owners can use the Hub.' : 'Maintenance mode off.'); paintMaint(on); } catch (e) { toast(e.message, true); }
+  };
   m.querySelector('[data-pm="status"]').onclick = (e) => { e.stopPropagation(); close(); statusMenu(document.querySelector('[data-stpill]') || b); };
+}
+
+// Owners see a strip while maintenance mode is on, so nobody forgets to turn it off.
+export function paintMaint(on) {
+  document.getElementById('mtbar')?.remove();
+  if (!on) return;
+  const b = document.createElement('div');
+  b.id = 'mtbar'; b.className = 'mtbar';
+  b.innerHTML = 'Maintenance mode is on: agents and clients see a pause screen. <button type="button">Turn it off</button>';
+  b.querySelector('button').onclick = async () => { try { await api('/api/maintenance', { method: 'PUT', body: { on: false } }); paintMaint(false); toast('Maintenance mode off.'); } catch (e) { toast(e.message, true); } };
+  document.body.appendChild(b);
 }
 
 // ---------- command palette ----------

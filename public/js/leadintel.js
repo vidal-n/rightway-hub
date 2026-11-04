@@ -331,7 +331,7 @@ export function quoteFor(lead = {}, intel = null, saved = null) {
 // Plain words to the owner: "Google", "the map", "the first page", "calls". Never "SEO", "NAP", "citations" or "algorithm".
 // Each step is one or more lines; lines that start with "Or:" are alternatives, "(" lines are coaching notes for the rep.
 // Never claim a scan when no research ran: the {..._reason} and {scan_...} lines change on their own.
-export const SCRIPT_VERSION = 6;
+export const SCRIPT_VERSION = 7;
 
 // Two scripts, one story. Cold call: earn 30 seconds, frame us as a small group agency, hook with the scan, qualify, book the
 // clarity call (or start it right there). Clarity call: the screen share that ends in a signed work order.
@@ -343,7 +343,7 @@ export const SCRIPT_KEYS = [
   ['k_open', 'Cold: why I called'], ['k_frame', 'Cold: ten clients only'], ['k_hook', 'Cold: what I found'], ['k_qualify', 'Cold: qualify'], ['k_book', 'Cold: book the audit'], ['k_lock', 'Cold: lock it in'],
   ['c_open', 'Opener: the Google clarity audit'], ['c_frame', 'Set the frame'], ['c_discovery', 'Discovery (write it down)'],
   ['c_verify', 'Verify the business'], ['c_scan', 'The clarity scan'], ['c_live', 'Search together'], ['c_why', 'Why they are up there (slow down)'],
-  ['c_listings', 'Inconsistencies'], ['c_story', 'Why Rightway'], ['c_program', 'How it works'], ['c_process', 'What we need from you'],
+  ['c_listings', 'Inconsistencies'], ['c_story', 'Why we are having this conversation'], ['c_program', 'How we do it'], ['c_process', 'Your app and your part'],
   ['c_trial', 'Trial close'], ['c_price', 'Price: the drop close'], ['c_close', 'Close'], ['c_post', 'Work order and payment'],
   ['c_onboard', 'Onboarding and homework'], ['c_book', 'Book the audit for later'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'],
 ];
@@ -455,35 +455,31 @@ export const DEFAULT_SCRIPT = {
       '(SCREEN: "Inconsistencies" slide: their real listing check. Point at each red row, then the yellow ones. Click a row to open that directory and show the wrong phone or address. Not checked yet? Press Run the listing check now. Then the "Your website" slide if it shows, slow on phones costs calls.)',
   ].join('\n'),
   c_story: [
-    "Right, and that's pretty much why we're having this conversation. Whenever a business owner has inconsistencies in where they show up like this, we want to point them out, and of course give you a solution.",
-    "(Slow down. This is the most personal part of the call.) Can I be straight with you for a second, {first}?",
-    "Before I started RightWay, I worked inside marketing companies. I saw how this industry treats business owners. Year long contracts. Reports nobody can read. Promises of number one on Google. And when it didn't work, the owner was stuck paying anyway.",
-    "I started RightWay Growth to do it the right way. You see every single task we do in your own app. You see the map every month. Nothing hidden. And after the first three months, you can leave any time with 30 days notice.",
-    "And that's why we only take on ten clients at a time. The relationship, the quality and the results, for both of us. Not a cookie cutter, one size fits all package. That's honestly why most businesses fail at marketing: they get a package that was never built for them. Every business is different, so I only put together what yours actually needs to get where you want to go.",
-    "I want to keep you because your phone is ringing, not because a contract says you can't leave. That's the standard I hold us to.",
-      '(SCREEN: "Your own Rightway app" slide. Tap through the live app: Home, Rankings, Reviews, Post a photo. Say we keep adding features every month.)',
+    "And that's exactly why we're having this conversation. Whenever we audit a business and see inconsistencies like these, and we can see it's affecting where you show up and how far out you show up, then obviously I'm going to offer you a way to fix it.",
+    "It's our local growth program, and it's what we've just been going over. First we do a data cleanup: every listing with wrong or outdated information gets corrected, so the damage stops. Then we get you in front of every directory Google checks that doesn't know who you are yet, and we build out your Google profile the right way.",
+    '(PAUSE)',
+    "Now before I go any further, I want to make sure we're on the same page. Like I said at the start, we only take on ten clients at a time, so we can focus on the relationship, the quality and the results. And I'll be straight with you: I used to work inside the big marketing companies. Year long contracts, reports nobody could read, promises of number one on Google. I built RightWay to do the opposite. You see every task, you see the map every month, and after the first three months you can leave any time. Fair?",
+    '(SCREEN: "What gets you results" slide: only the services they need. Point at each one as you say it. Drop or add one live if discovery says so.)',
   ].join('\n'),
   c_program: [
-    "So let me explain what we actually do, because it's not as easy as typing your info into a few websites. If it were, I'd be out of a job.",
-    "First, we get access to your Google profile and build it out the right way: categories, services, service areas, photos, the works. Then we clean up every listing that doesn't match, so Google stops doubting you.",
-    "After that it's steady work every month: posts on your profile, new photos, reviews coming in and getting answered, pages on your website for the services and cities you want, and local links that back you up.",
-    "We start close to home and build a strong foundation, then we push out into the rest of your service area month after month. This is a marathon, not a sprint. We do it by Google's rules, so we never put your profile at risk.",
-    "And every month you get a new map just like this one, so you can see exactly where you're climbing. Does that make sense?",
-      '(SCREEN: "What gets you results" slide: only the services they need, drop or add one live. Then "What happens after you say yes", and the "Reviews" slide if they trail the leader.)',
+    "Now let me explain quickly how we do it. I'm sure you can appreciate this doesn't happen in 24 hours. If we pushed you up front and center across your whole area overnight, Google would flag it as manipulation and could pull your profile down. That's the last thing either of us want.",
+    "So to stay compliant, we build you up organically, month after month. That's what happens on the internet. This is what happens on the ground.",
+    "We start in your zip code and establish a foundation, so you own your local area first. Then month two we push out to the next ring, month three the next, and so on, until you're showing up on the first page across your whole service area. This is a marathon, not a sprint. Does that make sense?",
+    '(SCREEN: switch the share to the Scan tool tab. Point at their address: "month one is here." Draw the next ring with your mouse: "month two." Then the red squares on the edge: "this is where we\'re going." Then back to the slideshow, "What happens after you say yes".)',
   ].join('\n'),
   c_process: [
-    "Here's how it works on your end. It's simple, but I need you involved.",
-    "One: you invite us as a manager on your Google profile and give us access to the website. We'll walk you through it on the first call. We never take ownership, it's always yours.",
-    "Two: send us photos of your work as you go. Real jobs, real crew. Google loves it and so do customers.",
-    "Three: when you finish a job, send the customer your review link. Takes five seconds from your phone with the app we give you.",
-    "Four: we meet once a month for 15 to 30 minutes on a screen share like today. I show you the work, the map, and what's next. We can do all the work behind the scenes, but without you as the owner, it goes nowhere fast.",
-    "Can you do those four things?",
-      '(SCREEN: stay on "What happens after you say yes".)',
+    '(SLOW DOWN.)',
+    "The last thing I want to go over quickly is your app. When you start, you get your own login. You can go on any time and keep track of everything we do.",
+    "This is your home screen: the work we did this month and where you show up. This is Rankings: the map, month over month, compared to where you started today. Reviews: send a review request from your phone in five seconds. And Post a photo: snap a job, we write the post. We add new features every month, and you get them automatically.",
+    "Every month you meet with us for 15 to 30 minutes on a screen share like today. We show you all the work that's been done, the new map, and what's next. But the main reason we meet: we can do all the work behind the scenes, but without you as the owner involved, the whole process goes nowhere fast.",
+    "So as long as you send us photos of your jobs, let us know about any changes in the business, send your review link after a job, and meet with us for those 15 minutes, you will never be in the dark about what's going on. Can you do that?",
+    "And {first}, if there's one thing I've learned doing this, it's that your visibility today is worth more than it's ever been. If a customer can't find you easily on Google, it's like you don't exist. I've put a lot of {industry} businesses through this. It's not an art, it's a science. It does three things for you: it fixes your information everywhere Google checks, it gets you in front of more of the right searches, and it spreads you across more of your service area, so you get the calls before your competition.",
+    '(SCREEN: "Your own Rightway app" slide. Tap through the live app as you say each part: Home, Rankings, Reviews, Post a photo. Then the "Reviews" slide if they trail the leader.)',
   ].join('\n'),
   c_trial: [
-    "So after seeing where you are and doing a few searches, I'd say you're a strong fit for this. How do you feel about it? Do you think it would help you grow?",
-    '(Let them answer. Then:) OK, great. So you can see it helps, and really it just comes down to cost at the end of the day, right?',
-      '(SCREEN: "What a few more jobs a month means for you" slide. Type their job value and how many extra jobs a month.)',
+    "So after seeing exactly where you stand and doing a few searches, I'd say you're definitely a strong fit for one of our spots. How do you feel about it? Do you think it would help you grow?",
+    '(Let them answer. Then:) OK, great. Obviously you think it will help. It really just comes down to cost at the end of the day, right?',
+    '(SCREEN: "What a few more jobs a month means for you" slide. Type their job value and how many extra jobs a month.)',
   ].join('\n'),
   c_price: [
     "Perfect. Based on everything you told me, here's what gets you where you want to go: {services_list}. (Walk each one and why it gets them onto the first page in more of their area.)",

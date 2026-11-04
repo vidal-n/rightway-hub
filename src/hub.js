@@ -1,6 +1,6 @@
 // Rightway Hub API: team, clients, tasks, activity, reviews, posts, scans, client overview.
 import { HttpError, json } from './util.js';
-import { ensureSchema, all, first, run, batch, newId, token, now } from './db.js';
+import { ensureSchema, all, first, run, batch, newId, token, now, getSettings, setSetting } from './db.js';
 import {
   currentUser, createSession, endSession, login, userCount, createUser, issueInvite, acceptInvite, listUsers,
   requireUser, requireStaff, requireAdmin, requireClientAccess, isStaff, sha256, cleanEmail,
@@ -123,6 +123,11 @@ export async function handleHub(request, env, url, execCtx = null) {
     }
     // defer: work that can finish after the response (notifications), when the platform gives us waitUntil.
     const defer = (p) => (execCtx?.waitUntil ? execCtx.waitUntil(p) : p);
+    // Maintenance mode: while an owner works on the Hub, everyone else gets a friendly pause (owners can still come in).
+    if (!r.public && user && user.role !== 'admin' && !/^\/api\/(auth|maintenance)\b/.test(url.pathname)) {
+      const mt = await maintenance(env);
+      if (mt.on) throw new HttpError(mt.msg || 'The Hub is being updated. Back shortly.', 503);
+    }
     const ctx = { request, env, url, user, defer, params: m.groups || {}, body: () => request.json().catch(() => ({})) };
     return r.fn(ctx);
   }
@@ -152,8 +157,25 @@ export async function handleReviewRedirect(request, env, url) {
 
 // ---------- auth ----------
 route('GET', '/api/auth/state', async ({ env, user }) => json({
-  users: (await userCount(env)) > 0, user, email: canEmail(env), ai: Boolean(env.ANTHROPIC_API_KEY), media: Boolean(env.MEDIA),
+  users: (await userCount(env)) > 0, user, email: canEmail(env), ai: Boolean(env.ANTHROPIC_API_KEY), media: Boolean(env.MEDIA), maintenance: await maintenance(env),
 }));
+
+let mtCache = { at: 0, v: { on: false } };
+async function maintenance(env) {
+  if (Date.now() - mtCache.at < 15e3) return mtCache.v;
+  let v = { on: false };
+  try { v = JSON.parse((await getSettings(env)).maintenance || '{"on":false}'); } catch { v = { on: false }; }
+  mtCache = { at: Date.now(), v };
+  return v;
+}
+route('PUT', '/api/maintenance', async ({ env, user, body }) => {
+  if (!user || user.role !== 'admin') throw new HttpError('Owners only.', 403);
+  const b = await body();
+  const v = { on: Boolean(b.on), msg: String(b.msg || '').slice(0, 200), by: user.name || user.email, at: Date.now() };
+  await setSetting(env, 'maintenance', JSON.stringify(v));
+  mtCache = { at: Date.now(), v };
+  return json(v);
+});
 
 // The Google Maps browser key. Safe to hand out: Google only accepts it from the Hub's own address (set in Google Cloud).
 route('GET', '/api/maps/config', async ({ env }) => json({ google: env.GOOGLE_MAPS_KEY || null }), { public: true });

@@ -10,6 +10,8 @@ import { lineChart, barChart, legend } from '/js/charts.js';
 const TONE_COLOR = { good: '#23B07E', warn: '#E8A33D', info: '#4E7FD8', gray: '#9AA8A2', live: '#D64545' };
 const stColor = (k) => TONE_COLOR[statusTone(k)] || '#9AA8A2';
 const tabs = (active) => `<nav class="tabs"><a href="#/agents" class="${active === 'board' ? 'is-active' : ''}">Agents</a><a href="#/agents/analytics" class="${active === 'analytics' ? 'is-active' : ''}">Call analytics</a><a href="#/agents/sheet" class="${active === 'sheet' ? 'is-active' : ''}">Master sheet</a></nav>`;
+// Only touch the page when something changed, so refreshes never flash.
+const setHtml = (el, html) => { if (!el || el.__h === html) return false; el.innerHTML = html; el.__h = html; return true; };
 const ago = (t) => { if (!t) return ''; const m = Math.floor((Date.now() - t) / 60e3); return m < 1 ? 'just now' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 
 export async function agentsPage(app, user, sub) {
@@ -33,14 +35,14 @@ export async function agentsPage(app, user, sub) {
     const meRow = d.agents.find((a) => a.id === d.me);
     if (meRow) paintMine({ status: meRow.picked });
     const online = d.agents.filter((a) => a.online).length, onCall = d.agents.filter((a) => a.status === 'on_call').length, avail = d.agents.filter((a) => a.status === 'available').length;
-    $('#agtot', view).innerHTML = `
+    setHtml($('#agtot', view), `
       <div class="stat"><div class="stat-num">${online}<span class="muted" style="font-size:18px">/${d.agents.length}</span></div><div class="stat-label">in the Hub now</div></div>
       <div class="stat"><div class="stat-num">${onCall}</div><div class="stat-label">on a call</div></div>
       <div class="stat"><div class="stat-num">${avail}</div><div class="stat-label">available</div></div>
       <div class="stat"><div class="stat-num">${d.team.dials}</div><div class="stat-label">dials today, ${d.team.connects} contacts, ${d.team.booked} booked</div></div>
-      <div class="stat"><div class="stat-num">${clock(d.team.talk)}</div><div class="stat-label">talk time today</div></div>`;
+      <div class="stat"><div class="stat-num">${clock(d.team.talk)}</div><div class="stat-label">talk time today</div></div>`);
     const busyPhone = phoneState().onCall;
-    $('#ags', view).innerHTML = d.agents.map((a) => {
+    const changed = setHtml($('#ags', view), d.agents.map((a) => {
       const tone = statusTone(a.status);
       const per = a.today.per || {};
       const tot = Object.values(per).reduce((s, v) => s + v, 0) || 1;
@@ -58,7 +60,8 @@ export async function agentsPage(app, user, sub) {
         <div class="ag-bar" title="Today by status">${Object.entries(per).map(([k, v]) => `<i style="width:${(100 * v) / tot}%;background:${stColor(k)}" title="${esc(statusLabel(k))}: ${clock(v)}"></i>`).join('')}</div>
         <div class="small muted">${Object.entries(per).map(([k, v]) => `${esc(statusLabel(k))} ${clock(v)}`).join(' · ') || 'No time logged today'}${a.today.connects ? ` · ${a.today.connects} contacts, ${a.today.booked} booked` : ''}</div>
       </article>`;
-    }).join('') || '<div class="card empty"><h3>No teammates yet</h3><p>Invite your team from Settings, Team.</p></div>';
+    }).join('') || '<div class="card empty"><h3>No teammates yet</h3><p>Invite your team from Settings, Agents.</p></div>');
+    if (!changed) return;
     $$('[data-mon]', view).forEach((b) => b.addEventListener('click', async () => {
       const a = d.agents.find((x) => x.call?.id === b.dataset.mon);
       busy(b, true);

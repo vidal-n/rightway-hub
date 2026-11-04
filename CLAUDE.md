@@ -344,7 +344,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   industry, time zone, lead inventory. `activities.ended_at`, `dispo_at`. More default dispositions (hung_up act counts as a contact). No recording announcement on
   agency calls (tracking numbers keep theirs when recording is on). Dashboard Team floor card. Training (`public/hub/training.js`, `#/training/...`): scripts read from
   `public/js/scriptprint.js` (pure, also feeds the PDFs in `public/training/`), objection drills, playbooks, fulfillment guides, owner setup, resources; progress in
-  `users.training` (`/api/me/training`). Script v6: consultant, free Google clarity audits, ten clients only, no permission ask; clarity call is the Google clarity audit.
+  `users.training` (`/api/me/training`). Script v7: consultant, free Google clarity audits, ten clients only, no permission ask; clarity call is the Google clarity audit; sections 9 to 12 follow the imported pitch cadence (why we are having this conversation, how we do it month by month on the Scan tool rings, your app and your part, trial close); slide order plan, days, app. Maintenance mode (`PUT /api/maintenance`, settings `maintenance`, owners bypass, profile menu). Settings Team tab is now Agents. Refreshing pages do not replay the entrance animation (`body.settled`).
   Deep scan: presentation Scan slide "Run the full scan" opens `/scan.html?lead=<id>` in its own tab; Save to lead (`POST /api/leads/:id/deep-scan`, `compactScan`,
   `leads.deep_scan`, up to 5 keywords, 15 x 15) then BroadcastChannel and window focus refresh the slide (keyword tabs, any grid size). Client view and the app slide
   render the client app at 390 x 844 scaled into the phone frame (`--k`).

@@ -154,12 +154,12 @@ function slides() {
     ${intel?.grid ? `<p class="lead" style="margin:-6px 0 22px">Today: first page (top 10) in ${t10} of ${intel.grid.points} spots around you. Goal: the first page across ${esc(city || 'your area')}, then climb.</p>` : ''}
     <div class="svcs anim${Q.services.length > 6 ? ' many' : ''}">${Q.services.map((x) => `<div class="svc" data-svc="${esc(x.id)}"><button class="svc-x" data-drop="${esc(x.id)}" title="Remove" aria-label="Remove ${esc(x.name)}">×</button><b>${esc(x.name)}</b><span>${esc(x.why || x.what)}</span></div>`).join('')}</div>
     ${SERVICE_LIST.some((x) => !Q.services.find((y) => y.id === x.id)) ? `<div class="svc-add" style="position:absolute;bottom:96px;right:116px"><select id="svc-add"><option value="">Add a service</option>${SERVICE_LIST.filter((x) => !Q.services.find((y) => y.id === x.id)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div>` : ''}`,
-  `Only what they need. Walk each one: what it is, and why it gets them onto the first page (top 10) in more of their area. Rank also depends on distance and relevance, so never promise a spot.\n\n${say('c_program')}\n\n${say('c_process')}\n\n(Hover a service and press × to drop it, or add one from the list. The price slide and the work order use this list.)`);
+  `Only what they need. Walk each one: what it is, and why it gets them onto the first page (top 10) in more of their area. Rank also depends on distance and relevance, so never promise a spot.\n\n${say('c_story')}\n\n(Hover a service and press × to drop it, or add one from the list. The price slide and the work order use this list.)`);
 
   add('days', 'First 90 days', `<p class="kicker">First 90 days</p><h2>What happens after you say yes</h2>
     <div class="months anim">${nd.months.map((m) => `<div class="month"><h3>${esc(m.title)}</h3><ul>${m.items.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>
     ${nd.fixes.length ? `<p class="note" style="margin-top:22px">Your fixes first: ${esc(nd.fixes.slice(0, 4).map((f) => `${f.title} (week ${f.week})`).join(' · '))}</p>` : ''}`,
-  'Make it concrete so it feels safe. Onboarding call within a few business days of signing. Month 1 is the foundation, month 2 we build, month 3 it compounds.\n\nBe honest about timing: profile fixes and reviews move things in 30 to 60 days, pages and links build over 3 to 6 months. Honesty here is what makes them trust the rest.');
+  `${say('c_program')}\n\n` + 'Make it concrete so it feels safe. Onboarding call within a few business days of signing. Month 1 is the foundation, month 2 we build, month 3 it compounds.\n\nBe honest about timing: profile fixes and reviews move things in 30 to 60 days, pages and links build over 3 to 6 months. Honesty here is what makes them trust the rest.');
 
   if (intel?.found) {
     add('reviews', 'Reviews', `<p class="kicker">Reviews</p><h2>${rt.leader && rt.gap ? `${rt.gap} reviews to pass ${esc(rt.leader)}` : 'Keep the reviews coming'}</h2>
@@ -179,7 +179,7 @@ function slides() {
         <li><b>Snap a photo, we post it</b><span>We write the post for Google, Facebook, and Instagram.</span></li>
         <li><b>A monthly results meeting</b><span>We go over the numbers and the next month's plan.</span></li>
         <li><b>Always getting better</b><span>We add new features every month. You get them free, automatically.</span></li></ul></div>`,
-  `SCREEN: this slide. The phone is the real client app (a sample business). Tap Home, then Rankings, then Reviews (send a request), then Post a photo, then Tasks. Say: "This is what you get on day one, and we keep adding to it."\n\nThis answers "how do I know you will do the work?" before they ask it.\n\n${say('c_story')}\n\nThen the trial close:\n${say('c_trial')}`);
+  `SCREEN: this slide. The phone is the real client app (a sample business). Tap Home, then Rankings, then Reviews (send a request), then Post a photo, then Tasks. Say: "This is what you get on day one, and we keep adding to it."\n\nThis answers "how do I know you will do the work?" before they ask it.\n\n${say('c_process')}\n\nThen the trial close:\n${say('c_trial')}`);
 
   add('price', 'Investment', `<p class="kicker">Your investment</p><h2>Built for ${esc(lead.business)}, not a package</h2>
     <div class="invest anim">
@@ -198,7 +198,7 @@ function slides() {
   `${say('c_post')}\n\nPress the button, have them scan the code or send the link.\n\n${say('c_onboard')}`, true);
 
   // Same order as the clarity call script, so the screen cues line up slide by slide.
-  const ORDER = ['cover', 'agenda', 'pack', 'grid', 'vs', 'problems', 'listings', 'site', 'app', 'plan', 'days', 'reviews', 'worth', 'price', 'next'];
+  const ORDER = ['cover', 'agenda', 'pack', 'grid', 'vs', 'problems', 'listings', 'site', 'plan', 'days', 'app', 'reviews', 'worth', 'price', 'next'];
   out.sort((a, b) => (ORDER.indexOf(a.key) + 1 || 99) - (ORDER.indexOf(b.key) + 1 || 99));
   return out;
 }

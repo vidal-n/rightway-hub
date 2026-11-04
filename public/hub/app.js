@@ -173,6 +173,9 @@ async function boot() {
     if (e.status === 503) return notConnected(e.message);
     return notConnected('Could not reach the Hub. Check your connection and reload.');
   }
+  if (state.maintenance?.on && state.user && state.user.role !== 'admin') {
+    return authCard(`<h1 style="font-size:28px">Quick maintenance</h1><p class="muted">${esc(state.maintenance.msg || 'The Hub is being updated. It will be back shortly.')}</p><button class="btn btn-ghost" onclick="location.reload()">Try again</button>`);
+  }
   try { route(); } catch (e) { notConnected(`Something broke while opening this page: ${e.message}. Reload, or send this message to Claude.`); }
 }
 
