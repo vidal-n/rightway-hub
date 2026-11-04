@@ -75,6 +75,13 @@ test('problems, score, plan, and script come from the research', () => {
   assert.ok(s.steps.filter((x) => x.group === 'clarity').some((x) => x.lines.some((l) => /^\(SCREEN:/.test(l))), 'clarity call has screen cues');
   assert.match(s.steps[0].lines[0], /Google clarity check on Summit Roofing/);
   const step = (sc, id) => sc.steps.find((x) => x.id === id).lines.join('\n');
+  // The real listing check feeds the cold hook and the clarity call; nothing is claimed when it has not run.
+  assert.doesNotMatch(step(s, 'k_hook'), /directories/);
+  assert.ok(!step(s, 'k_hook').split('\n').some((l) => !l.trim()), 'no empty lines when a variable is blank');
+  const withL = buildScript({ ...lead, listings: JSON.stringify({ counts: { mismatch: 3, missing: 2, match: 1 }, results: [{ name: 'Yelp', status: 'mismatch' }, ...Array(14).fill({ name: 'X', status: 'match' })] }) }, INTEL, { rep: 'Vidal' });
+  assert.match(step(withL, 'k_hook'), /5 of 15 have you wrong or missing, Yelp for one/);
+  assert.match(step(withL, 'c_listings'), /5 of the 15 directories I checked/);
+  assert.match(step(withL, 'c_frame'), /small group of clients/);
   assert.match(step(s, 'c_scan'), /from \d+ spots around Summit Roofing/);
   assert.match(step(s, 'c_scan'), /Same search/);
   // Drop close: Market Leader first, then the recommended plan with setup + first month today.

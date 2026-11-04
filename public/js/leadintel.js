@@ -1,3 +1,4 @@
+import { parseListings } from './listings.js';
 import { SERVICE_LIST, PLAN_ORDER } from './plancopy.js';
 // Lead intelligence: scoring, problems found, plan recommendation, call script, dedupe keys.
 // Pure functions with no DOM or network, shared by the Worker, the Hub screens, and the tests.
@@ -330,7 +331,7 @@ export function quoteFor(lead = {}, intel = null, saved = null) {
 // Plain words to the owner: "Google", "the map", "the first page", "calls". Never "SEO", "NAP", "citations" or "algorithm".
 // Each step is one or more lines; lines that start with "Or:" are alternatives, "(" lines are coaching notes for the rep.
 // Never claim a scan when no research ran: the {..._reason} and {scan_...} lines change on their own.
-export const SCRIPT_VERSION = 4;
+export const SCRIPT_VERSION = 5;
 
 // Two scripts, one story. Cold call: earn 30 seconds, frame us as a small group agency, hook with the scan, qualify, book the
 // clarity call (or start it right there). Clarity call: the screen share that ends in a signed work order.
@@ -352,6 +353,7 @@ export const DEFAULT_SCRIPT = {
     "Hi, is this {first_or_owner}? ... Hey {first}, this is {rep} with RightWay Growth. I know I'm catching you in the middle of your day, so I'll be quick. {opener_reason} Do you have 30 seconds?",
     "Or: Hey {first}, {rep} with RightWay Growth. Honest answer, this is a cold call. Would it be a terrible idea if I took 30 seconds to tell you why I called, and you tell me if it's worth another minute?",
     '(Smile when you dial. Slow, low, certain. Stop talking after the question.)',
+    '(SCREEN, yours only: Phone, Dialer. Call prep is open beside the queue: their name, the opener line, the scan and the listing check. No research yet? Press Research now while it rings.)',
   ].join('\n'),
   k_frame: [
     "Real quick on who we are. We're a local marketing company out of Hollywood, and we only take on a small group of businesses at a time. That way we can do quality work, instead of the cookie cutter, one size fits all stuff.",
@@ -360,8 +362,10 @@ export const DEFAULT_SCRIPT = {
   k_hook: [
     '{scan_line}',
     '{hook_impact}',
+    '{listings_hook}',
     'Quick question: when a new customer finds you now, is it mostly referrals, or do they find you on Google?',
     '(Let them talk. Write down what they say. You will use it on the clarity call.)',
+    '(SCREEN, yours only: read the numbers off call prep, Scan and "Listings Google double checks". Never claim a scan or a listing check that is not on your screen.)',
   ].join('\n'),
   k_qualify: [
     "Before I take more of your time, three quick ones so I know it's even worth it.",
@@ -369,17 +373,19 @@ export const DEFAULT_SCRIPT = {
     "Are you looking to take on more customers right now, or are you booked solid? (Booked solid: is it the work you want, or would you take more of the bigger jobs?)",
     "Ballpark, what's a typical job worth to you? (Starting guess for {industry}: {ticket}.)",
     '(Owner, wants more work, job worth it: book it. Not the owner: get the name and a time. Truly not a fit: thank them and move on.)',
+    '(SCREEN, yours only: type their answers into the lead notes as they talk. Job value goes in the notes too, you will use it on the price.)',
   ].join('\n'),
   k_book: [
     "Here's what I'd suggest. Let me do a quick Google clarity call with you: 15 minutes on a screen share. I'll show you the scan street by street, who's getting your calls and why, and exactly what I'd fix. If it's a fit, great. If not, you keep the scan. Fair?",
     'Do you have 15 minutes right now? Or is {slot1} or {slot2} better?',
-    '(IF RIGHT NOW: go straight to the clarity call, Set the frame. IF LATER: book it from the lead with Book meeting, so they get the Google Meet invite.)',
+    '(IF RIGHT NOW: switch call prep to the Clarity call tab and go to Set the frame. IF LATER: press Book meeting and pick the time.)',
   ].join('\n'),
   k_lock: [
     "Perfect. I'm sending a calendar invite with the screen share link to {email_or_ask}. What's the best email?",
     "Is there anyone else who makes marketing decisions with you? Let's get them on the same call so they see the same map.",
     'Is it OK if I text you a reminder and the link? (If yes, tap "They said yes to texts".)',
     'Before we talk, search "{keyword}" from your phone and see who comes up. We\'ll go over it together.',
+    '(SCREEN, yours only: in Book meeting, Google connected sends the Meet invite by itself. Not connected: paste your Zoom or Meet link, press Book it, then Text it or Email it. Then log the call as Booked.)',
   ].join('\n'),
 
   c_open: [
@@ -390,6 +396,7 @@ export const DEFAULT_SCRIPT = {
   c_frame: [
     "I just want to confirm, is {email_or_ask} still the best email for you? Perfect. I'm sending you a link to my screen right now. That way you see the exact same thing I see, and nothing gets lost in translation, OK?",
     "(Send the Meet link from the lead. Then:) It's coming from Rightway Growth. Let me know when you see it. Since we're on the phone, you don't need video or audio, just the screen.",
+    "And just so you know how we work: we only take on a small group of clients at a time, so we can do quality work instead of a cookie cutter, one size fits all approach. That's why I look at every business in detail before I recommend anything.",
     "Here's what we'll do today. First, I'll confirm your business info. Then I'll show you {frame_scan}, and we'll do a couple of searches together, live. But before I even start, I want to take a minute to get to know you and the business, if that's OK.",
       '(SCREEN: share your screen. Presentation, cover slide. Then the agenda slide, and leave it up while you ask the discovery questions.)',
   ].join('\n'),
@@ -441,9 +448,10 @@ export const DEFAULT_SCRIPT = {
   ].join('\n'),
   c_listings: [
     "Here's what I mean by inconsistencies. Google checks your business against dozens of other sites: Apple Maps, Bing, Yelp, Facebook, the BBB, and a lot of directories you've probably never heard of. Most people never search on those. But Google uses them to double check you.",
+    '{listings_say}',
     "If one says one phone number, another says an old address, and another has the name a little different, Google flags it. That doesn't fix itself with time either. Bad information gets copied from site to site.",
     "So the first thing we do is clean it up and make it match everywhere, so Google stops doubting you. The way I want you to see this: the more consistent references Google sees, the more it trusts you, and that's what moves you up and brings in more business. Does that make sense? PERFECT.",
-      '(SCREEN: "Inconsistencies" slide: their real listing check. Point at each red row, then the yellow ones. Click a row to open that directory and show the wrong phone or address. Not checked yet? Press Run the listing check now.)',
+      '(SCREEN: "Inconsistencies" slide: their real listing check. Point at each red row, then the yellow ones. Click a row to open that directory and show the wrong phone or address. Not checked yet? Press Run the listing check now. Then the "Your website" slide if it shows, slow on phones costs calls.)',
   ].join('\n'),
   c_story: [
     "Right, and that's pretty much why we're having this conversation. Whenever a business owner has inconsistencies in where they show up like this, we want to point them out, and of course give you a solution.",
@@ -460,7 +468,7 @@ export const DEFAULT_SCRIPT = {
     "After that it's steady work every month: posts on your profile, new photos, reviews coming in and getting answered, pages on your website for the services and cities you want, and local links that back you up.",
     "We start close to home and build a strong foundation, then we push out into the rest of your service area month after month. This is a marathon, not a sprint. We do it by Google's rules, so we never put your profile at risk.",
     "And every month you get a new map just like this one, so you can see exactly where you're climbing. Does that make sense?",
-      '(SCREEN: "What gets you results" slide: only the services they need. Then "What happens after you say yes".)',
+      '(SCREEN: "What gets you results" slide: only the services they need, drop or add one live. Then "What happens after you say yes", and the "Reviews" slide if they trail the leader.)',
   ].join('\n'),
   c_process: [
     "Here's how it works on your end. It's simple, but I need you involved.",
@@ -658,8 +666,14 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
   const dropPrice = tiers.find((x) => x < price) || null;
   const t10 = g ? top10Of(g) : 0;
   const first = (lead.contact_name || '').split(' ')[0] || '';
+  const L = parseListings(lead.listings);
+  const lc = L?.counts || {};
+  const lbad = (lc.mismatch || 0) + (lc.missing || 0);
+  const worst = (L?.results || []).find((r) => r.status === 'mismatch') || (L?.results || []).find((r) => r.status === 'missing');
   return {
     first,
+    listings_hook: L?.results?.length && lbad ? `I also checked the directories Google uses to double check you, and ${lbad} of ${L.results.length} have you wrong or missing${worst ? `, ${worst.name} for one` : ''}.` : '',
+    listings_say: L?.results?.length ? (lbad ? `And this isn't theory. On ${lead.business || 'your business'}, ${lbad} of the ${L.results.length} directories I checked have you wrong or missing. Let me show you.` : `Good news on yours: the ${L.results.length} directories I checked mostly line up, so we protect that and build on it.`) : '',
     first_or_owner: first || 'the owner',
     rep: ctx.rep || '',
     my_number: ctx.number || '',
@@ -726,7 +740,7 @@ export function buildScript(lead, intel, ctx = {}, custom = {}) {
   const v = scriptVars(lead, intel, { ...ctx, number: ctx.number || custom.number });
   return {
     vars: v,
-    steps: SCRIPT_KEYS.map(([id, title]) => ({ id, title: title.replace(/^Cold: /, ''), group: SCRIPT_GROUPS.find((g) => g[2].includes(id))?.[0] || 'clarity', lines: asLines(S[id]).map((q) => fill(q, v)) })),
+    steps: SCRIPT_KEYS.map(([id, title]) => ({ id, title: title.replace(/^Cold: /, ''), group: SCRIPT_GROUPS.find((g) => g[2].includes(id))?.[0] || 'clarity', lines: asLines(S[id]).map((q) => fill(q, v)).filter((q) => q.trim()) })),
     groups: SCRIPT_GROUPS.map(([key, name]) => ({ key, name })),
     objections: objections.map(([q, a]) => ({ q, a: fill(a, v) })),
     playbook: PLAYBOOK.map(([name, from, use]) => ({ name, from, use })),
