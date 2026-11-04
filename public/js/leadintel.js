@@ -331,7 +331,7 @@ export function quoteFor(lead = {}, intel = null, saved = null) {
 // Plain words to the owner: "Google", "the map", "the first page", "calls". Never "SEO", "NAP", "citations" or "algorithm".
 // Each step is one or more lines; lines that start with "Or:" are alternatives, "(" lines are coaching notes for the rep.
 // Never claim a scan when no research ran: the {..._reason} and {scan_...} lines change on their own.
-export const SCRIPT_VERSION = 8;
+export const SCRIPT_VERSION = 9;
 
 // Two scripts, one story. Cold call: earn 30 seconds, frame us as a small group agency, hook with the scan, qualify, book the
 // clarity call (or start it right there). Clarity call: the screen share that ends in a signed work order.
@@ -435,7 +435,7 @@ export const DEFAULT_SCRIPT = {
     '(Run the most basic search, "{keyword}", near their immediate area, or a spot the scan showed them weak.)',
     "IF THEY ARE NOT ON THE FIRST PAGE: Are you familiar with any of these guys? (Point at them.) In the mind of a customer, if you're not up here, you're not in the game. These are the businesses getting the calls first. And if we're struggling to find you this close to home, it only gets worse the further out we go.",
     "IF THEY ARE ON THE FIRST PAGE: OK, perfect, there you are, right where you want to be. Now let's move out into your service area. (Search an area the scan shows them weak.) See what happens? A few miles out and you drop off. (No pause.) Again, these are the guys getting those calls first, and it only gets worse the further out we go.",
-    "Think about it this way. How many people a week do you think search this near you? (Let them guess.) Most of them call one of the first businesses they see. So every week some of those go to {top_name_or_them} instead of you, and that's just close to home.",
+    "And you know, conservatively, let's say there are about 4 or 5 people searching for this every single week. If just half of them go with {top_name_or_them}, that's like 2 or 3 jobs every single week going to the competitor. And that's just in your zip code. I wouldn't even want to guess what that number looks like further out.",
     '(Try to get them to give you the numbers instead of telling them. Get them to feel the pain of not showing up.)',
       '(SCREEN: new tab, google.com. Search the keyword the way a customer would, then click Maps. Point at the top 3. Then back to the presentation, "You vs the leaders" slide: reviews, rating and category side by side.)',
   ].join('\n'),
