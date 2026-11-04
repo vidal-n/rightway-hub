@@ -104,7 +104,7 @@ function logModal(c, pre, done) {
   const m = modal(`<h2>Log a listing or link</h2><form id="cif" class="form-grid" style="grid-template-columns:1fr 1fr">
     <label class="field"><span>Type</span><select name="type"><option value="citation"${pre.type !== 'link' ? ' selected' : ''}>Directory listing</option><option value="link"${pre.type === 'link' ? ' selected' : ''}>Link from a website</option></select></label>
     <label class="field"><span>Status</span><select name="status">${Object.entries(STATUS).filter(([k]) => k !== 'prospect').map(([k, n]) => `<option value="${k}"${(pre.status || 'submitted') === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
-    <label class="field span-all"><span>Directory or website</span><input name="name" required maxlength="120" value="${esc(pre.name || '')}" placeholder="Manta, Hollywood Chamber, Little League sponsor page"></label>
+    <label class="field span-all"><span>Directory or website</span><input name="name" required maxlength="120" value="${esc(pre.name || '')}" placeholder="Manta, Miami Chamber, Little League sponsor page"></label>
     <label class="field span-all"><span>Address of the listing or page</span><input name="url" maxlength="500" value="${esc(pre.url || '')}" placeholder="https://..."></label>
     <label class="field"><span>Kind</span><input name="kind" maxlength="40" value="${esc(pre.kind || '')}" placeholder="Chamber, sponsorship, directory"></label>
     <label class="field"><span>Cost ($)</span><input name="cost" inputmode="decimal" placeholder="3.20"></label>

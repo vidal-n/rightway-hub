@@ -52,8 +52,8 @@ export async function contentTab(el, c, sub) {
 function newPageModal(c) {
   const m = modal(`<h2>New page</h2><form id="npf" class="form-grid" style="grid-template-columns:1fr">
     <label class="field"><span>Type</span><select name="kind">${KINDS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label>
-    <label class="field"><span>Title</span><input name="title" required maxlength="140" placeholder="Tile roof repair in Hollywood"></label>
-    <label class="field"><span>Main search to rank for</span><input name="keyword" maxlength="120" placeholder="tile roof repair hollywood"></label>
+    <label class="field"><span>Title</span><input name="title" required maxlength="140" placeholder="Tile roof repair in Miami"></label>
+    <label class="field"><span>Main search to rank for</span><input name="keyword" maxlength="120" placeholder="tile roof repair miami"></label>
     <div class="row" style="gap:8px"><label class="field" style="flex:1"><span>Service</span><input name="service" maxlength="80"></label><label class="field" style="flex:1"><span>City</span><input name="city" maxlength="80"></label></div>
     <div class="row end" style="gap:8px"><button class="btn btn-ghost" type="button" data-close>Cancel</button><button class="btn btn-primary" type="submit">Make the brief</button></div></form>`);
   $('#npf', m.el).addEventListener('submit', async (e) => {

@@ -1,6 +1,7 @@
 // Rightway Hub: one app for the team and for clients. Routes by role.
 import { $, esc, api, toast, busy, VIEW } from './core.js';
 import { can } from '/js/jobs.js';
+import { playIntro } from './intro.js';
 import { dashboard, clientPage, teamPage } from './staff.js';
 import { portal } from './portal.js';
 import { pipelinePage, dialerPage, settingsPage } from './crm.js';
@@ -180,6 +181,7 @@ async function boot() {
       try { const { client } = await api(`/api/clients/${s.user.client_id}`); s.user.name = client.contact_name || client.name; } catch { /* keep */ }
     }
     Object.assign(state, s);
+    if (s.user && !s.user.viewAs && !new URLSearchParams(location.search).has('as')) playIntro();
   } catch (e) {
     if (e.status === 503) return notConnected(e.message);
     return notConnected('Could not reach the Hub. Check your connection and reload.');

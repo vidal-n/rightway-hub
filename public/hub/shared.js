@@ -108,7 +108,7 @@ export async function renderPosts(el, clientId, { staff = false, ai = false } = 
       <form id="pf" class="form-grid">
         <label class="drop span-all" id="pf-drop">${icon.camera}<b>Take or choose a photo</b><span class="small">Jobs, team, before and after, storefront</span>
           <input type="file" name="photo" accept="image/*" hidden></label>
-        <label class="field span-all"><span>What's in the photo? (optional)</span><textarea name="note" maxlength="1000" placeholder="e.g. New roof on a 2-story home in Hollywood, finished in one day"></textarea></label>
+        <label class="field span-all"><span>What's in the photo? (optional)</span><textarea name="note" maxlength="1000" placeholder="e.g. New roof on a 2-story home in Miami, finished in one day"></textarea></label>
         <div class="span-all row end"><button class="btn btn-primary btn-xl" type="submit" id="pf-send">${icon.upload}${staff ? 'Create post' : 'Send to Rightway'}</button></div>
       </form>
       <p class="small" style="margin-top:10px">We write the Google, Facebook, and Instagram captions with your services and cities worked in naturally. ${staff ? '' : 'You approve it, then we post it.'}</p>

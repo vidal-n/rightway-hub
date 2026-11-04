@@ -3,9 +3,14 @@
 import { $, $$, esc, api, toast, icon } from './core.js';
 import { staffShell } from './shell.js';
 import { scriptSteps, objectionGroups, markCues } from '/js/scriptprint.js';
+import { jobLabel } from '/js/jobs.js';
 import { DEFAULT_GUIDES, PROOF_LABEL } from '/js/guides.js';
 
 const PDF = { cold: '/training/RightWay-Growth-Cold-Call-Script.pdf', clarity: '/training/RightWay-Growth-Google-Clarity-Audit-Script.pdf' };
+const PDF_TEAM = { cold: '/training/RightWay-Growth-Cold-Call-Script-Team.pdf', clarity: '/training/RightWay-Growth-Google-Clarity-Audit-Script-Team.pdf' };
+// Owners read the script as "I". Everyone else gets the "we" copy. Owners can flip to the team copy to see it.
+let teamView = false;
+const voiceFor = (user) => (user?.role === 'admin' && !teamView ? 'I' : 'we');
 const blanks = (s) => markCues(esc(s).replace(/\[\[(.+?)\]\]/g, '<span class="blank">$1</span>'));
 
 // Playbooks: how we actually run the day in the Hub. Plain steps, kept short.
@@ -83,7 +88,7 @@ async function toggleDone(key, on) {
   if (on) done.add(key); else done.delete(key);
   try { await api('/api/me/training', { method: 'PUT', body: { done: [...done] } }); } catch (e) { toast(e.message, true); }
 }
-const tabs = (active, user) => `<nav class="tabs">${[['', 'Overview'], ['scripts', 'Scripts'], ['drills', 'Objection drills'], ['playbooks', 'Playbooks'], ['guides', 'Fulfillment guides'], ...(user.role === 'admin' ? [['setup', 'Owner setup']] : []), ['resources', 'Resources']]
+const tabs = (active, user) => `<nav class="tabs">${[['', 'Overview'], ['tour', 'Hub tour'], ['scripts', 'Scripts'], ['drills', 'Objection drills'], ['playbooks', 'Playbooks'], ['guides', 'Fulfillment guides'], ...(user.role === 'admin' ? [['setup', 'Owner setup']] : []), ['resources', 'Resources']]
   .map(([k, n]) => `<a href="#/training${k ? `/${k}` : ''}" class="${active === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>`;
 const head = (title, eyebrow = 'Training') => `<div class="page-head"><div><p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(title)}</h1></div></div>`;
 
@@ -96,12 +101,14 @@ export async function trainingPage(app, user, sub, arg) {
   if (sub === 'guides') return guides(view, user);
   if (sub === 'setup') return setup(view, user);
   if (sub === 'resources') return resources(view, user);
+  if (sub === 'tour') return tourRef(view, user);
   const n = (keys) => keys.filter((k) => done.has(k)).length;
   const pbKeys = PLAYBOOKS.map((p) => `pb:${p[0]}`);
   const card = (href, ic, t, p, foot) => `<a class="tr-card" href="${href}"><span class="tr-ico">${icon[ic] || ''}</span><h3>${esc(t)}</h3><p>${esc(p)}</p>${foot || ''}</a>`;
   view.innerHTML = `${head('Training and guides')}${tabs('', user)}
     <div class="tr-grid">
-      ${card('#/training/scripts/cold', 'phone', 'Cold call script', 'Consultant opener, ten clients only, what we found, qualify, book the audit.', `<span class="tr-done">${done.has('script:cold') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
+      ${card('#/training/tour', 'spark', 'Hub tour', 'A one minute walk through the menu and the top bar, fitted to your job.', `<span class="tr-done">${done.has('tour:hub') ? `${icon.check}Done` : 'Not taken yet'}</span>`)}
+      ${card('#/training/scripts/cold', 'phone', 'Cold call script', 'Pattern interrupt, the free plan, book it on this call, discovery after.', `<span class="tr-done">${done.has('script:cold') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/scripts/clarity', 'device', 'Google clarity audit script', 'The screen share pitch with every screen cue: slideshow, Scan tool tab and Google.', `<span class="tr-done">${done.has('script:clarity') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/drills', 'msg', 'Objection drills', 'Flash cards for every objection, before price, after price and the closes.', `<span class="tr-done">${n(['drill:cold', 'drill:before', 'drill:after', 'drill:any'])} of 4 sets done</span>`)}
       ${card('#/training/playbooks', 'note', 'Playbooks', 'How we run the calling day, the audit, closing, onboarding and the monthly work.', `<span class="tr-done">${n(pbKeys)} of ${pbKeys.length} done</span>`)}
@@ -112,11 +119,13 @@ export async function trainingPage(app, user, sub, arg) {
 }
 
 function scripts(view, user, which) {
-  const steps = scriptSteps(which === 'clarity' ? 'clarity' : 'cold');
+  const voice = voiceFor(user);
+  const steps = scriptSteps(which === 'clarity' ? 'clarity' : 'cold', undefined, voice);
   view.innerHTML = `${head(which === 'clarity' ? 'Google clarity audit script' : 'Cold call script', 'Scripts')}${tabs('scripts', user)}
     <div class="row" style="justify-content:space-between;margin-bottom:16px">
       <div class="seg"><a class="btn btn-sm ${which !== 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
-      <div class="row"><a class="btn btn-ghost btn-sm" href="${PDF[which === 'clarity' ? 'clarity' : 'cold']}" target="_blank" rel="noopener">${icon.down}Large print PDF</a>
+      <div class="row"><a class="btn btn-ghost btn-sm" href="${(voice === 'I' ? PDF : PDF_TEAM)[which === 'clarity' ? 'clarity' : 'cold']}" target="_blank" rel="noopener">${icon.down}Large print PDF</a>
+        ${user.role === 'admin' ? `<div class="seg"><button class="btn btn-sm ${voice === 'I' ? 'btn-primary' : 'btn-ghost'}" data-voice="I">Owner copy (I)</button><button class="btn btn-sm ${voice === 'we' ? 'btn-primary' : 'btn-ghost'}" data-voice="we">Team copy (we)</button></div>` : ''}
         <label class="row small" style="gap:8px"><input type="checkbox" id="rd"${done.has(`script:${which}`) ? ' checked' : ''}> I have read it</label></div></div>
     <p class="small muted" style="margin:0 0 16px">The live version with the lead's real names and numbers is in call prep and the presenter notes. Green blanks fill in there. Black boxes are the screen cues. Yellow DO notes are for you, never out loud.</p>
     <div class="card script-read">${steps.map((st, i) => `<section class="st"><h3><span>${String(i + 1).padStart(2, '0')}</span>${esc(st.title)}</h3>${st.lines.map((l) =>
@@ -125,11 +134,25 @@ function scripts(view, user, which) {
           : l.kind === 'if' ? `<p><b>${esc(l.tag)}:</b> ${blanks(l.text)}</p>`
             : l.kind === 'or' ? `<p><b class="muted">Or:</b> ${blanks(l.text)}</p>`
               : l.kind === 'q' ? `<p><b>${esc(l.n)}.</b> ${blanks(l.text)}</p>` : `<p>${blanks(l.text)}</p>`).join('')}</section>`).join('')}</div>`;
+  $$('[data-voice]', view).forEach((b) => b.addEventListener('click', () => { teamView = b.dataset.voice === 'we'; scripts(view, user, which); }));
   $('#rd', view).addEventListener('change', (e) => toggleDone(`script:${which}`, e.target.checked));
 }
 
+// The tour as a reference: every stop for this person's job, with Show me to jump straight to it.
+async function tourRef(view, user) {
+  const { tourSteps, startTour } = await import('./tour.js');
+  const steps = tourSteps(user);
+  view.innerHTML = `${head('Hub tour')}${tabs('tour', user)}
+    <div class="row" style="justify-content:space-between;margin-bottom:16px"><p class="muted" style="margin:0">Where everything lives, for ${esc(user.role === 'admin' ? 'owners' : jobLabel(user).toLowerCase() + 's')}.</p>
+      <button class="btn btn-primary" id="trtour">${icon.spark || ''}Start the tour</button></div>
+    <div class="card"><ul class="list tour-list">${steps.filter((s) => s.nav || s.sel).map((s) => `<li class="item"><div><div class="item-title">${esc(s.title)}</div><div class="item-sub">${esc(s.body)}</div></div>
+      <button class="btn btn-ghost btn-sm" data-at="${steps.indexOf(s)}">Show me</button></li>`).join('')}</ul></div>`;
+  $('#trtour', view).addEventListener('click', () => startTour(user, { onEnd: () => { done.add('tour:hub'); } }));
+  $$('[data-at]', view).forEach((b) => b.addEventListener('click', () => startTour(user, { at: Number(b.dataset.at) })));
+}
+
 function drills(view, user, set) {
-  const groups = objectionGroups();
+  const groups = objectionGroups(undefined, voiceFor(user));
   const g = groups.find((x) => x[0] === set) || groups[0];
   let order = g[2].map((_, i) => i).sort(() => Math.random() - 0.5), n = 0, shown = false;
   view.innerHTML = `${head('Objection drills')}${tabs('drills', user)}
@@ -188,6 +211,6 @@ function setup(view, user) {
 function resources(view, user) {
   view.innerHTML = `${head('Resources')}${tabs('resources', user)}
     <div class="tr-grid">${RESOURCES.map(([t, href, p]) => `<a class="tr-card" href="${esc(href)}"${href.startsWith('http') ? ' target="_blank" rel="noopener"' : ''}><span class="tr-ico">${(icon.chain || icon.share)}</span><h3>${esc(t)}</h3><p>${esc(p)}</p></a>`).join('')}
-      <a class="tr-card" href="${PDF.cold}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Cold call script PDF</h3><p>Large print, for the desk.</p></a>
-      <a class="tr-card" href="${PDF.clarity}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Clarity audit script PDF</h3><p>Large print, with every screen cue.</p></a></div>`;
+      <a class="tr-card" href="${(voiceFor(user) === 'I' ? PDF : PDF_TEAM).cold}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Cold call script PDF</h3><p>Large print, for the desk.</p></a>
+      <a class="tr-card" href="${(voiceFor(user) === 'I' ? PDF : PDF_TEAM).clarity}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Clarity audit script PDF</h3><p>Large print, with every screen cue.</p></a></div>`;
 }

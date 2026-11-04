@@ -352,10 +352,7 @@ export const SCRIPT_KEYS = [
 export const DEFAULT_SCRIPT = {
   k_open: [
     "Hey, is this {first_or_owner}?",
-    "(Line choppy, or they picked up mid word? That's when you use: 'You broke up there, is this {first_or_owner}?' Only when it really happened.)",
-    "(Then roll straight into the opener: the website one if it shows below, otherwise the pattern interrupt. No 'how are you', no asking for their time.)",
-    "(Where a line says I/we: say I only for what you did yourself, otherwise we. Agent or owner, everyone reads the same script.)",
-    "(SCREEN, yours only: Phone, Dialer. Call prep is beside the queue with their name, what research found and the listing check. No research yet? Press Research now while it rings.)",
+    "(Only if the line really cut out: 'You broke up there, is this {first_or_owner}?')",
   ].join('\n'),
   k_site: [
     "{site_intro}",
@@ -366,7 +363,6 @@ export const DEFAULT_SCRIPT = {
     "{open_line}",
     "{open_where}",
     "Perfect. Oh, I'm {rep} by the way, with RightWay Growth.",
-    "(That's the intro. Slip it in like it's nothing and keep rolling. Never say consultant.)",
   ].join('\n'),
   k_why: [
     "{strategy_note}",
@@ -381,38 +377,34 @@ export const DEFAULT_SCRIPT = {
   k_teach: [
     "OK so hey {first}, here's what we're gonna do. We're gonna look into all your competitors. We'll break down all their reviews, all their websites, and see what they're doing compared to you. Then I/we will show you all of it, so even if we don't work together, you're still gonna walk away knowing all this new information.",
     "And if any of them are running ads, I/we will show you those too.",
-    "(Say this before you book. Teaching them something raises your authority, and it gets more people to actually show up.)",
-    "(SCREEN, yours only: their competitors are already in call prep and the Scan tool. For ads, look them up in Google's Ads Transparency Center before the meeting. Only show what you really find.)",
   ].join('\n'),
   k_book: [
     "That's great, I/we would love to show you. I/we can have it all built today, but we have to share the screen to show you what we've got. Does {slot1} work for you, or is {slot2} better?",
     "(If they want more info first:) Totally, and that's exactly what we go over on the call. I/we will walk you through what we found and everything that's set up, live. Way easier than me reading it off to you. {slot1} or {slot2}?",
-    "(Book it on this call. Never 'I'll call you back'. If they say right now: 'Perfect, are you in front of a computer?' Then switch call prep to the Clarity audit tab.)",
-    "(SCREEN, yours only: press Book meeting, pick the time and who runs the call. With Google connected the Meet invite goes out by itself and the confirmation email follows right away.)",
+    "(Book it on this call.)",
   ].join('\n'),
   k_after: [
     "Perfect, you're locked in for [day and time]. What's the best email for the Google Meet link?",
     "And is this the best cell to text you a reminder? (If yes, tap 'They said yes to texts'.)",
     "So we can have everything ready and we don't waste any of your time, a few quick ones:",
     "1. Is anyone else part of decisions like this, a partner or a spouse? Have them hop on too.",
-    "2. Ballpark, what's a typical job worth to you? (Starting guess for {industry}: {ticket}.)",
+    "2. Ballpark, what's a typical job worth to you?",
     "3. What kind of jobs do you want more of? The ones that actually make you money.",
     "4. Where do most of your customers come from right now? Referrals, Google, something else?",
     "5. What areas or cities do you want to be known in?",
     "6. Are you working with anybody on marketing right now? How's that going?",
     "7. Do you have the logins for your Google profile and your website? (No stress if not, it just saves time.)",
-    "(Type every answer into the lead notes while they talk. These cover the clarity call discovery, so on the call you only confirm them and spend the time showing.)",
+    "(Type the answers into the lead notes.)",
   ].join('\n'),
   k_lock: [
     "Awesome. The Google Meet link is going to your email right now, and we'll send you a heads up the morning of and right before. Talk soon, {first}.",
-    "(Log the call as Booked. The Hub sends the confirmation, the morning message, the 3 hour reminder and the 10 minute link by itself. See Automations.)",
+    "(Log it as Booked.)",
   ].join('\n'),
 
   c_open: [
     "Hey, is this {first_or_owner}? ... Hey {first}, it's {rep}, with RightWay Growth. We're all set for your Google clarity audit.",
     "(Smile. Then:) Quick agenda so you know how this goes. I'm going to show you exactly what a customer sees when they look for you on Google, where the inconsistencies are, and what's causing them. At the end, we'll both decide if it makes sense to work together.",
     "And just so you know, we only take on ten clients at a time, so we can focus on the relationship, quality and results. So this is as much me seeing if you're a fit as you seeing if we are. Fair?",
-    "(Where a line says I/we: say I only for what you did yourself, otherwise we. Agent or owner, everyone reads the same script.)",
     "(Slow, low, certain. You're the one who did the work. You don't need this deal. You're deciding who gets one of the ten spots.)",
   ].join('\n'),
   c_frame: [
@@ -480,7 +472,6 @@ export const DEFAULT_SCRIPT = {
     "It's our local growth program, and it's what we've just been going over. First we do a data cleanup: every listing with wrong or outdated information gets corrected, so the damage stops. Then we get you in front of every directory Google checks that doesn't know who you are yet, and we build out your Google profile the right way.",
     '(PAUSE)',
     "Now before I go any further, I want to make sure we're on the same page. Like I said at the start, we only take on ten clients at a time, so we can focus on the relationship, the quality and the results. And I'll be straight with you: I/our founder used to work inside the big marketing companies. Year long contracts, reports nobody could read, promises of number one on Google. RightWay was built to do the opposite. You see every task, you see the map every month, and after the first three months you can leave any time. Fair?",
-    '(I/our founder: the owner says I. Anyone else says our founder, Vidal. Never tell a story that is not yours.)',
     '(SCREEN: "What gets you results" slide: only the services they need. Point at each one as you say it. Drop or add one live if discovery says so.)',
   ].join('\n'),
   c_program: [
@@ -541,13 +532,13 @@ export const DEFAULT_SCRIPT = {
   ].join('\n'),
   voicemail: [
     "Hey {first}, it's {rep}, with RightWay Growth. {vm_line} Give me a call back at {my_number}. Again, {rep}, {my_number}.",
-    "(Under 25 seconds. Say the number twice, slowly. Text only if they gave permission or texted first.)",
+    "(Under 25 seconds. Number twice, slowly.)",
   ].join('\n'),
   gatekeeper: [
     "Hey, you guys are still open, right? ... Perfect. Is {first_or_owner} around?",
     "(They ask who's calling:) Oh, it's {rep}, with RightWay Growth. {gk_reason}",
     "Or: No worries. Who handles the Google stuff over there? ... Got it, when's the best time to catch them?",
-    "(Same easy energy as the owner opener. Get a name and a time, not a pitch. Put both in the lead notes and log it as Gatekeeper.)",
+    "(Get a name and a time. Log it as Gatekeeper.)",
   ].join('\n'),
 };
 
@@ -589,7 +580,7 @@ export const DEFAULT_OBJECTIONS = [
   ['I need to talk to my partner or spouse', "Makes sense, this should be a joint decision. What do you think they'll ask? (Answer it now.) Let's get 15 minutes with both of you so they see the same map. Does {slot1} or {slot2} work?"],
   ['Just send me an email', "Happy to. So it doesn't get buried, what part should I focus on? (Let them answer.) Honestly, the map makes way more sense on the screen than in an email, and it's 15 minutes. Does {slot1} or {slot2} work?"],
   ["I'm busy right now", "Totally get it, you're running a business. The clarity scan takes 15 minutes on a screen share. Is later today or tomorrow morning better? I'll put it on my calendar and call right on time."],
-  ['Are you with Google?', "No, we're an independent local marketing company in Hollywood, Florida. We help businesses show up better on Google and get more calls from it."],
+  ['Are you with Google?', "No, we're an independent local marketing company in Miami and Fort Lauderdale. We help businesses show up better on Google and get more calls from it."],
   ['How did you get my number?', "Your business number is public on your Google listing. I came across {business} while checking who shows up for \"{keyword}\" in {city}."],
 ];
 
@@ -611,6 +602,17 @@ export const PLAYBOOK = [
   ['Alternative choice and silence', 'Zig Ziglar, Secrets of Closing the Sale', 'Offer two yeses ("phone or email", "morning or afternoon"), then stop talking.'],
   ['Keep it true', 'Rightway Growth', 'Urgency comes from what the scan shows and what it costs them, never from fake deadlines, fake discounts or promised rankings.'],
 ];
+
+// One script, two voices. The owner reads it as "I". Everyone else gets the "we" copy: same words, the owner's own claims said as the team.
+// Source text marks those spots as "I/we" and "I/our founder".
+export function voiceText(text, voice = 'I') {
+  const we = voice === 'we';
+  return String(text || '')
+    .replace(/(^|[.!?]["')]?\s+|\n|\()I\/our founder/g, (m, a) => `${a}${we ? 'Our founder Vidal' : 'I'}`)
+    .replace(/I\/our founder/g, we ? 'our founder Vidal' : 'I')
+    .replace(/(^|[.!?]["')]?\s+|\n|\()I\/we/g, (m, a) => `${a}${we ? 'We' : 'I'}`)
+    .replace(/I\/we/g, we ? 'we' : 'I');
+}
 
 export function fill(tpl, vars) {
   return String(tpl || '').replace(/\{(\w+)\}/g, (_, k) => (vars[k] != null && vars[k] !== '' ? String(vars[k]) : `[${k.replace(/_/g, ' ')}]`));
@@ -773,10 +775,10 @@ function coldVars(lead, intel, { kw, top, first, L, lbad, worst }) {
   return {
     site_intro: hasSite ? '' : `IF THEY HAVE NO WEBSITE: Hey ${first || 'there'}, look, so I/we actually couldn't find your website online, so I/we decided to sit down and just built you one... look${first ? ` ${first}` : ''}, it's already done. You wanna see it?`,
     site_who: hasSite ? '' : "(If they ask who this is:) Oh my bad, I'm {rep}, with RightWay Growth. We build websites for {industry} businesses around {city}.",
-    site_note: hasSite ? '' : "(Only open with this when their demo site is really built and live, with the link ready to text or email. Not built yet? Use the pattern interrupt instead. They say yes: go to Before you book, then book the screen share to walk them through it.)",
+    site_note: hasSite ? '' : '(Only when their demo site is built and the link is ready.)',
     open_line: noHours ? "Hey, you guys are open today, right? Google doesn't show your hours, so I wasn't sure." : 'Hey, you guys are still open, right?',
     open_where: noHours ? "(If they ask where:) On Google. Your hours aren't on your listing, so people can't tell if you're open." : "(If they ask why:) Just wanted to make sure I caught you before you closed.",
-    strategy_note: found ? '' : "(Research hasn't run on this lead yet. Press Research now before you say you looked them up. Until then, say it this way:)",
+    strategy_note: found ? '' : '(No research yet? Say it this way:)',
     strategy_line: found ? `So I/we actually looked you guys up and used your info to build an automated, tailored strategy to help bring in ${jobs}.`
       : `So we've been putting together tailored strategies for ${info.label.toLowerCase()} businesses around ${city || 'here'} to help bring in ${jobs}.`,
     found_say: found ? `(If they ask what you found:) ${scanLine(lead, intel)}${L?.results?.length && lbad ? ` And ${lbad} of ${L.results.length} directories Google checks have you wrong or missing${worst ? `, ${worst.name} for one` : ''}.` : ''}` : '',
@@ -796,9 +798,9 @@ export function buildScript(lead, intel, ctx = {}, custom = {}) {
   const keep = (q) => { const m = q.match(/^\{(\w+)\}$/); return !m || (v[m[1]] != null && v[m[1]] !== ''); };
   return {
     vars: v,
-    steps: SCRIPT_KEYS.map(([id, title]) => ({ id, title: title.replace(/^Cold: /, ''), group: SCRIPT_GROUPS.find((g) => g[2].includes(id))?.[0] || 'clarity', lines: asLines(S[id]).filter(keep).map((q) => fill(fill(q, v), v)).filter((q) => q.trim()) })).filter((st) => st.lines.length),
+    steps: SCRIPT_KEYS.map(([id, title]) => ({ id, title: title.replace(/^Cold: /, ''), group: SCRIPT_GROUPS.find((g) => g[2].includes(id))?.[0] || 'clarity', lines: asLines(S[id]).filter(keep).map((q) => voiceText(fill(fill(q, v), v), ctx.voice)).filter((q) => q.trim()) })).filter((st) => st.lines.length),
     groups: SCRIPT_GROUPS.map(([key, name]) => ({ key, name })),
-    objections: objections.map(([q, a]) => ({ q, a: fill(a, v) })),
+    objections: objections.map(([q, a]) => ({ q: voiceText(q, ctx.voice), a: voiceText(fill(a, v), ctx.voice) })),
     playbook: PLAYBOOK.map(([name, from, use]) => ({ name, from, use })),
   };
 }

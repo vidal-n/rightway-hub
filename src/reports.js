@@ -207,7 +207,7 @@ export function reportEmail(rep, url, note = '') {
         Work done this month: <b>${d.work.done}</b> task${d.work.done === 1 ? '' : 's'}${d.posts ? `, <b>${d.posts}</b> Google post${d.posts === 1 ? '' : 's'}` : ''}</p>
       <p style="margin:22px 0 4px"><a href="${h(url)}" style="display:inline-block;background:#0F1B17;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:12px">See the full report</a></p>
     </div>
-    <p style="font-size:12px;color:#5B6B65;text-align:center;margin-top:14px">Rightway Growth, Hollywood FL</p>
+    <p style="font-size:12px;color:#5B6B65;text-align:center;margin-top:14px">Rightway Growth, Miami and Fort Lauderdale, FL</p>
   </div></body></html>`;
   return { subject: `Your ${d.monthLabel} Google Maps report`, text, html };
 }

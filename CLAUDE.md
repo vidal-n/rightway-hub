@@ -1,6 +1,6 @@
 # Rightway Hub
 
-Internal software for Rightway Growth LLC (local SEO agency, Hollywood FL). Owner: Vidal Newton (V), non-developer.
+Internal software for Rightway Growth LLC (local SEO agency, Miami and Fort Lauderdale FL). Owner: Vidal Newton (V), non-developer.
 The full plan lives in the Claude Doc "Rightway Hub: Build Plan" (https://claude.ai/artifact/Av9b3D9P7ZosEPatp1ZcJJ).
 Its "Package build-out" tab maps every package item to a Hub module and phase (2 to 9); follow that order.
 
@@ -229,7 +229,6 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   when certified.
 - Onboarding (built): first month tasks created on convert, lead research becomes the client baseline, Onboarding tab (before vs now, fix list,
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).
-- GoHighLevel can be cancelled once the website form posts to the Hub (rw site change) and any GHL numbers to keep are ported.
 - Fulfillment workflow (built, `src/work.js`, `public/js/guides.js` pure and shared, `public/hub/work.js`): the task engine fills every active main client's
   month on its own (`ensureMonthTasks` from the cron and `GET /api/work`), owner = `clients.owner_id` (Account manager on the client header), due dates from
   `dueDate` (repeat tasks spread through the month, setup 10 days after start). My work `#/work` (Mine, Nobody assigned, Everyone, per person, per client;
@@ -469,6 +468,14 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
 - Script DO notes (Nov 2026): coaching notes are no longer grey italic. Hub call prep and the Training reader show them upright on a yellow strip with a
   black DO tag (`.say-note`, `.script-read .cue`, `.do-tag`); notes inside a spoken line get an inline DO mark via `markCues` in `public/js/scriptprint.js`
   (spoken asides like "No stress if not" stay). PDFs use the same style (scratchpad `final/gen.mjs`). The Docs mark them with a bold "DO:" on their own line.
+- Script voices and location (Nov 2026): the owner copy of every script says "I", the team copy says "we". Source text marks the spots as `I/we` and
+  `I/our founder`; `voiceText(text, voice)` in `public/js/leadintel.js` (pure) turns them into I or we (the founder story becomes "our founder Vidal").
+  `buildScript(..., { voice })`, `scriptSteps(group, script, voice)`, `objectionGroups(list, voice)` take it; owners (role admin) get `I`, everyone else
+  `we` (call prep, presenter notes, Training). Training lets an owner flip to the team copy. Four PDFs in `public/training/` (cold and clarity, owner and
+  `-Team`), made with `VOICE=we node gen.mjs`. The company is Miami and Fort Lauderdale based: say that in copy, not Hollywood (only the legal address in
+  `public/js/agreement.js` stays). Do not bring up GoHighLevel, V is cancelling it.
+- Hub opening animation and tour (Nov 2026): `public/hub/intro.js` plays once per browser session, `public/hub/tour.js` offers a spotlight tour once per
+  person (job aware steps, `tour:hub` in `/api/me/training`), replayable from Training, Hub tour.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

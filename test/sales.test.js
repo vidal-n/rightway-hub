@@ -77,13 +77,15 @@ test('problems, score, plan, and script come from the research', () => {
   assert.match(s.steps[0].lines[0], /^Hey, is this Bob\?$/);
   assert.equal(s.steps[0].group, 'cold');
   assert.match(step(s, 'k_hook'), /Oh, I'm Vidal by the way, with RightWay Growth/);
-  assert.match(step(s, 'k_why'), /I\/we actually looked you guys up and used your info to build an automated, tailored strategy/);
+  assert.match(step(s, 'k_why'), /So I actually looked you guys up and used your info to build an automated, tailored strategy/);
   assert.match(step(s, 'k_why'), /book you a plan today, completely free/);
   assert.match(step(s, 'k_teach'), /We're gonna look into all your competitors/);
-  // Agent or owner: lines about work someone else may have done say I/we, never a role the reader might not have.
-  assert.doesNotMatch(spokenAll(s), /\bI built\b|\bI looked\b|\bI'll show you\b|share my screen/);
-  assert.doesNotMatch(spokenAll(s, 'clarity'), /\bI used to work\b|\bI built RightWay\b|\bI ran\b|scan I ran/);
-  assert.match(step(s, 'c_story'), /I\/our founder used to work inside/);
+  // The owner copy says I. The team copy says we for work someone else may have done, and never claims the founder's story.
+  assert.match(step(s, 'c_story'), /I used to work inside/);
+  const sw = buildScript(lead, INTEL, { rep: 'Vidal', voice: 'we' });
+  assert.doesNotMatch(spokenAll(sw), /\bI built\b|\bI looked\b|\bI'll show you\b|share my screen/);
+  assert.doesNotMatch(spokenAll(sw, 'clarity'), /\bI used to work\b|\bI built RightWay\b|\bI ran\b|scan I ran/);
+  assert.match(step(sw, 'c_story'), /our founder Vidal used to work inside/);
   assert.match(step(s, 'k_after'), /typical job worth/);
   const spoken = s.steps.filter((x) => x.group === 'cold').flatMap((x) => x.lines).filter((l) => !/^\(/.test(l)).join(' ');
   assert.doesNotMatch(spoken, /consultant|analyst|Do you have 30 seconds|how are you/i);
@@ -97,7 +99,7 @@ test('problems, score, plan, and script come from the research', () => {
   // Without research the call never claims the business was looked up.
   const nores = buildScript(lead, null, { rep: 'Vidal' });
   assert.doesNotMatch(step(nores, 'k_why'), /^So I actually looked you guys up/m);
-  assert.match(step(nores, 'k_why'), /Research hasn't run/);
+  assert.match(step(nores, 'k_why'), /No research yet/);
   assert.doesNotMatch(step(nores, 'voicemail') + step(nores, 'gatekeeper'), /looked .* up on Google/);
   assert.match(step0(s, 'c_open'), /Google clarity audit/);
   // The real listing check feeds the cold call and the clarity call; nothing is claimed when it has not run.
@@ -391,4 +393,22 @@ test('API: Google connect redirects to consent and booking creates a Meet event'
     assert.equal(r.status, 200);
     assert.equal(r.data.meet, 'https://meet.google.com/abc-defg-hij');
   } finally { globalThis.fetch = realFetch; }
+});
+
+test('the script reads as I for owners and we for everyone else', async () => {
+  const { voiceText, buildScript } = await import('../public/js/leadintel.js');
+  assert.equal(voiceText('Then I/we will show you.', 'I'), 'Then I will show you.');
+  assert.equal(voiceText('Then I/we will show you.', 'we'), 'Then we will show you.');
+  assert.equal(voiceText('I/we looked you up. And I/we can help.', 'we'), 'We looked you up. And we can help.');
+  assert.equal(voiceText('Note: I/our founder worked inside agencies. I/our founder saw it.', 'we'), 'Note: our founder Vidal worked inside agencies. Our founder Vidal saw it.');
+  assert.equal(voiceText('Because I/our founder saw it.', 'we'), 'Because our founder Vidal saw it.');
+  const lead = { business: 'Summit Roofing', contact_name: 'Bob Smith', phone: '9545550101', industry: 'Roofing', city: 'Miami', state: 'FL' };
+  for (const voice of ['I', 'we']) {
+    const s = buildScript(lead, null, { rep: 'Vidal', voice }, {});
+    const text = s.steps.flatMap((st) => st.lines).join('\n') + s.objections.map((o) => `${o.q}\n${o.a}`).join('\n');
+    assert.ok(!/I\/we|I\/our/.test(text), `${voice}: no slash markers left`);
+    assert.ok(!/Hollywood|GoHighLevel/.test(text));
+  }
+  const we = buildScript(lead, null, { rep: 'Sam', voice: 'we' }, {});
+  assert.ok(we.steps.flatMap((st) => st.lines).some((l) => /our founder Vidal/.test(l)), 'the founder story is said as the team');
 });

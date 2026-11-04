@@ -47,14 +47,14 @@ function scriptLine(l) {
   return `<p class="say-line">${markCues(esc(l))}</p>`;
 }
 
-export async function prepPanel(el, lead, intel, { rep = '', onResearched, compact = false } = {}) {
+export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onResearched, compact = false } = {}) {
   const custom = await scriptSettings();
   const probs = findProblems(intel, lead);
   const sc = scoreLead(lead, intel);
   const rec = recommendPlan(lead, intel);
   const info = industryInfo(lead.industry, intel?.listing?.category || lead.category);
   const plan = lead.plan || rec.plan;
-  const s = buildScript(lead, intel, { rep, plan }, custom);
+  const s = buildScript(lead, intel, { rep, plan, voice }, custom);
   const age = intel?.at ? fmt.ago(intel.at) : null;
   // The dialer opens on the cold call; a booked lead (or the lead page with a meeting) opens on the clarity call.
   const startGroup = lead.stage === 'audit_booked' || (lead.meet_at && lead.meet_at > Date.now() - 3 * 3600e3) ? 'clarity' : 'cold';
@@ -107,7 +107,7 @@ export async function prepPanel(el, lead, intel, { rep = '', onResearched, compa
       toast(`Research done${r.intel?.cost ? ` ($${r.intel.cost.toFixed(3)})` : ''}`);
       const next = { ...lead, score: r.score ?? lead.score, grade: r.grade ?? lead.grade, plan: lead.plan || r.plan };
       onResearched?.(next, r.intel);
-      prepPanel(el, next, r.intel, { rep, onResearched, compact });
+      prepPanel(el, next, r.intel, { rep, voice, onResearched, compact });
     } catch (err) { toast(err.message, true); busy(e.target, false); }
   });
   $('[data-act="book"]', el).addEventListener('click', () => bookModal(lead));

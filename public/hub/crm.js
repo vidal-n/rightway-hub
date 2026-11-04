@@ -35,8 +35,8 @@ const dueText = (ms) => {
 let DISP = keyed(OUTCOMES.map(([id, label]) => ({ id, label, acts: id })));
 const dispoOf = (id) => DISP.find((d) => d.id === id) || { id, label: id, acts: id };
 async function refreshDispos() { try { DISP = keyed((await loadDispos()).dispositions); } catch { /* keep the built in list */ } }
-let REP = '';
-export const setRep = (user) => { REP = (user?.name || '').split(' ')[0] || ''; };
+let REP = '', VOICE = 'I';
+export const setRep = (user) => { REP = (user?.name || '').split(' ')[0] || ''; VOICE = user?.role === 'admin' ? 'I' : 'we'; };
 const telHref = (p) => `tel:${String(p || '').replace(/[^\d+]/g, '')}`;
 
 // ---------- pipeline ----------
@@ -448,7 +448,7 @@ export async function leadModal(id, onChange) {
       </div>
     </div>`;
   const done = () => { m.close(); onChange?.(); };
-  prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, onResearched: () => { changed = true; } });
+  prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, voice: VOICE, onResearched: () => { changed = true; } });
   $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
   // Google: write to them, see what you have already sent, and put a meeting on your own calendar.
   $('#lmailbtn', m.el)?.addEventListener('click', async () => {
@@ -609,7 +609,7 @@ function importModal(onDone) {
   const m = modal(`<div class="card-head"><h2>Import leads</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     <p class="muted">Upload a CSV or paste it below. Columns are matched by their headers: business, contact, phone, email, website, address, city, state, zip, industry, category, rating, reviews. Duplicates are skipped by phone, website, and name plus city or zip, including leads marked Do not call. Only use lists you have the right to call.</p>
     <input type="file" id="csvf" accept=".csv,text/csv,text/plain" style="margin:10px 0">
-    <textarea id="csvt" rows="8" placeholder="business,contact,phone,city,state,industry&#10;Summit Roofing,Bob,954-555-0101,Hollywood,FL,Roofing"></textarea>
+    <textarea id="csvt" rows="8" placeholder="business,contact,phone,city,state,industry&#10;Summit Roofing,Bob,954-555-0101,Miami,FL,Roofing"></textarea>
     <p id="csvp" class="small"></p>
     <div class="row"><label class="field" style="flex:1 1 220px"><span>Tag this batch (optional)</span><input id="csvtag" placeholder="e.g. Broward roofers Nov"></label>
       <label class="row small" style="gap:6px"><input type="checkbox" id="csvres"> Research the A and B leads after import</label></div>
@@ -720,7 +720,7 @@ export async function dialerPage(app, user) {
     if (!intelCache.has(l.id)) { el.innerHTML = `<div class="skeleton"></div><p class="small">${auto ? 'Researching this lead: Google profile, map ranks, website, speed...' : 'Loading...'}</p>`; return; }
     const g = $('#dgrade', view);
     if (g) g.innerHTML = gradeBadge(l.grade, l.score);
-    prepPanel(el, l, intelCache.get(l.id), { rep: REP, onResearched: (next, intel) => { Object.assign(l, next); intelCache.set(l.id, intel); const gg = $('#dgrade', view); if (gg) gg.innerHTML = gradeBadge(l.grade, l.score); } });
+    prepPanel(el, l, intelCache.get(l.id), { rep: REP, voice: VOICE, onResearched: (next, intel) => { Object.assign(l, next); intelCache.set(l.id, intel); const gg = $('#dgrade', view); if (gg) gg.innerHTML = gradeBadge(l.grade, l.score); } });
   };
   const upcoming = (cal.meetings || []).filter((m) => m.meet_at > Date.now() - 3600e3).slice(0, 4);
   // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.

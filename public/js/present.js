@@ -50,7 +50,7 @@ function slides() {
   const plan = state.plan;
   const P = PLAN_INFO[plan];
   const Q = state.quote;
-  const script = buildScript(lead, intel, { rep: D.rep, plan, ticket: state.ticket, quote: Q }, D.custom);
+  const script = buildScript(lead, intel, { rep: D.rep, voice: D.voice, plan, ticket: state.ticket, quote: Q }, D.custom);
   const v = script.vars;
   const first = (lead.contact_name || '').split(' ')[0];
   const r = roi({ ticket: state.ticket, jobs: state.jobs, plan, price: Q.monthly });
@@ -409,7 +409,7 @@ function startPresenter() {
     list = slides();
     const s = list[state.i] || list[0];
     const nx = list[state.i + 1];
-    const script = buildScript(D.lead, D.intel, { rep: D.rep, plan: state.plan, ticket: state.ticket, quote: state.quote }, D.custom);
+    const script = buildScript(D.lead, D.intel, { rep: D.rep, voice: D.voice, plan: state.plan, ticket: state.ticket, quote: state.quote }, D.custom);
     root.innerHTML = `<div class="pv"><div><h1>${esc(s.title)}</h1><div class="meta">Slide ${state.i + 1} of ${list.length}${nx ? ` · Next: ${esc(nx.title)}` : ''} · ${esc(D.lead.business)}</div>
         <div class="notes">${esc(s.notes)}</div>
         <div class="ctrls" style="margin-top:16px"><button class="ghost" id="pp">← Back</button><button id="pn">Next →</button></div></div>
@@ -432,7 +432,7 @@ async function boot() {
   try {
     const [d, me, s] = await Promise.all([api(`/api/leads/${encodeURIComponent(id)}`), api('/api/me'), api('/api/settings').catch(() => ({}))]);
     if (!can(me.user, 'close')) { root.innerHTML = '<div class="err"><div>Presentations are run by closers. Ask an owner to hand you the call.<br><a href="/">Back to the Hub</a></div></div>'; return; }
-    D = { lead: d.lead, intel: d.intel, rep: (me.user?.name || '').split(' ')[0] || '', custom: { script: s.script || {}, objections: s.objections || null, number: s.number || '' } };
+    D = { lead: d.lead, intel: d.intel, rep: (me.user?.name || '').split(' ')[0] || '', voice: me.user?.role === 'admin' ? 'I' : 'we', custom: { script: s.script || {}, objections: s.objections || null, number: s.number || '' } };
     const info = industryInfo(D.lead.industry, D.intel?.listing?.category || D.lead.category);
     state.quote = quoteFor(D.lead, D.intel, D.lead.quote);
     state.plan = state.quote.plan;

@@ -60,7 +60,7 @@ function render(o) {
         <button class="btn btn-primary btn-xl" type="submit">Sign work order</button>
         <p class="err-text" id="err" role="alert"></p>
       </form>`}
-    <p class="small" style="text-align:center">Rightway Growth LLC · Hollywood, Florida · rightwaygrowth.com</p>`;
+    <p class="small" style="text-align:center">Rightway Growth LLC · Miami and Fort Lauderdale, Florida · rightwaygrowth.com</p>`;
   wireSign(box);
 }
 

@@ -1,6 +1,6 @@
 // The scripts as a reading copy: same text as the Hub's call prep, with blanks where call prep fills in the real names and numbers.
 // Pure. Used by the Training page and by the printable PDFs, so paper, Training and the live call prep never drift apart.
-import { DEFAULT_SCRIPT, SCRIPT_KEYS, SCRIPT_GROUPS, DEFAULT_OBJECTIONS } from './leadintel.js';
+import { DEFAULT_SCRIPT, SCRIPT_KEYS, SCRIPT_GROUPS, DEFAULT_OBJECTIONS, voiceText } from './leadintel.js';
 
 const B = (t) => `[[${t}]]`;
 export const PRINT_VARS = {
@@ -23,10 +23,10 @@ export const PRINT_VARS = {
   problems: B('the top 3 problems from call prep, one at a time'),
   site_intro: `IF THEY HAVE NO WEBSITE: Hey ${B('first name')}, look, so I/we actually couldn't find your website online, so I/we decided to sit down and just built you one... look ${B('first name')}, it's already done. You wanna see it?`,
   site_who: `(If they ask who this is:) Oh my bad, I'm ${B('your name')}, with RightWay Growth. We build websites for ${B('industry')} businesses around ${B('city')}.`,
-  site_note: '(Only open with this when their demo site is really built and live, with the link ready to text or email. Not built yet? Use the pattern interrupt instead. They say yes: go to Before you book, then book the screen share to walk them through it.)',
+  site_note: '(Only when their demo site is built and the link is ready.)',
   open_line: 'Hey, you guys are still open, right?',
-  open_where: "(If they ask why: 'Just wanted to make sure I caught you before you closed.' If their Google has no hours, call prep opens with: 'Hey, you guys are open today, right? Google doesn't show your hours, so I wasn't sure.' And if they ask where: 'On Google. Your hours aren't on your listing.')",
-  strategy_note: `(Research hasn't run yet? Press Research now first. Until it has, say: 'So we've been putting together tailored strategies for ${B('industry')} businesses around ${B('city')} to help bring in more of the specific, profitable jobs you actually want.')`,
+  open_where: "(If they ask why:) Just wanted to make sure I caught you before you closed.",
+  strategy_note: '',
   strategy_line: 'So I/we actually looked you guys up and used your info to build an automated, tailored strategy to help bring in more of the specific, profitable jobs you actually want.',
   found_say: `(If they ask what you found:) ${B('scan line from call prep')} And ${B('X of 15')} directories Google checks have you wrong or missing.`,
   value_line: `we can help you get more of the calls from people searching "${B('keyword')}" that are going to ${B('top competitor')} right now`,
@@ -40,8 +40,8 @@ const title = Object.fromEntries(SCRIPT_KEYS.map(([k, t]) => [k, t.replace(/^Col
 export const stepTitle = (k) => { const t = title[k] || k; return t.charAt(0).toUpperCase() + t.slice(1); };
 
 // One script line: what kind it is and its text with blanks marked [[like this]].
-export function classify(raw) {
-  const t = fillPrint(String(raw).trim());
+export function classify(raw, voice = 'I') {
+  const t = voiceText(fillPrint(String(raw).trim()), voice);
   let m;
   if ((m = t.match(/^\(SCREEN(, yours only)?: ([\s\S]*)\)$/))) return { kind: m[1] ? 'yourscreen' : 'screen', text: m[2] };
   if (/^\([\s\S]*\)$/.test(t)) return { kind: 'cue', text: t.slice(1, -1) };
@@ -56,11 +56,11 @@ const SPOKEN_ASIDE = /^(How many|No stress|end\b)/i;
 export function markCues(html) {
   return String(html).replace(/\(([^()]{2,240})\)/g, (m, inner) => (SPOKEN_ASIDE.test(inner.trim()) ? m : `<span class="do-in"><b class="do-tag">Do</b>${inner.trim()}</span>`));
 }
-export function scriptSteps(group, script = DEFAULT_SCRIPT) {
+export function scriptSteps(group, script = DEFAULT_SCRIPT, voice = 'I') {
   const g = SCRIPT_GROUPS.find((x) => x[0] === group);
-  return (g ? g[2] : []).map((k) => ({ id: k, title: stepTitle(k), lines: String(script[k] || '').split('\n').filter((x) => x.trim()).map(classify).filter((l) => l.text.trim()) }));
+  return (g ? g[2] : []).map((k) => ({ id: k, title: stepTitle(k), lines: String(script[k] || '').split('\n').filter((x) => x.trim()).map((x) => classify(x, voice)).filter((l) => l.text.trim()) }));
 }
-export function objectionGroups(list = DEFAULT_OBJECTIONS) {
+export function objectionGroups(list = DEFAULT_OBJECTIONS, voice = 'I') {
   const idx = (q) => list.findIndex(([x]) => x === q);
   const price = idx("It's too expensive"), any = idx('I need to talk to my partner or spouse');
   const cold = list.filter(([q]) => /^Cold: /.test(q));
@@ -68,6 +68,6 @@ export function objectionGroups(list = DEFAULT_OBJECTIONS) {
   const before = rest.filter(([q]) => idx(q) < price);
   const after = price >= 0 ? rest.filter(([q]) => idx(q) >= price && (any < 0 || idx(q) < any)) : [];
   const anytime = any >= 0 ? rest.filter(([q]) => idx(q) >= any) : [];
-  const map = ([q, a]) => ({ q: q.replace(/^Cold: /, ''), a: fillPrint(a) });
+  const map = ([q, a]) => ({ q: q.replace(/^Cold: /, ''), a: voiceText(fillPrint(a), voice) });
   return [['cold', 'Cold call', cold.map(map)], ['before', 'Before price', before.map(map)], ['after', 'After price', after.map(map)], ['any', 'Any time', anytime.map(map)]];
 }
