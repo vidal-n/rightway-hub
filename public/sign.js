@@ -1,4 +1,8 @@
 // Public work order page: review, sign with a typed name, then pay through Stripe.
+// New orders carry the one Rightway service agreement (public/js/agreement.js); older orders keep their plan layout.
+import { agreementHtml, AGREEMENT_CSS } from '/js/agreement.js';
+
+document.head.insertAdjacentHTML('beforeend', `<style>${AGREEMENT_CSS}</style>`);
 const box = document.getElementById('wo');
 const token = location.hash.slice(1);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -20,6 +24,7 @@ function fail(msg) {
 }
 
 function render(o) {
+  if (o.sections) return renderAgreement(o);
   const signed = o.status !== 'sent';
   box.innerHTML = `
     <div class="wo-head">${logo}<span class="badge ${signed ? '' : 'warn'}">${signed ? (o.status === 'paid' ? 'Signed and paid' : 'Signed') : 'Ready to sign'}</span></div>
@@ -49,7 +54,35 @@ function render(o) {
         <p class="err-text" id="err" role="alert"></p>
       </form>`}
     <p class="small" style="text-align:center">Rightway Growth LLC · Hollywood, Florida · rightwaygrowth.com</p>`;
-  const form = document.getElementById('sign');
+  wireSign(box);
+}
+
+const printLogo = '<img src="/brand/rightway-logo-light.svg" alt="Rightway Growth" width="185" height="30">';
+
+function renderAgreement(o) {
+  const signed = o.status !== 'sent';
+  const today = o.monthly_cents + o.setup_cents;
+  box.innerHTML = `
+    <div class="wo-head no-print">${logo}<span class="badge ${signed ? '' : 'warn'}">${signed ? (o.status === 'paid' ? 'Signed and paid' : 'Signed') : 'Ready to sign'}</span></div>
+    ${agreementHtml({ sections: o.sections, business: o.business, contact: o.contact_name, logo: printLogo, sig: signed ? { name: o.signed_name, at: o.signed_at } : null })}
+    ${signed ? `
+      <div class="signed no-print"><div class="small">Signed electronically ${esc(new Date(o.signed_at).toLocaleString('en-US'))}</div><div class="sig">${esc(o.signed_name)}</div></div>
+      <div class="row no-print">${o.pay_url ? `<a class="btn btn-primary btn-xl" style="width:auto;flex:1 1 260px" href="${esc(o.pay_url)}">Pay ${money(today)} and start</a>` : ''}
+        <button class="btn btn-ghost btn-xl" style="width:auto" onclick="print()">Print or save a copy</button></div>` : `
+      <form class="card no-print" id="sign">
+        <h2>Sign</h2>
+        <p class="muted">Due today: <b>${money(today)}</b> (setup ${money(o.setup_cents)} and first month ${money(o.monthly_cents)}). Then ${money(o.monthly_cents)} a month.</p>
+        <label class="field"><span>Type your full name</span><input name="name" autocomplete="name" required minlength="3"></label>
+        <label class="row" style="margin:14px 0;gap:10px;align-items:flex-start"><input type="checkbox" name="agree" required>
+          <span>I have read and agree to this Agreement, including the three month minimum term, and I'm authorized to sign for ${esc(o.business)}. My typed name is my electronic signature.</span></label>
+        <button class="btn btn-primary btn-xl" type="submit">Sign agreement</button>
+        <p class="err-text" id="err" role="alert"></p>
+      </form>`}`;
+  wireSign(box);
+}
+
+function wireSign(root) {
+  const form = root.querySelector('#sign');
   if (form) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

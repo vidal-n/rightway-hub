@@ -585,6 +585,7 @@ import './intel.js';
 import './google.js';
 import './onboarding.js';
 import './meetings.js';
+import './assistant.js';
 import './voicemail.js';
 import './gbp.js';
 import './gmail.js';

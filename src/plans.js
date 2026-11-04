@@ -3,7 +3,7 @@
 
 export const PLANS = {
   starter: {
-    name: 'Starter', price: 597, setup: 397, meetingMinutes: 30, keywords: 10,
+    name: 'Starter', price: 399, setup: 399, meetingMinutes: 30, keywords: 10,
     monthly: [
       ['post', 'Google profile post', 4],
       ['onpage', 'On-page fix on the website', 1],
@@ -13,7 +13,7 @@ export const PLANS = {
     ],
   },
   growth: {
-    name: 'Growth', price: 997, setup: 997, meetingMinutes: 45, keywords: 20,
+    name: 'Growth', price: 449, setup: 449, meetingMinutes: 45, keywords: 20,
     monthly: [
       ['post', 'Google profile post', 4],
       ['photos', 'Upload new photos to the Google profile', 1],
@@ -28,7 +28,7 @@ export const PLANS = {
     ],
   },
   authority: {
-    name: 'Authority', price: 1497, setup: 997, meetingMinutes: 60, keywords: 30,
+    name: 'Authority', price: 499, setup: 499, meetingMinutes: 60, keywords: 30,
     monthly: [
       ['post', 'Google profile post', 4],
       ['photos', 'Upload new photos to the Google profile', 1],
@@ -46,7 +46,7 @@ export const PLANS = {
     ],
   },
   leader: {
-    name: 'Market Leader', price: 2497, setup: 1497, meetingMinutes: 60, keywords: 50,
+    name: 'Market Leader', price: 599, setup: 599, meetingMinutes: 60, keywords: 50,
     monthly: [
       ['post', 'Google profile post (each location)', 4],
       ['photos', 'Upload new photos to each Google profile', 1],
@@ -124,7 +124,12 @@ export function monthKey(d = new Date()) {
 // Plan copy lives in public/js/plancopy.js so the presentation can show the same words.
 export { INCLUDES, STANDARD_TERMS } from '../public/js/plancopy.js';
 
+// Setup equals the monthly fee on every plan (priced for a drop close: start at Market Leader, drop to what the client needs).
+export const MONTHLY_CENTS = { starter: 39900, growth: 44900, authority: 49900, leader: 59900 };
+export const SETUP_CENTS = { starter: 39900, growth: 44900, authority: 49900, leader: 59900 };
 // First checkout totals (setup + first month) in cents, used to recognize the plan from a Stripe payment.
-export const FIRST_CHARGE_CENTS = { 99400: 'starter', 89400: 'starter', 199400: 'growth', 249400: 'authority', 399400: 'leader' };
-export const MONTHLY_CENTS = { starter: 59700, growth: 99700, authority: 149700, leader: 249700 };
-export const SETUP_CENTS = { starter: 39700, growth: 99700, authority: 99700, leader: 149700 };
+// The older amounts stay so payments from links made before the price change are still recognized.
+export const FIRST_CHARGE_CENTS = {
+  79800: 'starter', 89800: 'growth', 99800: 'authority', 119800: 'leader',
+  99400: 'starter', 89400: 'starter', 199400: 'growth', 249400: 'authority', 399400: 'leader',
+};

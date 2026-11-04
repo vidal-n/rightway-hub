@@ -178,7 +178,7 @@ function stripeFake(opts = {}) {
   return { st, handler };
 }
 
-test('stripe setup: creates webhook, five links and the portal once, then leaves them alone', async () => {
+test('stripe setup: creates webhook, four links and the portal once, then leaves them alone', async () => {
   const t = setup({ STRIPE_SECRET_KEY: 'rk_test_abcdefgh' });
   await owner(t);
   const f = stripeFake();
@@ -188,18 +188,18 @@ test('stripe setup: creates webhook, five links and the portal once, then leaves
     assert.equal(r.status, 200);
     assert.equal(r.data.mode, 'test');
     assert.equal(r.data.webhook.secret, null);
-    assert.equal(r.data.links.length, 5);
+    assert.equal(r.data.links.length, 4);
     r = await t.call('POST', '/api/stripe/setup', {});
     assert.equal(r.status, 200);
     assert.ok(r.data.results.every((x) => x.ok), JSON.stringify(r.data.results));
     assert.equal(r.data.status.webhook.secret, 'hub');
     assert.ok(r.data.status.links.every((l) => l.url.startsWith('https://buy.stripe.com/')));
     assert.equal(r.data.status.portal, true);
-    assert.equal(f.st.links.length, 5);
-    assert.equal(f.st.products, 4); // starter and reduced starter share a product
+    assert.equal(f.st.links.length, 4);
+    assert.equal(f.st.products, 4);
     // amounts: monthly and setup per plan, first charge matches what the webhook uses to recognize a plan
     const amounts = f.st.prices.map((p) => Number(p.unit_amount));
-    for (const c of [59700, 39700, 29700, 99700, 149700, 249700]) assert.ok(amounts.includes(c), `missing price ${c}`);
+    for (const c of [39900, 44900, 49900, 59900]) assert.ok(amounts.includes(c), `missing price ${c}`);
     for (const l of LINKS) assert.equal(FIRST_CHARGE_CENTS[l.firstCharge] !== undefined, true, l.key);
     const growth = f.st.links.find((p) => p['metadata[rw_plan]'] === 'growth');
     assert.ok(growth['line_items[0][price]'] && growth['line_items[1][price]']);
@@ -215,18 +215,18 @@ test('stripe setup: creates webhook, five links and the portal once, then leaves
     assert.equal(w.status, 400);
     const set = await t.call('GET', '/api/settings');
     assert.equal(set.data.connected.stripeWebhook, true);
-    assert.equal(set.data.links.growth, 'https://buy.stripe.com/test_3');
+    assert.equal(set.data.links.growth, 'https://buy.stripe.com/test_2');
     assert.equal(JSON.stringify(set.data).includes('whsec_'), false);
     // second run changes nothing
     r = await t.call('POST', '/api/stripe/setup', {});
     assert.ok(r.data.results.every((x) => x.ok));
-    assert.equal(f.st.links.length, 5);
+    assert.equal(f.st.links.length, 4);
     assert.equal(f.st.products, 4);
     assert.equal(f.st.portals.length, 1);
     // replace makes fresh links without new products or prices
     const prices = f.st.prices.length;
     r = await t.call('POST', '/api/stripe/setup', { steps: ['links'], replace: true });
-    assert.equal(f.st.links.length, 10);
+    assert.equal(f.st.links.length, 8);
     assert.equal(f.st.prices.length, prices);
     assert.equal(f.st.products, 4);
   } finally { m.restore(); }
@@ -248,7 +248,7 @@ test('stripe setup: an existing webhook needs its secret pasted, bad secrets are
     assert.equal(hook.needsSecret, true);
     assert.ok(f.st.posts.some((p) => p.path === '/webhook_endpoints/we_old'), 'adds the events it was missing');
     const links = r.data.results.filter((x) => x.step === 'links');
-    assert.equal(links.length, 5);
+    assert.equal(links.length, 4);
     assert.ok(links.every((x) => !x.ok && /allow it/.test(x.message)));
     assert.equal(r.data.results.find((x) => x.step === 'portal').ok, true);
     assert.equal(r.data.status.mode, 'live');

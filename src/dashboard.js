@@ -3,7 +3,7 @@ import { json } from './util.js';
 import { all, first } from './db.js';
 import { requireStaff } from './auth.js';
 import { MONTHLY_CENTS, monthKey } from './plans.js';
-import { inCallingHours } from './crm.js';
+import { inCallingHours, apptScope } from './crm.js';
 import { route } from './router.js';
 
 const OPEN = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up'];
@@ -16,6 +16,7 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
   const week = Number(url.searchParams.get('week')) || day - 6 * 864e5;
   const end = day + 864e5;
   const month = monthKey();
+  const appt = apptScope(user);
   const [mine, team, stages, leads, due, meetings, clients, tasks, posts, unread, orders, recent] = await Promise.all([
     first(env, `SELECT COUNT(*) AS dials, SUM(outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(outcome = 'booked') AS booked
       FROM activities WHERE type = 'call' AND by = ? AND at >= ?`, user.id, day),
@@ -25,7 +26,7 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
     all(env, `SELECT timezone, grade FROM leads WHERE dnc = 0 AND stage IN (${OPEN.map(() => '?').join(',')})`, ...OPEN),
     all(env, `SELECT id, business, contact_name, next_action, next_action_at, stage, grade FROM leads WHERE dnc = 0 AND next_action_at IS NOT NULL AND next_action_at < ?
       AND stage IN ('callback','follow_up','no_show','audit_requested') ORDER BY next_action_at LIMIT 8`, end),
-    all(env, 'SELECT id, business, contact_name, meet_at, meet_link FROM leads WHERE meet_at IS NOT NULL AND meet_at > ? ORDER BY meet_at LIMIT 6', t - 3600e3),
+    all(env, `SELECT id, business, contact_name, meet_at, meet_link FROM leads WHERE meet_at IS NOT NULL AND meet_at > ?${appt.sql} ORDER BY meet_at LIMIT 6`, t - 3600e3, ...appt.args),
     all(env, "SELECT id, name, plan, status, mrr_cents, billing_status, sample, parent_id FROM clients WHERE status = 'active'"),
     first(env, `SELECT COUNT(*) AS total, SUM(tasks.status = 'done') AS done FROM tasks JOIN clients c ON c.id = tasks.client_id WHERE tasks.month = ? AND c.sample = 0 AND c.status = 'active'`, month),
     first(env, "SELECT COUNT(*) AS n FROM posts p JOIN clients c ON c.id = p.client_id WHERE p.status IN ('draft','approved') AND c.sample = 0"),

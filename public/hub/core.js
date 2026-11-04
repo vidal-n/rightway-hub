@@ -117,7 +117,7 @@ export function busy(btn, on, label) {
 }
 
 export const PLAN_NAMES = { starter: 'Starter', growth: 'Growth', authority: 'Authority', leader: 'Market Leader' };
-export const PLAN_PRICE = { starter: 597, growth: 997, authority: 1497, leader: 2497 };
+export const PLAN_PRICE = { starter: 399, growth: 449, authority: 499, leader: 599 };
 export const KIND_LABEL = {
   setup: 'Setup', post: 'Google posts', photos: 'Photos', replies: 'Review replies', qa: 'Q&A', page: 'Local pages', content: 'Content',
   link: 'Links and citations', onpage: 'On-page', technical: 'Technical and schema', competitors: 'Competitors', calls: 'Calls and leads',

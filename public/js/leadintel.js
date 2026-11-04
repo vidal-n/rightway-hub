@@ -282,101 +282,197 @@ export function recommendPlan(lead = {}, intel = null) {
 }
 
 // ---------- call script ----------
-// One pitch from the first dial to the signature. The scan is the hook on the phone and the centerpiece of the meeting.
-// Plain words only: say "Google Maps", "the first page", "calls". Never "SEO", "citations", "NAP", or "algorithm" to an owner.
-// Each step is one or more lines; lines that start with "Or:" are alternatives, "(" lines are coaching notes.
+// One pitch, used on every call and in every meeting: the Google clarity call. Same frame cold or booked:
+// set the frame, discover, verify, show the clarity scan, search together, explain why, tell them who we are,
+// walk the process and what we need from them, then a drop close from Market Leader down to what they actually need.
+// Plain words to the owner: "Google", "the map", "the first page", "calls". Never "SEO", "NAP", "citations" or "algorithm".
+// Each step is one or more lines; lines that start with "Or:" are alternatives, "(" lines are coaching notes for the rep.
+// Never claim a scan when no research ran: the {..._reason} and {scan_...} lines change on their own.
+export const SCRIPT_VERSION = 2;
+
 export const SCRIPT_KEYS = [
-  ['opener', 'Opener'], ['hook', 'The scan hook'], ['discovery', 'Questions'], ['gap', 'Sum up the gap'],
-  ['book', 'Book the screen share'], ['lock', 'Lock it in'], ['close', 'Close'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'],
+  ['c_open', 'Opener: the Google clarity call'], ['c_frame', 'Set the frame'], ['c_discovery', 'Discovery (write it down)'],
+  ['c_verify', 'Verify the business'], ['c_scan', 'The clarity scan'], ['c_live', 'Search together'], ['c_why', 'Why they are up there (slow down)'],
+  ['c_listings', 'Inconsistencies'], ['c_story', 'Why Rightway'], ['c_program', 'How it works'], ['c_process', 'What we need from you'],
+  ['c_trial', 'Trial close'], ['c_price', 'Price: the drop close'], ['c_close', 'Close'], ['c_post', 'Work order and payment'],
+  ['c_onboard', 'Onboarding and homework'], ['c_book', 'Book the consultation instead'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'],
 ];
 
 export const DEFAULT_SCRIPT = {
-  opener: [
-    "Hey {first}, it's {rep} with Rightway Growth down in Hollywood. I know I'm catching you in the middle of your day, so I'll be quick. {opener_reason} Got 30 seconds?",
-    "Or: Hey {first}, {rep} here with Rightway Growth. Honest answer, this is a cold call. Would it be a terrible idea if I took 30 seconds to tell you why I called, and you tell me if it's worth another minute?",
-    '(Smile when you dial. Slow, low, certain voice. Stop talking after the question.)',
+  c_open: [
+    "Hi, is this {first_or_owner}? ... Hey {first}, this is {rep} with Rightway Growth. {opener_reason} How's everything going today?",
+    "(Let them answer. Smile. Then:) Good. So this is a quick Google clarity call. I'm not here to sell you a website or a magic button. I want to show you exactly what a customer sees when they look for you on Google, and where the inconsistencies are. Fair?",
+    '(Slow, low, certain voice. You are the analyst who did the work, not a salesperson asking for time.)',
   ].join('\n'),
-  hook: [
-    '{scan_line}',
-    '{hook_impact}',
-    'Quick question: when a new customer finds you now, is it mostly referrals, or do they find you on Google?',
+  c_frame: [
+    "I just want to confirm, is {email_or_ask} still the best email for you? Perfect. I'm sending you a link to my screen right now. That way you see the exact same thing I see, and nothing gets lost in translation, OK?",
+    "(Send the Meet link from the lead. Then:) It's coming from Rightway Growth. Let me know when you see it. Since we're on the phone, you don't need video or audio, just the screen.",
+    "Here's what we'll do today. First, I'll confirm your business info. Then I'll show you {frame_scan}, and we'll do a couple of searches together, live. But before I even start, I want to take a minute to get to know you and the business, if that's OK.",
   ].join('\n'),
-  discovery: [
-    "What's a typical job worth to you, ballpark? (Starting guess for {industry}: {ticket}.)",
-    'About how many new calls a week come from Google right now?',
-    'If you got five more good calls a week, could your crew handle it, or are you booked out?',
-    'What kind of jobs do you want more of?',
-    'Who takes care of your Google profile and website today?',
-    "If nothing changes on Google for the next six months, what does that cost you? (Let them do the math. Stay quiet.)",
-    "(Label what you hear: \"It sounds like you've built this on referrals, and Google hasn't caught up to how good your work is.\")",
+  c_discovery: [
+    '(Ask these while they connect. WRITE THE ANSWERS DOWN. You will use their words to handle every objection.)',
+    '1. How long have you been in business?',
+    '2. How many people do you have on the team? How many trucks or crews?',
+    '3. Are you doing any other advertising right now? (Google Ads, Yelp, Angi, mailers, another agency?) How is that working for you?',
+    '(Make sure they can see your screen and the map before you go on.)',
+    '4. How far out do you want to service? What cities matter most to you?',
+    '5. Do you have a website for the business? Who takes care of it?',
+    "6. What's a typical job worth to you, ballpark? (Starting guess for {industry}: {ticket}.) And what kind of jobs do you want more of?",
+    '7. How has business been lately? Busy, slow, up and down?',
+    '8. Are you actively trying to take on more customers right now? Could your crew handle five more good calls a week?',
+    '9. When a new customer finds you today, is it mostly referrals, or Google?',
+    "10. If nothing changes on Google for the next six months, what does that cost you? (Let them do the math. Stay quiet.)",
+    "(Label it back: \"So it sounds like you've built this on great work and referrals, and Google hasn't caught up to how good you actually are.\")",
   ].join('\n'),
-  gap: [
-    "So if I'm hearing you right: you do great work, your jobs are worth about {ticket}, and right now {top_name_or_them} gets the first look on Google in most of {city}. Every week that stays the same, those calls go to them. Is that fair?",
-    "(Wait for \"that's right\". If they correct you, thank them and sum it up again.)",
-    'The good news is the reasons are fixable. {problems}',
+  c_verify: [
+    "That answers all my questions for right now. Thank you for going over that with me. I like to know every business I work with in detail, so I can actually help, not just guess.",
+    "Let me quickly verify your information. I have {business}{city_suffix}. Is that the exact name customers know you by? Address and service area? Hours? And the best phone number for customers?",
+    "Now, when a customer needs you, what would they type into Google? (Write their keywords down. Then:) And {keyword}, is that one of your money searches?",
+    '(Find what gets them excited. Ask more questions. The keywords they pick are the keywords you scan and pitch on.)',
   ].join('\n'),
-  book: [
-    "Here's what I'd suggest. Give me 15 minutes on a screen share. I'll show you the full map street by street, who's beating you and exactly why, and the three fixes that would move you up fastest. Even if we never work together, you'll know exactly where you stand.",
-    'Does {slot1} or {slot2} work better?',
-    'Or: Would it be crazy to grab 15 minutes {slot1}? I promise to keep it to 15.',
+  c_scan: [
+    "OK, so we're all set to keep moving. {scan_intro} {scan_line}",
+    '{scan_spread}',
+    "This is the part most owners never see. Google doesn't show the same results to everybody. It changes block by block, depending on where your customer is standing. So you can look great at your shop and be invisible two miles down the road.",
+    '{scan_meaning}',
   ].join('\n'),
-  lock: [
-    "Perfect. I'm sending a calendar invite with the video link to {email_or_ask}. What's the best email?",
-    "Is there anyone else who makes marketing decisions with you? Let's get them on the same call so they see the same map.",
-    'Is it OK if I text you a reminder and the link? (If yes, tap "They said yes to texts".)',
-    "Before the call, search \"{keyword}\" from your phone and see who comes up. We'll go over it together.",
+  c_live: [
+    "So let's do a couple of searches together while I have you here, live on the screen. This is exactly what a customer sees.",
+    '(Run the most basic search, "{keyword}", near their immediate area.)',
+    "IF THEY ARE NOT ON THE FIRST PAGE: Are you familiar with any of these guys? (Point at them.) In the mind of a customer, if you're not up here, you're not in the game. These are the businesses getting the calls first. And if we're struggling to find you this close to home, it only gets worse the further out we go.",
+    "IF THEY ARE ON THE FIRST PAGE: OK, perfect, there you are, right where you want to be. Now let's move out into your service area. (Search an area the scan shows them weak.) See what happens? A few miles out and you drop off. (No pause.) Again, these are the guys getting those calls first, and it only gets worse the further out we go.",
   ].join('\n'),
-  close: [
-    "Based on everything we just looked at, {plan} is the right fit for you: {plan_why}.",
-    "It's {price} a month and a one time {setup} to set it all up. Six months, then month to month. You see every task we do and a new map every month in your own app.",
-    "Just imagine six months from now: someone in {city} searches \"{keyword}\" and the first name they see is {business}.",
-    'Do you want the agreement sent to your phone or your email?',
+  c_why: [
+    '(SLOW DOWN. Stern, steady tone.)',
+    "Now I want you to understand why these companies are up here. It's not because they do better work than you. It's not because they're bigger, and it's not because Google likes them more.",
+    "When someone searches {keyword}, Google looks at three things: how relevant your business is to that search, how close you are to the person searching, and how much Google trusts you. Trust comes from your Google profile being complete and active, your reviews, a website that backs it up, and your business information matching everywhere it shows up online.",
+    "When those pieces don't line up, Google gets less sure about you, and it plays it safe by showing someone else. Does that make sense?",
+    '{problems}',
+  ].join('\n'),
+  c_listings: [
+    "Here's what I mean by inconsistencies. Google checks your business against dozens of other sites: Apple Maps, Bing, Yelp, Facebook, the BBB, and a lot of directories you've probably never heard of. Most people never search on those. But Google uses them to double check you.",
+    "If one says one phone number, another says an old address, and another has the name a little different, Google flags it. That doesn't fix itself with time either. Bad information gets copied from site to site.",
+    "So the first thing we do is clean it up and make it match everywhere, so Google stops doubting you. Make sense?",
+  ].join('\n'),
+  c_story: [
+    "Can I be straight with you for a second, {first}?",
+    "Before I started Rightway, I worked inside marketing companies. I saw how this industry treats business owners. Year long contracts. Reports nobody can read. Promises of number one on Google. And when it didn't work, the owner was stuck paying anyway.",
+    "I started Rightway Growth to do it the right way. You see every single task we do in your own app. You see the map every month. Nothing hidden. And after the first three months, you can leave any time with 30 days notice.",
+    "I want to keep you because your phone is ringing, not because a contract says you can't leave. That's the standard I hold us to.",
+  ].join('\n'),
+  c_program: [
+    "So let me explain what we actually do, because it's not as easy as typing your info into a few websites. If it were, I'd be out of a job.",
+    "First, we get access to your Google profile and build it out the right way: categories, services, service areas, photos, the works. Then we clean up every listing that doesn't match, so Google stops doubting you.",
+    "After that it's steady work every month: posts on your profile, new photos, reviews coming in and getting answered, pages on your website for the services and cities you want, and local links that back you up.",
+    "We start close to home and build a strong foundation, then we push out into the rest of your service area month after month. This is a marathon, not a sprint. We do it by Google's rules, so we never put your profile at risk.",
+    "And every month you get a new map just like this one, so you can see exactly where you're climbing. Does that make sense?",
+  ].join('\n'),
+  c_process: [
+    "Here's how it works on your end. It's simple, but I need you involved.",
+    "One: you invite us as a manager on your Google profile and give us access to the website. We'll walk you through it on the first call. We never take ownership, it's always yours.",
+    "Two: send us photos of your work as you go. Real jobs, real crew. Google loves it and so do customers.",
+    "Three: when you finish a job, send the customer your review link. Takes five seconds from your phone with the app we give you.",
+    "Four: we meet once a month for 15 to 30 minutes on a screen share like today. I show you the work, the map, and what's next. We can do all the work behind the scenes, but without you as the owner, it goes nowhere fast.",
+    "Can you do those four things?",
+  ].join('\n'),
+  c_trial: [
+    "So after seeing where you are and doing a few searches, I'd say you're a strong fit for this. How do you feel about it? Do you think it would help you grow?",
+    '(Let them answer. Then:) OK, great. So you can see it helps, and really it just comes down to cost at the end of the day, right?',
+  ].join('\n'),
+  c_price: [
+    "Perfect. I'll walk you through it. The program comes in two parts: a one time buildout, which is us setting everything up the right way, and then a monthly for the ongoing work that moves you up and keeps you there.",
+    "If you wanted everything we do, the full Market Leader program, multiple service areas, content every week, links, call tracking and reputation reporting, that's {leader_price} to build out and {leader_price} a month.",
+    '{price_fit}',
+    "That's {setup} for the buildout and {price} a month. Total today is {today_total}, and your next payment isn't for 30 days.",
+    "And look, you told me a typical job is worth about {ticket}. {breakeven_jobs} a month pays for the whole thing. Everything after that is yours. Honestly, I think not doing this costs you a lot more than doing it, just from the calls you're already missing in your own backyard.",
+  ].join('\n'),
+  c_close: [
+    "So after looking at everything and hearing what your goals are, from where I'm sitting this is the right way to get you there. How do you feel about it? Wouldn't you agree?",
     '(Then stop talking. The next person who speaks loses.)',
+    "Great. Do you want the work order sent to your phone or your email?",
+  ].join('\n'),
+  c_post: [
+    "Perfect. Let me walk you through the next steps so you're all set. First I'm sending you a one page work order. It's a digital signature. It puts everything we just went over in writing: the work, the price, the three month minimum. It's also what gives us permission to start. We'll take care of it while we're on the phone.",
+    "It takes about 60 seconds. Let me confirm the spelling of your first and last name, and the email. Remember, the total today is {today_total}: the buildout and your first month.",
+    "(Send the work order from the lead: Send work order. Then:) OK, I just sent it. It comes from Rightway Growth. Open it, read it over, type your name at the bottom and check the box. Let me know if anything doesn't open.",
+    "(When it shows Signed:) Awesome, I see it signed. It takes you straight to the secure payment page by Stripe. That's the same card we use each month, and you can update it any time from your app or by asking your account manager.",
+    '(When the payment goes through, the Hub marks the deal won and makes the client.) Payment went through. You will have a receipt in your email.',
+    "Now remember, three months is the minimum because that's how long the buildout takes to really show. After that it's month to month. This is a marathon, not a sprint, so set your expectations for steady progress, not overnight. OK?",
+  ].join('\n'),
+  c_onboard: [
+    "Last thing: let's book your onboarding call. This is THE most important appointment in the whole process. It's where we get access to your Google profile and website and set everything up. It takes 30 to 45 minutes, and I'd really recommend being at a computer for it. Do you prefer mornings or afternoons?",
+    "It takes us a few business days to get everything organized before that first call, so you can hit the ground running.",
+    "(After booking:) You're booked for [day and time]. Here's your homework before then. One, read the confirmation email, it walks you through the first call. Two, put your best work photos in one folder so we can add them right away. Three, sometimes Google asks a business to verify again. If that happens we'll need proof the business is yours, like your business license or LLC papers and a utility bill in the business name. Have them handy. It's the difference between fixing it in 1 or 2 days instead of 1 or 2 weeks.",
+    "Alright {first}, you're all set. Anything else I can help with? Thank you for the vote of confidence. We're going to do great work for you, and you're going to see it.",
+  ].join('\n'),
+  c_book: [
+    "(If they can't do the screen share right now.) No problem at all. The clarity scan really needs your eyes on it, it's 15 minutes. Does {slot1} or {slot2} work better for a quick consultation?",
+    "Perfect. I'm sending a calendar invite with the link to {email_or_ask}. Is there anyone else who makes marketing decisions with you? Let's get them on the same call so they see the same map.",
+    "Before we talk, search \"{keyword}\" from your phone and see who comes up. We'll go over it together.",
   ].join('\n'),
   voicemail: [
     "Hey {first}, it's {rep} with Rightway Growth. {vm_scan} Give me a call back at {my_number}. Again, {rep}, {my_number}.",
-    '(Under 25 seconds. Say the number twice, slowly. Then text only if they gave permission or texted first.)',
+    '(Under 25 seconds. Say the number twice, slowly. Text only if they gave permission or texted first.)',
   ].join('\n'),
   gatekeeper: [
-    "Hi, this is {rep} with Rightway Growth. I'm calling for {first_or_owner} about how {business} shows up on Google Maps. Are they around?",
-    'Or: Who handles the marketing and the Google listing there? ... Great, what is the best time to catch them?',
-    '(Be friendly and brief. Get a name and a time, not a pitch.)',
+    "Hi, this is {rep} with Rightway Growth. {gk_reason} Is {first_or_owner} around?",
+    'Or: Who takes care of the Google listing there? ... Great, what is the best time to catch them?',
+    '(Friendly and brief. Get a name and a time, not a pitch.)',
   ].join('\n'),
 };
 
+// [objection, answer]. Before price, after price, then the closes. Write their discovery answers into these.
 export const DEFAULT_OBJECTIONS = [
-  ["It's too expensive", "I hear you, it's real money. Can I ask, is it the price itself, or not being sure it'll pay you back? (Let them answer.) A typical job for you is about {ticket}. {breakeven_jobs} a month covers the whole plan. Right now {top_name_or_them} is getting those calls. If we only got you {breakeven}, would it be worth it?"],
-  ['I need to think about it', "Totally fair, it's a real decision. It sounds like something's still not sitting right. Usually it's the money, the timing, or whether it'll actually work. Which one is it for you? (Answer that one. Then: \"If we sort that out, is there anything else stopping you?\")"],
-  ['Just send me an email', "Happy to. So it doesn't get buried, what part should I focus on? (Let them answer.) Honestly, the map makes way more sense on screen than in an email, and it's 15 minutes. Does {slot1} or {slot2} work?"],
-  ['Not interested', "No problem, I appreciate you being straight with me. Is it that more calls from Google isn't a priority right now, or that you've been burned by marketing people before? (Listen. If burned, use that answer.) Would it be a bad idea if I just sent you the map so you have it?"],
-  ['We have enough work / word of mouth', "That's the best problem to have, it means you do good work. Here's the thing: most referrals still Google you before they call. When they do, {top_name_or_them} is sitting right there with more reviews. We make sure the referral you earned doesn't end up calling them. And is the work you're getting the work you want, or would you take more of the bigger jobs?"],
-  ['We already have someone', "Good, that means you take it seriously. Quick question: do they show you a map like this every month? Right now you're on the first page in {top10_of_points} spots around you. Is that where you expected to be? Let me show you the scan as a free second opinion. If they're doing great, you'll know."],
-  ["We tried SEO, it didn't work", "I get it, and a lot of owners we talk to felt the same way. They paid every month and never saw what was actually done. What they found with us is that everything is visible: every task in your app and a new map every month, so you can check our work yourself. What happened with the last company?"],
-  ["I'm busy right now", "Totally get it, you're running a business. Is later today or tomorrow morning better for 2 minutes? I'll put it in my calendar and call right on time."],
-  ['I need to talk to my partner', "Makes sense, this should be a joint decision. What do you think they'll ask? (Answer it now.) Let's get 15 minutes with both of you so they see the same map. Does {slot1} or {slot2} work?"],
-  ['How long until I see results?', 'Honest answer: profile fixes and new reviews start moving things in the first 30 to 60 days. Pages and links build over 3 to 6 months. That is why the plan is six months, then month to month. You see the map every month, so you watch it happen.'],
-  ['Can you guarantee number 1?', "Anybody who guarantees number 1 on Google isn't being straight with you, because Google decides. What we guarantee is the work: every task in your plan, every month, shown in your app, with the map to prove where you stand."],
-  ['Are you with Google?', "No, we're an independent local marketing company in Hollywood, Florida. We help businesses show up better on Google Maps and search."],
-  ['How did you get my number?', "Your business number is public on your listings. I came across {business} while scanning who shows up for \"{keyword}\" in {city}."],
-  ['Can you just do a one time fix?', "I wish it worked that way. Google keeps re-ranking every week, and {top_name_or_them} keeps adding reviews and posts. A one time fix slides back. That's why the smallest plan, Starter, is {starter_price} a month: enough to keep you moving up, not just patched."],
-  ['Call me back in a few months', "Sure, I can do that. Out of curiosity, what changes in a few months? (Listen.) The only thing I'd say is every month you wait, {top_name_or_them} adds more reviews, and the gap gets more expensive to close. Would it hurt to see the map now, so you have it when you're ready?"],
+  ["I don't need another sales pitch", "Look, I completely understand. As a business owner you probably get more calls than you can count, all trying to sell you something you don't need. This is a clarity call. What I'm showing you is a problem that's already costing {business} calls every single month. If there's a way to fix it and get those calls back, it's at least worth a look, right?"],
+  ["I know where this is going, I'm not buying anything today", "I hear you, and if I were in your shoes I'd be burnt out too. I'm not here to sell you a widget or a new website. I want to show you what's costing you calls and how it gets fixed, so at least you understand the problem AND the solution. If it all makes sense and it doesn't cost an arm and a leg, we'll probably end up working together. Fair?"],
+  ['I already have someone handling my Google', "Good, that means you take it seriously. Quick question: do they show you a map like this every month? Right now you're on the first page in {top10_of_points} spots around you. Is that where you expected to be? (Let them answer.) I'm not going to talk badly about anyone. I'll just show you how we're different, and you decide. (Back to script.)"],
+  ['My marketing company does this specifically', "Then I'd ask them one thing: where's my map? Usually it's one of two things. Either they're only working on the website, or they don't have a way to show you what's happening on the map. Based on what we just saw, I'd lean toward the second. I won't knock them, I'll just show you how we work. (Back to script.)"],
+  ['I paid a company before and nothing happened', "Unfortunately I hear that every day, and it's exactly why I started Rightway. Just because you had a bad steak at one restaurant doesn't mean you never eat steak again. It means you don't go back to that restaurant, right? With us you see every task in your app and a new map every month. If we're not doing the work, you'll see it before I tell you. What happened with the last company? (Back to script.)"],
+  ["I don't need more business", "That's a great problem to have. This isn't only about more business, it's about not losing the business you already earned. Most referrals Google you before they call. When they do, {top_name_or_them} is sitting right there. All I want to do is take the reputation you've built and put it out on the highway where everyone can see it. Make sense?"],
+  ['All my business is word of mouth', "Don't take this the wrong way, but that's old school, and there's nothing wrong with that. If this were 20 years ago we wouldn't be having this conversation. But today even a referral looks you up on Google before they call. If they can't find you, or they find {top_name_or_them} first, that referral you earned just went to someone else. Let's make sure that doesn't happen. Follow along with me, OK? (Back to script.)"],
+  ['How did my information get messed up?', "Just like Google, these sites pull from databases, any and all of them. An old listing, a data company, a site you've never heard of. Once it's out there it gets copied. The goal is to correct it everywhere, so Google sees one consistent business. (Back to script.)"],
+  ['Can I just fix this myself?', "You could, and I'll respect it if you try. It's a lot of hours: every listing, every login, every verification, posts every week, photos, reviews, pages, links, and keeping it all matching as Google changes. Most owners start, get busy running the business, and it stops. Is that the best use of your time, or would you rather be on jobs? (Back to script.)"],
+  ['I need to check with my website company first', "I hear you loud and clear. Most of the time they're working on the website, not the Google map. We do website work too, but this is different work. The good news is this doesn't get in the way of anything they're doing. If they could do this, they'd already be doing it, right?"],
+  ["I'm already paying for website SEO, why do I need this?", "Great question. You're a local business. Your customers are within a few miles of you, and the map is what they see first, above the regular results. Website work helps, but if you're not on the map in your area, you're missing most of the local calls. You saw it on the scan. See how that's affecting the business?"],
+  ['How long does this take to work?', "Honest answer: profile fixes and listing cleanup start moving things in the first 30 to 60 days. Pages, reviews and links build over three to six months. The hard part isn't getting you up, it's keeping you up there. That's why we meet every month for 15 to 30 minutes. Your feedback speeds it all up. Make sense?"],
+  ['Why is there a setup fee and a monthly?', "Because most of the heavy lifting happens up front. The buildout is the profile, the cleanup on every listing, the first pages and the tracking. The monthly is the steady work that moves you up and keeps you there. We put in the work first. And I only keep you if it's working, because after three months you can leave any time."],
+  ["What if I do this and it doesn't work?", "That's fair to ask. Here's what I can tell you: you'll see every task we do and the map every month, so you'll know if it's working long before month three. And even if you only do half as well as the other businesses we work with, the only thing you'll wish is that I called you six months ago. Fair enough?"],
+  ['Can you guarantee number one?', "Anybody who guarantees number one on Google isn't being straight with you, because Google decides, and where your customer is standing changes it. What I guarantee is the work: every task in your plan, every month, shown in your app, with the map to prove where you stand."],
+  ["It's too expensive", "I get it, it's an expense you weren't planning on. Let me ask you this: what's one job worth to you? (They answer.) So all we need is {breakeven_jobs} a month and you're in the green. Everything after that is profit. If we only got you {breakeven}, would it be worth it?"],
+  ["I can't afford it", "I understand, you weren't waving your card in the air waiting for my call. But look at the screen with me. When someone searches {keyword} near you, {top_name_or_them} is getting that call. Once we fix this, those calls start coming to you. If even two of them do business with you, does that cover {price}? Then in my opinion you can't afford not to do this, right?"],
+  ["I can't afford it (drop)", '{drop_offer}'],
+  ["I can't afford it (end)", "Are you telling me {price} is going to have you on the street corner with a soup can? (Smile.) If this takes food off your table, don't do it. But if it doesn't, why not make a move so next month the bills are paid and there's extra in the account? If we get you even one or two new customers this first month, it's already paying for itself. (Drop close if they're still on.)"],
+  ['I need to think about it', "If we were talking about a car loan at 10% for 60 months, I'd say think about it too. But this is a problem that's already costing you calls every month. Fixing it costs a few hundred dollars, and it pays for itself. So what's left to think about, besides where you're taking the family on vacation this year? (Then drop close or soft close at the same price.)"],
+  ['I need to think about it (2)', "Sure, it's smart to think about big decisions. Let me ask you: what makes more sense, losing your word of mouth referrals to the guy next door because they find his number when they look you up, or being the one taking the calls and taking more of the local market?"],
+  ['I need to think about it (3)', "To be honest with you, we're talking about a few hundred dollars to reach the customers your business should have been getting since day one. What's the bigger risk: a few hundred dollars you'll easily make back, or letting the last six months repeat themselves for the next six?"],
+  ['I need to think about it (end of the line)', "What do we really need to think about here? Do you need to sit in the armchair tonight and decide whether you want to make more money? Or is something about the plan not sitting right? (Then stop and listen.)"],
+  ['No', "{first}, there are only three reasons someone in your shoes says no: fit, function or finance. It's not fit, you told me this would help the business. If you don't understand how it works, that's on me and I'll explain it better. So is it just the finances? (If yes, use the drop.)"],
+  ["I'm not doing anything today", "Look, I'm totally fine if we don't work together. But a minute ago you told me {pain} is hurting your growth. Now that a real fix is in front of you, there's a wall up. I see it all the time. It's usually not the money or the plan, it's just making a change. Am I reading that wrong, or is that what's happening here?"],
+  ["I'm not doing anything today (end of the road)", "Fair enough. It sounds like right now, staying exactly where you are is still more comfortable than changing it. And that's OK. I appreciate your time today. I'll send you the scan so you have it, and when you're ready, you know where to find me."],
+  ['I need to talk to my partner or spouse', "Makes sense, this should be a joint decision. What do you think they'll ask? (Answer it now.) Let's get 15 minutes with both of you so they see the same map. Does {slot1} or {slot2} work?"],
+  ['Just send me an email', "Happy to. So it doesn't get buried, what part should I focus on? (Let them answer.) Honestly, the map makes way more sense on the screen than in an email, and it's 15 minutes. Does {slot1} or {slot2} work?"],
+  ["I'm busy right now", "Totally get it, you're running a business. The clarity scan takes 15 minutes on a screen share. Is later today or tomorrow morning better? I'll put it on my calendar and call right on time."],
+  ['Are you with Google?', "No, we're an independent local marketing company in Hollywood, Florida. We help businesses show up better on Google and get more calls from it."],
+  ['How did you get my number?', "Your business number is public on your Google listing. I came across {business} while checking who shows up for \"{keyword}\" in {city}."],
 ];
 
 // The methods behind the script, so the team knows why each line is there. Ideas summarized in our own words.
 export const PLAYBOOK = [
-  ['Ask permission to pitch', 'Jeb Blount, Fanatical Prospecting', 'Name the interruption and ask for 30 seconds. People relax when they feel in control.'],
-  ['Lead with something specific', 'Drew Eric Whitman, Cashvertising', 'Real numbers beat claims: "first page in 2 of 9 spots" lands harder than "you could rank better".'],
-  ['Use the 8 core wants', 'Drew Eric Whitman, Cashvertising', 'Owners want to win, to beat the guy across town, to stop worrying about slow months, and to be approved of. Point at the competitor by name.'],
-  ['Teach them something new', 'Dixon and Adamson, The Challenger Sale', 'The map shows them something about their own business they did not know. That earns the meeting.'],
-  ['Find the gap', 'Keenan, Gap Selling', 'Current state, the cost of it, and the future they want. The bigger the gap, the easier the yes.'],
-  ['Ask what it costs them', 'Neil Rackham, SPIN Selling', 'Implication questions ("what does six more months of this cost?") make the problem feel urgent in their own words.'],
-  ['Label and sum up', 'Chris Voss, Never Split the Difference', '"It sounds like..." and a summary they can answer with "that\'s right" build trust faster than any pitch.'],
-  ['No-oriented questions', 'Chris Voss, Never Split the Difference', '"Would it be a bad idea to..." feels safe to say no to, so people say yes.'],
-  ['Just imagine', 'Phil Jones, Exactly What to Say', 'Paint the after picture: their name first on the map. Let them see it before they buy it.'],
-  ['Certainty in three things', 'Jordan Belfort, Way of the Wolf', 'They need to trust the plan, trust you, and trust the company. The app and monthly map prove all three.'],
+  ['The clarity call frame', 'Rightway Growth', 'Open as the analyst who checked their Google presence, not a salesperson asking for time. The scan is the reason for the call, so only claim one when research ran.'],
+  ['Screen share first', 'Rightway Growth', 'Get them looking at the same screen early. People believe what they see on their own map more than anything you say.'],
+  ['Discovery you can use later', 'Neil Rackham, SPIN Selling', 'Write down years in business, team size, other ads, area, job value and goals. Every objection gets answered with their own words.'],
+  ['Teach them something new', 'Dixon and Adamson, The Challenger Sale', 'The block by block map shows them something about their business they did not know. That earns the rest of the call.'],
+  ['Find the gap', 'Keenan, Gap Selling', 'Current state, what it costs them, and the future they want. The bigger the gap, the easier the yes.'],
+  ['Slow down for the why', 'Classic tonality', 'When you explain why competitors are up there, slow down and lower your voice. It is the moment they stop thinking you are guessing.'],
+  ['Tell them who you are', 'Rightway Growth', 'The story is true: you saw how agencies treat owners and built the opposite. Visible work, monthly map, month to month after three months. It answers "is this another scam?" before they ask.'],
+  ['Trial close', 'Classic sales method', '"How do you feel about it? Do you think it would help you grow?" before any price. If they agree it helps, price is the only thing left.'],
+  ['Drop close', 'Classic sales method', 'Start at the full Market Leader program, then drop to the plan their discovery answers justify. It shows you are fitting the plan to them, not upselling. Drop again only with a reason.'],
+  ['Make the price small', 'Zig Ziglar, Secrets of Closing the Sale', 'Compare the monthly to one job. "Two calls cover it" lands better than any discount.'],
+  ['Fit, function, finance', 'Classic sales method', 'A no is almost always one of three. Rule out the first two out loud, and the real one is left.'],
   ['Listen, acknowledge, explore, respond', 'Jeb Blount, Objections', 'Never fight an objection. Agree it is fair, ask what is behind it, then answer the real one.'],
-  ['Feel, felt, found', 'Classic sales method', 'Others felt the same; here is what they found. Use it only with true stories.'],
-  ['Alternative choice and silence', 'Zig Ziglar, Secrets of Closing the Sale', 'Offer two yeses ("Tuesday or Wednesday", "phone or email"), then stop talking.'],
+  ['Label and sum up', 'Chris Voss, Never Split the Difference', '"It sounds like..." and a summary they can answer with "that\'s right" build trust faster than any pitch.'],
+  ['Alternative choice and silence', 'Zig Ziglar, Secrets of Closing the Sale', 'Offer two yeses ("phone or email", "morning or afternoon"), then stop talking.'],
+  ['Keep it true', 'Rightway Growth', 'Urgency comes from what the scan shows and what it costs them, never from fake deadlines, fake discounts or promised rankings.'],
 ];
 
 export function fill(tpl, vars) {
@@ -395,7 +491,7 @@ function nextSlots(at = Date.now()) {
 }
 
 const money = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
-const PRICES = { starter: [597, 397], growth: [997, 997], authority: [1497, 997], leader: [2497, 1497] };
+const PRICES = { starter: [399, 399], growth: [449, 449], authority: [499, 499], leader: [599, 599] };
 const PLAN_LABEL = { starter: 'Starter', growth: 'Growth', authority: 'Authority', leader: 'Market Leader' };
 
 // The one sentence the whole pitch hangs on: what the scan found, in numbers.
@@ -416,6 +512,31 @@ export function scanLine(lead = {}, intel = null) {
   return `I was looking at who comes up on Google Maps when people search "${kw}" in ${lead.city || 'your area'}, and I wanted to see where ${name} lands.`;
 }
 
+// The discrepancy the clarity call is built on: how much their rank changes across the map for the same search.
+export function spreadLine(lead = {}, intel = null) {
+  const g = intel?.grid;
+  const kw = keywordFor(lead, intel) || 'your main search';
+  const name = lead.business || 'your business';
+  const ok = (g?.cells || []).filter((c) => !c.error);
+  if (!g || !ok.length) return `Let's run "${kw}" live together right now, so you see exactly what a customer sees.`;
+  const half = (g.size - 1) / 2, step = g.radiusMiles / Math.max(1, half);
+  const dirs = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+  const where = (c) => {
+    const east = (c.col - half) * step, north = (half - c.row) * step;
+    const d = Math.hypot(east, north);
+    if (d < 0.05) return 'right at your address';
+    const ang = ((Math.atan2(east, north) * 180) / Math.PI + 360) % 360;
+    return `about ${d < 1 ? d.toFixed(1) : Math.round(d)} mile${Math.round(d) === 1 ? '' : 's'} ${dirs[Math.round(ang / 45) % 8]}`;
+  };
+  const ranked = ok.filter((c) => c.rank != null).sort((a, b) => a.rank - b.rank);
+  const missing = ok.filter((c) => c.rank == null);
+  const best = ranked[0];
+  const worst = missing[0] || ranked[ranked.length - 1];
+  if (!best) return `Same search, ${ok.length} different spots around ${name}, and you didn't make the top 20 in any of them. Customers searching "${kw}" near you aren't seeing you at all.`;
+  const worstText = worst && worst !== best ? (worst.rank == null ? `but ${where(worst)}, you don't show up at all` : `but ${where(worst)}, you drop to number ${worst.rank}`) : '';
+  return `Same search, "${kw}". ${where(best)[0].toUpperCase()}${where(best).slice(1)}, you come up number ${best.rank}${worstText ? `, ${worstText}` : ''}. That's an inconsistency, and it means customers in part of your area see someone else first.`;
+}
+
 export function scriptVars(lead = {}, intel = null, ctx = {}) {
   const info = industryInfo(lead.industry, intel?.listing?.category || lead.category);
   const rec = recommendPlan(lead, intel);
@@ -428,6 +549,9 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
   const g = intel?.grid;
   const kw = keywordFor(lead, intel) || '';
   const breakeven = Math.max(1, Math.ceil(price / Math.max(1, ticket)));
+  const order = ['starter', 'growth', 'authority', 'leader'];
+  const drop = order[Math.max(0, order.indexOf(plan) - 1)];
+  const t10 = g ? top10Of(g) : 0;
   const first = (lead.contact_name || '').split(' ')[0] || '';
   return {
     first,
@@ -451,18 +575,38 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
     plan_why: rec.why.join(', ').toLowerCase(),
     price: money(price),
     setup: money(setup),
+    today_total: money(price + setup),
     starter_price: money(PRICES.starter[0]),
+    growth_price: money(PRICES.growth[0]),
+    authority_price: money(PRICES.authority[0]),
+    leader_price: money(PRICES.leader[0]),
+    drop_plan: PLAN_LABEL[drop],
+    drop_price: money(PRICES[drop][0]),
+    city_suffix: lead.city ? ` in ${lead.city}` : '',
+    pain: probs[0] ? probs[0].title.toLowerCase() : 'not showing up on Google',
+    scan_spread: spreadLine(lead, intel),
+    price_fit: plan === 'leader'
+      ? `(Pause.) And based on what you told me, ${rec.why.join(', ').toLowerCase()}, that is exactly what ${lead.business || 'you'} needs. I'd only put you on less if it could actually get the job done, and for what you want to do, it can't.`
+      : `(Pause.) Now, based on what you told me, you don't need all of that. I'm not going to sell you things you don't need. That's the whole reason I started this company. For ${lead.business || 'you'}, I'd put you on ${PLAN_LABEL[plan]}: ${rec.why.join(', ').toLowerCase()}.`,
+    frame_scan: intel?.found ? `the clarity scan I ran on ${lead.business || 'your business'}` : `what Google shows when customers look for ${lead.business || 'you'}`,
+    scan_meaning: !g ? 'Most owners have never seen this. Let\'s find out together where you really land.'
+      : `And honestly${first ? `, ${first}` : ''}, ${t10 === 0 ? 'this is a lot lower than I expected' : t10 < g.points / 2 ? 'this is lower than I expected' : 'this is better than most, but there are still holes'}. Usually what this tells me is that people who already know your name can find you, but people searching for the service, the ones who have never heard of you, are finding someone else.`,
+    drop_offer: plan === 'starter'
+      ? `I hear you. Starter is already our smallest plan, and it's priced so about one job covers it. Let me ask you: what's one new customer worth to you over a whole year, with repeat work and referrals? (Let them answer.) So one customer pays for the whole year. Does it make sense to keep losing those to ${top?.title || 'the competition'}?`
+      : `OK, then let's right size it. I'd rather start you on what fits than not start you at all. ${PLAN_LABEL[drop]} keeps the core work: your Google profile built out, the cleanup, monthly posts and the monthly map. That's ${money(PRICES[drop][1])} to build out and ${money(PRICES[drop][0])} a month. We can move you up when the calls start coming. Does that work better?`,
     ticket: money(ticket),
     breakeven,
     breakeven_jobs: `${breakeven} extra job${breakeven === 1 ? '' : 's'}`,
     scan_line: scanLine(lead, intel),
+    scan_intro: intel?.found ? `Here's the clarity scan I ran on ${lead.business || 'your business'}.` : `Let me pull up Google and show you what a customer sees when they look for ${lead.business || 'you'}.`,
     // Only claim a scan when research actually ran.
-    opener_reason: intel?.found ? `I ran ${lead.business || 'your business'} through our Google map scanner and found something you'll want to see.`
-      : `I was looking at who shows up on Google Maps for ${kw ? `"${kw}"` : 'your service'} in ${lead.city || 'your area'}, and I have a quick question about ${lead.business || 'your business'}.`,
+    opener_reason: intel?.found ? `I'm the analyst who ran the Google clarity check on ${lead.business || 'your business'}, and I found some inconsistencies in where you show up for ${kw ? `"${kw}"` : 'your main service'}.`
+      : `I'm doing Google clarity checks for ${info.label.toLowerCase()} businesses in ${lead.city || 'your area'}, and I wanted to look at ${lead.business || 'your business'} with you.`,
+    gk_reason: intel?.found ? `I'm calling about the Google clarity check I ran on ${lead.business || 'the business'}'s listing.` : `I'm calling about how ${lead.business || 'the business'} shows up on Google.`,
     hook_impact: g && top10Of(g) < g.points / 2 ? `That means when someone in ${lead.city || 'your area'} needs ${kw ? `"${kw}"` : 'what you do'} today, a lot of them are calling ${top?.title || 'someone else'} before they ever see you.`
       : g ? `You're strong close to home, but there are spots in ${lead.city || 'your area'} where customers see someone else first.`
       : 'Most people call one of the first businesses they see on that map, so every spot higher gets more of the calls.',
-    vm_scan: intel?.found ? `I ran a Google map scan on ${lead.business || 'your business'}. ${g ? (top && top.wins > g.top3 ? `${top.title} is showing up ahead of you in most of ${lead.city || 'your area'}.` : `You're on the first page in ${top10Of(g)} of ${g.points} spots around you, and I see a few quick wins.`) : 'I found a few quick wins.'} I'd like to show you the map.`
+    vm_scan: intel?.found ? `I ran a Google clarity check on ${lead.business || 'your business'}. ${g ? (top && top.wins > g.top3 ? `${top.title} is showing up ahead of you in most of ${lead.city || 'your area'}.` : `You're on the first page in ${top10Of(g)} of ${g.points} spots around you, and I see a few quick wins.`) : 'I found a few quick wins.'} I'd like to show you the map.`
       : `I was looking at ${lead.business || 'your business'} on Google Maps and have a couple of ideas to get you more calls from it.`,
     hook: probs[0] ? probs[0].talk : scanLine(lead, intel),
     problems: probs.slice(0, 3).map((p) => p.talk).join(' ') || 'A few gaps on your Google profile and website are holding you back.',

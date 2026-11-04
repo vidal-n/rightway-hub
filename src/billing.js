@@ -1,7 +1,7 @@
 // Stripe: webhook (signed), payment links per plan, client billing status, Stripe customer portal for clients.
 // Keys: STRIPE_SECRET_KEY (use a restricted key), STRIPE_WEBHOOK_SECRET.
 import { HttpError, json } from './util.js';
-import { SCRIPT_KEYS } from '../public/js/leadintel.js';
+import { SCRIPT_KEYS, SCRIPT_VERSION } from '../public/js/leadintel.js';
 import { all, first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin, requireClientAccess } from './auth.js';
 import { FIRST_CHARGE_CENTS, MONTHLY_CENTS } from './plans.js';
@@ -136,8 +136,9 @@ route('GET', '/api/settings', async ({ env, user }) => {
     company_phone: s.company_phone || '',
     // The number reps leave on voicemails: the saved company phone, else the Twilio business number.
     number: s.company_phone || prettyPhone(env.TWILIO_FROM),
-    script: s.script ? JSON.parse(s.script) : null,
-    objections: s.objections ? JSON.parse(s.objections) : null,
+    // A saved script only counts if it was saved for the current pitch (SCRIPT_VERSION); older edits fall back to the new default.
+    script: s.script && Number(s.script_version) === SCRIPT_VERSION ? JSON.parse(s.script) : null,
+    objections: s.objections && Number(s.script_version) === SCRIPT_VERSION ? JSON.parse(s.objections) : null,
     research_radius: Number(s.research_radius) || 2,
     connected: {
       google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
@@ -158,6 +159,7 @@ route('PUT', '/api/settings', async ({ env, user, body }) => {
     await setSetting(env, `pay_link_${k}`, v);
   }
   if ('company_phone' in b) await setSetting(env, 'company_phone', String(b.company_phone || '').slice(0, 30));
+  if ('script' in b || 'objections' in b) await setSetting(env, 'script_version', String(SCRIPT_VERSION));
   if ('script' in b) {
     const keys = SCRIPT_KEYS.map(([k]) => k);
     const sc = b.script && typeof b.script === 'object' ? Object.fromEntries(keys.filter((k) => typeof b.script[k] === 'string' && b.script[k].trim()).map((k) => [k, b.script[k].slice(0, 3000)])) : null;

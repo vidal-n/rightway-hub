@@ -43,17 +43,19 @@ function slides() {
   const nd = ninetyDayPlan(plan, intel, lead);
   const out = [];
   const add = (key, title, html, notes, dark = false) => out.push({ key, title, html, notes, dark });
+  // Presenter notes come straight from the one pitch (the Google clarity call), so the deck and the phone script never drift apart.
+  const say = (id, coach = true) => (script.steps.find((x) => x.id === id)?.lines || []).filter((l) => coach || !/^\(/.test(l)).join('\n\n');
 
   add('cover', 'Cover', `
     <img class="cover-mark" src="/brand/rightway-mark-light.svg" alt="">
     <div class="anim"><p class="kicker">Local growth plan</p><h1>${esc(lead.business)}:<br>more calls from Google${city ? ` in ${esc(city)}` : ''}</h1>
     <p class="lead">Prepared for ${esc(lead.contact_name || 'you')} by Rightway Growth</p></div>
     <div class="cover-meta"><div><b>${esc(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}</b>Date</div><div><b>${esc(kw)}</b>Main search</div>${D.rep ? `<div><b>${esc(D.rep)}</b>Your strategist</div>` : ''}</div>`,
-  `Set the deal up front:\n"Thanks for making the time${first ? `, ${first}` : ''}. Here's what I was thinking. I'll show you exactly where you show up on Google, who's getting your calls and why, and what we'd fix. About 20 minutes. At the end, if it's not a fit, just tell me, no hard feelings. If it is, we'll talk about next steps. Fair?"\n\nThen: "Before I share my screen, what made you want to take this call?" (Let them talk. Write down their words. You will use them in the close.)\n\nCheck: is everyone who decides on marketing here?`, true);
+  `Google clarity call. Set the frame:\n\n${say('c_frame')}\n\nCheck: is everyone who decides on marketing here?`, true);
 
   add('agenda', 'Agenda', `<div class="anim"><p class="kicker">Today</p><h2>What we'll cover in 20 minutes</h2>
     <ol class="agenda"><li>How customers find ${esc(info.label.toLowerCase())} businesses in ${esc(city || 'your area')}</li><li>Where you show up today, street by street</li><li>You vs the businesses getting the calls</li><li>What's holding you back</li><li>The plan, the timeline, and the investment</li></ol></div>`,
-  `Frame it: "By the end you'll know exactly where you stand, even if we never work together."\n\nFind the gap (ask, then stay quiet):\n• Where do most new customers come from today?\n• About how many calls a week come from Google?\n• What's a typical job worth? What jobs do you want more of?\n• Could you handle more work right now?\n• If nothing changes on Google for six months, what does that cost you?\n\nLabel what you hear: "It sounds like you've built this on referrals, and Google hasn't caught up yet."`);
+  `Discovery. Write every answer down, you will use their words later.\n\n${say('c_discovery')}\n\nThen verify:\n${say('c_verify')}`);
 
   add('pack', 'How customers find you', `<p class="kicker">How customers find you</p><h2>When someone searches "${esc(kw)}" near ${esc(city || 'you')}, Google shows 3 businesses first</h2>
     <div class="cols c2" style="align-items:start"><div class="pack anim"><div class="q">🔍 ${esc(kw)}</div>
@@ -76,7 +78,7 @@ function slides() {
             <div class="box"><div class="num">${esc(rankText(intel.rank).replace('not in the top 20', '20+'))}</div><div class="label">at your own address for "${esc(kw)}"</div></div>
             <div class="box"><div class="num">${top10Of(g)}<small> of ${g.points}</small></div><div class="label">spots where you are on the first page (top 10), within ${g.radiusMiles} miles</div></div>
             <div class="box"><div class="num">${g.avg ?? '20+'}</div><div class="label">average rank across the area</div></div></div></div></div>`,
-    `Let the scan play. Narrate it:\n"I stood in ${g.points} spots around ${lead.business}, up to ${g.radiusMiles} miles out, and searched ${kw} on Google the way a customer does. Watch who comes up at each spot."\n\nWhen it finishes: "First page in ${top10Of(g)} of ${g.points}. Every red and orange square is a customer who called someone else."\n\nThen ask and wait: "What do you think that's costing you?"\n\n(Press Replay on the slide to run it again.)`);
+    `${say('c_scan')}\n\nLet the scan play. Narrate it:\n"I stood in ${g.points} spots around ${lead.business}, up to ${g.radiusMiles} miles out, and searched ${kw} on Google the way a customer does. Watch who comes up at each spot."\n\nWhen it finishes: "First page in ${top10Of(g)} of ${g.points}. Every red and orange square is a customer who called someone else."\n\nThen ask and wait: "What do you think that's costing you?"\n\n(Press Replay on the slide to run it again.)`);
   }
 
   if (comps.length) {
@@ -86,12 +88,12 @@ function slides() {
       <table class="vs anim"><thead><tr><th>Business</th><th>Reviews</th><th>Rating</th><th>Google category</th><th>Website</th></tr></thead><tbody>
       ${rows.map((x) => `<tr class="${x.you ? 'you' : ''}"><td>${x.you ? '★ ' : ''}${esc(x.title)}</td><td class="${x.reviews === maxRev ? 'good' : x.you ? 'badv' : ''}">${x.reviews ?? '-'}</td><td>${x.rating ? stars(x.rating) : '-'}</td><td>${esc(x.category || '-')}</td><td>${x.site ? '✓' : '<span class="badv">None</span>'}</td></tr>`).join('')}
       </tbody></table>`,
-    `These are the businesses showing up highest around you.\n${comps.map((c) => `${c.title}: ${c.reviews ?? '?'} reviews, ${c.rating ?? '?'} stars`).join('\n')}\nYou: ${L.reviews ?? '?'} reviews, ${L.rating ?? '?'} stars.\n\nAsk: "Do you know these guys? Is their work better than yours?" (Almost always no.)\nThen: "So the only difference is what Google sees. That part is fixable."`);
+    `These are the businesses showing up highest around you.\n${comps.map((c) => `${c.title}: ${c.reviews ?? '?'} reviews, ${c.rating ?? '?'} stars`).join('\n')}\nYou: ${L.reviews ?? '?'} reviews, ${L.rating ?? '?'} stars.\n\nAsk: "Do you know these guys? Is their work better than yours?" (Almost always no.)\nThen: "So the only difference is what Google sees. That part is fixable."\n\n${say('c_why')}`);
   }
 
   add('problems', 'What is holding you back', `<p class="kicker">What we found</p><h2>${probs.length ? `${probs.length} things holding ${esc(lead.business)} back` : 'Your foundation is solid'}</h2>
     ${probs.length ? `<div class="probs anim">${probs.slice(0, 6).map((p) => `<div class="prob ${p.severity}"><b>${esc(p.title)}</b><span>${esc(p.detail)}</span></div>`).join('')}</div>` : '<p class="lead">No major gaps. The plan focuses on protecting your spot and growing into more searches and areas.</p>'}`,
-  probs.length ? `One at a time: what it is, and what it costs them in calls. Plain words.\n\n${probs.slice(0, 6).map((p) => `• ${p.talk}`).join('\n')}\n\nAsk: "Which of these surprises you most?" Lead with that one in the close.` : 'Pitch growth: more searches, more areas, staying ahead of competitors who are catching up.');
+  probs.length ? `One at a time: what it is, and what it costs them in calls. Plain words.\n\n${probs.slice(0, 6).map((p) => `• ${p.talk}`).join('\n')}\n\nAsk: "Which of these surprises you most?" Lead with that one in the close.\n\n${say('c_listings')}` : `Pitch growth: more searches, more areas, staying ahead of competitors who are catching up.\n\n${say('c_listings')}`);
 
   const W = intel?.website;
   if (intel?.speed || (W && W.ok)) {
@@ -118,12 +120,12 @@ function slides() {
 
   add('plan', 'The plan', `<p class="kicker">The plan</p><div class="planhead"><h2 style="margin:0">${esc(P.name)}</h2><span class="pill">Recommended for ${esc(lead.business)}</span></div>
     <ul class="includes anim">${INCLUDES[plan].map((x) => `<li>${esc(x)}</li>`).join('')}<li>Tracking ${P.keywords} keywords</li><li>Your own Rightway app: rankings, every task we do, review requests</li></ul>`,
-  `Recommend one plan with confidence:\n"For where you are, ${P.name} is the fit: ${recommendPlan(lead, intel).why.join(', ').toLowerCase()}."\n\nPaint the after: "Just imagine six months from now. Someone in ${city || 'your area'} searches ${kw}, and the first name they see is ${lead.business}."\n\nAsk: "Which part of this matters most to you?"`);
+  `${say('c_program')}\n\n${say('c_process')}`);
 
   add('days', 'First 90 days', `<p class="kicker">First 90 days</p><h2>What happens after you say yes</h2>
     <div class="months anim">${nd.months.map((m) => `<div class="month"><h3>${esc(m.title)}</h3><ul>${m.items.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>
     ${nd.fixes.length ? `<p class="note" style="margin-top:22px">Your fixes first: ${esc(nd.fixes.slice(0, 4).map((f) => `${f.title} (week ${f.week})`).join(' · '))}</p>` : ''}`,
-  'Make it concrete so it feels safe. Kickoff within 48 hours of signing. Month 1 is the foundation, month 2 we build, month 3 it compounds.\n\nBe honest about timing: profile fixes and reviews move things in 30 to 60 days, pages and links build over 3 to 6 months. Honesty here is what makes them trust the rest.');
+  'Make it concrete so it feels safe. Onboarding call within a few business days of signing. Month 1 is the foundation, month 2 we build, month 3 it compounds.\n\nBe honest about timing: profile fixes and reviews move things in 30 to 60 days, pages and links build over 3 to 6 months. Honesty here is what makes them trust the rest.');
 
   if (intel?.found) {
     add('reviews', 'Reviews', `<p class="kicker">Reviews</p><h2>${rt.leader && rt.gap ? `${rt.gap} reviews to pass ${esc(rt.leader)}` : 'Keep the reviews coming'}</h2>
@@ -142,19 +144,19 @@ function slides() {
         <li><b>Review requests from your phone</b><span>Text or email a link in seconds, plus a counter QR code.</span></li>
         <li><b>Snap a photo, we post it</b><span>We write the post for Google, Facebook, and Instagram.</span></li>
         <li><b>A monthly results meeting</b><span>We go over the numbers and the next month's plan.</span></li></ul></div>`,
-  'This answers "how do I know you will do the work?" before they ask it.\n"Most agencies send a report nobody reads. You get an app with every task we do and a new map every month. If we are not doing the work, you will see it."\n\nAsk: "How do you know today whether your marketing is working?"');
+  `This answers "how do I know you will do the work?" before they ask it.\n\n${say('c_story')}\n\nThen the trial close:\n${say('c_trial')}`);
 
   add('price', 'Investment', `<p class="kicker">Investment</p><h2>Pick the plan that fits</h2>
-    <div class="plans anim">${Object.entries(PLAN_INFO).map(([k, x]) => `<div class="plan${k === plan ? ' rec' : ''}" data-plan="${k}">${k === plan ? '<span class="tag">Recommended</span>' : ''}<div class="nm">${esc(x.name)}</div>
-      <div class="pr">${money(x.price)}<small>/mo</small></div><div class="su">${money(x.setup)} one time setup</div><ul>${INCLUDES[k].slice(0, 4).map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join('')}</div>
-    <div class="terms"><span>6 months, then month to month</span><span>Cancel with 30 days notice after that</span><span>You own your profile and content</span><span>No ranking guarantees, every task guaranteed</span></div>`,
-  `Sum up the gap in one sentence using their words from the start of the call. Then:\n\n${(script.steps.find((x) => x.id === 'close')?.lines || []).filter((l) => !/^\(/.test(l)).join('\n')}\n\nThen stop talking. Let them answer.\n\nIf price comes up: ${script.objections[0]?.a || ''}`);
+    <div class="plans anim">${Object.entries(PLAN_INFO).reverse().map(([k, x]) => `<div class="plan${k === plan ? ' rec' : ''}" data-plan="${k}">${k === plan ? '<span class="tag">Recommended</span>' : ''}<div class="nm">${esc(x.name)}</div>
+      <div class="pr">${money(x.price)}<small>/mo</small></div><div class="su">${money(x.setup)} one time buildout</div><ul>${INCLUDES[k].slice(0, 4).map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join('')}</div>
+    <div class="terms"><span>3 month minimum, then month to month</span><span>30 days notice to cancel after that</span><span>You own your profile and accounts</span><span>No ranking guarantees, every task shown in your app</span></div>`,
+  `Drop close. Start at Market Leader, then drop to the plan their answers justify (use the Plan picker below to switch the recommended card).\n\n${say('c_price')}\n\n${say('c_close')}\n\nIf price comes up: ${script.objections.find((o) => /afford/i.test(o.q))?.a || ''}\n\nIf it still doesn't fit: ${script.objections.find((o) => /\\(drop\\)/.test(o.q))?.a || ''}`);
 
   add('next', 'Next steps', `<div class="cols c2" style="align-items:center;gap:64px"><div class="anim"><p class="kicker">Next steps</p><h2 style="color:#fff">Start this week</h2>
-      <div class="steps"><div class="step"><i>1</i>Sign the agreement on your phone</div><div class="step"><i>2</i>Secure payment through Stripe</div><div class="step"><i>3</i>Kickoff call within 48 hours</div><div class="step"><i>4</i>Baseline map saved, work starts</div></div>
-      <div style="margin-top:34px;display:flex;gap:14px"><button class="btn" id="send-wo">Send the ${esc(P.name)} agreement</button></div></div>
-    <div class="signbox" id="signbox"><div style="font:600 22px var(--display)">Scan to review and sign</div><div style="width:300px;height:300px;display:grid;place-items:center;color:#9AA8A2;text-align:center">Press "Send the agreement" to make their link</div></div></div>`,
-  `Assume the yes:\n"I'll send the ${v.plan} agreement now. You sign on your phone, payment is right after, and we kick off within 48 hours. Do you want it by text or email?"\nPress the button, have them scan the code or send the link.\n\nIf they hesitate: "What would you need to see to feel good about starting?" Answer that, then ask again.`, true);
+      <div class="steps"><div class="step"><i>1</i>Sign the one page work order</div><div class="step"><i>2</i>Secure payment through Stripe</div><div class="step"><i>3</i>Book your onboarding call</div><div class="step"><i>4</i>Baseline map saved, work starts</div></div>
+      <div style="margin-top:34px;display:flex;gap:14px"><button class="btn" id="send-wo">Send the work order (${esc(P.name)})</button></div></div>
+    <div class="signbox" id="signbox"><div style="font:600 22px var(--display)">Scan to review and sign</div><div style="width:300px;height:300px;display:grid;place-items:center;color:#9AA8A2;text-align:center">Press "Send the work order" to make their link</div></div></div>`,
+  `${say('c_post')}\n\nPress the button, have them scan the code or send the link.\n\n${say('c_onboard')}`, true);
 
   return out;
 }

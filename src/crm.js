@@ -64,7 +64,7 @@ export function e164(phone) {
 // Playbook cadence for no answer: day 1, 2, 4, 7, 14, then recycle in 60 days.
 const NEXT_AFTER_ATTEMPT = { 1: 1, 2: 2, 3: 3, 4: 7 };
 
-export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, note = '' } = {}) {
+export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, note = '', by = null } = {}) {
   const set = { last_call_at: at, updated_at: at };
   switch (outcome) {
     case 'no_answer':
@@ -85,6 +85,7 @@ export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, not
       break;
     case 'booked':
       Object.assign(set, { stage: 'audit_booked', next_action_at: callbackAt || at + DAY, next_action: 'Audit call (Call 2)' });
+      if (callbackAt) Object.assign(set, { meet_at: callbackAt, ...(by ? { meet_by: by } : {}) });
       break;
     case 'no_show':
       Object.assign(set, { stage: 'no_show', next_action_at: at + DAY, next_action: 'Rebook the audit' });
@@ -158,6 +159,20 @@ export async function logActivity(env, a) {
 }
 
 const TZ_SHORT = { 'America/New_York': 'ET', 'America/Chicago': 'CT', 'America/Denver': 'MT', 'America/Phoenix': 'AZ', 'America/Los_Angeles': 'PT', 'America/Anchorage': 'AK', 'Pacific/Honolulu': 'HI' };
+// Booked appointments: owners see every one; teammates only see the ones they booked (or, for older rows, on their own leads).
+export function canSeeAppt(user, l) {
+  if (!user || user.role === 'admin') return true;
+  return l.meet_by ? l.meet_by === user.id : Boolean(l.owner_id) && l.owner_id === user.id;
+}
+export function apptScope(user, alias = '') {
+  if (!user || user.role === 'admin') return { sql: '', args: [] };
+  const a = alias ? `${alias}.` : '';
+  return { sql: ` AND (${a}meet_by = ? OR (${a}meet_by IS NULL AND ${a}owner_id = ?))`, args: [user.id, user.id] };
+}
+function seeAppt(l, user) {
+  if (!l || canSeeAppt(user, l)) return l;
+  return { ...l, meet_at: null, meet_link: null, gcal_event_id: null };
+}
 function decorate(l) {
   const tz = l.timezone || null;
   const { intel, ...rest } = l;
@@ -165,7 +180,7 @@ function decorate(l) {
 }
 const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, website, city, state, zip, timezone, industry, category, tags, source, stage, plan,
   next_action_at, next_action, owner_id, attempts, last_call_at, dnc, sms_consent, client_id, score, grade, rating, reviews, map_rank, problems,
-  intel_at, meet_at, meet_link, created_at, updated_at`;
+  intel_at, meet_at, meet_link, meet_by, created_at, updated_at`;
 
 async function updateLead(env, id, set) {
   const cols = Object.keys(set);
@@ -185,7 +200,7 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
   let rows = await all(env, `SELECT ${LIST_COLS} FROM leads ${stage ? 'WHERE stage = ?' : ''} ORDER BY updated_at DESC LIMIT 5000`, ...(stage ? [stage] : []));
   if (q) rows = rows.filter((l) => [l.business, l.contact_name, l.phone, l.email, l.city, l.industry, l.category, l.zip, l.tags].some((v) => String(v || '').toLowerCase().includes(q)));
   const counts = await all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage');
-  return json({ leads: rows.map(decorate), counts: Object.fromEntries(counts.map((c) => [c.stage, c.n])) });
+  return json({ leads: rows.map((l) => seeAppt(decorate(l), user)), counts: Object.fromEntries(counts.map((c) => [c.stage, c.n])) });
 });
 
 route('POST', '/api/leads', async ({ env, user, body }) => {
@@ -195,7 +210,7 @@ route('POST', '/api/leads', async ({ env, user, body }) => {
   if (dup) throw new HttpError(`This looks like a lead you already have: ${dup.business}.`, 409);
   const id = await insertLead(env, data, user.id);
   await logActivity(env, { lead_id: id, type: 'stage', body: 'Lead created', by: user.id });
-  return json({ lead: decorate(await leadOr404(env, id)) });
+  return json({ lead: seeAppt(decorate(await leadOr404(env, id)), user) });
 });
 
 // Existing dedupe keys: phone, website domain, and name plus city or zip.
@@ -306,7 +321,7 @@ route('GET', '/api/leads/:id', async ({ env, user, params }) => {
   const orders = await all(env, 'SELECT id, token, plan, status, signed_name, signed_at, paid_at, created_at FROM work_orders WHERE lead_id = ? ORDER BY created_at DESC', l.id);
   let intel = null;
   try { intel = l.intel ? JSON.parse(l.intel) : null; } catch { intel = null; }
-  return json({ lead: decorate(l), intel, activities, orders });
+  return json({ lead: seeAppt(decorate(l), user), intel, activities, orders });
 });
 
 route('PATCH', '/api/leads/:id', async ({ env, user, params, body }) => {
@@ -317,7 +332,7 @@ route('PATCH', '/api/leads/:id', async ({ env, user, params, body }) => {
   Object.assign(set, rescore({ ...l, ...set }));
   await updateLead(env, l.id, set);
   if (set.stage && set.stage !== l.stage) await logActivity(env, { lead_id: l.id, type: 'stage', body: `Moved to ${set.stage.replace('_', ' ')}`, by: user.id });
-  return json({ lead: decorate(await leadOr404(env, l.id)) });
+  return json({ lead: seeAppt(decorate(await leadOr404(env, l.id)), user) });
 });
 
 route('DELETE', '/api/leads/:id', async ({ env, user, params }) => {
@@ -335,7 +350,7 @@ export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activ
     set = { last_call_at: now(), updated_at: now() };
     if (note) set.notes = [l.notes, note].filter(Boolean).join('\n');
   } else {
-    set = applyOutcome(l, d.acts, { callbackAt, note: note || '' });
+    set = applyOutcome(l, d.acts, { callbackAt, note: note || '', by });
     Object.assign(set, rescore({ ...l, ...set }));
   }
   await updateLead(env, l.id, set);
@@ -356,7 +371,7 @@ route('POST', '/api/leads/:id/outcome', async ({ env, user, params, body }) => {
   const b = await body();
   const callbackAt = b.callbackAt ? Number(new Date(b.callbackAt)) || null : null;
   await recordOutcome(env, l, { dispo: b.dispo || b.outcome, note: text(b.note, 2000), callbackAt, by: user.id });
-  return json({ lead: decorate(await leadOr404(env, l.id)) });
+  return json({ lead: seeAppt(decorate(await leadOr404(env, l.id)), user) });
 });
 
 route('POST', '/api/leads/:id/note', async ({ env, user, params, body }) => {
@@ -417,7 +432,7 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
   const ready = rows
     .filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3))
-    .map(decorate)
+    .map((l) => seeAppt(decorate(l), user))
     .filter((l) => (!f.tz || l.tz_short === f.tz) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())
       && has(`${l.industry} ${l.category}`, f.industry) && has(l.tags, f.tag) && has(l.city, f.city) && (l.score || 0) >= minScore)
     .sort((a, b) => (priority[a.stage] ?? 9) - (priority[b.stage] ?? 9) || (b.score || 0) - (a.score || 0) || (a.next_action_at || 0) - (b.next_action_at || 0));

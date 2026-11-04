@@ -150,7 +150,7 @@ export async function openTask(id, user, { onChange } = {}) {
         </div>
       </div>
       ${time.length ? `<details><summary class="small">Time log (${time.length})</summary><ul class="list">${time.map((x) => `<li class="item"><span class="badge gray">${x.ended_at ? mins(x.minutes) : 'running'}</span><div class="item-sub">${esc(x.who || '')} · ${esc(fmt.date(x.started_at))}${x.manual ? ' · added by hand' : ''}${x.note ? ` · ${esc(x.note)}` : ''}</div><button class="icon-btn" data-deltime="${esc(x.id)}" title="Remove">${icon.trash}</button></li>`).join('')}</ul></details>` : ''}
-      <div class="row end tp-foot"><button class="btn btn-ghost" id="tp-slack">${icon.slack}Send in Slack</button>${t.status !== 'done' ? '<button class="btn btn-ghost" id="tp-skip">Skip</button>' : '<button class="btn btn-ghost" id="tp-reopen">Reopen</button>'}
+      <div class="row end tp-foot"><button class="btn btn-mint" id="tp-claude">Ask Claude</button><button class="btn btn-ghost" id="tp-slack">${icon.slack}Send in Slack</button>${t.status !== 'done' ? '<button class="btn btn-ghost" id="tp-skip">Skip</button>' : '<button class="btn btn-ghost" id="tp-reopen">Reopen</button>'}
         <button class="btn btn-ghost" id="tp-save">Save</button>${t.status !== 'done' ? `<button class="btn btn-primary" id="tp-done">${icon.check}Mark done</button>` : ''}</div>`;
     clearInterval(m.tick);
     if (mine) m.tick = setInterval(() => { const el = $('#tp-clock', m.el); if (el) el.textContent = clock(Date.now() - running.started_at); }, 1000);
@@ -175,6 +175,7 @@ export async function openTask(id, user, { onChange } = {}) {
       catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
     });
     $('#tp-slack', m.el).addEventListener('click', () => import('./slackapp.js').then((x) => x.sendToSlack('task', t.id)));
+    $('#tp-claude', m.el).addEventListener('click', () => import('./assistant.js').then((x) => x.openAssistant({ clientId: t.client_id, taskId: t.id, name: t.client_name, task: t })));
     $('#tp-skip', m.el)?.addEventListener('click', async () => { try { await save({ status: 'skipped' }); toast('Skipped'); m.close(); } catch (err) { toast(err.message, true); } });
     $('#tp-reopen', m.el)?.addEventListener('click', async () => { try { await save({ status: 'todo' }); load(); } catch (err) { toast(err.message, true); } });
     m.el.onclick = async (e) => {

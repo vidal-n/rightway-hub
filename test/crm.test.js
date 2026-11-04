@@ -141,8 +141,16 @@ test('work order: create, public view, sign, then Stripe payment creates the cli
   t.clearCookie();
   r = await t.call('GET', `/api/public/wo/${tok}`);
   assert.equal(r.data.order.plan, 'Growth');
-  assert.equal(r.data.order.monthly_cents, 99700);
-  assert.ok(r.data.order.includes.length > 3);
+  assert.equal(r.data.order.monthly_cents, 44900);
+  assert.equal(r.data.order.setup_cents, 44900);
+  // One agreement for every plan: same sections, only the amounts change.
+  assert.ok(r.data.order.sections.length >= 8);
+  const agreement = JSON.stringify(r.data.order.sections);
+  assert.match(agreement, /\$898\.00 \(due upon signing\)/);
+  assert.match(agreement, /\$449\.00 per month/);
+  assert.match(agreement, /three \(3\) months/);
+  assert.match(agreement, /Website design/);
+  assert.ok(!/[–—]/.test(agreement));
   r = await t.call('POST', `/api/public/wo/${tok}/sign`, { name: 'Ana Ruiz', agree: false });
   assert.equal(r.status, 400);
   r = await t.call('POST', `/api/public/wo/${tok}/sign`, { name: 'Ana Ruiz', agree: true }, { 'cf-connecting-ip': '203.0.113.9' });
@@ -150,7 +158,7 @@ test('work order: create, public view, sign, then Stripe payment creates the cli
   assert.match(r.data.order.pay_url, /buy\.stripe\.com/);
 
   // Stripe webhook: bad signature refused, good one links everything.
-  const event = { id: 'evt_1', type: 'checkout.session.completed', data: { object: { client_reference_id: lead.id, amount_total: 199400, customer: 'cus_1', subscription: 'sub_1', customer_details: { email: 'ana@coastal.com' } } } };
+  const event = { id: 'evt_1', type: 'checkout.session.completed', data: { object: { client_reference_id: lead.id, amount_total: 89800, customer: 'cus_1', subscription: 'sub_1', customer_details: { email: 'ana@coastal.com' } } } };
   const body = JSON.stringify(event);
   r = await t.call('POST', '/api/stripe/webhook', body, { 'stripe-signature': 't=1,v1=bad', 'content-type': 'application/json' });
   assert.equal(r.status, 400);
@@ -166,7 +174,7 @@ test('work order: create, public view, sign, then Stripe payment creates the cli
   r = await t.call('GET', `/api/clients/${r.data.lead.client_id}`);
   assert.equal(r.data.client.plan, 'growth');
   assert.equal(r.data.client.billing_status, 'active');
-  assert.equal(r.data.client.mrr_cents, 99700);
+  assert.equal(r.data.client.mrr_cents, 44900);
 
   // Subscription canceled later
   const cancel = { id: 'evt_2', type: 'customer.subscription.deleted', data: { object: { id: 'sub_1', customer: 'cus_1', status: 'canceled', items: { data: [] } } } };

@@ -69,19 +69,25 @@ test('problems, score, plan, and script come from the research', () => {
   assert.equal(recommendPlan(lead, INTEL).plan, 'authority');
   assert.equal(recommendPlan({ ...lead, industry: 'Salon' }, { ...INTEL, competitors: [{ title: 'Y', reviews: 30 }], listing: { ...INTEL.listing, claimed: true, rating: 4.6 }, grid: { ...INTEL.grid, top3: 6 }, rank: 2, speed: null, website: null }).plan, 'starter');
   const s = buildScript(lead, INTEL, { rep: 'Vidal' });
-  assert.match(s.steps[0].lines[0], /Hey Bob, it's Vidal with Rightway Growth/);
-  assert.match(s.steps[0].lines[0], /map scanner/);
-  assert.equal(s.steps[1].id, 'hook');
-  assert.match(s.steps[1].lines[0], /from \d+ spots around Summit Roofing/);
-  assert.ok(s.objections.find((o) => o.q === "It's too expensive").a.includes('$8,000'));
+  assert.match(s.steps[0].lines[0], /Hey Bob, this is Vidal with Rightway Growth/);
+  assert.match(s.steps[0].lines[0], /Google clarity check on Summit Roofing/);
+  const step = (sc, id) => sc.steps.find((x) => x.id === id).lines.join('\n');
+  assert.match(step(s, 'c_scan'), /from \d+ spots around Summit Roofing/);
+  assert.match(step(s, 'c_scan'), /Same search/);
+  // Drop close: Market Leader first, then the recommended plan with setup + first month today.
+  assert.match(step(s, 'c_price'), /Market Leader program.*\$599 to build out and \$599 a month/);
+  assert.match(step(s, 'c_price'), /Authority.*\$499 for the buildout and \$499 a month\. Total today is \$998/s);
+  assert.match(s.objections.find((o) => o.q === "I can't afford it (drop)").a, /Growth.*\$449/);
+  assert.ok(s.objections.find((o) => o.q === "It's too expensive").a.includes('extra job'));
   assert.ok(s.playbook.length >= 10);
   // Without research the script never claims a scan was run.
   const cold = buildScript(lead, null, { rep: 'Vidal' });
-  assert.ok(!/scan/i.test(cold.steps.find((x) => x.id === 'opener').lines[0]));
-  assert.ok(!/scan/i.test(cold.steps.find((x) => x.id === 'voicemail').lines[0]));
+  for (const id of ['c_open', 'c_frame', 'c_scan', 'voicemail', 'gatekeeper']) assert.ok(!/\bran\b|scan I|scanner/i.test(step(cold, id)), id);
+  assert.match(step(buildScript(lead, INTEL, { rep: 'Vidal', plan: 'starter' }), 'c_price'), /Starter/);
+  assert.match(buildScript(lead, INTEL, { rep: 'Vidal', plan: 'starter' }).objections.find((o) => /drop/.test(o.q)).a, /smallest plan/);
   assert.ok(!/\[\w/.test(JSON.stringify(s.objections)), 'every objection placeholder fills in');
   assert.equal(fill('Hi {first} {missing}', { first: 'Ana' }), 'Hi Ana [missing]');
-  assert.equal(roi({ ticket: 500, jobs: 4, plan: 'growth' }).breakeven, 2);
+  assert.equal(roi({ ticket: 200, jobs: 4, plan: 'growth' }).breakeven, 3);
   // No dashes that read as em or en dashes in generated copy.
   assert.ok(!/[–—]/.test(JSON.stringify(s) + JSON.stringify(probs)));
 });
@@ -263,10 +269,16 @@ test('API: Google booking reports not ready without keys; settings save the scri
   assert.equal(r.data.ready, false);
   r = await t.call('GET', '/api/google/connect');
   assert.equal(r.status, 503);
-  r = await t.call('PUT', '/api/settings', { script: { opener: 'Hi {first}, {rep} here.' }, objections: [['Busy', 'Call back at {slot1}?']], research_radius: 3 });
+  // A script saved for the old pitch is ignored, so everyone gets the new default.
+  await t.env.DB.prepare("INSERT INTO settings (k, v) VALUES ('script', ?), ('objections', ?)").bind(JSON.stringify({ opener: 'old' }), JSON.stringify([['Old', 'old']])).run();
+  r = await t.call('GET', '/api/settings');
+  assert.equal(r.data.script, null);
+  assert.equal(r.data.objections, null);
+  r = await t.call('PUT', '/api/settings', { script: { c_open: 'Hi {first}, {rep} here.', opener: 'dropped' }, objections: [['Busy', 'Call back at {slot1}?']], research_radius: 3 });
   assert.equal(r.status, 200);
   r = await t.call('GET', '/api/settings');
-  assert.equal(r.data.script.opener, 'Hi {first}, {rep} here.');
+  assert.equal(r.data.script.c_open, 'Hi {first}, {rep} here.');
+  assert.equal(r.data.script.opener, undefined);
   assert.equal(r.data.objections[0][0], 'Busy');
   assert.equal(r.data.research_radius, 3);
   const lead = (await t.call('POST', '/api/leads', { business: 'Coastal', phone: '9545550300', state: 'FL' })).data.lead;

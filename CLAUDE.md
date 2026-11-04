@@ -174,8 +174,39 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   with zoom buttons, drag, pinch, ctrl or trackpad zoom, and double click (`createMap` in `public/js/map.js`). A live feed shows each search as a
   phone result card while scanning, and "Replay the scan" re-runs it spot by spot for clients. Lead research now keeps the top 3 per grid spot,
   and the presentation's scan slide replays it the same way.
-- Pitch (built): `public/js/leadintel.js` SCRIPT_KEYS, DEFAULT_SCRIPT, DEFAULT_OBJECTIONS, PLAYBOOK. One pitch from dial to signature with the scan
-  as the hook; never claims a scan when no research ran. Presentation notes follow the same pitch. Citations in `public/js/fulfill.js` carry the
+- Pitch (built): `public/js/leadintel.js` SCRIPT_KEYS, DEFAULT_SCRIPT, DEFAULT_OBJECTIONS, PLAYBOOK. One pitch everywhere, framed as the
+  "Google clarity call" (V's Apex style, rewritten for Rightway): opener as the analyst who ran the clarity check, screen share frame, 10 discovery
+  questions written down for rebuttals, verify business and keywords, clarity scan with the block by block inconsistency (`spreadLine`), search
+  together, slow down for why competitors rank, listing inconsistencies, V's story (worked inside agencies, built the opposite: visible work, monthly
+  map, month to month after 3 months), how it works, what we need from the client, trial close, drop close (Market Leader first, then the plan
+  discovery justifies, `price_fit`, `drop_offer`), work order and payment, onboarding booking and homework. Objections before price, after price and
+  closes (fit/function/finance, think about it x4, can't afford x3, not today). Never claims a scan when no research ran (`opener_reason`, `scan_intro`,
+  `frame_scan`, `gk_reason`), never promises rankings. `SCRIPT_VERSION` (2): a script or objections saved in Settings for an older pitch are ignored
+  (settings `script_version`). Presentation notes pull the same script steps (`say()` in `public/js/present.js`); price slide lists plans high to low.
+  Printable reading copy of the script is a Claude Doc (V prints it for calls).
+- Prices (Nov 2026): Starter $399 setup + $399/mo, Growth $449 + $449, Authority $499 + $499, Market Leader $599 + $599 (`src/plans.js` MONTHLY_CENTS,
+  SETUP_CENTS, also `PLAN_INFO` in `public/js/plancopy.js`, `PLAN_PRICE` in `public/hub/core.js`, `PRICES` in leadintel). Priced for a drop close.
+  `FIRST_CHARGE_CENTS` keeps the old first charge amounts so older links still match. Reduced Starter link removed; Stripe setup makes four links and
+  its price keys include the amount, so "replace" after a price change makes new Stripe prices.
+- One work order (built, `public/js/agreement.js`, pure): a single Rightway service agreement for every plan, based on the agreement V's colleague
+  shared, rebranded and fit to one Letter page (services may include list with website services, 3 month minimum then month to month with 30 days
+  notice, early termination owes the rest of the first 3 months, payment = setup + first month due at signing then monthly 30 days later, no guarantees,
+  client responsibilities, ownership, work start, liability cap, e-signature). Only the setup and monthly amounts change. `agreementSnapshot` is saved
+  in `work_orders.terms` when sent; `/sign.html` renders it (older orders keep the old plan layout); `/workorder.html` is a printable blank copy
+  (amount boxes, or `?setup=&monthly=`).
+- Appointments by role (built): `leads.meet_by` = who booked it (lead meeting route, or a Booked outcome with a time, which now also sets `meet_at`).
+  Owners (admin) see every appointment; teammates only theirs (`canSeeAppt`, `apptScope` in `src/crm.js`: meet_by, or their own lead when meet_by is
+  empty). Applied to the dashboard, dialer "Coming up", `/api/calendar/upcoming`, lead lists and lead details (others' meet time hidden). Calendar page:
+  teammates see only calendars they own (no shared company calendars); Hub appointments show on it as read only events (`appt: true`). Public
+  bookings have no meet_by, so only owners (and the lead's own rep) see them. `#/pipeline/<leadId>` opens that lead.
+- Ask Claude (built, `src/assistant.js`, `public/hub/assistant.js`): side panel on the client header and the task panel. `clientBrief` gives Claude
+  the client's plan, services, cities, keywords, voice, intake, this month's tasks, latest scans, site audit issues, latest reviews, and the task guide.
+  System rules: no invented facts, Google guidelines, no ranking promises, no dashes. `POST /api/assistant` {clientId?, taskId?, messages}. Needs
+  ANTHROPIC_API_KEY; model ANTHROPIC_ASSIST_MODEL, else ANTHROPIC_CONTENT_MODEL, else ANTHROPIC_MODEL. Chats live in the browser while the Hub is open.
+- Booking page is "Book a consultation" (`/book.html`, default title "Book a free consultation", invite "Rightway Growth consultation"). The marketing
+  site (rightwaygrowth.com) is not in this repo: V built it himself (was on Netlify). Its pricing comes off, website services go on, every call to
+  action links to `/book.html` on the Hub.
+- BrightLocal: not integrated. It has no free API (paid plans only), and the scan tool already does the Local Search Grid. Citations in `public/js/fulfill.js` carry the
   sign up link, cost, why, lookup link, and hidden address support, with trade lists that apply only when certified.
 - Onboarding (built): first month tasks created on convert, lead research becomes the client baseline, Onboarding tab (before vs now, fix list,
   Google profile checklist, citations list with status, review target, 90 day plan, uploads), client app Get started page (intake form, access steps).

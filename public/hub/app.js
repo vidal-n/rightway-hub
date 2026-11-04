@@ -122,7 +122,7 @@ async function route() {
     if (sub === 'calls') return inboxPage(app, u, 'calls');
     return dialerPage(app, u);
   }
-  if (parts[0] === 'pipeline') return pipelinePage(app, u);
+  if (parts[0] === 'pipeline') return pipelinePage(app, u, parts[1]);
   if (parts[0] === 'team' || (parts[0] === 'settings' && parts[1] === 'team')) return teamPage(app, u);
   if (parts[0] === 'slack') return import('./slackapp.js').then((m) => m.slackPage(app, u, parts[1] || '', parts[2] || '', parts[3] || ''));
   if (parts[0] === 'work') return import('./work.js').then((m) => m.workPage(app, u, parts[1] || '', parts[2] || ''));

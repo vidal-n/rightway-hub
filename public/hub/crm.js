@@ -53,11 +53,13 @@ function sortLeads(rows, sort) {
   });
 }
 
-export async function pipelinePage(app, user) {
+export async function pipelinePage(app, user, openId) {
   setRep(user);
   const view = staffShell(app, user, 'pipeline');
   let data;
   try { data = await api('/api/leads'); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  // #/pipeline/<leadId> (links from the calendar, mail and elsewhere) opens that lead on top of the board.
+  if (openId && /^ld_/.test(openId)) setTimeout(() => leadModal(openId, () => pipelinePage(app, user)), 0);
   const p = loadPipe();
   p.f ||= {};
   const all = data.leads;
@@ -327,8 +329,8 @@ export async function leadModal(id, onChange) {
         <div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="lnotebtn">Save note only</button>
           <label class="field" style="flex:1 1 160px"><select id="lstage">${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}"${k === l.stage ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div>
         <h3 style="margin-top:22px">Close the deal</h3>
-        <div class="row"><select id="lplan" style="flex:1 1 180px">${Object.entries(PLAN_NAMES).map(([k, n]) => `<option value="${k}"${(l.plan || 'growth') === k ? ' selected' : ''}>${n} (${fmt.money(PLAN_PRICE[k])}/mo)</option>`).join('')}</select>
-          <label class="row small" style="gap:6px"><input type="checkbox" id="lreduced"> Starter setup $297</label></div>
+        <div class="row"><select id="lplan" style="flex:1 1 180px">${Object.entries(PLAN_NAMES).reverse().map(([k, n]) => `<option value="${k}"${(l.plan || 'leader') === k ? ' selected' : ''}>${n} (${fmt.money(PLAN_PRICE[k])} setup + ${fmt.money(PLAN_PRICE[k])}/mo)</option>`).join('')}</select></div>
+        <p class="small muted" style="margin-top:6px">One work order for every plan. Only the setup and monthly amounts change.</p>
         <div class="row" style="margin-top:10px">
           <button class="btn btn-primary btn-sm" id="lwo">Send work order</button>
           <button class="btn btn-ghost btn-sm" id="lpay">Payment link only</button>
@@ -388,7 +390,7 @@ export async function leadModal(id, onChange) {
   $('#lwo', m.el).addEventListener('click', async (e) => {
     busy(e.target, true);
     try {
-      const r = await api(`/api/leads/${l.id}/work-order`, { method: 'POST', body: { plan: $('#lplan', m.el).value, reducedSetup: $('#lreduced', m.el).checked } });
+      const r = await api(`/api/leads/${l.id}/work-order`, { method: 'POST', body: { plan: $('#lplan', m.el).value } });
       share(r.url, r.hasPayLink ? 'Work order link (sign, then pay)' : 'Work order link. Add the Stripe payment link in Settings so they can pay after signing.',
         `Hi ${l.contact_name ? l.contact_name.split(' ')[0] : ''}, here is your Rightway Growth work order. Review it, sign, and you can pay right after: ${r.url}`);
     } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
@@ -397,7 +399,7 @@ export async function leadModal(id, onChange) {
     busy(e.target, true);
     const plan = $('#lplan', m.el).value;
     try {
-      const r = await api(`/api/leads/${l.id}/payment-link`, { method: 'POST', body: { plan: plan === 'starter' && $('#lreduced', m.el).checked ? 'starter_reduced' : plan } });
+      const r = await api(`/api/leads/${l.id}/payment-link`, { method: 'POST', body: { plan } });
       share(r.link, 'Stripe payment link', `Here is the secure payment link to start your Rightway Growth plan: ${r.link}`);
     } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
   });
@@ -672,7 +674,7 @@ export async function settingsPage(app, user) {
     <div class="card"><div class="card-head"><h2>Stripe payment links</h2>${pill(c.stripe)}</div>
       <p class="muted">The Stripe setup above fills these in for you. You can also paste each plan's payment link from Stripe (Payment Links, Copy link) to use your own. Work orders and the "Payment link" button use these, tagged with the lead, so payment marks the deal won and creates the client automatically.</p>
       <form id="plinks" class="form-grid">
-        ${[['starter', 'Starter ($994 first charge)'], ['starter_reduced', 'Starter, reduced setup ($894)'], ['growth', 'Growth ($1,994)'], ['authority', 'Authority ($2,494)'], ['leader', 'Market Leader ($3,994)']]
+        ${[['leader', 'Market Leader ($1,198 first charge)'], ['authority', 'Authority ($998)'], ['growth', 'Growth ($898)'], ['starter', 'Starter ($798)']]
           .map(([k, n]) => `<label class="field"><span>${n}</span><input name="${k}" value="${esc(s.links[k])}" placeholder="https://buy.stripe.com/..."${user.role === 'admin' ? '' : ' disabled'}></label>`).join('')}
         ${user.role === 'admin' ? '<div class="span-all row end"><button class="btn btn-primary" type="submit">Save links</button></div>' : ''}
       </form></div>
@@ -680,7 +682,7 @@ export async function settingsPage(app, user) {
       <ul class="list">
         ${[['DataForSEO (scans and lead research)', c.dataforseo, 'DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD'], ['Google Calendar and Meet', c.google, 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET'], ['Stripe (billing status)', c.stripe, 'STRIPE_SECRET_KEY (restricted key)'],
           ['Stripe webhook (auto-win on payment)', c.stripeWebhook, `Stripe setup above, or STRIPE_WEBHOOK_SECRET. Endpoint: ${location.origin}/api/stripe/webhook`],
-          ['Twilio (call through the Hub)', c.twilio, 'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM'], ['AI captions', c.ai, 'ANTHROPIC_API_KEY'],
+          ['Twilio (call through the Hub)', c.twilio, 'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM'], ['Claude (Ask Claude, captions, page drafts)', c.ai, 'ANTHROPIC_API_KEY'],
           ['Email sending', c.email, 'RESEND_API_KEY, EMAIL_FROM'], ['Photo storage', c.media, 'R2 bucket rightway-media']]
           .map(([n, on, keys]) => `<li class="item">${pill(on)}<div><div class="item-title">${esc(n)}</div><div class="item-sub mono">${esc(keys)}</div></div><span></span></li>`).join('')}
       </ul><p class="small" style="margin-top:12px">Add keys in Cloudflare under Build variables and secrets, then ask Claude to rebuild.</p></div>

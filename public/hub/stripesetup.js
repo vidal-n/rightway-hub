@@ -25,7 +25,7 @@ export async function stripeSetup(box, user) {
     const needSecret = last?.results?.some((r) => r.needsSecret);
     box.innerHTML = `<div class="card"><div class="card-head"><h2>Stripe setup</h2>
         ${d.keyed ? `<span class="badge ${d.mode === 'live' ? '' : 'warn'}">${d.mode === 'live' ? 'Live mode' : d.mode === 'test' ? 'Test mode' : 'Connected'}</span>` : '<span class="badge gray">Key needed</span>'}</div>
-      ${!d.keyed ? `<p class="muted">The Hub can set up the webhook, all five payment links, and the client billing portal for you in one click. It needs a Stripe key first.</p>${KEY_STEPS}` : `
+      ${!d.keyed ? `<p class="muted">The Hub can set up the webhook, all four payment links, and the client billing portal for you in one click. It needs a Stripe key first.</p>${KEY_STEPS}` : `
         <ul class="list">
           <li class="item">${pill(d.webhook.secret, 'Ready', 'Not set up')}<div><div class="item-title">Webhook</div>
             <div class="item-sub">Tells the Hub when a client pays, so the deal is won and the client is created on its own. ${d.webhook.secret === 'cloudflare' ? 'Signing secret is in Cloudflare.' : ''}</div></div><span></span></li>

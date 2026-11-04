@@ -22,8 +22,8 @@ export const STANDARD_TERMS = [
 ];
 
 export const PLAN_INFO = {
-  starter: { name: 'Starter', price: 597, setup: 397, keywords: 10 },
-  growth: { name: 'Growth', price: 997, setup: 997, keywords: 20 },
-  authority: { name: 'Authority', price: 1497, setup: 997, keywords: 30 },
-  leader: { name: 'Market Leader', price: 2497, setup: 1497, keywords: 50 },
+  starter: { name: 'Starter', price: 399, setup: 399, keywords: 10 },
+  growth: { name: 'Growth', price: 449, setup: 449, keywords: 20 },
+  authority: { name: 'Authority', price: 499, setup: 499, keywords: 30 },
+  leader: { name: 'Market Leader', price: 599, setup: 599, keywords: 50 },
 };

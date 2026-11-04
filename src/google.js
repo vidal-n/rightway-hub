@@ -4,7 +4,7 @@ import { HttpError, json } from './util.js';
 import { all, first, run, now, token, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin, cleanEmail } from './auth.js';
 import { route } from './router.js';
-import { cleanLead, insertLead, logActivity, rescore } from './crm.js';
+import { cleanLead, insertLead, logActivity, rescore, apptScope } from './crm.js';
 import { openSlots } from '../public/js/slots.js';
 import { dupKeys } from '../public/js/leadintel.js';
 import { notifyLater } from './notify.js';
@@ -128,7 +128,7 @@ export async function bookingConfig(env) {
     weekdays: (s.book_days || '1,2,3,4,5').split(',').map(Number).filter((x) => x >= 0 && x <= 6),
     startHour: n('book_start', 9), endHour: n('book_end', 17), minutes: n('book_minutes', 30), buffer: n('book_buffer', 15),
     noticeHours: n('book_notice', 4), days: n('book_window', 14),
-    title: s.book_title || 'Free local visibility audit',
+    title: s.book_title || 'Book a free consultation',
     owner: s.book_owner || null,
   };
 }
@@ -139,12 +139,12 @@ export async function bookingOwner(env, cfg) {
 }
 
 const AGENDA = (business) => [
-  `Rightway Growth audit${business ? ` for ${business}` : ''}`,
+  `Rightway Growth consultation${business ? ` for ${business}` : ''}`,
   '',
   'What we will cover (about 20 minutes):',
-  '1. Where you show up on Google Maps across your area',
-  '2. Who is beating you and why',
-  '3. The exact fixes we would make, and what it costs',
+  '1. Your Google clarity scan: where you show up across your area, and where it is inconsistent',
+  '2. Who is getting your calls and why',
+  '3. What we would fix, how it works, and what it costs',
   '',
   'Join with the Google Meet link in this invite. Questions: reply to this email.',
 ].join('\n');
@@ -228,10 +228,10 @@ route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body }) => {
   const owner = me?.google_token ? me : await bookingOwner(env, await bookingConfig(env));
   if (!owner) throw new HttpError('Connect Google in Settings to send calendar invites with a Meet link.', 400);
   const m = await createMeeting(env, owner, {
-    summary: `Rightway Growth audit: ${lead.business}`, description: [AGENDA(lead.business), b.note ? `\nNote: ${String(b.note).slice(0, 500)}` : ''].join(''),
+    summary: `Rightway Growth consultation: ${lead.business}`, description: [AGENDA(lead.business), b.note ? `\nNote: ${String(b.note).slice(0, 500)}` : ''].join(''),
     start, minutes, attendees: [email], leadId: lead.id,
   });
-  const set = { stage: 'audit_booked', meet_at: start, meet_link: m.meet, gcal_event_id: m.id, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
+  const set = { stage: 'audit_booked', meet_at: start, meet_link: m.meet, gcal_event_id: m.id, meet_by: user.id, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
   if (email && !lead.email) set.email = email;
   Object.assign(set, rescore({ ...lead, ...set }));
   const cols = Object.keys(set);
@@ -242,7 +242,8 @@ route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body }) => {
 
 route('GET', '/api/calendar/upcoming', async ({ env, user }) => {
   requireStaff(user);
-  const meetings = await all(env, `SELECT id, business, contact_name, phone, meet_at, meet_link, stage, score, grade, plan FROM leads WHERE meet_at >= ? ORDER BY meet_at LIMIT 50`, now() - 2 * 3600e3);
+  const scope = apptScope(user);
+  const meetings = await all(env, `SELECT id, business, contact_name, phone, meet_at, meet_link, stage, score, grade, plan FROM leads WHERE meet_at >= ?${scope.sql} ORDER BY meet_at LIMIT 50`, now() - 2 * 3600e3, ...scope.args);
   let events = [];
   const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);
   if (googleReady(env) && me?.google_token) {
@@ -284,8 +285,8 @@ route('POST', '/api/public/book', async ({ env, request, defer }) => {
   let leadId = lead?.id;
   if (!leadId) leadId = await insertLead(env, { ...data, stage: 'audit_booked' }, null);
   const full = await first(env, 'SELECT * FROM leads WHERE id = ?', leadId);
-  const m = await createMeeting(env, owner, { summary: `Rightway Growth audit: ${full.business}`, description: AGENDA(full.business), start, minutes: cfg.minutes, attendees: [email], leadId });
-  const set = { stage: 'audit_booked', meet_at: start, meet_link: m.meet, gcal_event_id: m.id, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
+  const m = await createMeeting(env, owner, { summary: `Rightway Growth consultation: ${full.business}`, description: AGENDA(full.business), start, minutes: cfg.minutes, attendees: [email], leadId });
+  const set = { stage: 'audit_booked', meet_at: start, meet_link: m.meet, gcal_event_id: m.id, meet_by: null, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
   if (!full.email) set.email = email;
   Object.assign(set, rescore({ ...full, ...set, source: full.source || 'booking' }));
   const cols = Object.keys(set);

@@ -165,7 +165,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow"><a href="#/clients">Clients</a> / ${c.parent ? `Location of <a href="#/client/${esc(c.parent.id)}/locations">${esc(c.parent.name)}</a>` : esc(PLAN_NAMES[c.plan])}</p><h1>${esc(c.name)}</h1>
       <div class="small">${esc(c.address || '')}</div></div>
-      <div class="row"><label class="small row" style="gap:6px">Account manager <select id="cowner" aria-label="Account manager"><option value="">Nobody</option></select></label><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(c.status)}</span><a class="btn btn-ghost btn-sm" href="/scan.html?client=${esc(c.id)}">${icon.scan}Scan</a><button class="btn btn-ghost btn-sm" id="cslack">${icon.slack}Slack</button>${c.contact_email ? `<button class="btn btn-ghost btn-sm" id="cmail">${icon.mail}Email</button>` : ''}<button class="btn btn-ghost btn-sm" id="ccal">Meeting</button></div></div>
+      <div class="row"><label class="small row" style="gap:6px">Account manager <select id="cowner" aria-label="Account manager"><option value="">Nobody</option></select></label><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(c.status)}</span><a class="btn btn-ghost btn-sm" href="/scan.html?client=${esc(c.id)}">${icon.scan}Scan</a><button class="btn btn-ghost btn-sm" id="cslack">${icon.slack}Slack</button>${c.contact_email ? `<button class="btn btn-ghost btn-sm" id="cmail">${icon.mail}Email</button>` : ''}<button class="btn btn-ghost btn-sm" id="ccal">Meeting</button><button class="btn btn-mint btn-sm" id="cclaude">Ask Claude</button></div></div>
     <nav class="tabs">${tabsFor(c).map(([k, n]) => `<a href="#/client/${esc(id)}/${k}" class="${tab === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>
     <section id="tab"></section>`;
   const el = $('#tab', view);
@@ -175,6 +175,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   ownerPicker($('#cowner', view), c);
   $('#cslack', view).addEventListener('click', () => import('./slackapp.js').then((m) => m.sendToSlack('client', c.id)));
   // Google: write to them, or put a meeting with them on your own calendar.
+  $('#cclaude', view).addEventListener('click', () => import('./assistant.js').then((m) => m.openAssistant({ clientId: c.id, name: c.name })));
   $('#cmail', view)?.addEventListener('click', () => import('./mail.js').then((m) => m.compose({ to: c.contact_email, subject: `${c.name} and Rightway Growth` })));
   $('#ccal', view).addEventListener('click', () => import('./gcal.js').then((m) => m.quickEvent({
     title: `${c.name} check-in`, attendees: [c.contact_email].filter(Boolean), clientId: c.id,

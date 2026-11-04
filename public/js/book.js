@@ -9,7 +9,7 @@ async function load() {
   let info;
   try { info = await (await fetch('/api/public/book')).json(); } catch { info = null; }
   if (!info?.ready || !info.slots?.length) {
-    box.innerHTML = `${head}<div class="card"><h1 style="font-size:30px">Book your free audit</h1><p class="muted">${info?.ready ? 'No open times in the next two weeks.' : 'Online booking is not open right now.'} Call or text us and we'll find a time.</p></div>`;
+    box.innerHTML = `${head}<div class="card"><h1 style="font-size:30px">Book a consultation</h1><p class="muted">${info?.ready ? 'No open times in the next two weeks.' : 'Online booking is not open right now.'} Call or text us and we'll find a time.</p></div>`;
     return;
   }
   const days = [];
@@ -18,7 +18,7 @@ async function load() {
   let day = days[0], pick = null;
   box.innerHTML = `${head}
     <div><h1 style="font-size:clamp(28px,4vw,40px);margin-bottom:6px">${esc(info.title)}</h1>
-      <p class="muted" style="margin:0">${info.minutes} minutes on Google Meet. We show you where you rank on Google Maps across your area, who is beating you, and what we would fix. No cost and no pressure.</p></div>
+      <p class="muted" style="margin:0">${info.minutes} minutes on Google Meet. We show you where you show up on Google across your area, where it is inconsistent, who is getting your calls, and what we would fix. Websites, Google profile and local SEO. No cost and no pressure.</p></div>
     <div class="bk-grid">
       <div class="card"><h2>Pick a time</h2><p class="small">Times shown in your time zone (${esc(viewerTz.replace(/_/g, ' '))}).</p><div class="days" id="days"></div><div class="times" id="times"></div></div>
       <form class="card form-grid" id="f" style="grid-template-columns:1fr">
@@ -32,7 +32,7 @@ async function load() {
         <label class="field"><span>What do you do?</span><input name="industry" placeholder="Roofing, dental, plumbing..."></label>
         <label class="hp" aria-hidden="true">Company URL<input name="company-url" tabindex="-1" autocomplete="off"></label>
         <p class="small" id="sel">Pick a time on the left.</p>
-        <button class="btn btn-primary btn-xl" type="submit" id="go" disabled>Book my audit</button>
+        <button class="btn btn-primary btn-xl" type="submit" id="go" disabled>Book my consultation</button>
         <p class="err-text" id="err" role="alert"></p>
       </form>
     </div>`;
@@ -66,7 +66,7 @@ async function load() {
         <p class="muted">A Google Calendar invite with the Meet link is on its way to your email.</p>${data.meet ? `<a class="btn btn-mint" href="${esc(data.meet)}">Google Meet link</a>` : ''}</div>`;
     } catch (err) {
       document.getElementById('err').textContent = err.message;
-      btn.disabled = false; btn.textContent = 'Book my audit';
+      btn.disabled = false; btn.textContent = 'Book my consultation';
       if (/taken/.test(err.message)) load();
     }
   });

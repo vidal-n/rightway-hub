@@ -6,6 +6,7 @@ import { requireStaff } from './auth.js';
 import { route } from './router.js';
 import { accessToken } from './google.js';
 import { ownFor } from './googleapps.js';
+import { apptScope } from './crm.js';
 import { slimEvent } from '../public/js/calgrid.js';
 
 const API = 'https://www.googleapis.com/calendar/v3';
@@ -32,7 +33,9 @@ route('GET', '/api/google/cal/calendars', async ({ env, user }) => {
   requireStaff(user);
   const me = await ownFor(env, user, 'calendar');
   const d = await cal(env, me, '/users/me/calendarList?maxResults=50&minAccessRole=reader');
-  const cals = (d.items || []).map((c) => ({
+  // Owners see every calendar they can open. Teammates see only their own calendars (no shared team or company calendars).
+  const items = (d.items || []).filter((c) => user.role === 'admin' || c.primary || c.accessRole === 'owner');
+  const cals = items.map((c) => ({
     id: c.id, name: c.summaryOverride || c.summary || c.id, color: c.backgroundColor || '#23B07E',
     primary: Boolean(c.primary), selected: c.selected !== false, canWrite: ['owner', 'writer'].includes(c.accessRole),
     tz: c.timeZone || null,
@@ -45,7 +48,12 @@ route('GET', '/api/google/cal/events', async ({ env, user, url }) => {
   const me = await ownFor(env, user, 'calendar');
   const from = Number(url.searchParams.get('from')) || Date.now();
   const to = Number(url.searchParams.get('to')) || from + 31 * 864e5;
-  const wanted = (url.searchParams.get('cals') || 'primary').split(',').filter(Boolean).slice(0, MAX_CALS);
+  let wanted = (url.searchParams.get('cals') || 'primary').split(',').filter(Boolean).slice(0, MAX_CALS);
+  if (user.role !== 'admin' && wanted.some((id) => id !== 'primary')) {
+    const own = await cal(env, me, '/users/me/calendarList?maxResults=50&minAccessRole=owner').catch(() => ({ items: [] }));
+    const ok = new Set(['primary', ...(own.items || []).map((c) => c.id)]);
+    wanted = wanted.filter((id) => ok.has(id));
+  }
   const colors = Object.fromEntries((url.searchParams.get('colors') || '').split(',').filter(Boolean).map((p) => p.split('|')));
   const q = (id) => `/calendars/${encodeURIComponent(id)}/events?${new URLSearchParams({
     timeMin: new Date(from).toISOString(), timeMax: new Date(to).toISOString(),
@@ -65,7 +73,15 @@ route('GET', '/api/google/cal/events', async ({ env, user, url }) => {
     leadIds.length ? all(env, `SELECT id, business FROM leads WHERE id IN (${leadIds.map(() => '?').join(',')})`, ...leadIds) : [],
     clientIds.length ? all(env, `SELECT id, name FROM clients WHERE id IN (${clientIds.map(() => '?').join(',')})`, ...clientIds) : [],
   ]);
-  return json({ events, errors, leads, clients, email: me.google_email || null });
+  // Hub appointments in this range: all of them for owners, only the ones you booked for everyone else.
+  const scope = apptScope(user);
+  const appts = await all(env, `SELECT id, business, contact_name, meet_at, meet_link, gcal_event_id FROM leads WHERE meet_at >= ? AND meet_at < ?${scope.sql} ORDER BY meet_at LIMIT 100`, from, to, ...scope.args).catch(() => []);
+  const seen = new Set(events.map((e) => e.id));
+  const appointments = appts.filter((a) => !a.gcal_event_id || !seen.has(a.gcal_event_id)).map((a) => ({
+    id: `appt_${a.id}`, calendarId: 'hub', color: '#0A6B4C', appt: true, title: `Appointment: ${a.business}`, where: '', notes: a.contact_name ? `With ${a.contact_name}` : '',
+    start: a.meet_at, end: a.meet_at + 30 * 60e3, allDay: false, meet: a.meet_link || null, link: null, organizer: '', attendees: [], leadId: a.id, clientId: null, mine: false, busy: true, recurring: false,
+  }));
+  return json({ events: [...events, ...appointments], errors, leads: [...leads, ...appts.filter((a) => !leads.some((l) => l.id === a.id)).map((a) => ({ id: a.id, business: a.business }))], clients, email: me.google_email || null, owner: user.role === 'admin' });
 });
 
 const body2event = (b) => {

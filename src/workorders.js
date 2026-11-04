@@ -1,8 +1,11 @@
-// Work orders: one page per plan, signed online (typed name + agreement, with time, IP, and device recorded), then paid by Stripe link.
+// Work orders: one service agreement for every plan (public/js/agreement.js), only the setup and monthly amounts change.
+// Signed online (typed name + agreement, with time, IP, and device recorded), then paid by Stripe link.
+// The wording is saved with each order, so later edits never change an agreement someone already got.
 import { HttpError, json } from './util.js';
 import { first, run, newId, token, now } from './db.js';
 import { requireStaff } from './auth.js';
-import { PLANS, INCLUDES, STANDARD_TERMS, MONTHLY_CENTS, SETUP_CENTS } from './plans.js';
+import { PLANS, MONTHLY_CENTS, SETUP_CENTS } from './plans.js';
+import { agreementSnapshot } from '../public/js/agreement.js';
 import { paymentLinkFor } from './billing.js';
 import { logActivity } from './crm.js';
 import { route } from './router.js';
@@ -14,10 +17,9 @@ route('POST', '/api/leads/:id/work-order', async ({ env, user, params, url, body
   const b = await body();
   const plan = PLANS[b.plan] ? b.plan : null;
   if (!plan) throw new HttpError('Pick a plan.');
-  const reduced = plan === 'starter' && b.reducedSetup;
-  const setup = reduced ? 29700 : SETUP_CENTS[plan];
-  const payUrl = await paymentLinkFor(env, reduced ? 'starter_reduced' : plan, { leadId: lead.id, email: lead.email });
-  const terms = JSON.stringify({ includes: INCLUDES[plan], terms: STANDARD_TERMS });
+  const setup = SETUP_CENTS[plan];
+  const payUrl = await paymentLinkFor(env, plan, { leadId: lead.id, email: lead.email });
+  const terms = JSON.stringify(agreementSnapshot({ setupCents: setup, monthlyCents: MONTHLY_CENTS[plan] }));
   const id = newId('wo_');
   const t = token(18);
   await run(env, `INSERT INTO work_orders (id, token, lead_id, plan, monthly_cents, setup_cents, business, contact_name, email, terms, pay_url, status, created_at, created_by)
@@ -32,7 +34,7 @@ function publicOrder(o) {
   const t = JSON.parse(o.terms || '{}');
   return {
     business: o.business, contact_name: o.contact_name, plan: PLANS[o.plan]?.name || o.plan, monthly_cents: o.monthly_cents, setup_cents: o.setup_cents,
-    includes: t.includes || [], terms: t.terms || [], status: o.status, signed_name: o.signed_name, signed_at: o.signed_at, created_at: o.created_at,
+    includes: t.includes || [], terms: t.terms || [], sections: t.sections || null, status: o.status, signed_name: o.signed_name, signed_at: o.signed_at, created_at: o.created_at,
     pay_url: o.status !== 'paid' ? o.pay_url : null,
   };
 }

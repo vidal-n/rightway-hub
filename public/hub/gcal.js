@@ -180,19 +180,19 @@ function showEvent(e) {
     <div class="card-head"><h2 style="margin:0">${esc(e.title)}</h2><button class="icon-btn" data-close aria-label="Close">${icon.close}</button></div>
     <p class="muted" style="margin:4px 0 14px">${esc(new Date(e.start).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))} · ${esc(spanLabel(e))}</p>
     ${e.where ? `<p><b>Where:</b> ${esc(e.where)}</p>` : ''}
+    ${e.appt ? '<p class="small muted">Booked in the Hub. Change or cancel it from the lead.</p>' : ''}
     ${lead ? `<p><a class="chip" href="#/pipeline/${esc(lead.id)}">Lead: ${esc(lead.business)}</a></p>` : ''}
     ${client ? `<p><a class="chip" href="#/clients/${esc(client.id)}">Client: ${esc(client.name)}</a></p>` : ''}
     ${e.attendees.length ? `<p><b>Who is coming:</b> ${e.attendees.map((a) => `${esc(a.name || a.email)}${a.reply === 'accepted' ? ' (yes)' : a.reply === 'declined' ? ' (no)' : ''}`).join(', ')}</p>` : ''}
     ${e.notes ? `<div class="cal-notes">${esc(e.notes).replace(/\n/g, '<br>')}</div>` : ''}
     <div class="row" style="gap:8px;margin-top:16px">
       ${e.meet ? `<a class="btn btn-primary btn-sm" href="${esc(e.meet)}" target="_blank" rel="noopener">Join the Meet</a><button class="btn btn-ghost btn-sm" id="ce-copy">Copy the link</button>` : ''}
-      <button class="btn btn-ghost btn-sm" id="ce-edit">Change</button>
-      <button class="btn btn-ghost btn-sm" id="ce-del">Delete</button>
+      ${e.appt ? '' : '<button class="btn btn-ghost btn-sm" id="ce-edit">Change</button><button class="btn btn-ghost btn-sm" id="ce-del">Delete</button>'}
       ${e.link ? `<a class="btn btn-ghost btn-sm" href="${esc(e.link)}" target="_blank" rel="noopener">Open in Google</a>` : ''}
     </div></div>`);
   $('#ce-copy', m.el)?.addEventListener('click', () => copy(e.meet, 'Meet link copied'));
-  $('#ce-edit', m.el).addEventListener('click', () => { m.close(); editEvent(e); });
-  $('#ce-del', m.el).addEventListener('click', async (ev) => {
+  $('#ce-edit', m.el)?.addEventListener('click', () => { m.close(); editEvent(e); });
+  $('#ce-del', m.el)?.addEventListener('click', async (ev) => {
     busy(ev.currentTarget, true);
     try { await api(`/api/google/cal/events/${encodeURIComponent(e.id)}?calendarId=${encodeURIComponent(e.calendarId)}`, { method: 'DELETE' }); m.close(); toast('Deleted'); load(); }
     catch (err) { toast(err.message, true); busy(ev.currentTarget, false); }

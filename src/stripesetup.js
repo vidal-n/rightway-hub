@@ -14,10 +14,9 @@ export const EVENTS = [
   'invoice.paid', 'invoice.payment_failed',
 ];
 
-// The five payment links. First charge = setup + first month, which is how the webhook tells the plan from a payment.
+// The four payment links. First charge = setup + first month, which is how the webhook tells the plan from a payment.
 export const LINKS = [
   { key: 'starter', plan: 'starter', label: 'Starter', setup: SETUP_CENTS.starter },
-  { key: 'starter_reduced', plan: 'starter', label: 'Starter, reduced setup', setup: 29700 },
   { key: 'growth', plan: 'growth', label: 'Growth', setup: SETUP_CENTS.growth },
   { key: 'authority', plan: 'authority', label: 'Authority', setup: SETUP_CENTS.authority },
   { key: 'leader', plan: 'leader', label: 'Market Leader', setup: SETUP_CENTS.leader },
@@ -72,7 +71,7 @@ async function stepLinks(env, body) {
         await saveSetup(env, state);
       }
       const product = state.products[l.plan];
-      const monthKey = `${l.plan}:month`;
+      const monthKey = `${l.plan}:month:${MONTHLY_CENTS[l.plan]}`;
       if (!state.prices[monthKey]) {
         state.prices[monthKey] = (await stripe(env, 'POST', '/prices', {
           product, currency: 'usd', unit_amount: String(MONTHLY_CENTS[l.plan]), 'recurring[interval]': 'month', nickname: `${name} monthly`,
