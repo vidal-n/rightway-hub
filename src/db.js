@@ -180,6 +180,26 @@ const ADD_COLUMNS = [
 
 let ready = null;
 
+// A cold Worker used to run every CREATE and about 130 ALTER TABLE attempts (each a round trip to D1) before its first answer.
+// Now the schema is stamped with a fingerprint of this file's table list in settings.schema_v. A matching stamp means one cheap
+// read and nothing else. A changed list (new table or column in a deploy) migrates once, adding only the columns that are missing.
+const fingerprint = () => { let h = 5381; for (const s of [...SCHEMA, ...ADD_COLUMNS.map((c) => c.join('.'))]) for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return `v${SCHEMA.length}.${ADD_COLUMNS.length}.${(h >>> 0).toString(36)}`; };
+const SCHEMA_V = fingerprint();
+
+async function migrate(env) {
+  await env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s)));
+  const tables = [...new Set(ADD_COLUMNS.map((c) => c[0]))];
+  const infos = await env.DB.batch(tables.map((t) => env.DB.prepare(`SELECT name FROM pragma_table_info('${t}')`)));
+  const have = Object.fromEntries(tables.map((t, i) => [t, new Set((infos[i].results || []).map((r) => r.name))]));
+  for (const [table, col] of ADD_COLUMNS) {
+    if (have[table].has(col.split(' ')[0])) continue;
+    try { await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${col}`).run(); } catch (e) {
+      if (!/duplicate column/i.test(String(e?.message || e))) throw e; // another isolate got there first
+    }
+  }
+  await env.DB.prepare('INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').bind('schema_v', SCHEMA_V).run();
+}
+
 export function hasDb(env) {
   return Boolean(env.DB);
 }
@@ -188,12 +208,9 @@ export async function ensureSchema(env) {
   if (!env.DB) throw new HttpError('The database is not connected yet. Create the D1 database in Cloudflare and send Claude its ID.', 503);
   if (!ready) {
     ready = (async () => {
-      await env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s)));
-      for (const [table, col] of ADD_COLUMNS) {
-        try { await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${col}`).run(); } catch (e) {
-          if (!/duplicate column/i.test(String(e?.message || e))) throw e;
-        }
-      }
+      const stamp = await env.DB.prepare("SELECT v FROM settings WHERE k = 'schema_v'").first().catch(() => null);
+      if (stamp?.v === SCHEMA_V) return;
+      await migrate(env);
     })().catch((err) => { ready = null; throw err; });
   }
   await ready;

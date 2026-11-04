@@ -97,7 +97,13 @@ export async function homePage(app, user) {
       <div style="display:grid;gap:10px">${r.agents.map((a) => `<div class="row" style="flex-wrap:nowrap;gap:10px">${miniAvatar(a)}<div style="flex:1;min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</b>
         <span class="small"><i class="dot ${tone(a)}" style="margin-right:6px"></i>${esc(a.call ? `with ${a.call.business || 'a lead'}` : st(a))}</span></div><span class="badge gray mono">${a.today.dials} dials</span></div>`).join('')}</div>`;
   }).catch(() => $('#floor', view)?.remove());
-  if (admin) { paymentsSnapshot($('#paysnap', view)); import('./budget.js').then((m) => m.budgetCard($('#budsnap', view))); import('./balances.js').then((m) => m.balancesCard($('#balsnap', view))); }
+  // The money widgets call Stripe, DataForSEO and Twilio, which are slow. The dashboard draws first, then these fill in one by one.
+  if (admin) {
+    const later = (ms, fn) => setTimeout(() => { if (document.body.contains(view) && $('#paysnap', view)) fn(); }, ms);
+    later(250, () => paymentsSnapshot($('#paysnap', view)));
+    later(600, () => import('./budget.js').then((m) => m.budgetCard($('#budsnap', view))));
+    later(950, () => import('./balances.js').then((m) => m.balancesCard($('#balsnap', view))));
+  }
   $$('[data-lead]', view).forEach((li) => li.addEventListener('click', () => leadModal(li.dataset.lead, () => homePage(app, user))));
   $('#mk-sample', view)?.addEventListener('click', async (e) => {
     busy(e.currentTarget, true, 'Creating...');

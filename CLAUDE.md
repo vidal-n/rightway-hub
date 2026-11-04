@@ -377,6 +377,10 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   funnel, lead quality bars, best hours bar chart, meetings, callbacks, payments with a revenue bar chart, budget, balances, team floor, clients with a work ring, activity.
   Charts are pure in `public/js/charts.js` (`lineChart` area option, `stackBars`, `donut`, `ring`, `spark`). Accent palette `--c-blue/violet/amber/coral/teal/green/pink/slate`
   (Skin v4 at the end of hub.css): colored menu icons, group colored page labels, pipeline column tops, widget top borders, tinted stat tiles.
+- Speed (Nov 2026): `ensureSchema` stamps `settings.schema_v` with a fingerprint of the table list in `src/db.js`; a cold Worker on a current database does one
+  read instead of ~270 statements (migrations add only missing columns, via `pragma_table_info`). `public/index.html` preloads the static module graph
+  (`rel="modulepreload"`, checked by `test/schema.test.js`; add new statically imported modules there) and loads Google Fonts without blocking paint. Dashboard money
+  widgets load after the first paint.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 
