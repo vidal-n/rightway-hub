@@ -19,7 +19,7 @@ async function api(path, opts = {}) {
   return data;
 }
 
-const state = { i: 0, plan: 'growth', ticket: 500, jobs: 4, quote: null };
+const state = { i: 0, plan: 'growth', ticket: 500, jobs: 4, quote: null, entered: { setup: '', monthly: '' } };
 let D = null;
 
 function stars(r) { if (r == null) return ''; const n = Math.round(r); return `<span class="stars">${'★'.repeat(n)}${'☆'.repeat(5 - n)}</span> ${r.toFixed(1)}`; }
@@ -152,13 +152,13 @@ function slides() {
 
   add('price', 'Investment', `<p class="kicker">Your investment</p><h2>Built for ${esc(lead.business)}, not a package</h2>
     <div class="invest anim">
-      <div class="box"><div class="label">One time buildout</div><div class="num">$<input id="q-setup" class="qin" inputmode="decimal" value="${esc(Q.setup)}"></div></div>
-      <div class="box"><div class="label">Monthly</div><div class="num">$<input id="q-monthly" class="qin" inputmode="decimal" value="${esc(Q.monthly)}"></div></div>
-      <div class="box dark"><div class="label">Due today</div><div class="num" id="q-today">${money(Q.setup + Q.monthly)}</div><div class="label">next payment in 30 days</div></div>
+      <div class="box"><div class="label">One time buildout</div><div class="num">$<input id="q-setup" class="qin" inputmode="decimal" value="${esc(state.entered.setup)}" aria-label="Buildout"></div></div>
+      <div class="box"><div class="label">Monthly</div><div class="num">$<input id="q-monthly" class="qin" inputmode="decimal" value="${esc(state.entered.monthly)}" aria-label="Monthly"></div></div>
+      <div class="box dark"><div class="label">Due today</div><div class="num" id="q-today">${dueToday()}</div><div class="label">next payment in 30 days</div></div>
     </div>
     <p class="note" style="margin-top:22px">Includes: ${esc(Q.services.map((x) => x.name).join(', '))}.</p>
     <div class="terms"><span>3 month minimum, then month to month</span><span>30 days notice to cancel after that</span><span>You own your profile and accounts</span><span>No ranking guarantees, every task shown in your app</span></div>`,
-  `Drop close. Set the price from discovery (click the amounts to change them; they save to the lead and the work order uses them).\n\n${say('c_price')}\n\n${say('c_close')}\n\nIf price comes up: ${script.objections.find((o) => /afford/i.test(o.q))?.a || ''}\n\nIf it still doesn't fit: ${script.objections.find((o) => /\\(drop\\)/.test(o.q))?.a || ''}`);
+  `Drop close. The amounts start blank: click each box and type the buildout and monthly you set from discovery. When you move to the next slide they are saved to the lead, and Send the work order fills them in.\n\n${say('c_price')}\n\n${say('c_close')}\n\nIf price comes up: ${script.objections.find((o) => /afford/i.test(o.q))?.a || ''}\n\nIf it still doesn't fit: ${script.objections.find((o) => /\\(drop\\)/.test(o.q))?.a || ''}`);
 
   add('next', 'Next steps', `<div class="cols c2" style="align-items:center;gap:64px"><div class="anim"><p class="kicker">Next steps</p><h2 style="color:#fff">Start this week</h2>
       <div class="steps"><div class="step"><i>1</i>Sign the one page work order</div><div class="step"><i>2</i>Secure payment through Stripe</div><div class="step"><i>3</i>Book your onboarding call</div><div class="step"><i>4</i>Baseline map saved, work starts</div></div>
@@ -235,6 +235,8 @@ function playGrid() {
 
 function go(n, broadcast = true) {
   const prev = state.i;
+  // Leaving the investment slide: what was typed becomes the price on the work order.
+  if (list[prev]?.key === 'price' && n !== prev && (state.entered.setup !== '' || state.entered.monthly !== '')) saveQuote();
   state.i = Math.max(0, Math.min(list.length - 1, n));
   document.querySelectorAll('.slide').forEach((el) => { const k = Number(el.dataset.n); el.classList.toggle('on', k === state.i); el.classList.toggle('past', k < state.i); });
   const c = document.getElementById('cnt'); if (c) c.textContent = `${state.i + 1} / ${list.length}`;
@@ -250,6 +252,12 @@ function updateCalc() {
   set('out-mult', r.multiple >= 1 ? `${r.multiple.toFixed(1)}x your monthly investment` : `Pays for itself at ${r.breakeven} jobs a month`);
 }
 
+// The investment slide starts blank; what the rep types becomes the quote the work order uses.
+const num = (v) => Math.max(0, Number(String(v).replace(/[$,\s]/g, '')) || 0);
+function dueToday() {
+  const e = state.entered;
+  return e.setup !== '' && e.monthly !== '' ? money(num(e.setup) + num(e.monthly)) : '$';
+}
 // The quote lives on the lead, so changes made in the meeting carry into the work order and the Hub.
 function saveQuote() {
   const q = state.quote;
@@ -260,6 +268,9 @@ const saveSoon = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveQuo
 const allServices = () => quoteFor(D.lead, D.intel, { plan: 'leader', services: SERVICE_LIST.map((x) => x.id) }).services;
 
 async function sendWorkOrder(btn) {
+  if (state.entered.setup === '' || state.entered.monthly === '') {
+    if (!confirm(`No price typed on the investment slide. Send the work order at $${state.quote.setup} buildout and $${state.quote.monthly} a month from the lead's quote?`)) return;
+  }
   btn.disabled = true; btn.textContent = 'Creating...';
   try {
     await saveQuote();
@@ -285,8 +296,12 @@ function wireDeck() {
   const add = document.getElementById('svc-add');
   if (add) add.onchange = () => { const x = allServices().find((y) => y.id === add.value); if (x) { state.quote.services.push(x); saveSoon(); renderDeck(); } };
   const qs = document.getElementById('q-setup'), qm = document.getElementById('q-monthly');
-  const money2 = (v) => Math.max(0, Number(String(v).replace(/[$,\s]/g, '')) || 0);
-  const qUpdate = () => { state.quote.setup = money2(qs.value); state.quote.monthly = money2(qm.value); const el = document.getElementById('q-today'); if (el) el.textContent = money(state.quote.setup + state.quote.monthly); saveSoon(); };
+  const qUpdate = () => {
+    state.entered = { setup: qs.value.trim(), monthly: qm.value.trim() };
+    if (state.entered.setup !== '') state.quote.setup = num(qs.value);
+    if (state.entered.monthly !== '') state.quote.monthly = num(qm.value);
+    const el = document.getElementById('q-today'); if (el) el.textContent = dueToday();
+  };
   if (qs) qs.oninput = qUpdate;
   if (qm) qm.oninput = qUpdate;
   const t = document.getElementById('in-ticket'), j = document.getElementById('in-jobs');

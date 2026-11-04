@@ -156,3 +156,27 @@ test('quotes: services and price on the fly, custom work order, website order, f
   assert.match(JSON.stringify(r.data.order.sections), /5 page website.*Contact form/);
   assert.match(JSON.stringify(r.data.order.sections), /\$1,500\.00 \(due upon signing\)/);
 });
+
+test('signed copy is emailed to the client and the owners after signing', async () => {
+  const t = setup({ RESEND_API_KEY: 're_test' });
+  await owner(t);
+  const lead = (await t.call('POST', '/api/leads', { business: 'Coastal Roof Pros', contact_name: 'Ana Ruiz', email: 'ana@coastal.com', phone: '9545550111', state: 'FL' })).data.lead;
+  const tok = (await t.call('POST', `/api/leads/${lead.id}/work-order`, { plan: 'growth', setup: 449, monthly: 449 })).data.url.split('#')[1];
+  const real = globalThis.fetch;
+  const sent = [];
+  globalThis.fetch = async (u, init) => {
+    if (String(u).startsWith('https://api.resend.com/')) { sent.push(JSON.parse(init.body)); return Response.json({ id: 'em_1' }); }
+    return real(u, init);
+  };
+  try {
+    const r = await t.call('POST', `/api/public/wo/${tok}/sign`, { agree: true, font: 'Allura', initialsFont: 'Great Vibes' });
+    assert.equal(r.data.order.emailed, 'ana@coastal.com');
+    for (let i = 0; i < 50 && sent.length < 2; i++) await new Promise((res) => setTimeout(res, 10));
+  } finally { globalThis.fetch = real; }
+  assert.deepEqual(sent.map((m) => m.to[0]).sort(), ['ana@coastal.com', 'v@x.com']);
+  assert.match(sent[0].subject, /Signed: Digital Marketing Service Agreement for Coastal Roof Pros/);
+  assert.match(sent[0].html, /Signed and complete/);
+  assert.match(sent[0].html, /\$898\.00 \(due upon signing\)/);
+  assert.match(sent[0].html, /sign\.html#/);
+  assert.ok(!/[–—]/.test(sent[0].html + sent[0].text));
+});

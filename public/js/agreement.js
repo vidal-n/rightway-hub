@@ -25,8 +25,11 @@ export const SERVICES = [
 ];
 
 // Script fonts the client picks from for the signature and the initials (loaded from Google Fonts on the sign page).
-export const SIG_FONTS = ['Dancing Script', 'Great Vibes', 'Allura', 'Caveat'];
-export const SIG_FONTS_URL = 'https://fonts.googleapis.com/css2?family=Allura&family=Caveat:wght@600&family=Dancing+Script:wght@600&family=Great+Vibes&display=swap';
+export const SIG_FONTS = ['Great Vibes', 'Allura', 'Dancing Script'];
+export const SIG_FONTS_URL = 'https://fonts.googleapis.com/css2?family=Allura&family=Dancing+Script:wght@600&family=Great+Vibes&display=swap';
+// Cursive fonts already on most phones and computers, so a signature still looks signed if the web font is slow or blocked.
+export const SIG_STACK = "'Snell Roundhand','Apple Chancery','Segoe Script','Lucida Handwriting','Brush Script MT',cursive";
+export const sigFont = (f) => `font-family:'${okFont(f)}',${SIG_STACK}`;
 export const okFont = (f) => (SIG_FONTS.includes(f) ? f : SIG_FONTS[0]);
 export const initialsOf = (name) => String(name || '').trim().split(/\s+/).filter(Boolean).map((w) => w[0].toUpperCase()).slice(0, 3).join('');
 
@@ -86,8 +89,8 @@ const longDate = (t) => new Date(t).toLocaleDateString('en-US', { month: 'long',
 export function agreementHtml({ sections, title = TITLES.seo, business = '', contact = '', sig = null, logo = '', preview = null } = {}) {
   const line = (label, value, cls = '', style = '') => `<div class="ag-line"><span>${esc(label)}</span><b class="${cls}"${style ? ` style="${style}"` : ''}>${value ? esc(value) : '&nbsp;'}</b></div>`;
   const p = sig || preview || {};
-  const signFont = p.font ? `font-family:'${esc(okFont(p.font))}',cursive` : '';
-  const iniFont = p.initialsFont ? `font-family:'${esc(okFont(p.initialsFont))}',cursive` : '';
+  const signFont = p.font ? sigFont(p.font) : '';
+  const iniFont = p.initialsFont ? sigFont(p.initialsFont) : '';
   return `<article class="ag">
     <header class="ag-head">${logo}<div class="ag-co"><b>${esc(COMPANY.name)}</b><span>${esc(COMPANY.address)}</span><span>${esc(COMPANY.site)} · ${esc(COMPANY.email)}</span></div></header>
     <h1 class="ag-title">${esc(title)}</h1>
@@ -103,6 +106,7 @@ export function agreementHtml({ sections, title = TITLES.seo, business = '', con
         ${line('Date', p.at ? longDate(p.at) : '')}
         ${line('Company', `${COMPANY.name}`)}
       </div>
+      ${sig?.at ? `<p class="ag-record">Signed electronically by ${esc(sig.name)} on ${esc(new Date(sig.at).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'long', timeStyle: 'short' }))} Eastern${sig.id ? `. Document ${esc(sig.id)}` : ''}. Signer's IP address and device were recorded.</p>` : ''}
     </footer>
   </article>`;
 }
@@ -126,7 +130,8 @@ export const AGREEMENT_CSS = `
 .ag-line { display: grid; grid-template-columns: 78px 1fr; align-items: end; gap: 8px; }
 .ag-line span { font-size: 11px; color: #61716B; }
 .ag-line b { border-bottom: 1px solid #0F1B17; min-height: 26px; font-weight: 600; display: flex; align-items: flex-end; }
-.ag-sig { font-size: 26px !important; font-weight: 600; line-height: 1.1; }
+.ag-sig { font-size: 26px !important; font-weight: 400; line-height: 1.1; }
+.ag-record { margin: 10px 0 0; font-size: 10px; color: #61716B; }
 @media (max-width: 640px) { .ag { padding: 22px 18px; } .ag-grid { grid-template-columns: 1fr; } .ag-head { flex-wrap: wrap; } .ag-co { text-align: left; } }
 @media print {
   @page { size: letter; margin: 0.4in 0.55in; }
@@ -143,3 +148,32 @@ export const AGREEMENT_CSS = `
   .ag-line b { min-height: 22px; }
   .ag-sig { font-size: 21px !important; }
 }`;
+
+// The signed copy as an email both parties keep, like a receipt. Inline styles only (mail apps drop style blocks).
+export function agreementEmailHtml({ sections, title = TITLES.seo, business = '', sig = {}, link = '', due = '' } = {}) {
+  const P = 'margin:0 0 6px;font:14px/1.55 Arial,Helvetica,sans-serif;color:#0F1B17';
+  const H = 'margin:14px 0 4px;font:bold 13px Arial,Helvetica,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:#0A6B4C';
+  const body = (sections || []).map(([h, paras, bullets, after]) => `<h3 style="${H}">${esc(h)}</h3>${(paras || []).map((x) => `<p style="${P}">${esc(x)}</p>`).join('')}${bullets?.length ? `<ul style="margin:0 0 6px;padding-left:20px">${bullets.map((b) => `<li style="${P};margin:0">${esc(b)}</li>`).join('')}</ul>` : ''}${after ? `<p style="${P}">${esc(after)}</p>` : ''}`).join('');
+  const row = (k, v, style = '') => `<tr><td style="padding:6px 12px 6px 0;font:12px Arial,sans-serif;color:#61716B;white-space:nowrap">${esc(k)}</td><td style="padding:6px 0;border-bottom:1px solid #0F1B17;font:bold 15px Arial,sans-serif;color:#0F1B17;${style}">${esc(v)}</td></tr>`;
+  return `<div style="background:#F2F7F4;padding:24px 12px"><div style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #DCE6E1;border-radius:14px;padding:28px">
+    <p style="margin:0 0 4px;font:bold 15px Arial,sans-serif;color:#0F1B17">${esc(COMPANY.name)}</p>
+    <p style="margin:0 0 16px;font:12px Arial,sans-serif;color:#61716B">${esc(COMPANY.address)} · ${esc(COMPANY.site)}</p>
+    <div style="background:#EAF8F1;border:1px solid #9DEBCB;border-radius:10px;padding:14px 16px;margin-bottom:18px">
+      <p style="margin:0;font:bold 16px Arial,sans-serif;color:#0F1B17">Signed and complete</p>
+      <p style="margin:4px 0 0;font:14px Arial,sans-serif;color:#33433D">${esc(business)} signed the ${esc(title)}. Keep this email as your copy.${due ? ` ${esc(due)}` : ''}</p>
+      ${link ? `<p style="margin:12px 0 0"><a href="${esc(link)}" style="display:inline-block;background:#0F1B17;color:#fff;text-decoration:none;font:bold 14px Arial,sans-serif;padding:10px 16px;border-radius:10px">View, print or save as PDF</a></p>` : ''}
+    </div>
+    <h2 style="margin:0 0 10px;font:bold 20px Arial,sans-serif;color:#0F1B17">${esc(title)}</h2>
+    <p style="${P}">This agreement ("Agreement") is entered into between ${esc(COMPANY.name)} ("Company") and the undersigned Client, <b>${esc(business)}</b>.</p>
+    ${body}
+    <h3 style="${H}">Client</h3>
+    <table style="width:100%;border-collapse:collapse">${row('Name', sig.name || '')}${row('Business', business)}${row('Signature', sig.name || '', `font:30px ${SIG_STACK.replace(/'/g, '')};font-weight:normal`)}${row('Initials', sig.initials || initialsOf(sig.name), `font:26px ${SIG_STACK.replace(/'/g, '')};font-weight:normal`)}${row('Date', sig.at ? longDate(sig.at) : '')}</table>
+    <p style="margin:14px 0 0;font:11px Arial,sans-serif;color:#61716B">Signed electronically by ${esc(sig.name || '')} on ${esc(sig.at ? new Date(sig.at).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'long', timeStyle: 'short' }) : '')} Eastern${sig.id ? `. Document ${esc(sig.id)}` : ''}. Signer's IP address and device were recorded.</p>
+  </div></div>`;
+}
+
+export function agreementEmailText({ sections, title = TITLES.seo, business = '', sig = {}, link = '' } = {}) {
+  const parts = (sections || []).map(([h, paras, bullets, after]) => [h.toUpperCase(), ...(paras || []), ...(bullets || []).map((b) => `  - ${b}`), after || ''].filter(Boolean).join('\n'));
+  return [`${business} signed the ${title}. Keep this email as your copy.`, link ? `View, print or save as PDF: ${link}` : '', '', title, ...parts, '',
+    `Client: ${sig.name || ''}, ${business}`, `Signed electronically on ${sig.at ? new Date(sig.at).toLocaleString('en-US', { timeZone: 'America/New_York' }) : ''} Eastern${sig.id ? `. Document ${sig.id}` : ''}.`].join('\n\n');
+}

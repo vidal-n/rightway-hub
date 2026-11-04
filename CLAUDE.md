@@ -185,7 +185,8 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   `frame_scan`, `gk_reason`), never promises rankings. `SCRIPT_VERSION` (3): a script or objections saved in Settings for an older pitch are ignored
   (settings `script_version`). Presentation notes pull the same script steps (`say()` in `public/js/present.js`). The presentation shows no plans: "What gets you results"
   lists the quote's services with why (top 10 tie in; hover × to drop one, Add a service), and "Your investment" shows the buildout, monthly and due
-  today as click-to-edit amounts that save to the lead; Send the work order uses them.
+  today. The amounts start blank every meeting; the rep types them, and moving to the next slide saves them to the lead's quote, which the
+  work order fills in (sending without typed amounts asks to confirm the saved quote).
   Printable reading copy of the script is a Claude Doc (V prints it for calls).
 - Pricing is per client (Nov 2026): plans are internal only (they set the monthly task load) and the client never sees a plan name. The rep picks
   the services the client needs and sets the buildout and monthly from discovery. `SERVICE_LIST` in `public/js/plancopy.js` (client words, `min`
@@ -200,7 +201,10 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   (one column, one Letter page, services list says "Website recommendations", 3 month minimum then month to month, early termination owes the rest
   of the first 3 months, buildout + first month due at signing). `website`: websites are a separate service with their own agreement (build fee due at
   signing, optional monthly hosting and care, the project's scope lines, 2 revision rounds, ownership on full payment). Signature block: name and
-  business filled from the lead, signature and initials in a script font the client picks (`SIG_FONTS` from Google Fonts), date filled with today
+  business filled from the lead, signature and initials in one of three script fonts the client picks (`SIG_FONTS` from Google Fonts, with
+  `SIG_STACK` system cursive fallbacks), date filled with today. After signing, `emailSignedCopy` emails the full signed agreement (inline styled,
+  `agreementEmailHtml`, with a View/print link and the signing record) to the client and every owner plus the rep, through Resend, or from the rep's
+  or an owner's own Gmail when Resend is not set (`sendGmail` in `src/gmail.js`); `work_orders.emailed` keeps who got it
   (`work_orders.signed_font`, `initials`, `initials_font`, `kind`). `agreementSnapshot` is saved in `work_orders.terms`; `/sign.html` renders it;
   `/workorder.html` is the printable blank (kind picker, amounts, scope). Website orders paid through Stripe mark the order paid and notify owners
   but do not create an SEO client or tasks.

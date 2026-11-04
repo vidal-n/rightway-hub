@@ -5,7 +5,7 @@ import { HttpError, json } from './util.js';
 import { all } from './db.js';
 import { requireStaff } from './auth.js';
 import { route } from './router.js';
-import { accessToken } from './google.js';
+import { accessToken, hasScope, APP_SCOPES } from './google.js';
 import { ownFor } from './googleapps.js';
 import { logActivity } from './crm.js';
 import { threadRow, fullMessage, buildRaw, addrList, labelName } from '../public/js/gmailparse.js';
@@ -187,3 +187,11 @@ route('POST', '/api/google/mail/att/:msgId/:attId/drive', async ({ env, user, bo
   const file = await saveToDrive(env, user, { name: b.name || 'attachment', mime: b.type || 'application/octet-stream', b64: d.data, parent: b.parent });
   return json({ file });
 });
+
+// Send one message from a person's own Gmail (used when email through Resend is not set up). Returns false if they have no Gmail access.
+export async function sendGmail(env, userRow, { to, subject, html, text }) {
+  if (!userRow?.google_token || !hasScope(userRow.google_scopes, APP_SCOPES.mail)) return false;
+  const raw = buildRaw({ from: userRow.google_email ? `${userRow.name || 'Rightway Growth'} <${userRow.google_email}>` : '', to: Array.isArray(to) ? to.join(', ') : to, subject, html, text });
+  await gmail(env, userRow, '/messages/send', { method: 'POST', body: { raw } });
+  return true;
+}

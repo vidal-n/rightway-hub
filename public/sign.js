@@ -1,12 +1,12 @@
 // Public work order page: review, sign with a typed name, then pay through Stripe.
 // New orders carry the one Rightway service agreement (public/js/agreement.js); older orders keep their plan layout.
-import { agreementHtml, AGREEMENT_CSS, SIG_FONTS, SIG_FONTS_URL, initialsOf, TITLES } from '/js/agreement.js';
+import { agreementHtml, AGREEMENT_CSS, SIG_FONTS, SIG_FONTS_URL, initialsOf, TITLES, sigFont } from '/js/agreement.js';
 
 document.head.insertAdjacentHTML('beforeend', `<link rel="stylesheet" href="${SIG_FONTS_URL}"><style>${AGREEMENT_CSS}
 .fontpick { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 6px; }
 .fontpick label { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; background: var(--surface-2); display: flex; align-items: center; gap: 8px; min-height: 58px; }
 .fontpick input { width: auto; min-height: 0; }
-.fontpick span { font-size: 24px; line-height: 1.1; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fontpick span { font-size: 30px; line-height: 1.2; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fontpick label:has(input:checked) { border-color: var(--mint-strong); background: var(--mint-soft); }
 #sign input[type=checkbox] { width: 20px; height: 20px; min-height: 0; flex: none; margin-top: 2px; }
 #sign label.row { flex-wrap: nowrap; }</style>`);
@@ -71,15 +71,16 @@ function renderAgreement(o) {
   const today = o.monthly_cents + o.setup_cents;
   const title = o.title || TITLES[o.kind] || TITLES.seo;
   const draw = (preview) => agreementHtml({ sections: o.sections, title, business: o.business, contact: o.contact_name, logo: printLogo, preview,
-    sig: signed ? { name: o.signed_name, at: o.signed_at, font: o.signed_font, initials: o.initials, initialsFont: o.initials_font } : null });
+    sig: signed ? { name: o.signed_name, at: o.signed_at, font: o.signed_font, initials: o.initials, initialsFont: o.initials_font, id: o.doc_id } : null });
   const due = o.kind === 'website' ? `Due today: <b>${money(o.setup_cents)}</b> (website build fee)${o.monthly_cents ? `. Then ${money(o.monthly_cents)} a month for hosting and care.` : '.'}`
     : `Due today: <b>${money(today)}</b> (buildout ${money(o.setup_cents)} and first month ${money(o.monthly_cents)}). Then ${money(o.monthly_cents)} a month.`;
   const payNow = o.kind === 'website' ? o.setup_cents : today;
-  const pick = (name, text) => `<div class="fontpick" role="radiogroup">${SIG_FONTS.map((f, i) => `<label><input type="radio" name="${name}" value="${esc(f)}"${i ? '' : ' checked'}><span style="font-family:'${esc(f)}',cursive" data-text="${name}">${esc(text)}</span></label>`).join('')}</div>`;
+  const pick = (name, text) => `<div class="fontpick" role="radiogroup">${SIG_FONTS.map((f, i) => `<label><input type="radio" name="${name}" value="${esc(f)}"${i ? '' : ' checked'}><span style="${esc(sigFont(f))}" data-text="${name}">${esc(text)}</span></label>`).join('')}</div>`;
   box.innerHTML = `
     <div class="wo-head no-print">${logo}<span class="badge ${signed ? '' : 'warn'}">${signed ? (o.status === 'paid' ? 'Signed and paid' : 'Signed') : 'Ready to sign'}</span></div>
     <div id="doc">${draw(signed ? null : { name: o.contact_name || '', at: Date.now(), font: SIG_FONTS[0], initialsFont: SIG_FONTS[0] })}</div>
     ${signed ? `
+      ${o.emailed ? `<p class="small muted no-print">A signed copy is on its way to ${esc(o.emailed)} and to Rightway Growth by email. Keep it for your records.</p>` : ''}
       <div class="row no-print">${o.pay_url ? `<a class="btn btn-primary btn-xl" style="width:auto;flex:1 1 260px" href="${esc(o.pay_url)}">Pay ${money(payNow)} and start</a>` : '<p class="muted">Thank you. Your payment link is on its way from Rightway Growth.</p>'}
         <button class="btn btn-ghost btn-xl" style="width:auto" onclick="print()">Print or save a copy</button></div>` : `
       <form class="card no-print" id="sign">
