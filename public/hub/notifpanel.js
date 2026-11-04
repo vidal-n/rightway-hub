@@ -1,5 +1,6 @@
 // The notifications panel that drops down from the bell: everything that happened, newest first, with filters.
 import { $, $$, esc, api, toast, fmt, icon } from './core.js';
+import { closeMenus } from './shell.js';
 
 // One color and icon per kind, so the list reads at a glance (the same colors tag items around the Hub).
 export const KIND = {
@@ -21,11 +22,13 @@ export function openUrl(u) {
 }
 
 export async function notifPanel(anchor) {
-  const old = document.querySelector('.np');
-  if (old) { old.remove(); return; }
+  const wasOpen = document.querySelector('.np');
+  closeMenus();
+  if (wasOpen) return; // the bell toggles it
   const r = anchor.getBoundingClientRect();
   const p = document.createElement('div');
-  p.className = 'np'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', 'Notifications');
+  p.className = 'np';
+  p.dataset.menu = 'notifications'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', 'Notifications');
   p.style.top = `${r.bottom + 8}px`; p.style.right = `${Math.max(8, window.innerWidth - r.right - 4)}px`;
   p.innerHTML = '<div class="np-head"><h3>Notifications</h3><button type="button" class="btn btn-ghost btn-sm" data-all>Mark all read</button></div><div class="np-tabs"></div><div class="np-list"><div class="skeleton" style="height:120px"></div></div><div class="np-foot"><a href="#/notifications">Open all notifications</a><a href="#/notifications">Settings</a></div>';
   document.body.appendChild(p);

@@ -44,11 +44,20 @@ function paintPills() {
 }
 setInterval(paintPills, 30e3);
 
+// Every drop-down (status, profile, notifications) goes through here, so opening one always closes the others.
+// Triggers do not stop propagation, so the outside-click listener of an open menu sees the click on another trigger.
+export function closeMenus(keep = null) {
+  document.querySelectorAll('.pmenu, .np').forEach((el) => { if (el !== keep) el.remove(); });
+}
+
 function statusMenu(anchor) {
-  document.querySelector('.pmenu')?.remove();
+  const wasOpen = document.querySelector('.stmenu');
+  closeMenus();
+  if (wasOpen) return; // clicking the same pill again closes it
   const r = anchor.getBoundingClientRect();
   const m = document.createElement('div');
   m.className = 'pmenu stmenu';
+  m.dataset.menu = 'status';
   m.setAttribute('role', 'menu');
   m.style.top = `${r.bottom + 8}px`;
   m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
@@ -130,10 +139,10 @@ export function staffShell(app, user, active, inner) {
   wireNav(app, user, active, () => setOpen(true));
   const logout = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/login'; location.reload(); };
   wireAvatars(app);
-  $('#notifbtn').addEventListener('click', (e) => { e.stopPropagation(); const btn = e.currentTarget; import('./notifpanel.js').then((m) => m.notifPanel(btn)).catch((err) => toast(err.message, true)); });
+  $('#notifbtn').addEventListener('click', (e) => { const btn = e.currentTarget; import('./notifpanel.js').then((m) => m.notifPanel(btn)).catch((err) => toast(err.message, true)); });
   $('#cmdk').addEventListener('click', () => palette(user));
-  $$('[data-stpill]', app).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); statusMenu(b); }));
-  $$('[data-pbub]', app).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); profileMenu(b, user, logout); }));
+  $$('[data-stpill]', app).forEach((b) => b.addEventListener('click', () => statusMenu(b)));
+  $$('[data-pbub]', app).forEach((b) => b.addEventListener('click', () => profileMenu(b, user, logout)));
   paintWallet(app);
   if (user.role === 'admin' && !window.__rwMt) { window.__rwMt = 1; api('/api/auth/state').then((st) => paintMaint(st.maintenance?.on)).catch(() => {}); }
   // Ask Claude, owners only for now: bottom right on every page. On a client page it knows that client.
@@ -160,10 +169,13 @@ export function railLinks(user, active) {
 }
 
 function profileMenu(b, user, logout) {
-  document.querySelector('.pmenu')?.remove();
+  const wasOpen = document.querySelector('.pmenu:not(.stmenu)');
+  closeMenus();
+  if (wasOpen) return;
   const r = b.getBoundingClientRect();
   const m = document.createElement('div');
   m.className = 'pmenu';
+  m.dataset.menu = 'profile';
   m.setAttribute('role', 'menu');
   m.style.top = `${r.bottom + 8}px`;
   m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
@@ -196,7 +208,7 @@ function profileMenu(b, user, logout) {
     if (on && msg === null) return;
     try { await api('/api/maintenance', { method: 'PUT', body: { on, msg } }); toast(on ? 'Maintenance mode on. Only owners can use the Hub.' : 'Maintenance mode off.'); paintMaint(on); } catch (e) { toast(e.message, true); }
   };
-  m.querySelector('[data-pm="status"]').onclick = (e) => { e.stopPropagation(); close(); statusMenu(document.querySelector('[data-stpill]') || b); };
+  m.querySelector('[data-pm="status"]').onclick = (e) => { close(); statusMenu(document.querySelector('[data-stpill]') || b); };
 }
 
 // Owners see a strip while maintenance mode is on, so nobody forgets to turn it off.
