@@ -32,6 +32,7 @@ export async function calendarPage(app, user, sub = '') {
     view.innerHTML = `${googleTabs('calendar')}<div class="card"><h2>Calendar is not on yet</h2><p>${esc(e.message)}</p><a class="btn btn-primary" href="/api/google/connect?back=google">Turn on Calendar</a></div>`;
     return;
   }
+  if (c.limited) toast('Showing your main calendar only. Press Turn on all on the Google page once more to see the rest.', true);
   S.cals = c.calendars; S.email = c.email || '';
   if (!S.on.size) S.cals.filter((x) => x.selected).slice(0, 6).forEach((x) => S.on.add(x.id));
   if (!S.on.size && S.cals[0]) S.on.add(S.cals[0].id);

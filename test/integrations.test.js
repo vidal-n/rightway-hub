@@ -93,19 +93,19 @@ test('payments without Stripe says not connected', async () => {
 test('google: per app scopes, Sheets export, client website numbers', async () => {
   const t = setup({ GOOGLE_ADS_DEVELOPER_TOKEN: 'devtok' });
   await owner(t);
-  assert.deepEqual(grantedApps('openid https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file'), ['calendar', 'sheets']);
+  assert.deepEqual(grantedApps('openid https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.file'), ['calendar', 'sheets']);
   // Connect asks only for the apps requested, on top of calendar
   let r = await t.call('GET', '/api/google/connect?back=google&apps=gsc,ga');
   const loc = new URL(r.res.headers.get('location'));
   const scope = loc.searchParams.get('scope');
-  assert.match(scope, /webmasters\.readonly/); assert.match(scope, /analytics\.readonly/); assert.match(scope, /calendar\.events/);
+  assert.match(scope, /webmasters\.readonly/); assert.match(scope, /analytics\.readonly/); assert.ok(scope.split(' ').includes('https://www.googleapis.com/auth/calendar'));
   assert.doesNotMatch(scope, /adwords/);
   assert.match(loc.searchParams.get('state'), /_g$/);
   // Before turning on Sheets: a clear message
   r = await t.call('POST', '/api/google/sheets/export', { what: 'leads' });
   assert.equal(r.status, 400);
   // Simulate a finished connection with every app on
-  const scopes = 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/adwords';
+  const scopes = 'openid email https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/adwords';
   await run(t.env, 'UPDATE users SET google_token = ?, google_email = ?, google_scopes = ?', await seal(t.env, 'refresh-1'), 'v@rightwaygrowth.com', scopes);
   r = await t.call('GET', '/api/google/status');
   assert.deepEqual(r.data.apps, ['calendar', 'sheets', 'gsc', 'ga', 'ads']);

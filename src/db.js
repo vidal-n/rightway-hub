@@ -182,7 +182,7 @@ const ADD_COLUMNS = [
   ['users', 'slack_id TEXT'], ['users', 'slack_prefs TEXT'], ['users', 'slack_token TEXT'], ['users', 'slack_uid TEXT'], ['users', 'slack_scopes TEXT'], ['users', 'slack_snooze INTEGER'], ['clients', 'chat_tried INTEGER'], ['users', 'nav_prefs TEXT'], ['clients', 'chat_channel TEXT'], ['clients', 'chat_channel_name TEXT'], ['clients', 'slack_channel TEXT'], ['clients', 'slack_channel_name TEXT'], ['clients', 'drive_folder TEXT'],
   ['users', 'status TEXT'], ['users', 'status_at INTEGER'], ['users', 'last_seen INTEGER'], ['activities', 'ended_at INTEGER'], ['activities', 'dispo_at INTEGER'],
   ['leads', 'deep_scan TEXT'], ['users', 'training TEXT'], ['leads', 'research_tried INTEGER'], ['leads', 'scrub TEXT'],
-  ['users', 'fwd_calls INTEGER'], ['users', 'fwd_texts INTEGER'], ['users', 'avatar_at INTEGER'], ['users', 'cal_token TEXT'],
+  ['users', 'fwd_calls INTEGER'], ['users', 'fwd_texts INTEGER'], ['users', 'avatar_at INTEGER'], ['users', 'cal_token TEXT'], ['leads', 'book_token TEXT'],
 ];
 
 let ready = null;

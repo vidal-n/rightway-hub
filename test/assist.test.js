@@ -111,7 +111,7 @@ test('assistant: needs a key, sends the client brief, keeps turns in order', asy
 test('google: unticked boxes are named, API errors become plain fixes', async () => {
   const { missingText } = await import('../src/google.js');
   const { explain } = await import('../src/googlecheck.js');
-  assert.equal(missingText('openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.modify', ['mail']), '');
+  assert.equal(missingText('openid email https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.modify', ['mail']), '');
   assert.match(missingText('openid email', ['mail', 'drive']), /Calendar, Gmail, Drive/);
   const off = explain({ app: 'mail', label: 'Gmail', api: 'Gmail API' }, 403, { error: { message: 'Gmail API has not been used in project 123 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/gmail.googleapis.com/overview?project=123 then retry.' } });
   assert.match(off.reason, /Gmail API is turned off/);

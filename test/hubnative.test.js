@@ -154,3 +154,132 @@ test('mail: sends under your name with reply-to, logs it, needs email set up', a
   const ppl = await t.call('GET', '/api/mail/people?q=smile');
   assert.equal(ppl.data.people[0].email, 'maria@smile.com');
 });
+
+// ---------- Google first booking, personal links, and the connection check ----------
+import { seal } from '../src/google.js';
+import { bookingProblem } from '../src/google.js';
+
+const G = { GOOGLE_CLIENT_ID: 'cid.apps.googleusercontent.com', GOOGLE_CLIENT_SECRET: 'sec' };
+const jres = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json' } });
+async function connectGoogle(t, scopes) {
+  await t.env.DB.prepare('UPDATE users SET google_token = ?, google_email = ?, google_scopes = ?').bind(await seal(t.env, 'refresh-1'), 'vidal@rightwaygrowth.com', scopes).run();
+}
+function stubFetch(handler) {
+  const real = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url, init = {}) => { const u = String(url); seen.push([u, init]); const r = await handler(u, init); return r || real(url, init); };
+  return { seen, done: () => { globalThis.fetch = real; } };
+}
+
+test('bookingProblem names the first missing or wrong field', () => {
+  const ok = { name: 'Ana', business: 'Coastal', email: 'a@c.com', phone: '(954) 555-0100', city: 'Hollywood', state: 'Florida', start: 1 };
+  assert.equal(bookingProblem(ok), null);
+  assert.equal(bookingProblem({ ...ok, business: ' ' }).field, 'business');
+  assert.equal(bookingProblem({ ...ok, phone: '1 954 555 0100' }), null);
+  assert.equal(bookingProblem({ ...ok, phone: '555-0100' }).field, 'phone');
+  assert.equal(bookingProblem({ ...ok, state: 'Narnia' }).field, 'state');
+  assert.equal(bookingProblem({ ...ok, start: 0 }).field, 'time');
+});
+
+test('connection check: an old events-only sign in is told exactly how to fix Calendar', async () => {
+  const t = setup(G);
+  await owner(t);
+  await connectGoogle(t, 'openid email https://www.googleapis.com/auth/calendar.events');
+  const f = stubFetch((u) => (u.startsWith('https://oauth2.googleapis.com/token') ? jres({ access_token: 'at', expires_in: 3600 }) : jres({})));
+  let r;
+  try { r = await t.call('GET', '/api/google/check'); } finally { f.done(); }
+  const cal = r.data.results.find((x) => x.app === 'calendar');
+  assert.equal(cal.ok, false);
+  assert.match(cal.reason, /full Calendar access/);
+  assert.match(cal.fix, /Turn on all/);
+  // After signing in again with the full scope, Calendar is checked against Google and works.
+  await connectGoogle(t, 'openid email https://www.googleapis.com/auth/calendar');
+  const f2 = stubFetch((u) => (u.startsWith('https://oauth2.googleapis.com/token') ? jres({ access_token: 'at', expires_in: 3600 }) : jres({ items: [] })));
+  try { r = await t.call('GET', '/api/google/check'); } finally { f2.done(); }
+  assert.equal(r.data.results.find((x) => x.app === 'calendar').ok, true);
+  const st = await t.call('GET', '/api/google/status');
+  assert.ok(st.data.apps.includes('calendar'));
+});
+
+test('an expired Google sign in says why (7 day Testing limit)', async () => {
+  const t = setup(G);
+  await owner(t);
+  await connectGoogle(t, 'openid email https://www.googleapis.com/auth/calendar');
+  const f = stubFetch((u) => (u.startsWith('https://oauth2.googleapis.com/token') ? jres({ error: 'invalid_grant', error_description: 'Token has been expired or revoked.' }, 400) : jres({})));
+  let r;
+  try { r = await t.call('GET', '/api/google/check'); } finally { f.done(); }
+  assert.match(r.data.summary, /7 days/);
+});
+
+test('booking: personal link fills in, Google invite with Meet, rep assigned, confirmation sent at once', async () => {
+  const t = setup({ ...G, RESEND_API_KEY: 're_test' });
+  await owner(t);
+  await connectGoogle(t, 'openid email https://www.googleapis.com/auth/calendar');
+  await t.call('PUT', '/api/google/booking', { rep: 'rr', link: 'https://zoom.us/j/123' });
+  assert.equal((await t.call('PUT', '/api/google/booking', { link: 'http://insecure' })).status, 400);
+  const lead = (await t.call('POST', '/api/leads', { business: 'Coastal Roof Pros', contact_name: 'Ana Ruiz', phone: '9545550300', email: 'ana@coastal.com' })).data.lead;
+  const link = (await t.call('GET', `/api/leads/${lead.id}/book-link`)).data.url;
+  const tok = new URL(link).searchParams.get('l');
+  assert.ok(tok.length >= 16);
+  assert.equal((await t.call('GET', `/api/leads/${lead.id}/book-link`)).data.url, link, 'the same link every time');
+
+  const emails = [];
+  const f = stubFetch((u, init) => {
+    if (u.startsWith('https://oauth2.googleapis.com/token')) return jres({ access_token: 'at', expires_in: 3600 });
+    if (u.includes('/calendars/primary/events?conferenceDataVersion=1')) return jres({ id: 'ev1', htmlLink: 'https://calendar.google.com/x', hangoutLink: 'https://meet.google.com/abc-defg-hij' });
+    if (u.includes('/calendars/primary/events?')) return jres({ items: [] });
+    if (u.includes('resend.com')) { emails.push(JSON.parse(init.body)); return jres({ id: 'e1' }); }
+    return null;
+  });
+  try {
+    const info = await t.anon(`/api/public/book?l=${tok}`).then((x) => x.json());
+    assert.equal(info.google, true);
+    assert.equal(info.lead.name, 'Ana Ruiz');
+    assert.equal(info.lead.business, 'Coastal Roof Pros');
+    assert.equal(info.lead.city, '', 'missing details come back empty so the page asks for them');
+    assert.deepEqual(info.required, ['name', 'business', 'email', 'phone', 'city', 'state']);
+    const r = await t.call('POST', '/api/public/book', { lead_token: tok, name: 'Ana Ruiz', business: 'Coastal Roof Pros', email: 'ana@coastal.com', phone: '9545550300', city: 'Hollywood', state: 'FL', start: info.slots[0], tz: 'America/New_York', sms_consent: true });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.google, true);
+    assert.equal(r.data.meet, 'https://meet.google.com/abc-defg-hij');
+  } finally { f.done(); }
+  const d = (await t.call('GET', `/api/leads/${lead.id}`)).data;
+  const l = d.lead || d;
+  assert.equal(l.city, 'Hollywood', 'what they typed fills the gap');
+  assert.equal(l.stage, 'audit_booked');
+  assert.ok(l.meet_by, 'round robin gave it to someone');
+  assert.equal(l.sms_consent, 1);
+  const leads = (await t.call('GET', '/api/leads')).data.leads;
+  assert.equal(leads.length, 1, 'the personal link books the same lead, no duplicate');
+  // Google sent its own invite, so the confirmation email carries no second calendar file.
+  const confirm = emails.find((e) => /booked/i.test(e.subject));
+  assert.ok(confirm, 'confirmation email went out during the booking');
+  assert.equal(confirm.attachments, undefined);
+});
+
+test('booking still works when Google fails, with the backup link and a calendar file', async () => {
+  const t = setup({ ...G, RESEND_API_KEY: 're_test' });
+  await owner(t);
+  await connectGoogle(t, 'openid email https://www.googleapis.com/auth/calendar');
+  await t.call('PUT', '/api/google/booking', { link: 'https://zoom.us/j/123' });
+  const emails = [];
+  const f = stubFetch((u, init) => {
+    if (u.startsWith('https://oauth2.googleapis.com/token')) return jres({ error: 'invalid_grant' }, 400);
+    if (u.includes('resend.com')) { emails.push(JSON.parse(init.body)); return jres({ id: 'e1' }); }
+    return null;
+  });
+  let r;
+  try {
+    const info = await t.anon('/api/public/book').then((x) => x.json());
+    r = await t.call('POST', '/api/public/book', { name: 'Bo Diaz', business: 'Diaz Dental', email: 'bo@diaz.com', phone: '3055550111', city: 'Miami', state: 'FL', start: info.slots[0] });
+  } finally { f.done(); }
+  assert.equal(r.status, 200);
+  assert.equal(r.data.google, false);
+  assert.equal(r.data.meet, 'https://zoom.us/j/123');
+  const confirm = emails.find((e) => /booked/i.test(e.subject));
+  assert.ok(confirm);
+  assert.match(atob(confirm.attachments[0].content), /BEGIN:VEVENT[\s\S]*LOCATION:https:\/\/zoom\.us\/j\/123/);
+  assert.match(confirm.text, /calendar\.google\.com\/calendar\/render/);
+  const alerts = (await t.call('GET', '/api/notifications')).data.notifications;
+  assert.ok(alerts.some((n) => /Google Calendar failed/.test(n.body || '')), 'the team is told Google failed');
+});

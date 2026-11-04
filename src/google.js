@@ -4,12 +4,20 @@ import { HttpError, json } from './util.js';
 import { all, first, run, now, token, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin, cleanEmail } from './auth.js';
 import { route } from './router.js';
-import { cleanLead, insertLead, logActivity, rescore, apptScope } from './crm.js';
+import { cleanLead, insertLead, logActivity, rescore, apptScope, stateCode } from './crm.js';
+import { automationTick, bookToken } from './automations.js';
 import { openSlots } from '../public/js/slots.js';
 import { dupKeys } from '../public/js/leadintel.js';
 import { notifyLater } from './notify.js';
 
-const SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/calendar.events'];
+// Full Calendar access. The narrower calendar.events scope can book events but cannot list calendars, which the Calendar page
+// and the connection check need: with it Google answers 403 "insufficient authentication scopes" and no amount of re-ticking fixes it.
+export const CAL_SCOPE = 'https://www.googleapis.com/auth/calendar';
+export const CAL_EVENTS = 'https://www.googleapis.com/auth/calendar.events';
+const SCOPES = ['openid', 'email', CAL_SCOPE];
+const scopeSet = (s) => new Set(String(s || '').split(/\s+/).filter(Boolean));
+export const calendarFull = (s) => scopeSet(s).has(CAL_SCOPE);
+export const calendarAny = (s) => calendarFull(s) || scopeSet(s).has(CAL_EVENTS);
 // Extra Google apps a user can turn on. Each adds its scope on top of what they already granted.
 export const APP_SCOPES = {
   mail: 'https://www.googleapis.com/auth/gmail.modify',
@@ -32,13 +40,13 @@ const APP_LABEL = { mail: 'Gmail', drive: 'Drive', docs: 'Docs', sheets: 'Sheets
 // What was asked for but not granted, as a message for the person. Empty when everything came through.
 export function missingText(scopeStr, apps = []) {
   const miss = [];
-  if (!String(scopeStr || '').includes('calendar')) miss.push('Calendar');
+  if (!calendarFull(scopeStr)) miss.push('Calendar');
   for (const a of apps) if (APP_SCOPES[a] && !hasScope(scopeStr, APP_SCOPES[a])) miss.push(APP_LABEL[a] || a);
   return miss.length ? `Connected, but Google did not give access to ${miss.join(', ')}. Click Turn on again and tick every box on Google's screen (or Select all) before Continue.` : '';
 }
 export function grantedApps(scopeStr) {
   const apps = Object.entries(APP_SCOPES).filter(([, sc]) => hasScope(scopeStr, sc)).map(([k]) => k);
-  if (String(scopeStr || '').includes('calendar')) apps.unshift('calendar');
+  if (calendarFull(scopeStr)) apps.unshift('calendar');
   return apps;
 }
 const API = 'https://www.googleapis.com/calendar/v3';
@@ -76,7 +84,10 @@ export async function accessToken(env, userRow, fetchImpl = fetch) {
     body: new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, refresh_token: refresh, grant_type: 'refresh_token' }),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.access_token) throw new HttpError('Google turned down the saved connection. Open Settings and connect Google again.', 400);
+  if (!res.ok || !data.access_token) {
+    if (data.error === 'invalid_grant') throw new HttpError('Your Google sign in expired or was removed. Google ends it every 7 days while the Google app is in Testing mode. Open the Google page and press Turn on all to sign in again.', 400);
+    throw new HttpError(`Google turned down the saved connection (${data.error_description || data.error || `HTTP ${res.status}`}). Open the Google page and press Turn on all to sign in again.`, 400);
+  }
   cache.set(userRow.id, { token: data.access_token, exp: Date.now() + (data.expires_in || 3600) * 1000 });
   return data.access_token;
 }
@@ -138,6 +149,8 @@ export async function bookingConfig(env) {
     noticeHours: n('book_notice', 4), days: n('book_window', 14),
     title: s.book_title || 'Book a free consultation',
     owner: s.book_owner || null,
+    link: s.book_link || '', // meeting link used when Google is not connected (Zoom, a Meet room, or empty for a phone call)
+    rep: s.book_rep || '', // who gets online bookings: a user id, 'rr' for round robin, or '' for the owners
   };
 }
 
@@ -200,7 +213,7 @@ route('GET', '/api/google/callback', async ({ env, user, url }) => {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.refresh_token) return back(data.error_description || 'Google did not return a connection. Remove the Hub under your Google account permissions and try again.');
   let email = null;
-  try { email = JSON.parse(atob(data.id_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || null; } catch { email = null; }
+  try { const part = data.id_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'); email = JSON.parse(atob(part + '='.repeat((4 - (part.length % 4)) % 4))).email || null; } catch { email = null; }
   await run(env, 'UPDATE users SET google_token = ?, google_email = ?, google_scopes = ? WHERE id = ?', await seal(env, data.refresh_token), email, data.scope || null, user.id);
   cache.delete(user.id);
   // Google's consent screen has a checkbox per app. If one was left unticked, say which, instead of failing later.
@@ -219,6 +232,16 @@ route('PUT', '/api/google/booking', async ({ env, user, body }) => {
   const b = await body();
   const keys = { tz: 'book_tz', days: 'book_days', start: 'book_start', end: 'book_end', minutes: 'book_minutes', buffer: 'book_buffer', notice: 'book_notice', window: 'book_window', title: 'book_title' };
   for (const [k, sk] of Object.entries(keys)) if (k in b) await setSetting(env, sk, String(b[k] ?? '').slice(0, 120));
+  if ('link' in b) {
+    const link = String(b.link || '').trim();
+    if (link && !/^https:\/\/\S+$/.test(link)) throw new HttpError('The meeting link must start with https://');
+    await setSetting(env, 'book_link', link.slice(0, 400));
+  }
+  if ('rep' in b) {
+    const rep = String(b.rep || '');
+    if (rep && rep !== 'rr' && !(await first(env, "SELECT id FROM users WHERE id = ? AND role IN ('admin','team')", rep))) throw new HttpError('Pick someone on the team.');
+    await setSetting(env, 'book_rep', rep);
+  }
   if (b.ownerSelf) await setSetting(env, 'book_owner', user.id);
   return json({ ok: true, booking: await bookingConfig(env) });
 });
@@ -277,52 +300,115 @@ route('GET', '/api/calendar/upcoming', async ({ env, user }) => {
 
 // ---------- public booking page ----------
 // Hub appointments as busy times, so the booking page works without Google (and never double books with Google).
-async function hubBusy(env, from, to, minutes) {
-  const leads = await all(env, 'SELECT meet_at FROM leads WHERE meet_at >= ? AND meet_at < ?', from - 3 * 3600e3, to).catch(() => []);
-  const mtgs = await all(env, 'SELECT start_at, minutes FROM meetings WHERE start_at >= ? AND start_at < ?', from - 3 * 3600e3, to).catch(() => []);
-  return [...leads.map((r) => [r.meet_at, r.meet_at + minutes * 60e3]), ...mtgs.map((r) => [r.start_at, r.start_at + (r.minutes || 30) * 60e3])];
+async function hubBusy(env, from, to, minutes, repId = null) {
+  const lo = from - 3 * 3600e3;
+  const leads = await all(env, 'SELECT meet_at FROM leads WHERE meet_at >= ? AND meet_at < ?', lo, to).catch(() => []);
+  const mtgs = await all(env, 'SELECT start_at, minutes FROM meetings WHERE start_at >= ? AND start_at < ?', lo, to).catch(() => []);
+  // Appointments added by hand on the Hub calendar block the person who takes bookings (or the owners when nobody is set).
+  const evs = await all(env, repId ? 'SELECT start_at, minutes FROM events WHERE start_at >= ? AND start_at < ? AND owner_id = ?'
+    : "SELECT e.start_at, e.minutes FROM events e JOIN users u ON u.id = e.owner_id WHERE e.start_at >= ? AND e.start_at < ? AND u.role = 'admin'", lo, to, ...(repId ? [repId] : [])).catch(() => []);
+  return [...leads.map((r) => [r.meet_at, r.meet_at + minutes * 60e3]), ...[...mtgs, ...evs].map((r) => [r.start_at, r.start_at + (r.minutes || 30) * 60e3])];
 }
+const fixedRep = (cfg) => (cfg.rep && cfg.rep !== 'rr' ? cfg.rep : null);
 
 async function bookingBusy(env, cfg, owner) {
   const from = now(), to = from + (cfg.days + 1) * 864e5;
   const g = owner ? await busyTimes(env, owner, from, to).catch(() => []) : [];
-  return [...g, ...await hubBusy(env, from, to, cfg.minutes)];
+  return [...g, ...await hubBusy(env, from, to, cfg.minutes, fixedRep(cfg))];
 }
 
-route('GET', '/api/public/book', async ({ env }) => {
+// Who gets an online booking: the person set in booking settings, or round robin (fewest upcoming audits), or nobody (owners see it).
+export async function pickRep(env, cfg) {
+  if (fixedRep(cfg)) return (await first(env, "SELECT id FROM users WHERE id = ? AND role IN ('admin','team')", cfg.rep))?.id || null;
+  if (cfg.rep !== 'rr') return null;
+  const rows = await all(env, "SELECT u.id, (SELECT COUNT(*) FROM leads l WHERE l.meet_by = u.id AND l.meet_at > ?) AS n FROM users u WHERE u.role IN ('admin','team') ORDER BY n, u.created_at", now());
+  return rows[0]?.id || null;
+}
+
+// Everything the booking form needs before it can book. Pure: the page, the Worker and the tests agree on it.
+export const BOOK_FIELDS = [['name', 'Your name'], ['business', 'Business name'], ['email', 'Email'], ['phone', 'Mobile phone'], ['city', 'City'], ['state', 'State']];
+export function bookingProblem(b = {}) {
+  for (const [k, label] of BOOK_FIELDS) if (!String(b[k] ?? '').trim()) return { field: k, error: `${label} is needed to book.` };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(b.email).trim())) return { field: 'email', error: 'That email does not look right. The invite goes there.' };
+  if (String(b.phone).replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '').length !== 10) return { field: 'phone', error: 'Enter a 10 digit mobile number.' };
+  if (!stateCode(b.state)) return { field: 'state', error: 'Enter your state, like FL.' };
+  if (!Number(b.start)) return { field: 'time', error: 'Pick a time first.' };
+  return null;
+}
+const okTz = (z) => { if (!z || typeof z !== 'string' || z.length > 64) return false; try { new Intl.DateTimeFormat('en-US', { timeZone: z }); return true; } catch { return false; } };
+
+route('GET', '/api/public/book', async ({ env, url }) => {
   const cfg = await bookingConfig(env);
   const owner = googleReady(env) ? await bookingOwner(env, cfg) : null;
   const busy = await bookingBusy(env, cfg, owner);
-  return json({ ready: true, google: Boolean(owner), title: cfg.title, minutes: cfg.minutes, tz: cfg.tz, slots: openSlots({ ...cfg, from: now(), busy }) });
+  // A personal link (?l=) fills in what we already know, so the person only types what is missing.
+  const t = String(url.searchParams.get('l') || '');
+  const l = t.length >= 16 ? await first(env, 'SELECT contact_name, business, email, phone, website, city, state, industry, meet_at FROM leads WHERE book_token = ?', t) : null;
+  const lead = l ? { name: l.contact_name || '', business: /^Unknown /.test(l.business || '') ? '' : l.business || '', email: l.email || '', phone: l.phone || '', website: l.website || '', city: l.city || '', state: l.state || '', industry: l.industry || '', booked: l.meet_at && l.meet_at > now() ? l.meet_at : null } : null;
+  return json({ ready: true, google: Boolean(owner), title: cfg.title, minutes: cfg.minutes, tz: cfg.tz, slots: openSlots({ ...cfg, from: now(), busy }), required: BOOK_FIELDS.map(([k]) => k), lead });
 }, { public: true });
 
 route('POST', '/api/public/book', async ({ env, request, defer }) => {
   const b = await request.json().catch(() => ({}));
   if (b['company-url']) return json({ ok: true });
+  const bad = bookingProblem(b);
+  if (bad) return json(bad, 400);
   const cfg = await bookingConfig(env);
   const owner = googleReady(env) ? await bookingOwner(env, cfg) : null;
   const start = Number(b.start);
   const busy = await bookingBusy(env, cfg, owner);
-  if (!openSlots({ ...cfg, from: now(), busy }).includes(start)) throw new HttpError('That time was just taken. Pick another one.', 409);
-  const email = cleanEmail(b.email);
-  if (!email) throw new HttpError('Add your email so we can send the invite.');
+  const taken = { error: 'That time was just taken. Pick another one.', field: 'time' };
+  if (!openSlots({ ...cfg, from: now(), busy }).includes(start)) return json(taken, 409);
+  const email = String(b.email).trim().toLowerCase();
+  const tz = okTz(b.tz) ? b.tz : null;
   const data = cleanLead({ business: b.business || b.name, contact_name: b.name, email, phone: b.phone, website: b.website, city: b.city, state: b.state, industry: b.industry, source: 'booking', notes: b.note ? `Booking note: ${b.note}` : null });
-  // Match an existing lead by phone, site, name and city, or email.
-  const rows = await all(env, 'SELECT id, business, phone_digits, website, city, zip, email FROM leads');
-  const keys = new Set(dupKeys(data));
-  let lead = rows.find((r) => dupKeys(r).some((k) => keys.has(k)) || (r.email && r.email.toLowerCase() === email));
+  // The personal link names the lead; otherwise match by phone, site, name and city, or email.
+  const tok = String(b.lead_token || '');
+  let lead = tok.length >= 16 ? await first(env, 'SELECT id FROM leads WHERE book_token = ?', tok) : null;
+  if (!lead) {
+    const rows = await all(env, 'SELECT id, business, phone_digits, website, city, zip, email FROM leads');
+    const keys = new Set(dupKeys(data));
+    lead = rows.find((r) => dupKeys(r).some((k) => keys.has(k)) || (r.email && r.email.toLowerCase() === email));
+  }
   let leadId = lead?.id;
-  if (!leadId) leadId = await insertLead(env, { ...data, stage: 'audit_booked' }, null);
+  if (!leadId) leadId = await insertLead(env, { ...data, stage: 'audit_booked', ...(tz ? { timezone: tz } : {}) }, null);
   const full = await first(env, 'SELECT * FROM leads WHERE id = ?', leadId);
-  // Without Google the time is held in the Hub and the team sends the link (owners get an alert to confirm).
-  const m = owner ? await createMeeting(env, owner, { summary: `Rightway Growth consultation: ${full.business}`, description: AGENDA(full.business), start, minutes: cfg.minutes, attendees: [email], leadId }) : { meet: null, id: null };
-  const set = { stage: 'audit_booked', meet_at: start, meet_link: m.meet, gcal_event_id: m.id, meet_by: null, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
-  if (!full.email) set.email = email;
+  // Two people on the page at once: the second one to press Book gets a fresh list instead of a double booking.
+  if (await first(env, 'SELECT id FROM leads WHERE id != ? AND meet_at > ? AND meet_at < ?', leadId, start - cfg.minutes * 60e3, start + cfg.minutes * 60e3)) return json(taken, 409);
+  const rep = await pickRep(env, cfg);
+  // Google first: a calendar event with a Meet link and Google's own invite. If Google fails, the booking still stands in the Hub.
+  let m = { meet: null, id: null }, gErr = null;
+  if (owner) {
+    try {
+      if (full.gcal_event_id && full.meet_at) { await moveMeeting(env, owner, full.gcal_event_id, start, cfg.minutes); m = { id: full.gcal_event_id, meet: full.meet_link }; }
+      else m = await createMeeting(env, owner, { summary: `Rightway Growth consultation: ${full.business}`, description: AGENDA(full.business), start, minutes: cfg.minutes, attendees: [email], leadId });
+    } catch (e) { gErr = e.message; m = { meet: null, id: null }; }
+  }
+  const link = m.meet || cfg.link || null;
+  const set = { stage: 'audit_booked', meet_at: start, meet_link: link, gcal_event_id: m.id || null, meet_by: rep, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
+  if (rep && !full.owner_id) set.owner_id = rep;
+  for (const k of ['contact_name', 'email', 'phone', 'phone_digits', 'website', 'city', 'state', 'industry']) if (data[k] && !full[k]) set[k] = data[k];
+  if (tz) set.timezone = tz;
+  if (b.sms_consent && !full.sms_stop) set.sms_consent = 1;
   Object.assign(set, rescore({ ...full, ...set, source: full.source || 'booking' }));
   const cols = Object.keys(set);
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), leadId);
-  await logActivity(env, { lead_id: leadId, type: 'meeting', body: `Booked online for ${new Date(start).toISOString()}` });
+  const repName = rep ? ((await first(env, 'SELECT name FROM users WHERE id = ?', rep))?.name || '').split(' ')[0] : '';
+  await logActivity(env, { lead_id: leadId, type: 'meeting', body: `${full.meet_at ? 'Rebooked' : 'Booked'} online for ${new Date(start).toISOString()}${repName ? ` with ${repName}` : ''}${m.id ? ', Google invite sent' : ''}${b.sms_consent ? ', agreed to text reminders' : ''}` });
   const when = new Date(start).toLocaleString('en-US', { timeZone: cfg.tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-  await notifyLater({ env, defer }, { to: 'staff', kind: 'lead', title: `New booking: ${full.business}`, body: owner ? when : `${when}. Google is not connected: confirm with them and send the meeting link.`, url: `/#/pipeline/${leadId}` });
-  return json({ ok: true, start, meet: m.meet, minutes: cfg.minutes, confirm: !owner });
+  const note = gErr ? ` Google Calendar failed (${gErr}) so the time is held in the Hub without a Meet link: reconnect Google on the Google page and send them a link.`
+    : !link ? ' No meeting link: call them at the time, or send a link.' : '';
+  await notifyLater({ env, defer }, { to: 'staff', kind: 'lead', title: `New booking: ${full.business}`, body: `${when}${repName ? `, ${repName}` : ''}.${note}`, url: `/#/pipeline/${leadId}` });
+  // Confirmation email (with the calendar file) and text go out now, not on the next cron minute.
+  // In the Worker this finishes after the response (waitUntil); without it (tests, local) it is awaited.
+  await defer(automationTick(env).catch(() => 0));
+  return json({ ok: true, start, meet: link, minutes: cfg.minutes, title: cfg.title, google: Boolean(m.id), confirm: !link });
 }, { public: true });
+
+// A private booking link for one lead (lead panel "Booking link", and {book} in automations).
+route('GET', '/api/leads/:id/book-link', async ({ env, user, params, url }) => {
+  requireStaff(user);
+  const lead = await first(env, 'SELECT id, book_token FROM leads WHERE id = ?', params.id);
+  if (!lead) throw new HttpError('Lead not found.', 404);
+  return json({ url: `${url.origin}/book.html?l=${await bookToken(env, lead)}` });
+});

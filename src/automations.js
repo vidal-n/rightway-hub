@@ -7,6 +7,8 @@ import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { sendEmail, canEmail } from './email.js';
 import { logClaude } from './costs.js';
+import { token } from './db.js';
+import { icsCalendar, googleAddUrl } from '../public/js/ics.js';
 
 export const TRIGGERS = { booked: 'When an appointment is booked', before: 'Before the appointment', after: 'After a missed appointment (no show)' };
 export const VARS = ['first', 'business', 'date', 'time', 'when', 'link', 'rep', 'book', 'company'];
@@ -84,7 +86,13 @@ async function sendOne(env, a, lead, ctx) {
   if (a.channel === 'email') {
     if (!canEmail(env)) throw new Error('Email is not set up (RESEND_API_KEY).');
     if (!lead.email) throw new Error('No email on the lead.');
-    await sendEmail(env, { to: lead.email, subject: fillTemplate(a.subject, ctx), text: body, html: emailHtml(body) });
+    // Confirmations and reminders carry the appointment: a calendar file for Apple Calendar and Outlook, and a link for Google Calendar.
+    // Not when Google already sent its own invite, or they would get the appointment twice.
+    const withCal = (a.trigger === 'booked' || a.trigger === 'before') && lead.meet_at && !lead.gcal_event_id;
+    const add = withCal ? googleAddUrl({ title: 'Rightway Growth: your free Google clarity audit', start: lead.meet_at, minutes: 30, location: lead.meet_link || '' }) : '';
+    const text = withCal && a.trigger === 'booked' && !/calendar\.google\.com/.test(body) ? `${body}\n\nAdd it to your calendar: ${add}\nThe attached file opens in Apple Calendar and Outlook.` : body;
+    await sendEmail(env, { to: lead.email, subject: fillTemplate(a.subject, ctx), text, html: emailHtml(text),
+      attachments: withCal ? [{ filename: 'appointment.ics', content: b64(appointmentIcs(lead)), content_type: 'text/calendar; charset=UTF-8' }] : undefined });
     return lead.email;
   }
   const { sendText } = await import('./sms.js');
@@ -101,11 +109,29 @@ export function emailHtml(text) {
     <div style="font-weight:700;letter-spacing:.08em;font-size:12px;color:#0A6B4C;text-transform:uppercase;margin-bottom:14px">RightWay Growth</div>${body}</div>`;
 }
 
+// A private booking link for one lead: opens the booking page with what we know filled in and asks only for what is missing.
+export async function bookToken(env, lead) {
+  if (lead?.book_token) return lead.book_token;
+  if (!lead?.id || String(lead.id) === 'test') return null;
+  const t = token(18);
+  try { await run(env, 'UPDATE leads SET book_token = ? WHERE id = ? AND book_token IS NULL', t, lead.id); } catch { return null; }
+  const row = await first(env, 'SELECT book_token FROM leads WHERE id = ?', lead.id).catch(() => null);
+  return row?.book_token || null;
+}
+
+// The appointment as a calendar file, for the email attachment.
+export function appointmentIcs(lead, minutes = 30) {
+  return icsCalendar([{ uid: `lead-${lead.id}-${lead.meet_at}`, title: 'Rightway Growth: your free Google clarity audit', start: lead.meet_at, minutes,
+    description: [lead.meet_link ? `Join: ${lead.meet_link}` : 'We will call you at the number you gave us.', 'Questions: reply to the email this came with.'].join('\n'), location: lead.meet_link || '' }], { name: 'Rightway Growth' });
+}
+const b64 = (s) => { const b = new TextEncoder().encode(s); let t = ''; for (let i = 0; i < b.length; i += 8192) t += String.fromCharCode(...b.subarray(i, i + 8192)); return btoa(t); };
+
 async function context(env, lead) {
   const s = await getSettings(env);
   const origin = s.hub_origin || s.autoscan_origin || '';
   const rep = lead.meet_by ? (await first(env, 'SELECT name FROM users WHERE id = ?', lead.meet_by))?.name || '' : '';
-  return { lead, start: lead.meet_at, rep: rep.split(' ')[0] ? `${rep.split(' ')[0]}, RightWay Growth` : '', tz: s.book_tz || TZ_DEFAULT, bookUrl: origin ? `${origin}/book.html` : '', origin };
+  const bt = await bookToken(env, lead);
+  return { lead, start: lead.meet_at, rep: rep.split(' ')[0] ? `${rep.split(' ')[0]}, RightWay Growth` : '', tz: s.book_tz || TZ_DEFAULT, bookUrl: origin ? `${origin}/book.html${bt ? `?l=${bt}` : ''}` : '', origin };
 }
 
 // Every minute: send what is due. At most 20 sends a run.

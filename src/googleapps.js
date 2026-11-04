@@ -7,7 +7,7 @@ import { HttpError, json } from './util.js';
 import { all, first, run, now } from './db.js';
 import { requireStaff, requireAdmin, requireClientAccess } from './auth.js';
 import { route } from './router.js';
-import { accessToken, googleReady, APP_SCOPES, hasScope } from './google.js';
+import { accessToken, googleReady, APP_SCOPES, hasScope, calendarAny } from './google.js';
 import { buildPayments } from './payments.js';
 
 const LABEL = {
@@ -31,7 +31,7 @@ export async function ownFor(env, user, app) {
   const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);
   // Calendar comes with the base connection, so it has no entry in APP_SCOPES.
   const ok = app === 'calendar'
-    ? Boolean(me?.google_token && String(me.google_scopes || '').includes('calendar'))
+    ? Boolean(me?.google_token && calendarAny(me.google_scopes))
     : Boolean(me?.google_token && hasScope(me.google_scopes, APP_SCOPES[app]));
   if (ok) return me;
   throw new HttpError(`Turn on ${LABEL[app] || 'Calendar'} on the Google page first.`, 400);

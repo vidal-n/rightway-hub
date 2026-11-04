@@ -286,12 +286,20 @@ test('API: booking works without Google (Hub times, team confirms); settings sav
   assert.equal(r.data.google, false);
   assert.ok(r.data.slots.length > 10);
   const slot = r.data.slots[0];
+  // Missing or wrong details come back naming the field, so the page can point at it.
   r = await t.call('POST', '/api/public/book', { name: 'Maria Lopez', business: 'Orale Mexican', email: 'maria@orale.com', phone: '9545550999', start: slot });
+  assert.equal(r.status, 400);
+  assert.equal(r.data.field, 'city');
+  r = await t.call('POST', '/api/public/book', { name: 'Maria Lopez', business: 'Orale Mexican', email: 'maria@orale', phone: '9545550999', city: 'Hollywood', state: 'FL', start: slot });
+  assert.equal(r.data.field, 'email');
+  r = await t.call('POST', '/api/public/book', { name: 'Maria Lopez', business: 'Orale Mexican', email: 'maria@orale.com', phone: '95455', city: 'Hollywood', state: 'FL', start: slot });
+  assert.equal(r.data.field, 'phone');
+  r = await t.call('POST', '/api/public/book', { name: 'Maria Lopez', business: 'Orale Mexican', email: 'maria@orale.com', phone: '9545550999', city: 'Hollywood', state: 'FL', start: slot, tz: 'America/Chicago' });
   assert.equal(r.status, 200);
   assert.equal(r.data.confirm, true);
   r = await t.call('GET', '/api/public/book');
   assert.ok(!r.data.slots.includes(slot), 'a booked time is no longer offered');
-  r = await t.call('POST', '/api/public/book', { name: 'Late', email: 'l@y.com', start: slot });
+  r = await t.call('POST', '/api/public/book', { name: 'Late', business: 'Late Co', email: 'l@y.com', phone: '9545550100', city: 'Miami', state: 'FL', start: slot });
   assert.equal(r.status, 409);
   await owner(t);
   r = await t.call('GET', '/api/google/status');
@@ -328,7 +336,7 @@ test('API: Google connect redirects to consent and booking creates a Meet event'
   const loc = new URL(r.res.headers.get('location'));
   assert.equal(loc.hostname, 'accounts.google.com');
   assert.equal(loc.searchParams.get('access_type'), 'offline');
-  assert.match(loc.searchParams.get('scope'), /calendar\.events/);
+  assert.ok(loc.searchParams.get('scope').split(' ').includes('https://www.googleapis.com/auth/calendar'));
   assert.equal(loc.searchParams.get('redirect_uri'), 'https://hub.test/api/google/callback');
   // Simulate a stored connection and stub Google's APIs.
   await t.env.DB.prepare("UPDATE users SET google_token = ?, google_email = 'v@gmail.com'").bind(await seal(t.env, 'refresh-1')).run();

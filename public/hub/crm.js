@@ -315,6 +315,7 @@ export async function leadModal(id, onChange) {
       ${l.phone ? `<a class="btn btn-mint" href="${telHref(l.phone)}">${icon.phone}${esc(l.phone)}</a>` : ''}
       ${l.email ? `<button class="btn btn-ghost" id="lmailbtn">${icon.mail}Email</button>` : ''}
       <button class="btn btn-ghost" id="lmeetbtn">Add appointment</button>
+      <button class="btn btn-ghost" id="lbooklink" title="A personal booking page link for this lead">Booking link</button>
       ${l.website ? `<a class="btn btn-ghost" href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}" target="_blank" rel="noopener">Website</a>` : ''}
       <a class="btn btn-ghost" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''} ${l.state || ''}`)}" target="_blank" rel="noopener">Google Maps</a>
       ${l.phone ? '<button class="btn btn-ghost" id="ltexts">Texts</button>' : ''}
@@ -372,12 +373,22 @@ export async function leadModal(id, onChange) {
   prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, onResearched: () => { changed = true; } });
   $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
   // Google: write to them, see what you have already sent, and put a meeting on your own calendar.
-  $('#lmailbtn', m.el)?.addEventListener('click', () => import('./hubmail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth`, lead_id: l.id })));
-  $('#lmeetbtn', m.el).addEventListener('click', () => import('./apptcal.js').then((x) => x.quickAppointment({
+  $('#lmailbtn', m.el)?.addEventListener('click', async () => {
+    const gmail = await import('./gstate.js').then((g) => g.hasGoogle('mail'));
+    if (gmail) import('./mail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth` }));
+    else import('./hubmail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth`, lead_id: l.id }));
+  });
+  $('#lbooklink', m.el)?.addEventListener('click', async (e) => {
+    try { const r = await api(`/api/leads/${l.id}/book-link`); await copy(r.url, 'Booking link copied. It fills in what we know and asks for the rest.'); } catch (err) { toast(err.message, true); }
+  });
+  $('#lmeetbtn', m.el).addEventListener('click', async () => (await import('./gstate.js').then((g) => g.hasGoogle('calendar'))) ? import('./gcal.js').then((x) => x.quickEvent({
+    title: `Audit call: ${l.business}`, attendees: [l.email].filter(Boolean), leadId: l.id,
+    notes: [l.contact_name && `Contact: ${l.contact_name}`, l.phone && `Phone: ${l.phone}`, l.website && `Site: ${l.website}`].filter(Boolean).join('\n'),
+  })) : import('./apptcal.js').then((x) => x.quickAppointment({
     title: `Audit call: ${l.business}`, guest_email: l.email || '', lead_id: l.id, lead_name: l.business,
     note: [l.contact_name && `Contact: ${l.contact_name}`, l.phone && `Phone: ${l.phone}`, l.website && `Site: ${l.website}`].filter(Boolean).join('\n'),
   })));
-  if (l.email) import('./hubmail.js').then((x) => x.mailWith($('#lmail', m.el), l.email, { name: l.contact_name || l.business })).catch(() => {});
+  if (l.email) import('./gstate.js').then((g) => g.hasGoogle('mail')).then((gm) => import(gm ? './mail.js' : './hubmail.js')).then((x) => x.mailWith($('#lmail', m.el), l.email, { name: l.contact_name || l.business })).catch(() => {});
   $('#ledit', m.el).addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); });
   $$('[data-out]', m.el).forEach((b) => b.addEventListener('click', async () => {
     const outcome = b.dataset.out;
@@ -750,7 +761,8 @@ export async function dialerPage(app, user) {
 export async function settingsPage(app, user) {
   const view = staffShell(app, user, 'settings');
   let s, me, g;
-  try { [s, me, g] = await Promise.all([api('/api/settings'), api('/api/me'), api('/api/google/status').catch(() => null)]); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  let team = [];
+  try { [s, me, g, team] = await Promise.all([api('/api/settings'), api('/api/me'), api('/api/google/status').catch(() => null), api('/api/team').then((r) => r.users || []).catch(() => [])]); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const gmsg = new URLSearchParams(location.search).get('google');
   if (gmsg) { toast(gmsg === 'ok' ? 'Google connected' : gmsg, gmsg !== 'ok'); history.replaceState(null, '', `${location.pathname}${location.hash}`); }
   const { DEFAULT_SCRIPT, DEFAULT_OBJECTIONS, SCRIPT_KEYS } = await import('/js/leadintel.js');
@@ -785,21 +797,25 @@ export async function settingsPage(app, user) {
       ${!g?.ready ? `<p class="muted">Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloudflare Build secrets first. In Google Cloud, the OAuth redirect address is:</p><div class="copybox"><code>${esc(location.origin)}/api/google/callback</code><button class="btn btn-ghost btn-sm" data-copy="${esc(location.origin)}/api/google/callback">Copy</button></div>`
         : g.connected ? `<p>Connected as <b>${esc(g.email || 'your Google account')}</b>. Meetings you book from a lead go on this calendar with a Meet link and the lead gets the invite.</p><div class="row"><button class="btn btn-ghost btn-sm" id="gdisc">Disconnect</button></div>`
         : `<p class="muted">Connect the Google account whose calendar you use for audits.</p><a class="btn btn-primary" href="/api/google/connect">Connect Google</a>`}
-      ${g?.ready ? `<h3 style="margin-top:20px">Public booking page</h3>
-        <p class="muted">Leads pick an open time from ${esc(bk.ownerEmail || 'the connected calendar')} and get a Meet invite. Link it from your site, emails, and texts.</p>
-        <div class="copybox"><code>${esc(bookUrl)}</code><button class="btn btn-ghost btn-sm" data-copy="${esc(bookUrl)}">Copy</button></div>
-        <form id="bkset" class="form-grid" style="margin-top:12px">
-          <label class="field"><span>Meeting name</span><input name="title" value="${esc(bk.title || '')}"${isAdmin ? '' : ' disabled'}></label>
-          <label class="field"><span>Length (minutes)</span><input name="minutes" type="number" min="15" max="120" value="${esc(bk.minutes ?? 30)}"${isAdmin ? '' : ' disabled'}></label>
-          <label class="field"><span>First slot (hour, 24h)</span><input name="start" type="number" min="0" max="23" value="${esc(bk.startHour ?? 9)}"${isAdmin ? '' : ' disabled'}></label>
-          <label class="field"><span>Last end time (hour, 24h)</span><input name="end" type="number" min="1" max="24" value="${esc(bk.endHour ?? 17)}"${isAdmin ? '' : ' disabled'}></label>
-          <label class="field"><span>Days (0 Sun to 6 Sat)</span><input name="days" value="${esc((bk.weekdays || [1, 2, 3, 4, 5]).join(','))}"${isAdmin ? '' : ' disabled'}></label>
-          <label class="field"><span>Buffer between (minutes)</span><input name="buffer" type="number" min="0" max="120" value="${esc(bk.buffer ?? 15)}"${isAdmin ? '' : ' disabled'}></label>
-          <label class="field"><span>Minimum notice (hours)</span><input name="notice" type="number" min="0" max="168" value="${esc(bk.noticeHours ?? 4)}"${isAdmin ? '' : ' disabled'}></label>
-          <label class="field"><span>Time zone</span><input name="tz" value="${esc(bk.tz || 'America/New_York')}"${isAdmin ? '' : ' disabled'}></label>
-          ${isAdmin ? `<div class="span-all row end">${g.connected ? '<label class="row small" style="gap:6px"><input type="checkbox" name="ownerSelf"> Book on my calendar</label>' : ''}<button class="btn btn-primary" type="submit">Save booking settings</button></div>` : ''}
-        </form>` : ''}
+
     </div>
+    <div class="card"><div class="card-head"><h2>Online booking</h2><span class="badge ${g?.connected && bk.ownerEmail ? '' : 'gray'}">${bk.ownerEmail ? `Google: ${esc(bk.ownerEmail)}` : 'Hub only'}</span></div>
+      <p class="muted">Leads pick an open time in their own time zone. ${bk.ownerEmail ? `With Google connected the time comes off ${esc(bk.ownerEmail)}'s calendar and Google sends the invite with a Meet link.` : 'Connect Google on the Google page so each booking gets a Google Calendar invite with a Meet link. Until then the time is held in the Hub and the link below is used.'} The confirmation email and text go out right away (Automations). Each lead also has a personal booking link that fills in what we know.</p>
+      <div class="copybox"><code>${esc(bookUrl)}</code><button class="btn btn-ghost btn-sm" data-copy="${esc(bookUrl)}">Copy</button><a class="btn btn-ghost btn-sm" href="/book.html" target="_blank" rel="noopener">Open</a></div>
+      <form id="bkset" class="form-grid" style="margin-top:12px">
+        <label class="field"><span>Meeting name</span><input name="title" value="${esc(bk.title || '')}"${isAdmin ? '' : ' disabled'}></label>
+        <label class="field"><span>Length (minutes)</span><input name="minutes" type="number" min="15" max="120" value="${esc(bk.minutes ?? 30)}"${isAdmin ? '' : ' disabled'}></label>
+        <label class="field"><span>First slot (hour, 24h)</span><input name="start" type="number" min="0" max="23" value="${esc(bk.startHour ?? 9)}"${isAdmin ? '' : ' disabled'}></label>
+        <label class="field"><span>Last end time (hour, 24h)</span><input name="end" type="number" min="1" max="24" value="${esc(bk.endHour ?? 17)}"${isAdmin ? '' : ' disabled'}></label>
+        <label class="field"><span>Days (0 Sun to 6 Sat)</span><input name="days" value="${esc((bk.weekdays || [1, 2, 3, 4, 5]).join(','))}"${isAdmin ? '' : ' disabled'}></label>
+        <label class="field"><span>Buffer between (minutes)</span><input name="buffer" type="number" min="0" max="120" value="${esc(bk.buffer ?? 15)}"${isAdmin ? '' : ' disabled'}></label>
+        <label class="field"><span>Minimum notice (hours)</span><input name="notice" type="number" min="0" max="168" value="${esc(bk.noticeHours ?? 4)}"${isAdmin ? '' : ' disabled'}></label>
+        <label class="field"><span>How far ahead (days)</span><input name="window" type="number" min="1" max="60" value="${esc(bk.days ?? 14)}"${isAdmin ? '' : ' disabled'}></label>
+        <label class="field"><span>Your time zone</span><input name="tz" value="${esc(bk.tz || 'America/New_York')}"${isAdmin ? '' : ' disabled'}></label>
+        <label class="field"><span>Who takes online bookings</span><select name="rep"${isAdmin ? '' : ' disabled'}><option value="">Owners (nobody assigned)</option><option value="rr"${bk.rep === 'rr' ? ' selected' : ''}>Round robin (fewest upcoming)</option>${team.filter((u) => u.role === 'admin' || u.role === 'team').map((u) => `<option value="${esc(u.id)}"${bk.rep === u.id ? ' selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select></label>
+        <label class="field span-all"><span>Meeting link when Google is not connected (Zoom or a Meet room; empty means you call them)</span><input name="link" placeholder="https://" value="${esc(bk.link || '')}"${isAdmin ? '' : ' disabled'}></label>
+        ${isAdmin ? `<div class="span-all row end">${g?.connected ? '<label class="row small" style="gap:6px"><input type="checkbox" name="ownerSelf"> Book on my Google Calendar</label>' : ''}<button class="btn btn-primary" type="submit">Save booking settings</button></div>` : ''}
+      </form></div>
     <div class="card"><div class="card-head"><h2>Call script</h2></div>
       <p class="muted">The dialer and the presentation fill these in for each lead. One line per thing to say. Start a line with "Or:" for an alternative, and wrap coaching notes in (parentheses).</p>
       <p class="small mono">{first} {rep} {my_number} {business} {city} {industry} {keyword} {scan_line} {hook_impact} {opener_reason} {vm_scan} {rank} {top_name} {top_name_or_them} {top_reviews} {top3_of_points} {top10_of_points} {reviews} {rating} {plan} {plan_why} {price} {setup} {starter_price} {ticket} {breakeven} {breakeven_jobs} {problems} {slot1} {slot2} {email_or_phone} {email_or_ask}</p>

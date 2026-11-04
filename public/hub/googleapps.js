@@ -48,7 +48,7 @@ export async function googlePage(app, user) {
   };
   view.innerHTML = `${tabs}
     <div class="page-head"><div><p class="eyebrow">Integrations</p><h1>Google</h1></div>
-      ${g.ready && g.connected ? `<div class="row"><span class="small muted">Signed in as ${esc(g.email || 'Google')}</span>${APPS.some((a) => !a.base && !on.has(a.k)) ? `<a class="btn btn-primary btn-sm" href="${esc(connectUrl(APPS.filter((a) => !a.base).map((a) => a.k)))}">Turn on all</a>` : ''}</div>` : ''}</div>
+      ${g.ready && g.connected ? `<div class="row"><span class="small muted">Signed in as ${esc(g.email || 'Google')}</span>${APPS.some((a) => !on.has(a.k)) ? `<a class="btn btn-primary btn-sm" href="${esc(connectUrl(APPS.filter((a) => !a.base).map((a) => a.k)))}">Turn on all</a>` : ''}</div>` : ''}</div>
     ${!g.ready ? `<div class="card" style="margin-bottom:18px"><h2>Connect Google first</h2><p>Add <b>GOOGLE_CLIENT_ID</b> and <b>GOOGLE_CLIENT_SECRET</b> in Cloudflare, Build, Variables and secrets, then rebuild. In Google Cloud, turn on these APIs for the project: Google Calendar, Gmail, Google Drive, Google Docs, Google Sheets, Search Console, Google Analytics Data, Google Analytics Admin, and Google Ads.</p></div>` : ''}
     ${g.ready ? `<details class="card" style="margin-bottom:18px"${g.connected ? '' : ' open'}><summary style="cursor:pointer"><b>Google Cloud checklist</b> <span class="small muted">the 3 things that stop Drive, Sheets, Gmail and Calendar from working</span></summary>
       <ol class="cv-notes" style="font-size:14px;gap:10px;margin-top:12px">

@@ -23,7 +23,7 @@ async function cal(env, row, path, { method = 'GET', body } = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = data.error?.message || `HTTP ${res.status}`;
-    if (res.status === 403 && /insufficient|scope/i.test(msg)) throw new HttpError('Calendar needs to be turned on again on the Google page.', 400);
+    if (res.status === 403 && /insufficient|scope/i.test(msg)) throw new HttpError('Calendar needs one more sign in: open the Google page and press Turn on all, then Allow.', 400);
     throw new HttpError(`Google Calendar: ${msg}`, res.status === 401 || res.status === 403 ? 400 : 502);
   }
   return data;
@@ -32,7 +32,10 @@ async function cal(env, row, path, { method = 'GET', body } = {}) {
 route('GET', '/api/google/cal/calendars', async ({ env, user }) => {
   requireStaff(user);
   const me = await ownFor(env, user, 'calendar');
-  const d = await cal(env, me, '/users/me/calendarList?maxResults=50&minAccessRole=reader');
+  // An older sign in (events only) cannot list calendars: show the main calendar and say how to get the rest.
+  let d, limited = false;
+  try { d = await cal(env, me, '/users/me/calendarList?maxResults=50&minAccessRole=reader'); }
+  catch (e) { if (!/one more sign in/.test(e.message)) throw e; limited = true; d = { items: [{ id: 'primary', summary: me.google_email || 'My calendar', primary: true, accessRole: 'owner' }] }; }
   // Owners see every calendar they can open. Teammates see only their own calendars (no shared team or company calendars).
   const items = (d.items || []).filter((c) => user.role === 'admin' || c.primary || c.accessRole === 'owner');
   const cals = items.map((c) => ({
@@ -40,7 +43,7 @@ route('GET', '/api/google/cal/calendars', async ({ env, user }) => {
     primary: Boolean(c.primary), selected: c.selected !== false, canWrite: ['owner', 'writer'].includes(c.accessRole),
     tz: c.timeZone || null,
   }));
-  return json({ calendars: cals, email: me.google_email || null });
+  return json({ calendars: cals, email: me.google_email || null, limited });
 });
 
 route('GET', '/api/google/cal/events', async ({ env, user, url }) => {

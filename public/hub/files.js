@@ -93,6 +93,11 @@ export async function filesWidget(box, { client = '' } = {}) {
 export async function clientFilesTab(el, c) {
   el.innerHTML = `<div class="card"><div class="card-head"><h2>Files for ${esc(c.name)}</h2></div><div id="fbox"><div class="skeleton" style="height:120px"></div></div></div>`;
   filesWidget($('#fbox', el), { client: c.id });
+  const { hasGoogle } = await import('./gstate.js');
+  if (await hasGoogle('drive')) {
+    const d = document.createElement('div'); d.style.marginTop = '18px'; el.appendChild(d);
+    import('./gdrive.js').then((m) => m.clientDriveTab(d, c)).catch(() => d.remove());
+  }
 }
 
 export async function filesPage(app, user, sub = '') {

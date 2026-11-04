@@ -4,10 +4,10 @@ import { json } from './util.js';
 import { first } from './db.js';
 import { requireStaff } from './auth.js';
 import { route } from './router.js';
-import { accessToken, googleReady, hasScope, APP_SCOPES } from './google.js';
+import { accessToken, googleReady, hasScope, APP_SCOPES, calendarFull, calendarAny } from './google.js';
 
 const CHECKS = [
-  { app: 'calendar', label: 'Calendar', api: 'Google Calendar API', url: 'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1', scope: (s) => s.includes('calendar') },
+  { app: 'calendar', label: 'Calendar', api: 'Google Calendar API', url: 'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1', scope: (s) => calendarAny(s) },
   { app: 'mail', label: 'Gmail', api: 'Gmail API', url: 'https://gmail.googleapis.com/gmail/v1/users/me/profile' },
   { app: 'drive', label: 'Drive', api: 'Google Drive API', url: 'https://www.googleapis.com/drive/v3/about?fields=user' },
   // No document to read, so a made up id: 404 means the API answered (on); 403 with "disabled" means it is off.
@@ -46,6 +46,8 @@ route('GET', '/api/google/check', async ({ env, user }) => {
   const results = await Promise.all(CHECKS.map(async (c) => {
     const has = c.scope ? c.scope(granted) : hasScope(granted, APP_SCOPES[c.app]);
     if (!has) return { app: c.app, label: c.label, on: false, ok: null, reason: 'Not turned on for your account.', fix: `Click Turn on for ${c.label} if you want it.` };
+    // Older connections only had calendar.events: booking works, the calendar list does not. One more sign in fixes it.
+    if (c.app === 'calendar' && !calendarFull(granted)) return { app: c.app, label: c.label, on: true, ok: false, reason: 'You signed in before the Hub asked for full Calendar access, so Google only lets it add events, not show your calendars.', fix: 'Click Turn on all (or Turn on for Calendar) and press Allow. This is a one time fix.' };
     try {
       const res = await fetch(c.url, { headers: { authorization: `Bearer ${token}` } });
       if (res.ok || (c.okStatus || []).includes(res.status)) return { app: c.app, label: c.label, on: true, ok: true, reason: 'Working.' };
