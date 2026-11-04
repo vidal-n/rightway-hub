@@ -523,7 +523,8 @@ function importModal(onDone) {
       const r = await api('/api/leads/import', { method: 'POST', body: { rows: mapped.slice(0, 5000), source: 'import', tags: $('#csvtag', m.el).value } });
       const sb = r.skippedBy || {};
       const why = [['phone', 'same phone'], ['website', 'same website'], ['name', 'same name and area'], ['dnc', 'do not call'], ['invalid', 'no phone or email']].filter(([k]) => sb[k]).map(([k, n]) => `${sb[k]} ${n}`).join(', ');
-      m.el.innerHTML = `<div class="card-head"><h2>Import done</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div><p><b>${r.imported}</b> new leads added. ${r.skipped ? `${r.skipped} skipped: ${esc(why)}.` : 'Nothing skipped.'}</p>
+      m.el.innerHTML = `<div class="card-head"><h2>Import done</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div><p><b>${r.imported}</b> new leads added. ${r.skipped ? `${r.skipped} skipped: ${esc(why)}.` : 'Nothing skipped.'}${r.scrubbed ? ` ${r.scrubbed} scrubbed out (bad or toll free numbers).` : ''}</p>
+        <p class="small">Every new lead is now researched in the background (Google profile, map ranks, website, speed), scored and sorted into the dialer's Hot, Good, Maybe and Low queues.</p>
         <p class="small">Every lead is scored. Open the List view and sort by grade, or research them for full scores and pitch notes.</p>`;
       onDone?.();
       if (wantRes && r.imported) {
@@ -553,6 +554,45 @@ export async function dialerPage(app, user) {
   if (me.twilio) startPhone().catch(() => {});
   const offPhone = onPhoneState((st) => { if (!document.body.contains(view)) return offPhone(); const b = $('#pbadge', view); if (b) b.innerHTML = phoneBadge(st); });
   let idx = 0;
+  // Power dial: shows the next 3, counts down, rings the first through the browser phone, opens the result popup when it ends,
+  // then moves to the next 3. One call at a time, so nobody ever picks up to silence.
+  let power = false, pdTimer = null, pdStart = 0, pdCalls = 0, pdWait = 5;
+  try { pdWait = Number(localStorage.getItem('rw-pd-wait')) || 5; } catch { /* ignore */ }
+  let pdBox = null;
+  const powerStop = () => { power = false; clearInterval(pdTimer); pdBox?.remove(); pdBox = null; const b = document.getElementById('pdgo'); if (b) b.textContent = 'Start power dial'; };
+  window.addEventListener('hashchange', powerStop, { once: true });
+  const sessClock = () => { const t = Math.floor((Date.now() - pdStart) / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+  const powerStep = () => {
+    clearInterval(pdTimer);
+    if (!power) return;
+    const next = q.queue.slice(idx, idx + 3);
+    if (!pdBox) { pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox); }
+    if (!next.length) { pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial</span><b>${pdCalls} calls · ${sessClock()}</b></div><div class="pd-list"><p style="margin:0">Queue clear. Pick another quality tab or time zone.</p></div><div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdx">Close</button></div>`; $('#pdx', pdBox).onclick = powerStop; return; }
+    let left = pdWait;
+    const draw = () => {
+      pdBox.className = 'pd';
+      pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial · <b>${pdCalls}</b> calls · <b>${sessClock()}</b></span><span class="pd-count">${left}</span></div>
+        <div class="pd-bar" style="width:${(100 * (pdWait - left)) / pdWait}%"></div>
+        <div class="pd-list">${next.map((l, i) => `<div class="pd-card${i === 0 ? ' first' : ''}"><span class="g ${esc(l.grade || '')}">${esc(l.grade || '?')}</span>
+          <div style="min-width:0"><b>${esc(l.business)}</b><span class="small">${esc([l.contact_name, l.city, l.local_time ? `${l.local_time} their time` : ''].filter(Boolean).join(' · '))}</span></div>
+          <span class="small">${i === 0 ? 'Calling next' : `Then #${i + 1}`}</span></div>`).join('')}</div>
+        <div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdnow">Call now</button><button class="btn btn-ghost btn-sm" id="pdskip">Skip</button><button class="btn btn-ghost btn-sm" id="pdpause">Pause</button>
+          <label class="row small" style="gap:6px;margin-left:auto">Wait <select id="pdw" style="width:auto;min-height:32px;padding:4px 8px">${[3, 5, 8, 12].map((v) => `<option${v === pdWait ? ' selected' : ''}>${v}</option>`).join('')}</select> s</label></div>`;
+      $('#pdnow', pdBox).onclick = () => { clearInterval(pdTimer); dialFirst(); };
+      $('#pdskip', pdBox).onclick = () => { clearInterval(pdTimer); idx++; render(); };
+      $('#pdpause', pdBox).onclick = () => { clearInterval(pdTimer); pdBox.querySelector('.pd-count').textContent = 'II'; $('#pdpause', pdBox).textContent = 'Resume'; $('#pdpause', pdBox).onclick = () => powerStep(); };
+      $('#pdw', pdBox).onchange = (e) => { pdWait = Number(e.target.value); try { localStorage.setItem('rw-pd-wait', String(pdWait)); } catch { /* ignore */ } };
+    };
+    draw();
+    pdTimer = setInterval(() => { left--; if (left <= 0) { clearInterval(pdTimer); dialFirst(); } else draw(); }, 1000);
+  };
+  const dialFirst = () => {
+    const btn = document.getElementById('dhub');
+    if (!btn || btn.disabled) { toast('The browser phone is not ready. Check Phone setup.', true); return powerStop(); }
+    pdCalls++;
+    if (pdBox) { pdBox.className = 'pd mini'; pdBox.querySelector('.pd-count').textContent = 'LIVE'; }
+    btn.click();
+  };
   const intelCache = new Map();
   const researching = new Set();
   const prefetch = async (l) => {
@@ -578,14 +618,18 @@ export async function dialerPage(app, user) {
   const upcoming = (cal.meetings || []).filter((m) => m.meet_at > Date.now() - 3600e3).slice(0, 4);
   // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.
   setTimeout(() => api('/api/balances/status').then((b) => { const el = document.getElementById('lowbal'); if (el && b.low?.length) el.innerHTML = `<div class="card" style="border-color:#E8A33D;margin-bottom:12px"><b>${b.low.map((x) => esc(x.name)).join(' and ')} balance ${b.low.some((x) => x.empty) ? 'is empty' : 'is low'}.</b> <span class="small">${b.low.some((x) => x.key === 'twilio') ? 'Calls and texts stop when Twilio runs out. ' : ''}${b.low.some((x) => x.key === 'dataforseo') ? 'Research and scans stop when DataForSEO runs out. ' : ''}An owner can add funds from the Dashboard.</span></div>`; }).catch(() => {}), 50);
-  const filterText = Object.entries(flt).filter(([, v]) => v).map(([k, v]) => `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`).join(' · ');
+  const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier').map(([k, v]) => `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`).join(' · ');
   const render = () => {
     const l = q.queue[idx];
     view.innerHTML = `
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
-          <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead</label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a></div></div>
+          <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead</label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
+          ${me.twilio ? `<button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
       ${dialTabs('queue', user)}
+      <div class="tiers">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
+        .map(([k, n, t]) => `<button type="button" data-tier="${k}" title="${esc(t)}" class="${(flt.tier || '') === k ? 'is-on' : ''}">${n}<b>${k ? (q.tiers?.[k] ?? 0) : Object.values(q.tiers || {}).reduce((a, b) => a + b, 0)}</b></button>`).join('')}</div>
+      <div id="rsx" class="small muted" style="margin:-6px 0 12px"></div>
       ${filterText ? `<div class="row small" style="margin:-6px 0 14px">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}
       <div class="stats">
         <div class="stat hero"><div class="stat-num">${q.stats.dials}</div><div class="stat-label">dials today (target 60)</div></div>
@@ -631,6 +675,8 @@ export async function dialerPage(app, user) {
       </div>`}`;
     $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
     $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
+    $$('[data-tier]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, tier: b.dataset.tier }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
+    $('#pdgo', view)?.addEventListener('click', () => { power = !power; if (power) { pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
     prefetch(l);
@@ -658,7 +704,21 @@ export async function dialerPage(app, user) {
       catch (err) { toast(err.message, true); } finally { busy(btn, false); }
     });
     $$('[data-out]', view).forEach((b) => b.addEventListener('click', () => logOutcome(b.dataset.out, b)));
+    if (power) setTimeout(powerStep, 300);
+    paintResearch();
   };
+  // Background research status, and a nudge every 20 seconds while this page is open so grading keeps up with imports.
+  let rs = null;
+  const paintResearch = () => {
+    const el = document.getElementById('rsx'); if (!el || !rs) return;
+    el.innerHTML = !rs.connected ? 'Background research needs DataForSEO connected.' : !rs.on ? `Background research is off${user.role === 'admin' ? ' (Settings)' : ''}.` : rs.left ? `Researching ${rs.left} lead${rs.left === 1 ? '' : 's'} in the background (${rs.done} of ${rs.cap} today). They move into Hot, Good, Maybe or Low as they finish.${rs.scrubbed ? ` ${rs.scrubbed} scrubbed out.` : ''}` : `Every lead is researched and graded.${rs.scrubbed ? ` ${rs.scrubbed} scrubbed out (bad numbers, toll free, closed).` : ''}`;
+  };
+  const rsTick = async () => {
+    if (!document.body.contains(view)) return clearInterval(rsTimer);
+    try { rs = await api('/api/research/status'); paintResearch(); if (rs.on && rs.connected && rs.left && rs.done < rs.cap) await api('/api/research/tick', { method: 'POST' }); } catch { /* ignore */ }
+  };
+  const rsTimer = setInterval(rsTick, 20e3);
+  setTimeout(rsTick, 1500);
   const logOutcome = async (outcome, btn, alreadyBooked = false) => {
     const l = q.queue[idx];
     const acts = dispoOf(outcome).acts;
@@ -704,7 +764,7 @@ export async function settingsPage(app, user) {
   const formUrl = `${location.origin}/api/public/lead`;
   view.innerHTML = `
     <div class="page-head"><h1>Settings</h1></div>${settingsTabs('general')}
-    ${isAdmin ? '<div class="card" id="setbal"></div>' : ''}
+    ${isAdmin ? '<div class="card" id="setbal"></div><div class="card" id="setrs"></div>' : ''}
     <div id="stripesetup"></div>
     <div class="card"><div class="card-head"><h2>Stripe payment links</h2>${pill(c.stripe)}</div>
       <p class="muted">The Stripe setup above fills these in for you. You can also paste each plan's payment link from Stripe (Payment Links, Copy link) to use your own. Work orders and the "Payment link" button use these, tagged with the lead, so payment marks the deal won and creates the client automatically.</p>
@@ -761,6 +821,15 @@ export async function settingsPage(app, user) {
       <div class="copybox"><code>${esc(formUrl)}</code><button class="btn btn-ghost btn-sm" id="cpf">Copy</button></div></div>`;
   $('#cpf', view).addEventListener('click', () => copy(formUrl, 'Form address copied'));
   if (isAdmin) import('./balances.js').then((m) => m.balancesCard($('#setbal', view)));
+  if (isAdmin) api('/api/research/status').then((r) => {
+    const box = $('#setrs', view); if (!box) return;
+    box.innerHTML = `<div class="card-head"><h2>Lead research and scrubbing</h2><span class="small muted">${r.left} waiting · ${r.scrubbed} scrubbed</span></div>
+      <p class="small">Every imported lead is researched in the background (about $0.04 each on DataForSEO), scored, graded and split into the dialer's quality queues. Bad and toll free numbers and businesses closed on Google are scrubbed out.</p>
+      <div class="row"><label class="row" style="gap:8px"><input type="checkbox" id="rson"${r.on ? ' checked' : ''}> Research every new lead automatically</label>
+        <label class="row small" style="gap:6px">Daily cap <input id="rscap" type="number" min="0" max="5000" value="${r.cap}" style="width:100px"> leads (about $${(r.cap * 0.04).toFixed(0)} a day at most)</label>
+        <button class="btn btn-ghost btn-sm" id="rssave">Save</button></div>`;
+    $('#rssave', box).addEventListener('click', async () => { try { await api('/api/research/settings', { method: 'PUT', body: { on: $('#rson', box).checked, cap: Number($('#rscap', box).value) } }); toast('Saved'); } catch (e) { toast(e.message, true); } });
+  }).catch(() => {});
   stripeSetup($('#stripesetup', view), user);
   autoScanCard($('#autoscan', view), user);
   $$('[data-copy]', view).forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, 'Copied')));

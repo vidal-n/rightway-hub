@@ -108,6 +108,16 @@ route('POST', '/api/assistant', async ({ env, user, body }) => {
     const brief = await clientBrief(env, String(b.clientId), b.taskId ? String(b.taskId) : null);
     system += `\n\n${brief.text}`;
     name = brief.client.name;
+  } else if (user.role === 'admin') {
+    // The owner's bubble: a snapshot of the business so questions about the pipeline, calls and clients get real numbers.
+    const since = Date.now() - 7 * 864e5;
+    const [stages, calls, clients, booked] = await Promise.all([
+      all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage').catch(() => []),
+      first(env, "SELECT COUNT(*) AS dials, SUM(CASE WHEN outcome IN ('conversation','booked','callback','not_interested') THEN 1 ELSE 0 END) AS talks, SUM(CASE WHEN outcome = 'booked' THEN 1 ELSE 0 END) AS booked FROM activities WHERE type IN ('call','manual_call') AND at > ?", since).catch(() => null),
+      all(env, "SELECT name, plan, mrr_cents, billing_status FROM clients WHERE status = 'active' AND (sample IS NULL OR sample = 0) AND parent_id IS NULL LIMIT 40").catch(() => []),
+      all(env, 'SELECT business, meet_at FROM leads WHERE meet_at > ? ORDER BY meet_at LIMIT 10', Date.now()).catch(() => []),
+    ]);
+    system += `\n\nThe owner is asking from the Hub. Snapshot:\nPipeline by stage: ${stages.map((x) => `${x.stage} ${x.n}`).join(', ') || 'empty'}.\nLast 7 days of calls: ${calls?.dials || 0} dials, ${calls?.talks || 0} conversations, ${calls?.booked || 0} booked.\nActive clients (${clients.length}): ${clients.map((c) => `${c.name} (${c.plan}${c.mrr_cents ? `, $${Math.round(c.mrr_cents / 100)}/mo` : ''})`).join('; ') || 'none yet'}.\nUpcoming audits: ${booked.map((x) => `${x.business} ${new Date(x.meet_at).toISOString().slice(0, 16)}`).join('; ') || 'none'}.\nHelp with sales, scripts, objections, pricing decisions, fulfillment, hiring and running the agency. Be blunt and concise.`;
   } else {
     system += '\n\nNo client is selected. Answer for the agency in general.';
   }

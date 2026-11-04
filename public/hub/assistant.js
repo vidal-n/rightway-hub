@@ -51,11 +51,13 @@ function draw() {
       <div class="row" style="gap:6px">${list.length ? '<button class="btn btn-ghost btn-sm" id="ai-new">New chat</button>' : ''}<button class="icon-btn" id="ai-x" aria-label="Close">${icon.close}</button></div></div>
     <div class="ai-log" id="ai-log">
       ${list.length ? list.map((m, i) => `<div class="ai-msg ${m.role}">${m.role === 'assistant' ? `${md(m.content)}<div class="ai-tools"><button class="btn btn-ghost btn-sm" data-copy="${i}">Copy</button></div>` : esc(m.content).replace(/\n/g, '<br>')}</div>`).join('')
+        : !ctx.clientId ? `<p class="small muted">Claude sees a live snapshot of the business: pipeline by stage, the last 7 days of calls, active clients and upcoming audits. Ask about scripts, objections, pricing, fulfillment or the numbers.</p>
+           <div class="ai-tips">${['How did we do on calls this week?', 'Write a rebuttal for "I need to think about it"', 'What should I fix first in our pipeline?', 'Draft a text for a no show'].map((t) => `<button class="btn btn-ghost btn-sm" data-tip="${esc(t)}">${esc(t)}</button>`).join('')}</div>`
         : `<p class="small muted">Claude knows this client's plan, services, cities, keywords, this month's tasks, the latest scans, the website check and recent reviews${ctx.task ? ', plus the guide for this task' : ''}. It never makes up facts about the business.</p>
            <div class="ai-tips">${tips.map((t) => `<button class="btn btn-ghost btn-sm" data-tip="${esc(t)}">${esc(t)}</button>`).join('')}</div>`}
       <div class="ai-msg assistant ai-wait" id="ai-wait" hidden><span class="spin"></span> Thinking</div>
     </div>
-    <form class="ai-form" id="ai-form"><textarea id="ai-q" rows="2" placeholder="Ask anything about this client's work" aria-label="Your question"></textarea><button class="btn btn-primary" type="submit">Send</button></form>
+    <form class="ai-form" id="ai-form"><textarea id="ai-q" rows="2" placeholder="${ctx.clientId ? "Ask anything about this client's work" : 'Ask anything about the business'}" aria-label="Your question"></textarea><button class="btn btn-primary" type="submit">Send</button></form>
     <p class="err-text small" id="ai-err" role="alert"></p>`;
   const log = $('#ai-log', panel);
   log.scrollTop = log.scrollHeight;

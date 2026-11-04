@@ -118,10 +118,14 @@ async function route() {
     if (sub === 'recordings') return recordingsPage(app, u);
     if (sub === 'live') { location.replace('#/agents'); return; }
     if (sub === 'setup') return phoneSetupPage(app, u);
+    if (sub === 'line') return import('./lines.js').then((m) => m.linesPage(app, u));
     if (sub === 'texts') return inboxPage(app, u);
     if (sub === 'calls') return inboxPage(app, u, 'calls');
     return dialerPage(app, u);
   }
+  if (parts[0] === 'automations') return import('./automations.js').then((m) => m.automationsPage(app, u));
+  if (parts[0] === 'calendar') return import('./apptcal.js').then((m) => m.apptCalendarPage(app, u, parts[1] || ''));
+  if (parts[0] === 'vault') return import('./vault.js').then((m) => m.vaultPage(app, u));
   if (parts[0] === 'agents') return import('./agents.js').then((m) => m.agentsPage(app, u, parts[1] || ''));
   if (parts[0] === 'training') return import('./training.js').then((m) => m.trainingPage(app, u, parts[1] || '', parts[2] || ''));
   if (parts[0] === 'pipeline') return pipelinePage(app, u, parts[1]);

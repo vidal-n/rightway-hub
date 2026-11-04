@@ -68,6 +68,7 @@ export async function prepPanel(el, lead, intel, { rep = '', onResearched, compa
           <a class="btn btn-ghost btn-sm" href="/present.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
           <a class="btn btn-ghost btn-sm" href="/scan.html?lead=${esc(lead.id)}" target="_blank" rel="noopener">Scan tool</a>
           <button class="btn btn-ghost btn-sm" data-act="book">Book meeting</button>
+          <button class="btn btn-ghost btn-sm" data-act="meetnow" title="Starts a Google Meet now, invites them by email, and opens it beside the Hub">Google Meet now</button>
         </div>
       </div>
       ${!intel ? `<div class="caption" style="margin:12px 0">Not researched yet. Research finds their Google profile, checks where they rank around their address, reads their website, and tests mobile speed. About 4 cents.</div>` : `
@@ -108,6 +109,18 @@ export async function prepPanel(el, lead, intel, { rep = '', onResearched, compa
     } catch (err) { toast(err.message, true); busy(e.target, false); }
   });
   $('[data-act="book"]', el).addEventListener('click', () => bookModal(lead));
+  // Meet will not run inside another site (Google blocks it), so it opens in its own window next to the Hub.
+  $('[data-act="meetnow"]', el)?.addEventListener('click', async (e) => {
+    const b = e.currentTarget; busy(b, true);
+    const win = window.open('about:blank', 'rw-meet', `width=${Math.min(1100, screen.availWidth - 80)},height=${Math.min(760, screen.availHeight - 80)},left=40,top=40`);
+    try {
+      const r = await api(`/api/leads/${lead.id}/meet-now`, { method: 'POST' });
+      if (win) win.location = r.meet; else window.open(r.meet, '_blank');
+      try { await navigator.clipboard.writeText(r.meet); } catch { /* ignore */ }
+      toast(r.invited ? 'Meet started. Invite emailed, link copied.' : 'Meet started. Link copied: text it to them.');
+    } catch (err) { win?.close(); toast(err.message, true); }
+    busy(b, false);
+  });
   // The real listing check: which directories show wrong info or none at all. The "inconsistencies" in the pitch, for this business.
   const lst = $('#preplst', el);
   const drawLst = (L) => {

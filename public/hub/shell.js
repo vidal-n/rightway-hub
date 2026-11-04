@@ -131,6 +131,17 @@ export function staffShell(app, user, active, inner) {
   $$('[data-stpill]', app).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); statusMenu(b); }));
   $$('[data-pbub]', app).forEach((b) => b.addEventListener('click', (e) => { e.stopPropagation(); profileMenu(b, user, logout); }));
   paintWallet(app);
+  // Ask Claude, owners only for now: bottom right on every page. On a client page it knows that client.
+  if (user.role === 'admin' && !document.querySelector('.aib')) {
+    const b = document.createElement('button');
+    b.className = 'aib'; b.type = 'button'; b.title = 'Ask Claude'; b.setAttribute('aria-label', 'Ask Claude');
+    b.innerHTML = icon.spark || icon.msg;
+    b.addEventListener('click', () => {
+      const m = location.hash.match(/^#\/client\/([^/]+)/);
+      import('./assistant.js').then((a) => a.openAssistant(m ? { clientId: m[1], name: document.querySelector('.page-head h1')?.textContent || '' } : { name: 'Your business: pipeline, calls, clients' }));
+    });
+    document.body.appendChild(b);
+  }
   return $('#view');
 }
 
