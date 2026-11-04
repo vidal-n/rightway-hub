@@ -44,11 +44,13 @@ export function canText(lead, hasInbound) {
 route('GET', '/api/inbox', async ({ env, user }) => {
   requireStaff(user);
   const rows = await all(env, `SELECT l.id, l.business, l.contact_name, l.phone, l.stage, l.sms_stop,
-      m.body, m.direction, m.at, m.status,
+      m.body, m.direction, m.at, m.status, m.to_num, m.from_num,
       (SELECT COUNT(*) FROM messages u WHERE u.lead_id = l.id AND u.direction = 'in' AND u.read = 0) AS unread
     FROM leads l JOIN messages m ON m.id = (SELECT id FROM messages WHERE lead_id = l.id ORDER BY at DESC LIMIT 1)
     ORDER BY unread DESC, m.at DESC LIMIT 200`);
-  return json({ conversations: rows, twilio: twilioReady(env) });
+  const hide = await import('./lines.js').then((m) => m.hiddenLines(env, user));
+  const ours = (r) => e164(r.direction === 'in' ? r.to_num : r.from_num);
+  return json({ conversations: rows.filter((r) => !hide.has(ours(r))), twilio: twilioReady(env) });
 });
 
 route('GET', '/api/inbox/unread', async ({ env, user }) => {
@@ -154,6 +156,18 @@ route('POST', '/api/twilio/sms', async ({ env, request, defer }) => {
   } else {
     await run(env, 'UPDATE leads SET updated_at = ? WHERE id = ?', now(), leadId);
     await logActivity(env, { lead_id: leadId, type: 'sms', status: 'in', body });
+    const lineOwner = await import('./lines.js').then((m) => m.ownerOfLine(env, p.To)).catch(() => null);
+    if (lineOwner) {
+      // A personal line: only its owner hears about it, and it can forward to their mobile.
+      if (lineOwner.fwd_texts && lineOwner.phone) {
+        defer?.(fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`, {
+          method: 'POST', headers: { Authorization: `Basic ${btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`)}`, 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ To: lineOwner.phone, From: e164(p.To), Body: `Text from ${lead.business || from} (${from}): ${body}`.slice(0, 1500) }).toString(),
+        }).catch(() => {}));
+      }
+      await notifyLater({ env, defer }, { to: [lineOwner.id], kind: 'text', title: `Text from ${lead.business || from}`, body: body.slice(0, 160), url: '/#/phone/texts', tag: `text-${leadId}`, slack: false });
+      return twiml('');
+    }
     await notifyLater({ env, defer }, { to: 'staff', kind: 'text', title: `Text from ${lead.business || from}`, body: body.slice(0, 160), url: `/#/phone/texts`, tag: `text-${leadId}`, actions: [{ text: 'Reply', action_id: 'text_reply', value: leadId, style: 'primary' }] });
   }
   return twiml(''); // Twilio sends the STOP and START confirmations itself.
@@ -175,8 +189,15 @@ route('POST', '/api/twilio/voice', async ({ env, request, url, defer }) => {
   const aid = await logActivity(env, { lead_id: lead?.id || null, type: 'call', status: 'inbound', body: from ? `Incoming call from ${from}` : 'Incoming call', call_sid: p.CallSid || null });
   await run(env, 'UPDATE activities SET from_num = ?, to_num = ? WHERE id = ?', from || p.From || null, e164(p.To) || null, aid);
   // Ring every open Hub (browser phone) and the saved mobile, if any, at the same time. First to answer gets it.
-  const clients = await browserIdentities(env);
-  const cells = await forwardNumbers(env);
+  // A personal line rings only its owner: their open Hub, plus their mobile when they turned call forwarding on.
+  const lineOwner = await import('./lines.js').then((m) => m.ownerOfLine(env, p.To)).catch(() => null);
+  let clients = await browserIdentities(env);
+  let cells = await forwardNumbers(env);
+  if (lineOwner) {
+    clients = clients.filter((id) => id === `rw_${lineOwner.id}`);
+    cells = lineOwner.fwd_calls && lineOwner.phone ? [e164(lineOwner.phone)].filter(Boolean) : [];
+    await run(env, 'UPDATE activities SET by = ? WHERE id = ?', lineOwner.id, aid);
+  }
   const who = lead?.business || prettyNum(from) || 'Unknown caller';
   if (!clients.length && !cells.length) {
     await run(env, "UPDATE activities SET status = 'missed' WHERE id = ?", aid);
@@ -189,7 +210,7 @@ route('POST', '/api/twilio/voice', async ({ env, request, url, defer }) => {
   const nouns = clients.map((id) => `<Client><Identity>${xml(id)}</Identity>${param('caller', from)}${param('who', lead?.business)}${param('called', e164(p.To))}${param('leadId', lead?.id)}${param('context', back)}</Client>`).join('')
     + cells.map((n) => `<Number>${xml(n)}</Number>`).join('');
   // Phones and tablets with notifications on light up and buzz while it rings; saved mobiles ring as a normal call.
-  await notifyLater({ env, defer }, { to: 'staff', kind: 'call', title: `Incoming call: ${who}`, body: [prettyNum(from), back].filter(Boolean).join(' · ') || 'Answer in the Hub', url: '/#/phone/calls', tag: `call-${aid}`, urgent: true, slack: false });
+  await notifyLater({ env, defer }, { to: lineOwner ? [lineOwner.id] : 'staff', kind: 'call', title: `Incoming call: ${who}`, body: [prettyNum(from), back].filter(Boolean).join(' · ') || 'Answer in the Hub', url: '/#/phone/calls', tag: `call-${aid}`, urgent: true, slack: false });
   const callerId = e164(p.To) || env.TWILIO_FROM;
   const rec = (await recordingOn(env))
     ? `record="record-from-answer-dual" recordingStatusCallback="${xml(`${url.origin}/api/twilio/recording?a=${aid}`)}" recordingStatusCallbackEvent="completed"`

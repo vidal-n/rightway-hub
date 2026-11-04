@@ -14,6 +14,8 @@ import { reviewTick } from './reputation.js';
 import { ensureMonthTasks } from './work.js';
 import { digestTick, meetingReminders } from './notify.js';
 import { ensureClientChats } from './chat.js';
+import { automationTick } from './automations.js';
+import { researchTick } from './autoresearch.js';
 
 // Runtime secrets (dashboard) win; build-time secrets fill any gaps.
 export function withSecrets(env, extra = baked) {
@@ -34,6 +36,8 @@ export default {
       await enqueueDueAudits(env).catch((e) => console.error('audit queue', e));
       if (used < 30) await auditTick(env, { budget: Math.min(15, 40 - used) }).catch((e) => console.error('audit', e));
       await reviewTick(env).catch((e) => console.error('reviews', e));
+      await automationTick(env).catch((e) => console.error('automations', e));
+      if (used < 20) await researchTick(env, 1).catch((e) => console.error('auto research', e));
       // Every active client gets this month's tasks on the 1st, the team gets a morning digest, and meeting reminders go out.
       await ensureMonthTasks(env).catch((e) => console.error('task engine', e));
       await digestTick(env).catch((e) => console.error('digest', e));

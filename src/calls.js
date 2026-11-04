@@ -128,7 +128,10 @@ export async function manualTarget(env, raw) {
 route('GET', '/api/dialer/numbers', async ({ env, user }) => {
   requireStaff(user);
   if (!twilioReady(env)) return json({ numbers: [], default: null });
-  return json({ numbers: await ownedNumbers(env), default: env.TWILIO_FROM });
+  const L = await import('./lines.js');
+  const hide = await L.hiddenLines(env, user);
+  const mine = await L.myLine(env, user);
+  return json({ numbers: (await ownedNumbers(env)).filter((n) => !hide.has(n.number || n.phone_number || n)), default: mine || env.TWILIO_FROM });
 });
 
 // Manual dial out: type any number, pick which of your numbers shows as caller ID.

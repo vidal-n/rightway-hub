@@ -81,7 +81,7 @@ route('GET', '/api/agents', async ({ env, user }) => {
     return {
       id: u.id, name: u.name || u.email, email: u.email, role: u.role, online: Boolean(online),
       status: call ? 'on_call' : online ? u.status : 'offline', picked: u.status || 'offline', since: call ? call.answered_at || call.at : u.status_at, lastSeen: u.last_seen,
-      call: call ? { id: call.id, business: call.business, leadId: call.lead_id, number: call.to_num, status: call.status, answeredAt: call.answered_at, at: call.at, canJoin: Boolean(call.conf_sid) && call.by !== user.id, monitoredBy: call.mon_by, mode: call.mon_mode, mine: call.mon_by === user.id } : null,
+      call: call ? { id: call.id, business: call.business, leadId: call.lead_id, number: call.to_num, status: call.status, answeredAt: call.answered_at, at: call.at, canJoin: Boolean(call.conf_sid) && call.by !== user.id && u.role !== 'admin', monitoredBy: call.mon_by, mode: call.mon_mode, mine: call.mon_by === user.id } : null,
       today: { login: st.login, per: st.per, dials: s?.dials || 0, connects: s?.connects || 0, booked: s?.booked || 0, talk: s?.talk || 0, avgHandle: s?.avgHandle || 0, avgTalk: s?.avgTalk || 0 },
     };
   });
@@ -121,7 +121,25 @@ route('GET', '/api/analytics/calls', async ({ env, user, url }) => {
       SUM(CASE WHEN stage IN ('won','lost') OR dnc = 1 THEN 1 ELSE 0 END) AS done,
       SUM(CASE WHEN stage = 'audit_booked' THEN 1 ELSE 0 END) AS booked, ROUND(AVG(score)) AS score
     FROM leads GROUP BY 1, 2 ORDER BY total DESC LIMIT 200`);
-  return json({ days, from, rep, users: user.role === 'admin' ? users : users.filter((u) => u.id === user.id), ...stats, inventory: inv });
+  // Day by day trend and the full funnel: dials to contacts to conversations to booked to signed to paid.
+  const dayKey = (t) => new Date(t).toLocaleDateString('en-CA', { timeZone: TZ });
+  const daily = new Map();
+  for (let d = from; d <= t; d += 864e5) daily.set(dayKey(d), { day: dayKey(d), dials: 0, contacts: 0, booked: 0, talk: 0 });
+  const { isOutbound, isConnect, isBooked, talkSecs } = await import('../public/js/callstats.js');
+  for (const r of rows) {
+    if (!isOutbound(r)) continue;
+    const x = daily.get(dayKey(r.at)) || daily.set(dayKey(r.at), { day: dayKey(r.at), dials: 0, contacts: 0, booked: 0, talk: 0 }).get(dayKey(r.at));
+    x.dials++; if (isConnect(r)) x.contacts++; if (isBooked(r)) x.booked++; x.talk += talkSecs(r);
+  }
+  const wo = await first(env, `SELECT SUM(CASE WHEN signed_at >= ? THEN 1 ELSE 0 END) AS signed, SUM(CASE WHEN paid_at >= ? THEN 1 ELSE 0 END) AS paid,
+      SUM(CASE WHEN paid_at >= ? THEN monthly_cents ELSE 0 END) AS mrr FROM work_orders WHERE (signed_at >= ? OR paid_at >= ?)${rep ? ' AND lead_id IN (SELECT id FROM leads WHERE owner_id = ? OR meet_by = ?)' : ''}`,
+  from, from, from, from, from, ...(rep ? [rep, rep] : [])).catch(() => null);
+  const held = await first(env, `SELECT COUNT(*) AS n FROM leads WHERE meet_at >= ? AND meet_at < ? AND stage NOT IN ('audit_booked','no_show')${rep ? ' AND meet_by = ?' : ''}`, from, t, ...(rep ? [rep] : []));
+  const funnel = [
+    ['Dials', stats.total.dials], ['Contacts', stats.total.connects], ['Conversations', stats.total.decision], ['Audits booked', stats.total.booked],
+    ['Audits held', held?.n || 0], ['Signed', wo?.signed || 0], ['Paid', wo?.paid || 0],
+  ].map(([label, n]) => ({ label, n }));
+  return json({ days, from, rep, users: user.role === 'admin' ? users : users.filter((u) => u.id === user.id), ...stats, inventory: inv, daily: [...daily.values()].sort((a, b) => a.day.localeCompare(b.day)), funnel, newMrr: (wo?.mrr || 0) / 100 });
 });
 
 // Training progress: which scripts, drills, playbooks and setup steps this person has ticked off.
@@ -138,4 +156,26 @@ route('PUT', '/api/me/training', async ({ env, user, body }) => {
   const done = (Array.isArray(b.done) ? b.done : []).filter((x) => typeof x === 'string' && /^[a-z]{2,12}:[a-z_]{2,20}$/.test(x)).slice(0, 100);
   await run(env, 'UPDATE users SET training = ? WHERE id = ?', JSON.stringify([...new Set(done)]), user.id);
   return json({ done });
+});
+
+// Master sheet: every lead with every detail and its call history rolled up, for sorting, filtering and export.
+route('GET', '/api/analytics/master', async ({ env, user }) => {
+  requireStaff(user);
+  const leads = await all(env, `SELECT id, business, contact_name, phone, email, website, city, state, zip, timezone, industry, category, source, tags, stage, grade, score,
+      rating, reviews, map_rank, problems, attempts, last_call_at, next_action_at, next_action, meet_at, meet_by, owner_id, scrub, created_at, intel_at, quote, dnc
+    FROM leads ORDER BY updated_at DESC LIMIT 5000`);
+  const calls = await all(env, `SELECT lead_id, COUNT(*) AS dials, SUM(CASE WHEN outcome IN ('conversation','booked','callback','not_interested','gatekeeper','dnc','won','hung_up') THEN 1 ELSE 0 END) AS contacts,
+      SUM(CASE WHEN answered_at IS NOT NULL THEN COALESCE(duration, 0) ELSE 0 END) AS talk, MAX(at) AS last_at
+    FROM activities WHERE type IN ('call','manual_call') AND lead_id IS NOT NULL AND (status IS NULL OR status NOT IN ('inbound','missed','voicemail','inbound_answered','ready')) GROUP BY lead_id`);
+  const last = await all(env, `SELECT a.lead_id, COALESCE(a.dispo, a.outcome) AS dispo FROM activities a JOIN (SELECT lead_id, MAX(at) AS at FROM activities WHERE type IN ('call','manual_call') AND outcome IS NOT NULL GROUP BY lead_id) m ON m.lead_id = a.lead_id AND m.at = a.at`);
+  const users = Object.fromEntries((await all(env, 'SELECT id, name, email FROM users')).map((u) => [u.id, u.name || u.email]));
+  const cm = new Map(calls.map((c) => [c.lead_id, c])), lm = new Map(last.map((x) => [x.lead_id, x.dispo]));
+  const rows = leads.map((l) => {
+    const c = cm.get(l.id) || {};
+    let q = null; try { q = l.quote ? JSON.parse(l.quote) : null; } catch { q = null; }
+    const showMeet = user.role === 'admin' || l.meet_by === user.id || (!l.meet_by && l.owner_id === user.id);
+    return { ...l, quote: undefined, monthly: q?.monthly ?? null, setup: q?.setup ?? null, dials: c.dials || 0, contacts: c.contacts || 0, talk: c.talk || 0, last_dispo: lm.get(l.id) || null,
+      owner: users[l.owner_id] || '', booked_by: users[l.meet_by] || '', meet_at: showMeet ? l.meet_at : null, researched: Boolean(l.intel_at) };
+  });
+  return json({ rows });
 });

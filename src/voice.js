@@ -161,6 +161,7 @@ route('POST', '/api/twilio/client-voice', async ({ env, request, url }) => {
     if (!u || u.role !== 'admin') return no('Only an owner can listen to calls.');
     const a = await first(env, 'SELECT * FROM activities WHERE id = ?', p.monitor);
     if (!a || !a.conf_sid || !LIVE.includes(a.status)) return no('That call has ended.');
+    if (!(await import('./lines.js').then((m) => m.canSeeCallBy(env, u, a.by)))) return no('Owners cannot listen to each other.');
     const mode = MODES.includes(p.mode) ? p.mode : 'listen';
     await run(env, 'UPDATE activities SET mon_sid = ?, mon_by = ?, mon_mode = ? WHERE id = ?', p.CallSid || null, u.id, mode, a.id);
     const coach = mode === 'whisper' && a.call_sid ? ` coach="${xml(a.call_sid)}"` : '';
@@ -357,13 +358,17 @@ route('GET', '/api/recordings', async ({ env, user, url }) => {
   const rows = await all(env, `SELECT a.id, a.at, a.type, a.status, a.duration, a.rec_secs, a.to_num, a.from_num, a.body, a.by, u.name AS rep, l.business, l.id AS lead_id
     FROM activities a LEFT JOIN users u ON u.id = a.by LEFT JOIN leads l ON l.id = a.lead_id
     WHERE a.rec_sid IS NOT NULL ${rep ? 'AND a.by = ?' : ''} ORDER BY a.at DESC LIMIT 200`, ...(rep ? [rep] : []));
-  const reps = user.role === 'admin' ? await all(env, "SELECT id, name, email FROM users WHERE role IN ('admin','team') ORDER BY name") : [];
-  return json({ recordings: rows, reps, canSeeAll: user.role === 'admin' });
+  const reps = user.role === 'admin' ? await all(env, "SELECT id, name, email FROM users WHERE (role = 'team' OR id = ?) ORDER BY name", user.id) : [];
+  const L = await import('./lines.js');
+  const hide = await L.hiddenLines(env, user);
+  const roles = Object.fromEntries((await all(env, 'SELECT id, role FROM users')).map((u) => [u.id, u.role]));
+  const visible = rows.filter((r) => (!r.by || r.by === user.id || (user.role === 'admin' && roles[r.by] !== 'admin')) && !hide.has(r.to_num) && !hide.has(r.from_num));
+  return json({ recordings: visible, reps, canSeeAll: user.role === 'admin' });
 });
 
 async function recordingFor(env, user, id) {
   const a = await first(env, 'SELECT id, by, rec_sid FROM activities WHERE id = ?', id);
-  if (!a?.rec_sid || (user.role !== 'admin' && a.by !== user.id)) throw new HttpError('Recording not found.', 404);
+  if (!a?.rec_sid || !(await import('./lines.js').then((m) => m.canSeeCallBy(env, user, a.by)))) throw new HttpError('Recording not found.', 404);
   return a;
 }
 

@@ -36,9 +36,11 @@ route('POST', '/api/twilio/vm-recording', async ({ env, request, url }) => {
   const secs = Number(p.RecordingDuration || 0);
   if (!a || secs < 2 || !p.RecordingSid) return new Response(null, { status: 204 });
   await run(env, "UPDATE activities SET status = 'voicemail', vm_sid = ?, vm_secs = ?, seen_at = NULL WHERE id = ?", p.RecordingSid, secs, a.id);
-  await alertTeam(env, a, secs, url.origin).catch((e) => console.error('voicemail alert', e));
+  // A voicemail on someone's personal line goes only to them.
+  const lineOwner = await import('./lines.js').then((m) => m.ownerOfLine(env, a.to_num)).catch(() => null);
+  if (!lineOwner) await alertTeam(env, a, secs, url.origin).catch((e) => console.error('voicemail alert', e));
   const lead = a.lead_id ? await first(env, 'SELECT business FROM leads WHERE id = ?', a.lead_id) : null;
-  await notify(env, { to: 'staff', kind: 'voicemail', title: `Voicemail: ${lead?.business || pretty(a.from_num) || 'Unknown caller'}`, body: `${secs} seconds. Tap to listen and call back.`, url: '/#/phone/calls', tag: `call-${a.id}`, actions: [{ text: 'Mark heard', action_id: 'call_heard', value: a.id }] }).catch((e) => console.error('notify', e));
+  await notify(env, { to: lineOwner ? [lineOwner.id] : 'staff', kind: 'voicemail', title: `Voicemail: ${lead?.business || pretty(a.from_num) || 'Unknown caller'}`, body: `${secs} seconds. Tap to listen and call back.`, url: '/#/phone/calls', tag: `call-${a.id}`, actions: [{ text: 'Mark heard', action_id: 'call_heard', value: a.id }] }).catch((e) => console.error('notify', e));
   return new Response(null, { status: 204 });
 }, { public: true });
 
@@ -74,6 +76,8 @@ route('GET', '/api/calls/inbound', async ({ env, user, url }) => {
     FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
     WHERE a.type = 'call' AND a.status IN ('inbound','inbound_answered','missed','voicemail') AND a.at > ?${extra} ORDER BY a.at DESC LIMIT 200`, now() - 60 * 864e5);
   const s = await getSettings(env);
+  const hide = await import('./lines.js').then((m) => m.hiddenLines(env, user));
+  rows.splice(0, rows.length, ...rows.filter((r) => !hide.has(r.to_num)));
   return json({ calls: rows.map(callOut), unseen: rows.filter((r) => ['missed', 'voicemail'].includes(r.status) && !r.seen_at).length,
     greeting: await greeting(env), custom: Boolean((s.vm_greeting || '').trim()), alertTo: s.vm_alert_to || '' });
 });
@@ -93,8 +97,9 @@ route('POST', '/api/calls/inbound/seen-all', async ({ env, user }) => {
 
 route('GET', '/api/voicemail/:id/audio', async ({ env, user, params, request }) => {
   requireStaff(user);
-  const a = await first(env, 'SELECT id, vm_sid FROM activities WHERE id = ?', params.id);
+  const a = await first(env, 'SELECT id, vm_sid, to_num FROM activities WHERE id = ?', params.id);
   if (!a?.vm_sid) throw new HttpError('No voicemail on this call.', 404);
+  if ((await import('./lines.js').then((m) => m.hiddenLines(env, user))).has(a.to_num)) throw new HttpError('No voicemail on this call.', 404);
   const headers = { Authorization: twAuth(env) };
   const range = request.headers.get('range');
   if (range) headers.Range = range;

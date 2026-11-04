@@ -255,9 +255,18 @@ route('POST', '/api/leads/import', async ({ env, user, body }) => {
     const cols = Object.keys(l);
     items.push([`INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...cols.map((k) => l[k])]);
   }
+  // Free scrub before anything is called: bad and toll free numbers never reach the queue. Research and grading run in the background.
+  const { scrubReason } = await import('./autoresearch.js');
+  let scrubbed = 0;
+  for (const it of items) {
+    const cols = it[0].match(/\(([^)]*)\)/)[1].split(', ');
+    const lead = Object.fromEntries(cols.map((c, i) => [c, it[i + 1]]));
+    const why = lead.phone_digits ? scrubReason(lead, null) : null;
+    if (why) { scrubbed++; const set = { scrub: why, stage: 'lost', next_action: `Scrubbed: ${why}` }; for (const [k, v] of Object.entries(set)) { const i = cols.indexOf(k); if (i >= 0) it[i + 1] = v; else { cols.push(k); it.push(v); } } it[0] = `INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`; }
+  }
   for (let i = 0; i < items.length; i += 100) await batch(env, items.slice(i, i + 100));
   const total = Object.values(skipped).reduce((a, b) => a + b, 0);
-  return json({ imported: items.length, skipped: total, skippedBy: skipped });
+  return json({ imported: items.length, skipped: total, skippedBy: skipped, scrubbed });
 });
 
 // Duplicate groups among leads already in the Hub.
@@ -376,7 +385,10 @@ route('POST', '/api/leads/:id/outcome', async ({ env, user, params, body }) => {
   const b = await body();
   const callbackAt = b.callbackAt ? Number(new Date(b.callbackAt)) || null : null;
   await recordOutcome(env, l, { dispo: b.dispo || b.outcome, note: text(b.note, 2000), callbackAt, by: user.id });
-  return json({ lead: seeAppt(decorate(await leadOr404(env, l.id)), user) });
+  // Booked with a time: it lands on the booker's own Google Calendar with a Meet link (the Hub keeps it either way).
+  let calendar = null;
+  if (callbackAt) calendar = await import('./appointments.js').then((m) => m.bookOnCalendar(env, user.id, l.id)).catch((e) => ({ error: e.message }));
+  return json({ lead: seeAppt(decorate(await leadOr404(env, l.id)), user), calendar });
 });
 
 route('POST', '/api/leads/:id/note', async ({ env, user, params, body }) => {
@@ -432,7 +444,7 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const rows = await all(env, `SELECT * FROM leads WHERE dnc = 0 AND stage IN (${CALLABLE.map(() => '?').join(',')})
     AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...CALLABLE, t);
   const priority = { callback: 0, audit_requested: 1, no_show: 2, follow_up: 3, new: 4, attempting: 5, not_now: 6 };
-  const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
+  const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
   const minScore = Number(url.searchParams.get('minScore')) || 0;
   const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
   const ready = rows
@@ -440,14 +452,24 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
     .map((l) => seeAppt(decorate(l), user))
     .filter((l) => (!f.tz || l.tz_short === f.tz) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())
       && has(`${l.industry} ${l.category}`, f.industry) && has(l.tags, f.tag) && has(l.city, f.city) && (l.score || 0) >= minScore)
+    .filter((l) => !f.tier || tierOf(l) === f.tier)
     .sort((a, b) => (priority[a.stage] ?? 9) - (priority[b.stage] ?? 9) || (b.score || 0) - (a.score || 0) || (a.next_action_at || 0) - (b.next_action_at || 0));
   const now_ = ready.filter((l) => l.callable_now);
+  // Sub queues by lead quality, counted on everything callable now (ignores the tier filter so the tabs always show their size).
+  const tiers = { hot: 0, good: 0, maybe: 0, low: 0, fresh: 0 };
+  for (const l of rows) { if (!(l.last_call_at && t - l.last_call_at < 3 * 3600e3)) { const d = decorate(l); if (d.callable_now) tiers[tierOf(d)]++; } }
   const later = ready.length - now_.length;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const stats = await first(env, `SELECT COUNT(*) AS dials, SUM(outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(outcome = 'booked') AS booked
     FROM activities WHERE type = 'call' AND by = ? AND at >= ?`, user.id, today.getTime());
-  return json({ queue: now_.slice(0, Number(url.searchParams.get('limit')) || 50), waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0 } });
+  return json({ queue: now_.slice(0, Number(url.searchParams.get('limit')) || 50), waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0 }, tiers });
 });
+// Quality tiers: callbacks and booked follow ups always count as hot; not researched yet is its own queue.
+export function tierOf(l) {
+  if (['callback', 'audit_requested', 'no_show'].includes(l.stage)) return 'hot';
+  if (!l.intel_at && !l.grade) return 'fresh';
+  return { A: 'hot', B: 'good', C: 'maybe', D: 'low' }[l.grade] || (l.intel_at ? 'maybe' : 'fresh');
+}
 
 // Website form (public). Add the Hub's /api/public/lead as the form action on rightwaygrowth.com.
 const ALLOWED_ORIGINS = ['https://rightwaygrowth.com', 'https://www.rightwaygrowth.com'];
