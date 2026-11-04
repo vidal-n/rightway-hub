@@ -98,7 +98,7 @@ function render(d, note, tok) {
   $('#rp').innerHTML = `
     <div class="rp-head"><span><img class="logo-light" src="/brand/rightway-logo-light.svg" alt="Rightway Growth"><img class="logo-dark" src="/brand/rightway-logo-dark.svg" alt="Rightway Growth"></span>
       <button class="btn btn-ghost btn-sm no-print" id="rpprint">Save as PDF</button></div>
-    <section class="rp-hero"><p class="eyebrow">Monthly report</p><h1>${esc(d.monthLabel)}</h1><p>${esc(d.client.name)}${d.client.planName ? `, ${esc(d.client.planName)} plan` : ''}</p></section>
+    <section class="rp-hero"><p class="eyebrow">Monthly report</p><h1>${esc(d.monthLabel)}</h1><p>${esc(d.client.name)}</p></section>
     ${note ? `<section class="rp-note"><b>From your Rightway team</b><br>${esc(note)}</section>` : ''}
     <section class="rp-kpis">
       <div class="rp-kpi"><b>${k0 ? `${k0.now.top10Pct ?? 0}%` : '-'}</b><span>${k0 ? `first page (top 10) coverage for "${esc(k0.keyword)}"` : 'no map scan yet'}</span>${k0?.start ? change(k0.now.top10Pct, k0.start.top10Pct, { unit: ' pts since you started', words: ['up', 'down'] }) : ''}</div>

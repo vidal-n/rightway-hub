@@ -1,8 +1,8 @@
 // Presentation mode: a tailored deck for one lead, built from the research, with a presenter view in a second window.
 // Open /present.html#<leadId>. Presenter view: /present.html?presenter=1#<leadId>. Keys: arrows or space, F fullscreen, P presenter view.
-import { findProblems, recommendPlan, industryInfo, rankText, buildScript, roi, top10Of } from './leadintel.js';
+import { findProblems, recommendPlan, industryInfo, rankText, buildScript, roi, top10Of, quoteFor } from './leadintel.js';
 import { ninetyDayPlan, reviewTarget } from './fulfill.js';
-import { INCLUDES, STANDARD_TERMS, PLAN_INFO } from './plancopy.js';
+import { PLAN_INFO, SERVICE_LIST } from './plancopy.js';
 import { qrSvg } from './qr.js';
 
 const root = document.getElementById('root');
@@ -19,7 +19,7 @@ async function api(path, opts = {}) {
   return data;
 }
 
-const state = { i: 0, plan: 'growth', ticket: 500, jobs: 4 };
+const state = { i: 0, plan: 'growth', ticket: 500, jobs: 4, quote: null };
 let D = null;
 
 function stars(r) { if (r == null) return ''; const n = Math.round(r); return `<span class="stars">${'★'.repeat(n)}${'☆'.repeat(5 - n)}</span> ${r.toFixed(1)}`; }
@@ -35,10 +35,11 @@ function slides() {
   const kw = intel?.keyword || info.keyword || 'your service';
   const plan = state.plan;
   const P = PLAN_INFO[plan];
-  const script = buildScript(lead, intel, { rep: D.rep, plan, ticket: state.ticket }, D.custom);
+  const Q = state.quote;
+  const script = buildScript(lead, intel, { rep: D.rep, plan, ticket: state.ticket, quote: Q }, D.custom);
   const v = script.vars;
   const first = (lead.contact_name || '').split(' ')[0];
-  const r = roi({ ticket: state.ticket, jobs: state.jobs, plan });
+  const r = roi({ ticket: state.ticket, jobs: state.jobs, plan, price: Q.monthly });
   const rt = reviewTarget(intel);
   const nd = ninetyDayPlan(plan, intel, lead);
   const out = [];
@@ -114,13 +115,16 @@ function slides() {
       <label>Extra jobs a month from Google<input id="in-jobs" type="number" min="0" step="1" value="${state.jobs}"></label></div>
       <div class="out"><div class="num" id="out-month">${money(r.monthly)}</div><div class="label">extra revenue a month</div>
         <div class="num" style="font-size:64px;margin-top:26px" id="out-year">${money(r.yearly)}</div><div class="label">a year</div>
-        <div class="label" style="margin-top:26px;font-size:22px;color:#fff" id="out-mult">${r.multiple >= 1 ? `${r.multiple.toFixed(1)}x the ${P.name} plan` : `Pays for itself at ${r.breakeven} jobs a month`}</div></div></div>
+        <div class="label" style="margin-top:26px;font-size:22px;color:#fff" id="out-mult">${r.multiple >= 1 ? `${r.multiple.toFixed(1)}x your monthly investment` : `Pays for itself at ${r.breakeven} jobs a month`}</div></div></div>
     <p class="note">Your numbers, not a promise. Fill these in together.</p>`,
-  `Let them give the numbers. Type their answers in:\n• "What's a typical job worth to you?" (starting guess ${money(info.ticket)} for ${info.label.toLowerCase()})\n• "If you got a few more calls a week, how many would you close?"\n\nSay: "At ${money(state.ticket)} a job, ${r.breakeven} extra job${r.breakeven === 1 ? '' : 's'} a month covers the whole plan. Everything after that is yours."\nThen stop and let it sink in.`);
+  `Let them give the numbers. Type their answers in:\n• "What's a typical job worth to you?" (starting guess ${money(info.ticket)} for ${info.label.toLowerCase()})\n• "If you got a few more calls a week, how many would you close?"\n\nSay: "At ${money(state.ticket)} a job, ${r.breakeven} extra job${r.breakeven === 1 ? '' : 's'} a month covers the whole thing. Everything after that is yours."\nThen stop and let it sink in.`);
 
-  add('plan', 'The plan', `<p class="kicker">The plan</p><div class="planhead"><h2 style="margin:0">${esc(P.name)}</h2><span class="pill">Recommended for ${esc(lead.business)}</span></div>
-    <ul class="includes anim">${INCLUDES[plan].map((x) => `<li>${esc(x)}</li>`).join('')}<li>Tracking ${P.keywords} keywords</li><li>Your own Rightway app: rankings, every task we do, review requests</li></ul>`,
-  `${say('c_program')}\n\n${say('c_process')}`);
+  const t10 = intel?.grid ? top10Of(intel.grid) : null;
+  add('plan', 'What gets you results', `<p class="kicker">What gets you results</p><h2>What ${esc(lead.business)} needs to reach the first page</h2>
+    ${intel?.grid ? `<p class="lead" style="margin:-6px 0 22px">Today: first page (top 10) in ${t10} of ${intel.grid.points} spots around you. Goal: the first page across ${esc(city || 'your area')}, then climb.</p>` : ''}
+    <div class="svcs anim${Q.services.length > 6 ? ' many' : ''}">${Q.services.map((x) => `<div class="svc" data-svc="${esc(x.id)}"><button class="svc-x" data-drop="${esc(x.id)}" title="Remove" aria-label="Remove ${esc(x.name)}">×</button><b>${esc(x.name)}</b><span>${esc(x.why || x.what)}</span></div>`).join('')}</div>
+    ${SERVICE_LIST.some((x) => !Q.services.find((y) => y.id === x.id)) ? `<div class="svc-add" style="position:absolute;bottom:96px;right:116px"><select id="svc-add"><option value="">Add a service</option>${SERVICE_LIST.filter((x) => !Q.services.find((y) => y.id === x.id)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div>` : ''}`,
+  `Only what they need. Walk each one: what it is, and why it gets them onto the first page (top 10) in more of their area. Rank also depends on distance and relevance, so never promise a spot.\n\n${say('c_program')}\n\n${say('c_process')}\n\n(Hover a service and press × to drop it, or add one from the list. The price slide and the work order use this list.)`);
 
   add('days', 'First 90 days', `<p class="kicker">First 90 days</p><h2>What happens after you say yes</h2>
     <div class="months anim">${nd.months.map((m) => `<div class="month"><h3>${esc(m.title)}</h3><ul>${m.items.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>
@@ -146,15 +150,19 @@ function slides() {
         <li><b>A monthly results meeting</b><span>We go over the numbers and the next month's plan.</span></li></ul></div>`,
   `This answers "how do I know you will do the work?" before they ask it.\n\n${say('c_story')}\n\nThen the trial close:\n${say('c_trial')}`);
 
-  add('price', 'Investment', `<p class="kicker">Investment</p><h2>Pick the plan that fits</h2>
-    <div class="plans anim">${Object.entries(PLAN_INFO).reverse().map(([k, x]) => `<div class="plan${k === plan ? ' rec' : ''}" data-plan="${k}">${k === plan ? '<span class="tag">Recommended</span>' : ''}<div class="nm">${esc(x.name)}</div>
-      <div class="pr">${money(x.price)}<small>/mo</small></div><div class="su">${money(x.setup)} one time buildout</div><ul>${INCLUDES[k].slice(0, 4).map((i) => `<li>${esc(i)}</li>`).join('')}</ul></div>`).join('')}</div>
+  add('price', 'Investment', `<p class="kicker">Your investment</p><h2>Built for ${esc(lead.business)}, not a package</h2>
+    <div class="invest anim">
+      <div class="box"><div class="label">One time buildout</div><div class="num">$<input id="q-setup" class="qin" inputmode="decimal" value="${esc(Q.setup)}"></div></div>
+      <div class="box"><div class="label">Monthly</div><div class="num">$<input id="q-monthly" class="qin" inputmode="decimal" value="${esc(Q.monthly)}"></div></div>
+      <div class="box dark"><div class="label">Due today</div><div class="num" id="q-today">${money(Q.setup + Q.monthly)}</div><div class="label">next payment in 30 days</div></div>
+    </div>
+    <p class="note" style="margin-top:22px">Includes: ${esc(Q.services.map((x) => x.name).join(', '))}.</p>
     <div class="terms"><span>3 month minimum, then month to month</span><span>30 days notice to cancel after that</span><span>You own your profile and accounts</span><span>No ranking guarantees, every task shown in your app</span></div>`,
-  `Drop close. Start at Market Leader, then drop to the plan their answers justify (use the Plan picker below to switch the recommended card).\n\n${say('c_price')}\n\n${say('c_close')}\n\nIf price comes up: ${script.objections.find((o) => /afford/i.test(o.q))?.a || ''}\n\nIf it still doesn't fit: ${script.objections.find((o) => /\\(drop\\)/.test(o.q))?.a || ''}`);
+  `Drop close. Set the price from discovery (click the amounts to change them; they save to the lead and the work order uses them).\n\n${say('c_price')}\n\n${say('c_close')}\n\nIf price comes up: ${script.objections.find((o) => /afford/i.test(o.q))?.a || ''}\n\nIf it still doesn't fit: ${script.objections.find((o) => /\\(drop\\)/.test(o.q))?.a || ''}`);
 
   add('next', 'Next steps', `<div class="cols c2" style="align-items:center;gap:64px"><div class="anim"><p class="kicker">Next steps</p><h2 style="color:#fff">Start this week</h2>
       <div class="steps"><div class="step"><i>1</i>Sign the one page work order</div><div class="step"><i>2</i>Secure payment through Stripe</div><div class="step"><i>3</i>Book your onboarding call</div><div class="step"><i>4</i>Baseline map saved, work starts</div></div>
-      <div style="margin-top:34px;display:flex;gap:14px"><button class="btn" id="send-wo">Send the work order (${esc(P.name)})</button></div></div>
+      <div style="margin-top:34px;display:flex;gap:14px"><button class="btn" id="send-wo">Send the work order</button></div></div>
     <div class="signbox" id="signbox"><div style="font:600 22px var(--display)">Scan to review and sign</div><div style="width:300px;height:300px;display:grid;place-items:center;color:#9AA8A2;text-align:center">Press "Send the work order" to make their link</div></div></div>`,
   `${say('c_post')}\n\nPress the button, have them scan the code or send the link.\n\n${say('c_onboard')}`, true);
 
@@ -174,7 +182,6 @@ function renderDeck() {
   state.i = Math.min(state.i, list.length - 1);
   root.innerHTML = `<div class="progress" id="prog"></div><div class="viewport"><div class="stage">${list.map((s, n) => `<section class="slide${s.dark ? ' dark' : ''}" data-n="${n}">${s.html}${foot(n + 1, list.length, s.dark)}</section>`).join('')}</div></div>
     <div class="bar" id="bar"><button id="prev" aria-label="Previous">←</button><span class="cnt" id="cnt"></span><button id="next" aria-label="Next">→</button>
-      <select id="planSel" aria-label="Plan">${Object.entries(PLAN_INFO).map(([k, x]) => `<option value="${k}"${k === state.plan ? ' selected' : ''}>${x.name}</option>`).join('')}</select>
       <button id="pv">Presenter view</button><button id="fs">Full screen</button></div>`;
   stageScale();
   wireDeck();
@@ -237,16 +244,26 @@ function go(n, broadcast = true) {
 }
 
 function updateCalc() {
-  const r = roi({ ticket: state.ticket, jobs: state.jobs, plan: state.plan });
+  const r = roi({ ticket: state.ticket, jobs: state.jobs, plan: state.plan, price: state.quote.monthly });
   const set = (sel, t) => { const el = document.getElementById(sel); if (el) el.textContent = t; };
   set('out-month', money(r.monthly)); set('out-year', money(r.yearly));
-  set('out-mult', r.multiple >= 1 ? `${r.multiple.toFixed(1)}x the ${PLAN_INFO[state.plan].name} plan` : `Pays for itself at ${r.breakeven} jobs a month`);
+  set('out-mult', r.multiple >= 1 ? `${r.multiple.toFixed(1)}x your monthly investment` : `Pays for itself at ${r.breakeven} jobs a month`);
 }
+
+// The quote lives on the lead, so changes made in the meeting carry into the work order and the Hub.
+function saveQuote() {
+  const q = state.quote;
+  return api(`/api/leads/${encodeURIComponent(id)}/quote`, { method: 'PUT', body: { plan: q.plan, setup: q.setup, monthly: q.monthly, services: q.services.map((x) => x.id) } }).catch(() => null);
+}
+let saveTimer = 0;
+const saveSoon = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveQuote, 700); };
+const allServices = () => quoteFor(D.lead, D.intel, { plan: 'leader', services: SERVICE_LIST.map((x) => x.id) }).services;
 
 async function sendWorkOrder(btn) {
   btn.disabled = true; btn.textContent = 'Creating...';
   try {
-    const r = await api(`/api/leads/${encodeURIComponent(id)}/work-order`, { method: 'POST', body: { plan: state.plan } });
+    await saveQuote();
+    const r = await api(`/api/leads/${encodeURIComponent(id)}/work-order`, { method: 'POST', body: { kind: 'seo', plan: state.plan, setup: state.quote.setup, monthly: state.quote.monthly } });
     const box = document.getElementById('signbox');
     const first = (D.lead.contact_name || '').split(' ')[0];
     const msg = `Hi ${first}, here is your Rightway Growth agreement. Review it, sign, and you can pay right after: ${r.url}`;
@@ -264,11 +281,17 @@ function wireDeck() {
   document.getElementById('next').onclick = () => go(state.i + 1);
   document.getElementById('fs').onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.());
   document.getElementById('pv').onclick = () => window.open(`/present.html?presenter=1#${encodeURIComponent(id)}`, 'rw-presenter', 'width=1100,height=760');
-  document.getElementById('planSel').onchange = (e) => { state.plan = e.target.value; renderDeck(); chan?.postMessage({ type: 'slide', i: state.i, plan: state.plan, ticket: state.ticket, jobs: state.jobs }); };
+  document.querySelectorAll('[data-drop]').forEach((b) => { b.onclick = () => { state.quote.services = state.quote.services.filter((x) => x.id !== b.dataset.drop); saveSoon(); renderDeck(); }; });
+  const add = document.getElementById('svc-add');
+  if (add) add.onchange = () => { const x = allServices().find((y) => y.id === add.value); if (x) { state.quote.services.push(x); saveSoon(); renderDeck(); } };
+  const qs = document.getElementById('q-setup'), qm = document.getElementById('q-monthly');
+  const money2 = (v) => Math.max(0, Number(String(v).replace(/[$,\s]/g, '')) || 0);
+  const qUpdate = () => { state.quote.setup = money2(qs.value); state.quote.monthly = money2(qm.value); const el = document.getElementById('q-today'); if (el) el.textContent = money(state.quote.setup + state.quote.monthly); saveSoon(); };
+  if (qs) qs.oninput = qUpdate;
+  if (qm) qm.oninput = qUpdate;
   const t = document.getElementById('in-ticket'), j = document.getElementById('in-jobs');
   if (t) t.oninput = () => { state.ticket = Number(t.value) || 0; updateCalc(); };
   if (j) j.oninput = () => { state.jobs = Number(j.value) || 0; updateCalc(); };
-  document.querySelectorAll('.plan[data-plan]').forEach((el) => { el.style.cursor = 'pointer'; el.onclick = () => { state.plan = el.dataset.plan; renderDeck(); }; });
   const wo = document.getElementById('send-wo'); if (wo) wo.onclick = () => sendWorkOrder(wo);
   const rp = document.getElementById('greplay'); if (rp) rp.onclick = () => playGrid();
 }
@@ -303,7 +326,7 @@ function startPresenter() {
     list = slides();
     const s = list[state.i] || list[0];
     const nx = list[state.i + 1];
-    const script = buildScript(D.lead, D.intel, { rep: D.rep, plan: state.plan, ticket: state.ticket }, D.custom);
+    const script = buildScript(D.lead, D.intel, { rep: D.rep, plan: state.plan, ticket: state.ticket, quote: state.quote }, D.custom);
     root.innerHTML = `<div class="pv"><div><h1>${esc(s.title)}</h1><div class="meta">Slide ${state.i + 1} of ${list.length}${nx ? ` · Next: ${esc(nx.title)}` : ''} · ${esc(D.lead.business)}</div>
         <div class="notes">${esc(s.notes)}</div>
         <div class="ctrls" style="margin-top:16px"><button class="ghost" id="pp">← Back</button><button id="pn">Next →</button></div></div>
@@ -327,7 +350,8 @@ async function boot() {
     const [d, me, s] = await Promise.all([api(`/api/leads/${encodeURIComponent(id)}`), api('/api/me'), api('/api/settings').catch(() => ({}))]);
     D = { lead: d.lead, intel: d.intel, rep: (me.user?.name || '').split(' ')[0] || '', custom: { script: s.script || {}, objections: s.objections || null, number: s.number || '' } };
     const info = industryInfo(D.lead.industry, D.intel?.listing?.category || D.lead.category);
-    state.plan = D.lead.plan || recommendPlan(D.lead, D.intel).plan;
+    state.quote = quoteFor(D.lead, D.intel, D.lead.quote);
+    state.plan = state.quote.plan;
     state.ticket = info.ticket;
     document.title = `${D.lead.business}: growth plan`;
     if (presenter) startPresenter(); else startDeck();

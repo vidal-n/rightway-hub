@@ -318,7 +318,7 @@ route('GET', '/api/leads/:id', async ({ env, user, params }) => {
   requireStaff(user);
   const l = await leadOr404(env, params.id);
   const activities = await all(env, 'SELECT * FROM activities WHERE lead_id = ? ORDER BY at DESC LIMIT 200', l.id);
-  const orders = await all(env, 'SELECT id, token, plan, status, signed_name, signed_at, paid_at, created_at FROM work_orders WHERE lead_id = ? ORDER BY created_at DESC', l.id);
+  const orders = await all(env, 'SELECT id, token, plan, kind, setup_cents, monthly_cents, status, signed_name, signed_at, paid_at, created_at FROM work_orders WHERE lead_id = ? ORDER BY created_at DESC', l.id);
   let intel = null;
   try { intel = l.intel ? JSON.parse(l.intel) : null; } catch { intel = null; }
   return json({ lead: seeAppt(decorate(l), user), intel, activities, orders });

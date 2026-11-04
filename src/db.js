@@ -153,7 +153,7 @@ const ADD_COLUMNS = [
   ['leads', 'intel TEXT'], ['leads', 'intel_at INTEGER'], ['leads', 'score INTEGER'], ['leads', 'grade TEXT'], ['leads', 'rating REAL'],
   ['leads', 'reviews INTEGER'], ['leads', 'category TEXT'], ['leads', 'map_rank INTEGER'], ['leads', 'problems INTEGER'], ['leads', 'address TEXT'],
   ['leads', 'zip TEXT'], ['leads', 'tags TEXT'], ['leads', 'meet_at INTEGER'], ['leads', 'meet_link TEXT'], ['leads', 'gcal_event_id TEXT'],
-  ['leads', 'locations INTEGER'], ['leads', 'meet_by TEXT'],
+  ['leads', 'locations INTEGER'], ['leads', 'meet_by TEXT'], ['leads', 'quote TEXT'], ['oauth_states', 'apps TEXT'], ['work_orders', 'kind TEXT'], ['work_orders', 'signed_font TEXT'], ['work_orders', 'initials TEXT'], ['work_orders', 'initials_font TEXT'],
   ['clients', 'baseline TEXT'], ['clients', 'wp_url TEXT'], ['clients', 'parent_id TEXT'], ['clients', 'wp_user TEXT'], ['clients', 'wp_pass TEXT'], ['clients', 'intake TEXT'], ['clients', 'intake_at INTEGER'], ['clients', 'logo_key TEXT'],
   ['users', 'google_token TEXT'], ['users', 'google_email TEXT'],
   ['leads', 'sms_stop INTEGER NOT NULL DEFAULT 0'], ['clients', 'sample INTEGER NOT NULL DEFAULT 0'],

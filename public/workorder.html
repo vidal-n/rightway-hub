@@ -20,20 +20,23 @@
   </style>
 </head>
 <body>
-  <main><div class="bar"><label>Setup $<input id="su" inputmode="decimal" placeholder="blank"></label><label>Monthly $<input id="mo" inputmode="decimal" placeholder="blank"></label><button onclick="print()">Print or save as PDF</button></div><div id="doc"></div></main>
+  <main><div class="bar"><label><select id="kind" style="padding:8px 10px;border:1px solid #DCE6E1;border-radius:10px;font:inherit"><option value="seo">Local marketing agreement</option><option value="website">Website agreement</option></select></label><label><span id="sulabel">Buildout</span> $<input id="su" inputmode="decimal" placeholder="blank"></label><label>Monthly $<input id="mo" inputmode="decimal" placeholder="blank"></label><textarea id="scope" rows="3" placeholder="Website: what it includes, one item per line" style="display:none;width:100%;padding:8px 10px;border:1px solid #DCE6E1;border-radius:10px;font:inherit"></textarea><button onclick="print()">Print or save as PDF</button></div><div id="doc"></div></main>
   <script type="module">
-    // Printable copy of the one Rightway work order. Leave the amounts blank, or fill them in (also ?setup=449&monthly=449).
-    import { agreementSections, agreementHtml, AGREEMENT_CSS } from '/js/agreement.js';
+    // Printable copy of the Rightway work orders (local marketing or website). Leave the amounts blank, or fill them in (also ?kind=website&setup=1500&monthly=49).
+    import { agreementSections, agreementHtml, AGREEMENT_CSS, TITLES } from '/js/agreement.js';
     document.head.insertAdjacentHTML('beforeend', `<style>${AGREEMENT_CSS}</style>`);
     const q = new URLSearchParams(location.search);
-    const su = document.getElementById('su'), mo = document.getElementById('mo');
+    const su = document.getElementById('su'), mo = document.getElementById('mo'), kind = document.getElementById('kind'), scope = document.getElementById('scope');
+    kind.value = q.get('kind') === 'website' ? 'website' : 'seo';
     su.value = q.get('setup') || ''; mo.value = q.get('monthly') || '';
     const cents = (v) => (String(v).trim() === '' || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 100));
     const draw = () => {
-      const setupCents = cents(su.value), monthlyCents = cents(mo.value);
-      document.getElementById('doc').innerHTML = agreementHtml({ sections: agreementSections({ setupCents, monthlyCents }), logo: '<img src="/brand/rightway-logo-light.svg" alt="Rightway Growth" width="185" height="30">' });
+      const setupCents = cents(su.value), monthlyCents = cents(mo.value), k = kind.value;
+      scope.style.display = k === 'website' ? 'block' : 'none';
+      document.getElementById('sulabel').textContent = k === 'website' ? 'Build fee' : 'Buildout';
+      document.getElementById('doc').innerHTML = agreementHtml({ title: TITLES[k], sections: agreementSections({ kind: k, setupCents, monthlyCents, scope: scope.value }), logo: '<img src="/brand/rightway-logo-light.svg" alt="Rightway Growth" width="185" height="30">' });
     };
-    su.addEventListener('input', draw); mo.addEventListener('input', draw);
+    [su, mo, scope].forEach((el) => el.addEventListener('input', draw)); kind.addEventListener('change', draw);
     draw();
   </script>
 </body>

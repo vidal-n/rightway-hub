@@ -49,13 +49,24 @@ export async function googlePage(app, user) {
   view.innerHTML = `${tabs}
     <div class="page-head"><div><p class="eyebrow">Integrations</p><h1>Google</h1></div>
       ${g.ready && g.connected ? `<div class="row"><span class="small muted">Signed in as ${esc(g.email || 'Google')}</span>${APPS.some((a) => !a.base && !on.has(a.k)) ? `<a class="btn btn-primary btn-sm" href="${esc(connectUrl(APPS.filter((a) => !a.base).map((a) => a.k)))}">Turn on all</a>` : ''}</div>` : ''}</div>
-    ${!g.ready ? `<div class="card" style="margin-bottom:18px"><h2>Connect Google first</h2><p>Add <b>GOOGLE_CLIENT_ID</b> and <b>GOOGLE_CLIENT_SECRET</b> in Cloudflare, Build, Variables and secrets, then rebuild. In Google Cloud, turn on these APIs for the project: Google Calendar, Google Sheets, Google Drive, Search Console, Google Analytics Data, Google Analytics Admin, and Google Ads.</p></div>` : ''}
+    ${!g.ready ? `<div class="card" style="margin-bottom:18px"><h2>Connect Google first</h2><p>Add <b>GOOGLE_CLIENT_ID</b> and <b>GOOGLE_CLIENT_SECRET</b> in Cloudflare, Build, Variables and secrets, then rebuild. In Google Cloud, turn on these APIs for the project: Google Calendar, Gmail, Google Drive, Google Docs, Google Sheets, Search Console, Google Analytics Data, Google Analytics Admin, and Google Ads.</p></div>` : ''}
+    ${g.ready && g.connected ? `<div class="card" style="margin-bottom:18px"><div class="card-head"><div><h3 style="margin:0">Is everything working?</h3><p class="small muted" style="margin:4px 0 0">Tests each Google app you turned on and tells you exactly what to fix.</p></div><button class="btn btn-primary btn-sm" id="gcheck">Check connection</button></div><div id="gcheckout"></div></div>` : ''}
     <div class="gapps">${APPS.map(card).join('')}</div>
     <div class="card" style="margin-top:18px"><div class="card-head"><h3 style="margin:0">Google Business Profile</h3><span class="badge warn">Waiting on Google</span></div>
       <p class="small muted" style="margin:6px 0 0">Posting and reading reviews from the Hub needs Google to approve API access for Rightway. Until then, posts are copied and marked posted. Apply at the Business Profile APIs access form with your agency details.</p></div>
     <div class="card" style="margin-top:18px"><h3 style="margin:0 0 10px">Other Google tools</h3>
       <div class="row" style="gap:6px">${LINKS.map(([n, u]) => `<a class="btn btn-ghost btn-sm" href="${esc(u)}" target="_blank" rel="noopener">${esc(n)}</a>`).join('')}</div></div>
     <div id="gout"></div>`;
+  $('#gcheck', view)?.addEventListener('click', async (e) => {
+    busy(e.target, true);
+    const out = $('#gcheckout', view);
+    try {
+      const r = await api('/api/google/check');
+      out.innerHTML = `<p style="margin:12px 0 8px"><b>${esc(r.summary)}</b></p>${r.results.length ? `<ul class="list">${r.results.map((x) => `<li class="item"><span class="badge ${x.ok ? '' : x.ok === false ? 'bad' : 'gray'}">${x.ok ? 'Working' : x.ok === false ? 'Needs a fix' : 'Off'}</span>
+        <div><div class="item-title">${esc(x.label)}</div><div class="item-sub">${esc(x.reason)}${x.fix && x.ok !== true ? ` ${esc(x.fix)}` : ''}</div></div>
+        ${x.link ? `<a class="btn btn-ghost btn-sm" href="${esc(x.link)}" target="_blank" rel="noopener">Open in Google Cloud</a>` : '<span></span>'}</li>`).join('')}</ul>` : ''}`;
+    } catch (err) { out.innerHTML = `<p class="err-text">${esc(err.message)}</p>`; } finally { busy(e.target, false); }
+  });
   $$('[data-export]', view).forEach((b) => b.addEventListener('click', async () => {
     busy(b, true);
     try {

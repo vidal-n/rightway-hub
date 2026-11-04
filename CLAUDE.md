@@ -178,22 +178,32 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   "Google clarity call" (V's Apex style, rewritten for Rightway): opener as the analyst who ran the clarity check, screen share frame, 10 discovery
   questions written down for rebuttals, verify business and keywords, clarity scan with the block by block inconsistency (`spreadLine`), search
   together, slow down for why competitors rank, listing inconsistencies, V's story (worked inside agencies, built the opposite: visible work, monthly
-  map, month to month after 3 months), how it works, what we need from the client, trial close, drop close (Market Leader first, then the plan
-  discovery justifies, `price_fit`, `drop_offer`), work order and payment, onboarding booking and homework. Objections before price, after price and
+  map, month to month after 3 months), how it works, what we need from the client, trial close, drop close (anchor high, then only what
+  discovery justifies), work order and payment, onboarding booking and homework. No packages: the close reads the quote's services (`services_list`),
+  anchors at everything we offer (`price_anchor`), then the quoted buildout and monthly; `drop_offer` trims to the core services at the next lower price. Objections before price, after price and
   closes (fit/function/finance, think about it x4, can't afford x3, not today). Never claims a scan when no research ran (`opener_reason`, `scan_intro`,
-  `frame_scan`, `gk_reason`), never promises rankings. `SCRIPT_VERSION` (2): a script or objections saved in Settings for an older pitch are ignored
-  (settings `script_version`). Presentation notes pull the same script steps (`say()` in `public/js/present.js`); price slide lists plans high to low.
+  `frame_scan`, `gk_reason`), never promises rankings. `SCRIPT_VERSION` (3): a script or objections saved in Settings for an older pitch are ignored
+  (settings `script_version`). Presentation notes pull the same script steps (`say()` in `public/js/present.js`). The presentation shows no plans: "What gets you results"
+  lists the quote's services with why (top 10 tie in; hover × to drop one, Add a service), and "Your investment" shows the buildout, monthly and due
+  today as click-to-edit amounts that save to the lead; Send the work order uses them.
   Printable reading copy of the script is a Claude Doc (V prints it for calls).
-- Prices (Nov 2026): Starter $399 setup + $399/mo, Growth $449 + $449, Authority $499 + $499, Market Leader $599 + $599 (`src/plans.js` MONTHLY_CENTS,
-  SETUP_CENTS, also `PLAN_INFO` in `public/js/plancopy.js`, `PLAN_PRICE` in `public/hub/core.js`, `PRICES` in leadintel). Priced for a drop close.
-  `FIRST_CHARGE_CENTS` keeps the old first charge amounts so older links still match. Reduced Starter link removed; Stripe setup makes four links and
-  its price keys include the amount, so "replace" after a price change makes new Stripe prices.
-- One work order (built, `public/js/agreement.js`, pure): a single Rightway service agreement for every plan, based on the agreement V's colleague
-  shared, rebranded and fit to one Letter page (services may include list with website services, 3 month minimum then month to month with 30 days
-  notice, early termination owes the rest of the first 3 months, payment = setup + first month due at signing then monthly 30 days later, no guarantees,
-  client responsibilities, ownership, work start, liability cap, e-signature). Only the setup and monthly amounts change. `agreementSnapshot` is saved
-  in `work_orders.terms` when sent; `/sign.html` renders it (older orders keep the old plan layout); `/workorder.html` is a printable blank copy
-  (amount boxes, or `?setup=&monthly=`).
+- Pricing is per client (Nov 2026): plans are internal only (they set the monthly task load) and the client never sees a plan name. The rep picks
+  the services the client needs and sets the buildout and monthly from discovery. `SERVICE_LIST` in `public/js/plancopy.js` (client words, `min`
+  internal plan, `core`, `fixes` = problem keys); `servicesFor` and `quoteFor` in `public/js/leadintel.js`. Quote saved on `leads.quote` (JSON:
+  plan, setup, monthly in dollars, services) by `PUT /api/leads/:id/quote` (lead panel "Close the deal", and live from the presentation).
+  Usual internal prices: Starter $399 + $399, Growth $449 + $449, Authority $499 + $499, Market Leader $599 + $599 (`MONTHLY_CENTS`, `SETUP_CENTS`,
+  `PLAN_INFO`, `PLAN_PRICE`, leadintel `PRICES`); used as defaults and as the drop close anchor. `quoteLink` in `src/billing.js`: plan link when the
+  amounts match a plan's saved link, else makes a Stripe payment link for those amounts (cached in settings `stripe_quote_links`, metadata
+  `rw_plan`/`rw_kind`). Webhook takes the plan from metadata or the work order and MRR from the work order's monthly. Plan names were removed from
+  the client app, report and quarterly plan pages. Stripe setup still makes four plan links (price keys include the amount).
+- Work orders v2 (built, `public/js/agreement.js`, pure, `AGREEMENT_VERSION` 2): two kinds. `seo`: the one local marketing agreement for every client
+  (one column, one Letter page, services list says "Website recommendations", 3 month minimum then month to month, early termination owes the rest
+  of the first 3 months, buildout + first month due at signing). `website`: websites are a separate service with their own agreement (build fee due at
+  signing, optional monthly hosting and care, the project's scope lines, 2 revision rounds, ownership on full payment). Signature block: name and
+  business filled from the lead, signature and initials in a script font the client picks (`SIG_FONTS` from Google Fonts), date filled with today
+  (`work_orders.signed_font`, `initials`, `initials_font`, `kind`). `agreementSnapshot` is saved in `work_orders.terms`; `/sign.html` renders it;
+  `/workorder.html` is the printable blank (kind picker, amounts, scope). Website orders paid through Stripe mark the order paid and notify owners
+  but do not create an SEO client or tasks.
 - Appointments by role (built): `leads.meet_by` = who booked it (lead meeting route, or a Booked outcome with a time, which now also sets `meet_at`).
   Owners (admin) see every appointment; teammates only theirs (`canSeeAppt`, `apptScope` in `src/crm.js`: meet_by, or their own lead when meet_by is
   empty). Applied to the dashboard, dialer "Coming up", `/api/calendar/upcoming`, lead lists and lead details (others' meet time hidden). Calendar page:
@@ -206,6 +216,10 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
 - Booking page is "Book a consultation" (`/book.html`, default title "Book a free consultation", invite "Rightway Growth consultation"). The marketing
   site (rightwaygrowth.com) is not in this repo: V built it himself (was on Netlify). Its pricing comes off, website services go on, every call to
   action links to `/book.html` on the Hub.
+- Google connection check (built, `src/googlecheck.js`, Setup tab "Check connection"): one small read per app the person turned on, with `explain()`
+  turning Google's error into a reason and fix (API off in Google Cloud with the enable link, box not ticked, quota, Business Profile not approved,
+  connection expired after 7 days in Testing mode). The OAuth callback compares granted scopes with the apps asked for (`oauth_states.apps`,
+  `missingText`) and says which boxes were left unticked.
 - BrightLocal: not integrated. It has no free API (paid plans only), and the scan tool already does the Local Search Grid.
 - Citations in `public/js/fulfill.js` carry the sign up link, cost, why, lookup link, and hidden address support, with trade lists that apply only
   when certified.

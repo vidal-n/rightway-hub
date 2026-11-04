@@ -4,7 +4,7 @@ import { HttpError, json } from './util.js';
 import { SCRIPT_KEYS, SCRIPT_VERSION } from '../public/js/leadintel.js';
 import { all, first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin, requireClientAccess } from './auth.js';
-import { FIRST_CHARGE_CENTS, MONTHLY_CENTS } from './plans.js';
+import { FIRST_CHARGE_CENTS, MONTHLY_CENTS, SETUP_CENTS, PLANS } from './plans.js';
 import { convertLead, logActivity } from './crm.js';
 import { route } from './router.js';
 import { webhookSecret, storedWebhookSecret, readSetup } from './stripekeys.js';
@@ -54,6 +54,40 @@ export async function paymentLinkFor(env, plan, { leadId, email } = {}) {
   return u.toString();
 }
 
+// A payment link for any quote. Same amounts as a plan's saved link: that link. Otherwise one is made in Stripe (and reused for the
+// same amounts), with the internal plan in its metadata so the webhook knows the task load. No Stripe key: null.
+export async function quoteLink(env, { plan, setupCents, monthlyCents, kind = 'seo', leadId, email }, fetchImpl = fetch) {
+  const tag = (base) => {
+    const u = new URL(base);
+    if (leadId) u.searchParams.set('client_reference_id', leadId);
+    if (email) u.searchParams.set('prefilled_email', email);
+    return u.toString();
+  };
+  if (kind === 'seo' && PLANS[plan] && setupCents === SETUP_CENTS[plan] && monthlyCents === MONTHLY_CENTS[plan]) {
+    const link = await paymentLinkFor(env, plan, { leadId, email });
+    if (link) return link;
+  }
+  if (!env.STRIPE_SECRET_KEY || (!setupCents && !monthlyCents)) return null;
+  const s = await getSettings(env);
+  let saved = {};
+  try { saved = JSON.parse(s.stripe_quote_links || '{}'); } catch { saved = {}; }
+  const key = `${kind}:${plan || ''}:${setupCents}:${monthlyCents}`;
+  if (saved[key]) return tag(saved[key]);
+  const name = kind === 'website' ? 'Rightway Growth website' : 'Rightway Growth local marketing';
+  const product = await stripe(env, 'POST', '/products', { name, 'metadata[rw_kind]': kind }, fetchImpl);
+  const items = [];
+  if (monthlyCents) items.push((await stripe(env, 'POST', '/prices', { product: product.id, currency: 'usd', unit_amount: String(monthlyCents), 'recurring[interval]': 'month', nickname: `${name} monthly` }, fetchImpl)).id);
+  if (setupCents) items.push((await stripe(env, 'POST', '/prices', { product: product.id, currency: 'usd', unit_amount: String(setupCents), nickname: kind === 'website' ? 'Website build fee' : 'Buildout fee' }, fetchImpl)).id);
+  const params = { 'metadata[rw_kind]': kind, ...(plan ? { 'metadata[rw_plan]': plan } : {}), ...(monthlyCents && plan ? { 'subscription_data[metadata][rw_plan]': plan } : {}) };
+  items.forEach((id, i) => { params[`line_items[${i}][price]`] = id; params[`line_items[${i}][quantity]`] = '1'; });
+  const link = await stripe(env, 'POST', '/payment_links', params, fetchImpl);
+  saved[key] = link.url;
+  const keys = Object.keys(saved);
+  if (keys.length > 60) delete saved[keys[0]];
+  await setSetting(env, 'stripe_quote_links', JSON.stringify(saved));
+  return tag(link.url);
+}
+
 function subMonthlyCents(sub) {
   return (sub.items?.data || []).reduce((s, it) => {
     const p = it.price || it.plan || {};
@@ -71,11 +105,22 @@ export async function handleStripeEvent(env, event) {
     const email = (o.customer_details?.email || o.customer_email || '').toLowerCase();
     let lead = o.client_reference_id ? await first(env, 'SELECT * FROM leads WHERE id = ?', o.client_reference_id) : null;
     if (!lead && email) lead = await first(env, 'SELECT * FROM leads WHERE lower(email) = ? ORDER BY updated_at DESC LIMIT 1', email);
-    const plan = FIRST_CHARGE_CENTS[o.amount_total] || lead?.plan || null;
+    let plan = o.metadata?.rw_plan && PLANS[o.metadata.rw_plan] ? o.metadata.rw_plan : FIRST_CHARGE_CENTS[o.amount_total] || lead?.plan || null;
     let clientId = lead?.client_id || null;
+    let monthly = null;
     if (lead) {
       const order = await first(env, "SELECT * FROM work_orders WHERE lead_id = ? AND status != 'paid' ORDER BY created_at DESC LIMIT 1", lead.id);
-      clientId = await convertLead(env, lead, order?.plan || plan, null);
+      if (order?.kind === 'website' || o.metadata?.rw_kind === 'website') {
+        // Websites are their own service: mark the order paid and hand it to the team, no SEO client or monthly tasks.
+        if (order) await run(env, "UPDATE work_orders SET status = 'paid', paid_at = ? WHERE id = ?", now(), order.id);
+        await run(env, "UPDATE leads SET next_action = 'Website project: book the kickoff', next_action_at = ?, updated_at = ? WHERE id = ?", now(), now(), lead.id);
+        await logActivity(env, { lead_id: lead.id, client_id: lead.client_id || null, type: 'payment', body: `Website paid: $${((o.amount_total || 0) / 100).toFixed(2)} through Stripe` });
+        await notify(env, { to: 'admins', kind: 'money', title: `Website sold: ${lead.business}`, body: `Paid $${((o.amount_total || 0) / 100).toFixed(2)}. Book the kickoff.`, url: `/#/pipeline/${lead.id}` }).catch(() => {});
+        return 'website';
+      }
+      if (order?.plan) plan = order.plan;
+      if (order?.monthly_cents != null) monthly = order.monthly_cents;
+      clientId = await convertLead(env, lead, plan, null);
       if (order) await run(env, "UPDATE work_orders SET status = 'paid', paid_at = ?, client_id = ? WHERE id = ?", now(), clientId, order.id);
       await logActivity(env, { lead_id: lead.id, client_id: clientId, type: 'payment', body: `Paid $${((o.amount_total || 0) / 100).toFixed(2)} through Stripe` });
     } else if (email) {
@@ -85,7 +130,7 @@ export async function handleStripeEvent(env, event) {
     if (clientId) {
       await run(env, `UPDATE clients SET stripe_customer_id = COALESCE(?, stripe_customer_id), stripe_subscription_id = COALESCE(?, stripe_subscription_id),
         billing_status = 'active', mrr_cents = COALESCE(mrr_cents, ?), status = 'active' WHERE id = ?`,
-      o.customer || null, o.subscription || null, plan ? MONTHLY_CENTS[plan] : null, clientId);
+      o.customer || null, o.subscription || null, monthly ?? (plan ? MONTHLY_CENTS[plan] : null), clientId);
     }
     const who = lead?.business || email || 'Someone';
     await notify(env, { to: 'admins', kind: 'money', title: clientId ? `New client: ${who}` : 'Payment received', body: `Paid $${((o.amount_total || 0) / 100).toFixed(2)} through Stripe${clientId ? '' : ', not matched to a lead yet'}.`, url: clientId ? `/#/client/${clientId}/overview` : '/#/payments' }).catch(() => {});
@@ -177,11 +222,19 @@ route('POST', '/api/leads/:id/payment-link', async ({ env, user, params, body })
   requireStaff(user);
   const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', params.id);
   if (!lead) throw new HttpError('Lead not found.', 404);
-  const { plan } = await body();
-  const link = await paymentLinkFor(env, plan, { leadId: lead.id, email: lead.email });
-  if (!link) throw new HttpError('Add that plan\'s Stripe payment link in Settings first.');
-  await run(env, 'UPDATE leads SET plan = ?, updated_at = ? WHERE id = ?', plan === 'starter_reduced' ? 'starter' : plan, now(), lead.id);
-  await logActivity(env, { lead_id: lead.id, type: 'payment', body: `Payment link created (${plan.replace('_', ' ')})`, by: user.id });
+  const b = await body();
+  // The quote decides the amounts; an older caller may still send just a plan.
+  let q = {};
+  try { q = JSON.parse(lead.quote || '{}') || {}; } catch { q = {}; }
+  const plan = PLANS[b.plan] ? b.plan : PLANS[q.plan] ? q.plan : (PLANS[lead.plan] ? lead.plan : 'growth');
+  const cents = (v, d) => (v === undefined || v === null || v === '' ? d : Math.round(Number(v) * 100));
+  const setupCents = cents(b.setup ?? q.setup, SETUP_CENTS[plan]);
+  const monthlyCents = cents(b.monthly ?? q.monthly, MONTHLY_CENTS[plan]);
+  if (!Number.isFinite(setupCents) || !Number.isFinite(monthlyCents) || setupCents < 0 || monthlyCents < 0) throw new HttpError('Enter the buildout and monthly as dollar amounts.');
+  const link = await quoteLink(env, { plan, setupCents, monthlyCents, leadId: lead.id, email: lead.email });
+  if (!link) throw new HttpError('No payment link for these amounts. Run Set up Stripe in Settings (it needs the Stripe key), or save a link for this plan.');
+  await run(env, 'UPDATE leads SET plan = ?, updated_at = ? WHERE id = ?', plan, now(), lead.id);
+  await logActivity(env, { lead_id: lead.id, type: 'payment', body: `Payment link created ($${(setupCents / 100).toFixed(0)} buildout, $${(monthlyCents / 100).toFixed(0)} a month)`, by: user.id });
   return json({ link });
 });
 

@@ -107,3 +107,52 @@ test('assistant: needs a key, sends the client brief, keeps turns in order', asy
   r = await t.call('POST', '/api/assistant', { messages: [{ role: 'user', content: 'x' }] });
   assert.ok([401, 403].includes(r.status));
 });
+
+test('google: unticked boxes are named, API errors become plain fixes', async () => {
+  const { missingText } = await import('../src/google.js');
+  const { explain } = await import('../src/googlecheck.js');
+  assert.equal(missingText('openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.modify', ['mail']), '');
+  assert.match(missingText('openid email', ['mail', 'drive']), /Calendar, Gmail, Drive/);
+  const off = explain({ app: 'mail', label: 'Gmail', api: 'Gmail API' }, 403, { error: { message: 'Gmail API has not been used in project 123 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/gmail.googleapis.com/overview?project=123 then retry.' } });
+  assert.match(off.reason, /Gmail API is turned off/);
+  assert.equal(off.link, 'https://console.developers.google.com/apis/api/gmail.googleapis.com/overview?project=123');
+  assert.match(explain({ app: 'drive', label: 'Drive', api: 'Google Drive API' }, 403, { error: { message: 'Request had insufficient authentication scopes.' } }).fix, /tick its box/);
+});
+
+test('quotes: services and price on the fly, custom work order, website order, font signature', async () => {
+  const t = setup();
+  await owner(t);
+  const lead = (await t.call('POST', '/api/leads', { business: 'Coastal Roof Pros', contact_name: 'Ana Ruiz', email: 'ana@coastal.com', phone: '9545550111', state: 'FL' })).data.lead;
+  let r = await t.call('PUT', `/api/leads/${lead.id}/quote`, { plan: 'growth', setup: '$525', monthly: '425', services: ['profile', 'pages', 'bogus'] });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.data.quote.services, ['profile', 'pages']);
+  assert.equal(r.data.quote.setup, 525);
+  // Work order uses the quote: custom amounts, the plan stays internal.
+  r = await t.call('POST', `/api/leads/${lead.id}/work-order`, {});
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const tok = r.data.url.split('#')[1];
+  r = await t.call('GET', `/api/public/wo/${tok}`);
+  assert.equal(r.data.order.setup_cents, 52500);
+  assert.equal(r.data.order.monthly_cents, 42500);
+  assert.equal(r.data.order.kind, 'seo');
+  const text = JSON.stringify(r.data.order.sections);
+  assert.match(text, /\$950\.00 \(due upon signing\)/);
+  assert.match(text, /Website recommendations/);
+  assert.ok(!/Website design, updates/.test(text));
+  r = await t.call('POST', `/api/public/wo/${tok}/sign`, { agree: true, font: 'Great Vibes', initialsFont: 'Allura' });
+  assert.equal(r.data.order.status, 'signed');
+  assert.equal(r.data.order.signed_name, 'Ana Ruiz', 'name auto filled from the lead');
+  assert.equal(r.data.order.signed_font, 'Great Vibes');
+  assert.equal(r.data.order.initials, 'AR');
+  assert.equal(r.data.order.initials_font, 'Allura');
+  // Website is its own order with its own agreement.
+  r = await t.call('POST', `/api/leads/${lead.id}/work-order`, { kind: 'website', setup: '1500' });
+  assert.equal(r.status, 400);
+  r = await t.call('POST', `/api/leads/${lead.id}/work-order`, { kind: 'website', setup: '1500', monthly: '49', scope: '5 page website\nContact form' });
+  const wt = r.data.url.split('#')[1];
+  r = await t.call('GET', `/api/public/wo/${wt}`);
+  assert.equal(r.data.order.kind, 'website');
+  assert.equal(r.data.order.title, 'Website Design Agreement');
+  assert.match(JSON.stringify(r.data.order.sections), /5 page website.*Contact form/);
+  assert.match(JSON.stringify(r.data.order.sections), /\$1,500\.00 \(due upon signing\)/);
+});

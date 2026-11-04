@@ -79,7 +79,7 @@ export async function portal(app, user, tab, state) {
     <a class="btn btn-mint btn-xl" href="#/reviews">${icon.star}Ask a customer for a review</a>
     <a class="btn btn-ghost btn-xl" href="#/post">${icon.camera}Send us a photo to post</a>
     <div class="card">
-      <div class="card-head"><h2>This month's plan</h2><span class="badge">${esc(PLAN_NAMES[c.plan])}</span></div>
+      <div class="card-head"><h2>This month's work</h2></div>
       <div class="row small"><span>${esc(fmt.month(o.month))}</span><span class="spacer"></span><b>${o.tasks.done} of ${o.tasks.total} done</b></div>
       <div class="progress" style="margin-top:8px"><span data-w="${pct}"></span></div>
     </div>

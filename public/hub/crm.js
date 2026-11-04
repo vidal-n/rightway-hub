@@ -9,6 +9,8 @@ import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { placeCall, startPhone, onPhoneState } from './phone.js';
 import { filterLeads } from '/js/leadfilter.js';
+import { quoteFor, recommendPlan } from '/js/leadintel.js';
+import { SERVICE_LIST } from '/js/plancopy.js';
 
 export const STAGE_LABEL = {
   new: 'New lead', attempting: 'Attempting', callback: 'Callback set', audit_requested: 'Audit requested', audit_booked: 'Audit booked',
@@ -303,6 +305,8 @@ export async function leadModal(id, onChange) {
   let data;
   try { [data] = await Promise.all([api(`/api/leads/${id}`), refreshDispos()]); } catch (e) { m.el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const l = data.lead;
+  const Q = quoteFor(l, data.intel, l.quote);
+  const REC = recommendPlan(l, data.intel).plan;
   m.el.innerHTML = `
     <div class="card-head"><div><p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · ${l.attempts} attempts` : ''}</p><h2>${esc(l.business)}</h2>
       <div class="small">${esc([l.contact_name, l.city, l.state].filter(Boolean).join(' · '))}${l.tz_known ? ` · their time ${esc(l.local_time)}` : ''}</div></div>
@@ -329,16 +333,28 @@ export async function leadModal(id, onChange) {
         <div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="lnotebtn">Save note only</button>
           <label class="field" style="flex:1 1 160px"><select id="lstage">${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}"${k === l.stage ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div>
         <h3 style="margin-top:22px">Close the deal</h3>
-        <div class="row"><select id="lplan" style="flex:1 1 180px">${Object.entries(PLAN_NAMES).reverse().map(([k, n]) => `<option value="${k}"${(l.plan || 'leader') === k ? ' selected' : ''}>${n} (${fmt.money(PLAN_PRICE[k])} setup + ${fmt.money(PLAN_PRICE[k])}/mo)</option>`).join('')}</select></div>
-        <p class="small muted" style="margin-top:6px">One work order for every plan. Only the setup and monthly amounts change.</p>
+        <p class="small muted" style="margin:0 0 8px">Pick what they need and set the price from discovery. The client sees the services and the price, never the plan name.</p>
+        <div class="field"><span>Services they need</span><div class="svc-pick">${SERVICE_LIST.map((s) => `<label class="row small" style="gap:6px;align-items:flex-start"><input type="checkbox" value="${esc(s.id)}"${Q.services.some((x) => x.id === s.id) ? ' checked' : ''}> <span>${esc(s.name)}</span></label>`).join('')}</div></div>
+        <div class="row" style="margin-top:8px;gap:8px">
+          <label class="field" style="flex:1 1 110px"><span>Buildout $</span><input id="lsetup" inputmode="decimal" value="${esc(Q.setup)}"></label>
+          <label class="field" style="flex:1 1 110px"><span>Monthly $</span><input id="lmonthly" inputmode="decimal" value="${esc(Q.monthly)}"></label>
+          <label class="field" style="flex:1 1 170px"><span>Internal plan (monthly work)</span><select id="lplan">${Object.entries(PLAN_NAMES).map(([k, n]) => `<option value="${k}"${Q.plan === k ? ' selected' : ''}>${n}${REC === k ? ' (suggested)' : ''}</option>`).join('')}</select></label>
+        </div>
         <div class="row" style="margin-top:10px">
+          <button class="btn btn-ghost btn-sm" id="lquote">Save quote</button>
           <button class="btn btn-primary btn-sm" id="lwo">Send work order</button>
           <button class="btn btn-ghost btn-sm" id="lpay">Payment link only</button>
           ${l.client_id ? `<a class="btn btn-ghost btn-sm" href="#/client/${esc(l.client_id)}/overview">Open client</a>` : '<button class="btn btn-ghost btn-sm" id="lwon">Won: create client</button>'}
         </div>
         <div id="lout"></div>
+        <details style="margin-top:16px"><summary class="small" style="cursor:pointer;font-weight:600">Website project (separate work order)</summary>
+          <div class="row" style="margin-top:8px;gap:8px">
+            <label class="field" style="flex:1 1 120px"><span>Build fee $</span><input id="wsetup" inputmode="decimal" placeholder="1500"></label>
+            <label class="field" style="flex:1 1 120px"><span>Monthly care $ (optional)</span><input id="wmonthly" inputmode="decimal" placeholder="0"></label></div>
+          <label class="field" style="margin-top:8px"><span>What the website includes (one per line)</span><textarea id="wscope" rows="4" placeholder="5 page website: home, about, services, service area, contact&#10;Mobile friendly design&#10;Contact form and tap to call&#10;Basic on-page setup for Google"></textarea></label>
+          <button class="btn btn-primary btn-sm" id="lwweb" style="margin-top:8px">Send website work order</button></details>
         ${data.orders.length ? `<h3 style="margin-top:22px">Work orders</h3><ul class="list">${data.orders.map((o) => `<li class="item"><span class="badge ${o.status === 'paid' ? '' : o.status === 'signed' ? 'warn' : 'gray'}">${esc(o.status)}</span>
-          <div><div class="item-title">${esc(PLAN_NAMES[o.plan] || o.plan)}</div><div class="item-sub">${o.signed_name ? `Signed by ${esc(o.signed_name)} ${esc(fmt.ago(o.signed_at))}` : `Sent ${esc(fmt.ago(o.created_at))}`}</div></div>
+          <div><div class="item-title">${o.kind === 'website' ? 'Website' : 'Local marketing'} · ${esc(fmt.money((o.setup_cents || 0) / 100))} + ${esc(fmt.money((o.monthly_cents || 0) / 100))}/mo${o.kind === 'website' ? '' : ` <span class="badge gray">${esc(PLAN_NAMES[o.plan] || o.plan)}</span>`}</div><div class="item-sub">${o.signed_name ? `Signed by ${esc(o.signed_name)} ${esc(fmt.ago(o.signed_at))}` : `Sent ${esc(fmt.ago(o.created_at))}`}</div></div>
           <button class="btn btn-ghost btn-sm" data-wo="${esc(o.token)}">Copy link</button></li>`).join('')}</ul>` : ''}
       </div>
       <div>
@@ -387,11 +403,25 @@ export async function leadModal(id, onChange) {
       ${l.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(l.email)}?subject=${encodeURIComponent('Rightway Growth: your plan')}&body=${encodeURIComponent(msg)}">${icon.mail}Email it</a>` : ''}</div></div>`;
     $('#cpl', out).addEventListener('click', () => copy(url, 'Link copied'));
   };
+  // The quote: services picked, buildout, monthly, internal plan. Saved on the lead; the presentation and work order use it.
+  const saveQuote = () => api(`/api/leads/${l.id}/quote`, { method: 'PUT', body: {
+    plan: $('#lplan', m.el).value, setup: $('#lsetup', m.el).value, monthly: $('#lmonthly', m.el).value,
+    services: $$('.svc-pick input:checked', m.el).map((x) => x.value) } });
+  $('#lquote', m.el).addEventListener('click', async (e) => { busy(e.target, true); try { await saveQuote(); toast('Quote saved'); changed = true; } catch (err) { toast(err.message, true); } finally { busy(e.target, false); } });
+  $('#lwweb', m.el).addEventListener('click', async (e) => {
+    busy(e.target, true);
+    try {
+      const r = await api(`/api/leads/${l.id}/work-order`, { method: 'POST', body: { kind: 'website', setup: $('#wsetup', m.el).value, monthly: $('#wmonthly', m.el).value, scope: $('#wscope', m.el).value } });
+      share(r.url, r.hasPayLink ? 'Website work order link (sign, then pay)' : 'Website work order link. No payment link yet: run Set up Stripe in Settings.',
+        `Hi ${l.contact_name ? l.contact_name.split(' ')[0] : ''}, here is your Rightway Growth website agreement. Review it, sign, and you can pay right after: ${r.url}`);
+    } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
+  });
   $('#lwo', m.el).addEventListener('click', async (e) => {
     busy(e.target, true);
     try {
-      const r = await api(`/api/leads/${l.id}/work-order`, { method: 'POST', body: { plan: $('#lplan', m.el).value } });
-      share(r.url, r.hasPayLink ? 'Work order link (sign, then pay)' : 'Work order link. Add the Stripe payment link in Settings so they can pay after signing.',
+      await saveQuote();
+      const r = await api(`/api/leads/${l.id}/work-order`, { method: 'POST', body: { kind: 'seo', plan: $('#lplan', m.el).value, setup: $('#lsetup', m.el).value, monthly: $('#lmonthly', m.el).value } });
+      share(r.url, r.hasPayLink ? 'Work order link (sign, then pay)' : 'Work order link. No payment link yet: run Set up Stripe in Settings, then send a payment link.',
         `Hi ${l.contact_name ? l.contact_name.split(' ')[0] : ''}, here is your Rightway Growth work order. Review it, sign, and you can pay right after: ${r.url}`);
     } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
   });
@@ -399,7 +429,8 @@ export async function leadModal(id, onChange) {
     busy(e.target, true);
     const plan = $('#lplan', m.el).value;
     try {
-      const r = await api(`/api/leads/${l.id}/payment-link`, { method: 'POST', body: { plan } });
+      await saveQuote();
+      const r = await api(`/api/leads/${l.id}/payment-link`, { method: 'POST', body: { plan, setup: $('#lsetup', m.el).value, monthly: $('#lmonthly', m.el).value } });
       share(r.link, 'Stripe payment link', `Here is the secure payment link to start your Rightway Growth plan: ${r.link}`);
     } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
   });

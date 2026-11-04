@@ -75,16 +75,22 @@ test('problems, score, plan, and script come from the research', () => {
   assert.match(step(s, 'c_scan'), /from \d+ spots around Summit Roofing/);
   assert.match(step(s, 'c_scan'), /Same search/);
   // Drop close: Market Leader first, then the recommended plan with setup + first month today.
-  assert.match(step(s, 'c_price'), /Market Leader program.*\$599 to build out and \$599 a month/);
-  assert.match(step(s, 'c_price'), /Authority.*\$499 for the buildout and \$499 a month\. Total today is \$998/s);
-  assert.match(s.objections.find((o) => o.q === "I can't afford it (drop)").a, /Growth.*\$449/);
+  // Drop close without plan names: anchor at everything, then the services they need at the quoted price.
+  assert.match(step(s, 'c_price'), /everything we offer.*\$599 to build out and \$599 a month/);
+  assert.match(step(s, 'c_price'), /buildout is \$499 and the monthly is \$499\. Total today is \$998/);
+  assert.match(step(s, 'c_price'), /Service and city pages/);
+  assert.ok(!/Starter|Growth plan|Authority|Market Leader/.test(step(s, 'c_price')), 'no plan names to the client');
+  assert.match(s.objections.find((o) => o.q === "I can't afford it (drop)").a, /\$449 to build out/);
+  const custom = buildScript({ ...lead, quote: JSON.stringify({ plan: 'growth', setup: 500, monthly: 425, services: ['profile', 'pages'] }) }, INTEL, { rep: 'Vidal' });
+  assert.match(step(custom, 'c_price'), /buildout is \$500 and the monthly is \$425\. Total today is \$925/);
+  assert.match(step(custom, 'c_price'), /Google Business Profile buildout, Service and city pages/);
   assert.ok(s.objections.find((o) => o.q === "It's too expensive").a.includes('extra job'));
   assert.ok(s.playbook.length >= 10);
   // Without research the script never claims a scan was run.
   const cold = buildScript(lead, null, { rep: 'Vidal' });
   for (const id of ['c_open', 'c_frame', 'c_scan', 'voicemail', 'gatekeeper']) assert.ok(!/\bran\b|scan I|scanner/i.test(step(cold, id)), id);
-  assert.match(step(buildScript(lead, INTEL, { rep: 'Vidal', plan: 'starter' }), 'c_price'), /Starter/);
-  assert.match(buildScript(lead, INTEL, { rep: 'Vidal', plan: 'starter' }).objections.find((o) => /drop/.test(o.q)).a, /smallest plan/);
+  const lean = buildScript({ ...lead, quote: JSON.stringify({ plan: 'starter', setup: 399, monthly: 399 }) }, INTEL, { rep: 'Vidal' });
+  assert.match(lean.objections.find((o) => /drop/.test(o.q)).a, /as lean as we go/);
   assert.ok(!/\[\w/.test(JSON.stringify(s.objections)), 'every objection placeholder fills in');
   assert.equal(fill('Hi {first} {missing}', { first: 'Ana' }), 'Hi Ana [missing]');
   assert.equal(roi({ ticket: 200, jobs: 4, plan: 'growth' }).breakeven, 3);

@@ -1,3 +1,4 @@
+import { SERVICE_LIST, PLAN_ORDER } from './plancopy.js';
 // Lead intelligence: scoring, problems found, plan recommendation, call script, dedupe keys.
 // Pure functions with no DOM or network, shared by the Worker, the Hub screens, and the tests.
 
@@ -281,14 +282,55 @@ export function recommendPlan(lead = {}, intel = null) {
   return { plan, why };
 }
 
+// ---------- services they need ----------
+// What the client actually needs, from the research and the internal plan, in their words. Plans never reach the client.
+export function servicesFor(lead = {}, intel = null, plan = null) {
+  const p = plan || recommendPlan(lead, intel).plan;
+  const rank = PLAN_ORDER.indexOf(p);
+  const probs = findProblems(intel, lead);
+  const g = intel?.grid;
+  const t10 = g ? top10Of(g) : null;
+  return SERVICE_LIST
+    .filter((s) => s.core || PLAN_ORDER.indexOf(s.min) <= rank)
+    .filter((s) => s.id !== 'locations' || p === 'leader')
+    .map((s) => {
+      const hit = probs.find((x) => s.fixes.includes(x.key));
+      let why = hit ? hit.title : '';
+      if ((s.id === 'pages' || s.id === 'links' || s.id === 'cleanup') && g) {
+        why = t10 >= g.points * 0.8 ? `First page in ${t10} of ${g.points} spots today. This moves you up toward the top 3 and keeps you there.`
+          : `First page (top 10) in ${t10} of ${g.points} spots today. This is what pushes you onto the first page in more of your area.`;
+      }
+      if (s.id === 'report') why = g ? `Your starting point: first page in ${t10} of ${g.points} spots. You watch it climb.` : 'You see the climb month by month.';
+      return { id: s.id, name: s.name, what: s.what, why, problem: Boolean(hit) };
+    })
+    .sort((a, b) => Number(b.problem) - Number(a.problem));
+}
+
+// A deal's quote: the services picked, the buildout and monthly, and the internal plan (task load). Defaults from research.
+export function quoteFor(lead = {}, intel = null, saved = null) {
+  let q = saved;
+  if (typeof q === 'string') { try { q = JSON.parse(q); } catch { q = null; } }
+  const plan = PLAN_ORDER.includes(q?.plan) ? q.plan : (PLAN_ORDER.includes(lead.plan) ? lead.plan : recommendPlan(lead, intel).plan);
+  const all = servicesFor(lead, intel, 'leader');
+  const ids = Array.isArray(q?.services) && q.services.length ? q.services : servicesFor(lead, intel, plan).map((s) => s.id);
+  const [price, setup] = PRICES[plan];
+  return {
+    plan,
+    setup: Number.isFinite(Number(q?.setup)) && q?.setup !== '' && q?.setup != null ? Number(q.setup) : setup,
+    monthly: Number.isFinite(Number(q?.monthly)) && q?.monthly !== '' && q?.monthly != null ? Number(q.monthly) : price,
+    services: all.filter((s) => ids.includes(s.id)),
+    saved: Boolean(q),
+  };
+}
+
 // ---------- call script ----------
 // One pitch, used on every call and in every meeting: the Google clarity call. Same frame cold or booked:
 // set the frame, discover, verify, show the clarity scan, search together, explain why, tell them who we are,
-// walk the process and what we need from them, then a drop close from Market Leader down to what they actually need.
+// walk the process and what we need from them, then a drop close: anchor at everything we offer, then only the services they need, priced on the spot.
 // Plain words to the owner: "Google", "the map", "the first page", "calls". Never "SEO", "NAP", "citations" or "algorithm".
 // Each step is one or more lines; lines that start with "Or:" are alternatives, "(" lines are coaching notes for the rep.
 // Never claim a scan when no research ran: the {..._reason} and {scan_...} lines change on their own.
-export const SCRIPT_VERSION = 2;
+export const SCRIPT_VERSION = 3;
 
 export const SCRIPT_KEYS = [
   ['c_open', 'Opener: the Google clarity call'], ['c_frame', 'Set the frame'], ['c_discovery', 'Discovery (write it down)'],
@@ -310,14 +352,14 @@ export const DEFAULT_SCRIPT = {
     "Here's what we'll do today. First, I'll confirm your business info. Then I'll show you {frame_scan}, and we'll do a couple of searches together, live. But before I even start, I want to take a minute to get to know you and the business, if that's OK.",
   ].join('\n'),
   c_discovery: [
-    '(Ask these while they connect. WRITE THE ANSWERS DOWN. You will use their words to handle every objection.)',
+    '(Ask while they connect. Write every answer down. Make it conversational: you are the first person who cared to know.)',
     '1. How long have you been in business?',
-    '2. How many people do you have on the team? How many trucks or crews?',
-    '3. Are you doing any other advertising right now? (Google Ads, Yelp, Angi, mailers, another agency?) How is that working for you?',
+    "2. You a one man band, or you got a team working with you? (How many trucks or crews?)",
+    "3. What do you do to get your name out there? Any other advertising right now? Google Ads, Yelp, Angi, mailers, another agency? ... How's that working for you?",
     '(Make sure they can see your screen and the map before you go on.)',
     '4. How far out do you want to service? What cities matter most to you?',
-    '5. Do you have a website for the business? Who takes care of it?',
-    "6. What's a typical job worth to you, ballpark? (Starting guess for {industry}: {ticket}.) And what kind of jobs do you want more of?",
+    '5. Do you have a website? ... Nice. You make it yourself, or did someone help you with that?',
+    "6. What's a typical job worth to you, ballpark? (Starting guess for {industry}: {ticket}.) And what kind of jobs, what searches, do you want MORE of?",
     '7. How has business been lately? Busy, slow, up and down?',
     '8. Are you actively trying to take on more customers right now? Could your crew handle five more good calls a week?',
     '9. When a new customer finds you today, is it mostly referrals, or Google?',
@@ -327,7 +369,7 @@ export const DEFAULT_SCRIPT = {
   c_verify: [
     "That answers all my questions for right now. Thank you for going over that with me. I like to know every business I work with in detail, so I can actually help, not just guess.",
     "Let me quickly verify your information. I have {business}{city_suffix}. Is that the exact name customers know you by? Address and service area? Hours? And the best phone number for customers?",
-    "Now, when a customer needs you, what would they type into Google? (Write their keywords down. Then:) And {keyword}, is that one of your money searches?",
+    "Now, when a customer needs you, what would they search? (Write their keywords down. Then:) And {keyword}, is that one of your money searches?",
     '(Find what gets them excited. Ask more questions. The keywords they pick are the keywords you scan and pitch on.)',
   ].join('\n'),
   c_scan: [
@@ -337,14 +379,16 @@ export const DEFAULT_SCRIPT = {
     '{scan_meaning}',
   ].join('\n'),
   c_live: [
-    "So let's do a couple of searches together while I have you here, live on the screen. This is exactly what a customer sees.",
-    '(Run the most basic search, "{keyword}", near their immediate area.)',
+    "Now, we can reference the scan, but I also want to jump over to Google with these searches and see pretty much what a customer sees.",
+    '(Run the most basic search, "{keyword}", near their immediate area, or a spot the scan showed them weak.)',
     "IF THEY ARE NOT ON THE FIRST PAGE: Are you familiar with any of these guys? (Point at them.) In the mind of a customer, if you're not up here, you're not in the game. These are the businesses getting the calls first. And if we're struggling to find you this close to home, it only gets worse the further out we go.",
     "IF THEY ARE ON THE FIRST PAGE: OK, perfect, there you are, right where you want to be. Now let's move out into your service area. (Search an area the scan shows them weak.) See what happens? A few miles out and you drop off. (No pause.) Again, these are the guys getting those calls first, and it only gets worse the further out we go.",
+    "And you know, conservatively, let's say there are about 4 or 5 people searching for this every single week. If just half of them go with {top_name_or_them}, that's like 2 or 3 jobs every single week going to the competitor. And that's just in your zip code. I wouldn't even want to guess what that number looks like further out.",
+    '(Try to get them to give you the numbers instead of telling them. Get them to feel the pain of not showing up.)',
   ].join('\n'),
   c_why: [
     '(SLOW DOWN. Stern, steady tone.)',
-    "Now I want you to understand why these companies are up here. It's not because they do better work than you. It's not because they're bigger, and it's not because Google likes them more.",
+    "Now I want you to understand why these companies are up here. People think it's because they do better work than you. Or they're bigger. Or because Google likes them more.",
     "When someone searches {keyword}, Google looks at three things: how relevant your business is to that search, how close you are to the person searching, and how much Google trusts you. Trust comes from your Google profile being complete and active, your reviews, a website that backs it up, and your business information matching everywhere it shows up online.",
     "When those pieces don't line up, Google gets less sure about you, and it plays it safe by showing someone else. Does that make sense?",
     '{problems}',
@@ -352,12 +396,14 @@ export const DEFAULT_SCRIPT = {
   c_listings: [
     "Here's what I mean by inconsistencies. Google checks your business against dozens of other sites: Apple Maps, Bing, Yelp, Facebook, the BBB, and a lot of directories you've probably never heard of. Most people never search on those. But Google uses them to double check you.",
     "If one says one phone number, another says an old address, and another has the name a little different, Google flags it. That doesn't fix itself with time either. Bad information gets copied from site to site.",
-    "So the first thing we do is clean it up and make it match everywhere, so Google stops doubting you. Make sense?",
+    "So the first thing we do is clean it up and make it match everywhere, so Google stops doubting you. The way I want you to see this: the more consistent references Google sees, the more it trusts you, and that's what moves you up and brings in more business. Does that make sense? PERFECT.",
   ].join('\n'),
   c_story: [
-    "Can I be straight with you for a second, {first}?",
-    "Before I started Rightway, I worked inside marketing companies. I saw how this industry treats business owners. Year long contracts. Reports nobody can read. Promises of number one on Google. And when it didn't work, the owner was stuck paying anyway.",
-    "I started Rightway Growth to do it the right way. You see every single task we do in your own app. You see the map every month. Nothing hidden. And after the first three months, you can leave any time with 30 days notice.",
+    "Right, and that's pretty much why we're having this conversation. Whenever a business owner has inconsistencies in where they show up like this, we want to point them out, and of course give you a solution.",
+    "(Slow down. This is the most personal part of the call.) Can I be straight with you for a second, {first}?",
+    "Before I started RightWay, I worked inside marketing companies. I saw how this industry treats business owners. Year long contracts. Reports nobody can read. Promises of number one on Google. And when it didn't work, the owner was stuck paying anyway.",
+    "I started RightWay Growth to do it the right way. You see every single task we do in your own app. You see the map every month. Nothing hidden. And after the first three months, you can leave any time with 30 days notice.",
+    "And there's no package here. Every business is different, so I only put together what yours actually needs to get where you want to go.",
     "I want to keep you because your phone is ringing, not because a contract says you can't leave. That's the standard I hold us to.",
   ].join('\n'),
   c_program: [
@@ -380,10 +426,10 @@ export const DEFAULT_SCRIPT = {
     '(Let them answer. Then:) OK, great. So you can see it helps, and really it just comes down to cost at the end of the day, right?',
   ].join('\n'),
   c_price: [
-    "Perfect. I'll walk you through it. The program comes in two parts: a one time buildout, which is us setting everything up the right way, and then a monthly for the ongoing work that moves you up and keeps you there.",
-    "If you wanted everything we do, the full Market Leader program, multiple service areas, content every week, links, call tracking and reputation reporting, that's {leader_price} to build out and {leader_price} a month.",
-    '{price_fit}',
-    "That's {setup} for the buildout and {price} a month. Total today is {today_total}, and your next payment isn't for 30 days.",
+    "Perfect. Based on everything you told me, here's what gets you where you want to go: {services_list}. (Walk each one and why it gets them onto the first page in more of their area.)",
+    "The program comes in two parts: a one time buildout, which is us setting everything up the right way, and then a monthly for the ongoing work that moves you up and keeps you there.",
+    '{price_anchor}',
+    "For what you need, the buildout is {setup} and the monthly is {price}. Total today is {today_total}, and your next payment isn't for 30 days.",
     "And look, you told me a typical job is worth about {ticket}. {breakeven_jobs} a month pays for the whole thing. Everything after that is yours. Honestly, I think not doing this costs you a lot more than doing it, just from the calls you're already missing in your own backyard.",
   ].join('\n'),
   c_close: [
@@ -394,7 +440,7 @@ export const DEFAULT_SCRIPT = {
   c_post: [
     "Perfect. Let me walk you through the next steps so you're all set. First I'm sending you a one page work order. It's a digital signature. It puts everything we just went over in writing: the work, the price, the three month minimum. It's also what gives us permission to start. We'll take care of it while we're on the phone.",
     "It takes about 60 seconds. Let me confirm the spelling of your first and last name, and the email. Remember, the total today is {today_total}: the buildout and your first month.",
-    "(Send the work order from the lead: Send work order. Then:) OK, I just sent it. It comes from Rightway Growth. Open it, read it over, type your name at the bottom and check the box. Let me know if anything doesn't open.",
+    "(Send the work order from the lead: Send work order. Then:) OK, I just sent it. It comes from Rightway Growth. Open it and read it over. Your name, business and today's date are already filled in. Just pick your signature and initials, check the box, and sign. Let me know if anything doesn't open.",
     "(When it shows Signed:) Awesome, I see it signed. It takes you straight to the secure payment page by Stripe. That's the same card we use each month, and you can update it any time from your app or by asking your account manager.",
     '(When the payment goes through, the Hub marks the deal won and makes the client.) Payment went through. You will have a receipt in your email.',
     "Now remember, three months is the minimum because that's how long the buildout takes to really show. After that it's month to month. This is a marathon, not a sprint, so set your expectations for steady progress, not overnight. OK?",
@@ -437,7 +483,7 @@ export const DEFAULT_OBJECTIONS = [
   ['How long does this take to work?', "Honest answer: profile fixes and listing cleanup start moving things in the first 30 to 60 days. Pages, reviews and links build over three to six months. The hard part isn't getting you up, it's keeping you up there. That's why we meet every month for 15 to 30 minutes. Your feedback speeds it all up. Make sense?"],
   ['Why is there a setup fee and a monthly?', "Because most of the heavy lifting happens up front. The buildout is the profile, the cleanup on every listing, the first pages and the tracking. The monthly is the steady work that moves you up and keeps you there. We put in the work first. And I only keep you if it's working, because after three months you can leave any time."],
   ["What if I do this and it doesn't work?", "That's fair to ask. Here's what I can tell you: you'll see every task we do and the map every month, so you'll know if it's working long before month three. And even if you only do half as well as the other businesses we work with, the only thing you'll wish is that I called you six months ago. Fair enough?"],
-  ['Can you guarantee number one?', "Anybody who guarantees number one on Google isn't being straight with you, because Google decides, and where your customer is standing changes it. What I guarantee is the work: every task in your plan, every month, shown in your app, with the map to prove where you stand."],
+  ['Can you guarantee number one?', "Anybody who guarantees number one on Google isn't being straight with you, because Google decides, and where your customer is standing changes it. What I guarantee is the work: every task we agree on, every month, shown in your app, with the map to prove where you stand."],
   ["It's too expensive", "I get it, it's an expense you weren't planning on. Let me ask you this: what's one job worth to you? (They answer.) So all we need is {breakeven_jobs} a month and you're in the green. Everything after that is profit. If we only got you {breakeven}, would it be worth it?"],
   ["I can't afford it", "I understand, you weren't waving your card in the air waiting for my call. But look at the screen with me. When someone searches {keyword} near you, {top_name_or_them} is getting that call. Once we fix this, those calls start coming to you. If even two of them do business with you, does that cover {price}? Then in my opinion you can't afford not to do this, right?"],
   ["I can't afford it (drop)", '{drop_offer}'],
@@ -466,7 +512,7 @@ export const PLAYBOOK = [
   ['Slow down for the why', 'Classic tonality', 'When you explain why competitors are up there, slow down and lower your voice. It is the moment they stop thinking you are guessing.'],
   ['Tell them who you are', 'Rightway Growth', 'The story is true: you saw how agencies treat owners and built the opposite. Visible work, monthly map, month to month after three months. It answers "is this another scam?" before they ask.'],
   ['Trial close', 'Classic sales method', '"How do you feel about it? Do you think it would help you grow?" before any price. If they agree it helps, price is the only thing left.'],
-  ['Drop close', 'Classic sales method', 'Start at the full Market Leader program, then drop to the plan their discovery answers justify. It shows you are fitting the plan to them, not upselling. Drop again only with a reason.'],
+  ['No packages, drop close', 'Classic sales method', 'Plans are internal. Anchor at everything we offer ($599 + $599), then drop to only the services their discovery justifies, priced on the spot. It shows you are fitting the work to them. Drop again only with a reason, by trimming services.'],
   ['Make the price small', 'Zig Ziglar, Secrets of Closing the Sale', 'Compare the monthly to one job. "Two calls cover it" lands better than any discount.'],
   ['Fit, function, finance', 'Classic sales method', 'A no is almost always one of three. Rule out the first two out loud, and the real one is left.'],
   ['Listen, acknowledge, explore, respond', 'Jeb Blount, Objections', 'Never fight an objection. Agree it is fair, ask what is behind it, then answer the real one.'],
@@ -540,8 +586,10 @@ export function spreadLine(lead = {}, intel = null) {
 export function scriptVars(lead = {}, intel = null, ctx = {}) {
   const info = industryInfo(lead.industry, intel?.listing?.category || lead.category);
   const rec = recommendPlan(lead, intel);
-  const plan = ctx.plan || rec.plan;
-  const [price, setup] = PRICES[plan] || PRICES.growth;
+  const Q = ctx.quote || quoteFor(lead, intel, lead.quote);
+  const plan = ctx.plan || Q.plan || rec.plan;
+  const price = Number(Q.monthly) || PRICES[plan][0];
+  const setup = Number.isFinite(Number(Q.setup)) ? Number(Q.setup) : PRICES[plan][1];
   const top = intel?.competitors?.[0];
   const probs = findProblems(intel, lead);
   const slots = nextSlots(ctx.at);
@@ -549,8 +597,8 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
   const g = intel?.grid;
   const kw = keywordFor(lead, intel) || '';
   const breakeven = Math.max(1, Math.ceil(price / Math.max(1, ticket)));
-  const order = ['starter', 'growth', 'authority', 'leader'];
-  const drop = order[Math.max(0, order.indexOf(plan) - 1)];
+  const tiers = [...new Set(PLAN_ORDER.map((k) => PRICES[k][0]))].sort((a, b) => b - a);
+  const dropPrice = tiers.find((x) => x < price) || null;
   const t10 = g ? top10Of(g) : 0;
   const first = (lead.contact_name || '').split(' ')[0] || '';
   return {
@@ -580,20 +628,17 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
     growth_price: money(PRICES.growth[0]),
     authority_price: money(PRICES.authority[0]),
     leader_price: money(PRICES.leader[0]),
-    drop_plan: PLAN_LABEL[drop],
-    drop_price: money(PRICES[drop][0]),
     city_suffix: lead.city ? ` in ${lead.city}` : '',
     pain: probs[0] ? probs[0].title.toLowerCase() : 'not showing up on Google',
     scan_spread: spreadLine(lead, intel),
-    price_fit: plan === 'leader'
-      ? `(Pause.) And based on what you told me, ${rec.why.join(', ').toLowerCase()}, that is exactly what ${lead.business || 'you'} needs. I'd only put you on less if it could actually get the job done, and for what you want to do, it can't.`
-      : `(Pause.) Now, based on what you told me, you don't need all of that. I'm not going to sell you things you don't need. That's the whole reason I started this company. For ${lead.business || 'you'}, I'd put you on ${PLAN_LABEL[plan]}: ${rec.why.join(', ').toLowerCase()}.`,
+    services_list: (Q.services || []).map((x) => x.name).join(', ') || 'your Google profile, your listings and steady monthly work',
+    price_anchor: price < PRICES.leader[0] ? `If we did everything we offer, every service and every area, it would be ${money(PRICES.leader[1])} to build out and ${money(PRICES.leader[0])} a month. (Pause.) But based on what you told me, you don't need all of that. I'm not going to sell you things you don't need. That's the whole reason I started this company.` : '',
     frame_scan: intel?.found ? `the clarity scan I ran on ${lead.business || 'your business'}` : `what Google shows when customers look for ${lead.business || 'you'}`,
     scan_meaning: !g ? 'Most owners have never seen this. Let\'s find out together where you really land.'
       : `And honestly${first ? `, ${first}` : ''}, ${t10 === 0 ? 'this is a lot lower than I expected' : t10 < g.points / 2 ? 'this is lower than I expected' : 'this is better than most, but there are still holes'}. Usually what this tells me is that people who already know your name can find you, but people searching for the service, the ones who have never heard of you, are finding someone else.`,
-    drop_offer: plan === 'starter'
-      ? `I hear you. Starter is already our smallest plan, and it's priced so about one job covers it. Let me ask you: what's one new customer worth to you over a whole year, with repeat work and referrals? (Let them answer.) So one customer pays for the whole year. Does it make sense to keep losing those to ${top?.title || 'the competition'}?`
-      : `OK, then let's right size it. I'd rather start you on what fits than not start you at all. ${PLAN_LABEL[drop]} keeps the core work: your Google profile built out, the cleanup, monthly posts and the monthly map. That's ${money(PRICES[drop][1])} to build out and ${money(PRICES[drop][0])} a month. We can move you up when the calls start coming. Does that work better?`,
+    drop_offer: !dropPrice
+      ? `I hear you. This is already as lean as we go, and it's priced so about one job covers it. Let me ask you: what's one new customer worth to you over a whole year, with repeat work and referrals? (Let them answer.) So one customer pays for the whole year. Does it make sense to keep losing those to ${top?.title || 'the competition'}?`
+      : `OK, then let's right size it. I'd rather start you on what fits than not start you at all. We start with the core: your Google profile buildout, the listing cleanup, weekly posts, reviews and the monthly map. That's ${money(dropPrice)} to build out and ${money(dropPrice)} a month. We add the rest when the calls start coming. Does that work better?`,
     ticket: money(ticket),
     breakeven,
     breakeven_jobs: `${breakeven} extra job${breakeven === 1 ? '' : 's'}`,
@@ -631,8 +676,8 @@ export function buildScript(lead, intel, ctx = {}, custom = {}) {
 }
 
 // ---------- ROI ----------
-export function roi({ ticket, jobs, plan = 'growth' }) {
-  const [price] = PRICES[plan] || PRICES.growth;
+export function roi({ ticket, jobs, plan = 'growth', price: given }) {
+  const price = Number(given) > 0 ? Number(given) : (PRICES[plan] || PRICES.growth)[0];
   const monthly = Math.max(0, Number(ticket) || 0) * Math.max(0, Number(jobs) || 0);
   return { monthly, yearly: monthly * 12, price, multiple: price ? monthly / price : 0, breakeven: Math.ceil(price / Math.max(1, Number(ticket) || 1)) };
 }

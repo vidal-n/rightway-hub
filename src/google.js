@@ -28,6 +28,14 @@ export function hasScope(scopeStr, scope) {
   // Full Drive covers everything the narrow drive.file scope can do.
   return scope === APP_SCOPES.sheets && set.has(APP_SCOPES.drive);
 }
+const APP_LABEL = { mail: 'Gmail', drive: 'Drive', docs: 'Docs', sheets: 'Sheets', gsc: 'Search Console', ga: 'Analytics', ads: 'Google Ads', gbp: 'Business Profile' };
+// What was asked for but not granted, as a message for the person. Empty when everything came through.
+export function missingText(scopeStr, apps = []) {
+  const miss = [];
+  if (!String(scopeStr || '').includes('calendar')) miss.push('Calendar');
+  for (const a of apps) if (APP_SCOPES[a] && !hasScope(scopeStr, APP_SCOPES[a])) miss.push(APP_LABEL[a] || a);
+  return miss.length ? `Connected, but Google did not give access to ${miss.join(', ')}. Click Turn on again and tick every box on Google's screen (or Select all) before Continue.` : '';
+}
 export function grantedApps(scopeStr) {
   const apps = Object.entries(APP_SCOPES).filter(([, sc]) => hasScope(scopeStr, sc)).map(([k]) => k);
   if (String(scopeStr || '').includes('calendar')) apps.unshift('calendar');
@@ -169,7 +177,7 @@ route('GET', '/api/google/connect', async ({ env, user, url }) => {
   const apps = (url.searchParams.get('apps') || '').split(',').filter((a) => APP_SCOPES[a]);
   const state = `${token(18)}${url.searchParams.get('back') === 'google' ? '_g' : ''}`;
   await run(env, 'DELETE FROM oauth_states WHERE at < ?', now() - 600e3);
-  await run(env, 'INSERT INTO oauth_states (state, user_id, at) VALUES (?, ?, ?)', state, user.id, now());
+  await run(env, 'INSERT INTO oauth_states (state, user_id, at, apps) VALUES (?, ?, ?, ?)', state, user.id, now(), apps.join(','));
   const q = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID, redirect_uri: `${url.origin}/api/google/callback`, response_type: 'code', scope: [...SCOPES, ...apps.map((a) => APP_SCOPES[a])].join(' '),
     access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true', state, login_hint: user.email,
@@ -195,7 +203,8 @@ route('GET', '/api/google/callback', async ({ env, user, url }) => {
   try { email = JSON.parse(atob(data.id_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).email || null; } catch { email = null; }
   await run(env, 'UPDATE users SET google_token = ?, google_email = ?, google_scopes = ? WHERE id = ?', await seal(env, data.refresh_token), email, data.scope || null, user.id);
   cache.delete(user.id);
-  return back('ok');
+  // Google's consent screen has a checkbox per app. If one was left unticked, say which, instead of failing later.
+  return back(missingText(data.scope, (st.apps || '').split(',').filter(Boolean)) || 'ok');
 });
 
 route('POST', '/api/google/disconnect', async ({ env, user }) => {

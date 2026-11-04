@@ -192,3 +192,27 @@ body.presenter { overflow: auto; background: #0B1411; color: #E7F1EC; }
 @media (prefers-reduced-motion: reduce) { .gtype, .glist li, .gyou, .gverdict, .biggrid span.pop { animation: none; } }
 
 .gphone[hidden] { display: none; }
+
+/* What gets you results: the services this client needs (no plan names) */
+.svcs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 22px; }
+.svc { position: relative; background: var(--soft); border: 1px solid var(--line); border-left: 6px solid var(--mint-strong); border-radius: 18px; padding: 16px 20px 16px 22px; display: grid; gap: 4px; }
+.svc b { font: 600 25px/1.2 var(--display); }
+.svc span { font-size: 18px; line-height: 1.4; color: var(--ink-2); }
+.svc-x { position: absolute; top: 8px; right: 10px; border: 0; background: transparent; color: #9AA8A2; font-size: 26px; line-height: 1; cursor: pointer; opacity: 0; transition: opacity .15s; }
+.svc:hover .svc-x { opacity: 1; }
+.svc-add { margin-top: 16px; opacity: .35; transition: opacity .15s; }
+.svc-add:hover, .svc-add:focus-within { opacity: 1; }
+.svc-add select { font: 16px var(--body); padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: #fff; }
+/* Your investment: the price set from discovery */
+.invest { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+.invest .box { display: grid; gap: 8px; align-content: start; }
+.invest .label { font-size: 20px; color: var(--ink-2); }
+.invest .num { font: 700 64px/1 var(--display); display: flex; align-items: baseline; }
+.invest .box.dark { background: var(--ink); border-color: var(--ink); }
+.invest .box.dark .label, .invest .box.dark .num { color: #fff; }
+.qin { font: inherit; color: inherit; background: transparent; border: 0; border-bottom: 2px dashed transparent; width: 4.2ch; padding: 0; }
+.qin:hover, .qin:focus { border-bottom-color: var(--mint-strong); outline: none; }
+.svcs.many { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 16px; }
+.svcs.many .svc { padding: 12px 16px 12px 18px; }
+.svcs.many .svc b { font-size: 21px; }
+.svcs.many .svc span { font-size: 15.5px; }
