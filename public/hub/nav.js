@@ -7,12 +7,12 @@ export const NAV = [
   ['home', '#/', 'dash', 'Dashboard'], ['phone', '#/phone', 'phone', 'Phone'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['calendar', '#/calendar', 'cal', 'Calendar'],
   ['agents', '#/agents', 'headset', 'Agents'], ['automations', '#/automations', 'send', 'Automations'],
   ['work', '#/work', 'check', 'My work'], ['clients', '#/clients', 'users', 'Clients'], ['scan', '/scan.html', 'grid', 'Scan tool'],
-  ['training', '#/training', 'book', 'Training'], ['vault', '#/vault', 'key', 'Vault'], ['slack', '#/slack', 'slack', 'Slack'], ['google', '#/google', 'apps', 'Google'],
+  ['training', '#/training', 'book', 'Training'], ['vault', '#/vault', 'key', 'Vault'], ['slack', '#/slack', 'slack', 'Slack'], ['mail', '#/mail', 'mail', 'Mail'], ['files', '#/files', 'folder', 'Files'],
   ['payments', '#/payments', 'money', 'Payments', 'admin'], ['alerts', '#/notifications', 'bell', 'Notifications'], ['settings', '#/settings', 'cog', 'Settings'],
 ];
 // The rail groups the menu by the job: selling, delivering, the team, and running the business.
 export const GROUPS = [['sell', 'Sell'], ['deliver', 'Deliver'], ['team', 'Team'], ['run', 'Run']];
-const GROUP_OF = { home: 'sell', phone: 'sell', pipeline: 'sell', calendar: 'sell', agents: 'sell', automations: 'sell', vault: 'team', work: 'deliver', clients: 'deliver', scan: 'deliver', training: 'team', slack: 'team', google: 'team', payments: 'run', alerts: 'run', settings: 'run' };
+const GROUP_OF = { home: 'sell', phone: 'sell', pipeline: 'sell', calendar: 'sell', agents: 'sell', automations: 'sell', vault: 'team', work: 'deliver', clients: 'deliver', scan: 'deliver', training: 'team', slack: 'team', mail: 'team', files: 'team', google: 'team', payments: 'run', alerts: 'run', settings: 'run' };
 export const groupOf = (k) => GROUP_OF[k] || 'run';
 // Which dot belongs to which menu item.
 const BADGE_KEY = { work: 'work', slack: 'slack', phone: 'phone', pipeline: 'pipeline', alerts: 'alerts' };

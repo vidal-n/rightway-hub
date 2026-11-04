@@ -314,7 +314,7 @@ export async function leadModal(id, onChange) {
     <div class="row" style="margin-bottom:14px">
       ${l.phone ? `<a class="btn btn-mint" href="${telHref(l.phone)}">${icon.phone}${esc(l.phone)}</a>` : ''}
       ${l.email ? `<button class="btn btn-ghost" id="lmailbtn">${icon.mail}Email</button>` : ''}
-      <button class="btn btn-ghost" id="lmeetbtn">Put on my calendar</button>
+      <button class="btn btn-ghost" id="lmeetbtn">Add appointment</button>
       ${l.website ? `<a class="btn btn-ghost" href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}" target="_blank" rel="noopener">Website</a>` : ''}
       <a class="btn btn-ghost" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''} ${l.state || ''}`)}" target="_blank" rel="noopener">Google Maps</a>
       ${l.phone ? '<button class="btn btn-ghost" id="ltexts">Texts</button>' : ''}
@@ -372,12 +372,12 @@ export async function leadModal(id, onChange) {
   prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, onResearched: () => { changed = true; } });
   $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
   // Google: write to them, see what you have already sent, and put a meeting on your own calendar.
-  $('#lmailbtn', m.el)?.addEventListener('click', () => import('./mail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth` })));
-  $('#lmeetbtn', m.el).addEventListener('click', () => import('./gcal.js').then((x) => x.quickEvent({
-    title: `Audit call: ${l.business}`, attendees: [l.email].filter(Boolean), leadId: l.id,
-    notes: [l.contact_name && `Contact: ${l.contact_name}`, l.phone && `Phone: ${l.phone}`, l.website && `Site: ${l.website}`].filter(Boolean).join('\n'),
+  $('#lmailbtn', m.el)?.addEventListener('click', () => import('./hubmail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth`, lead_id: l.id })));
+  $('#lmeetbtn', m.el).addEventListener('click', () => import('./apptcal.js').then((x) => x.quickAppointment({
+    title: `Audit call: ${l.business}`, guest_email: l.email || '', lead_id: l.id, lead_name: l.business,
+    note: [l.contact_name && `Contact: ${l.contact_name}`, l.phone && `Phone: ${l.phone}`, l.website && `Site: ${l.website}`].filter(Boolean).join('\n'),
   })));
-  if (l.email) import('./mail.js').then((x) => x.mailWith($('#lmail', m.el), l.email, { name: l.contact_name || l.business })).catch(() => {});
+  if (l.email) import('./hubmail.js').then((x) => x.mailWith($('#lmail', m.el), l.email, { name: l.contact_name || l.business })).catch(() => {});
   $('#ledit', m.el).addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); });
   $$('[data-out]', m.el).forEach((b) => b.addEventListener('click', async () => {
     const outcome = b.dataset.out;

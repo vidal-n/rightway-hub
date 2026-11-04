@@ -143,16 +143,16 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   $('#cslack', view).addEventListener('click', () => import('./slackapp.js').then((m) => m.sendToSlack('client', c.id)));
   // Google: write to them, or put a meeting with them on your own calendar.
   $('#cclaude', view).addEventListener('click', () => import('./assistant.js').then((m) => m.openAssistant({ clientId: c.id, name: c.name })));
-  $('#cmail', view)?.addEventListener('click', () => import('./mail.js').then((m) => m.compose({ to: c.contact_email, subject: `${c.name} and Rightway Growth` })));
-  $('#ccal', view).addEventListener('click', () => import('./gcal.js').then((m) => m.quickEvent({
-    title: `${c.name} check-in`, attendees: [c.contact_email].filter(Boolean), clientId: c.id,
+  $('#cmail', view)?.addEventListener('click', () => import('./hubmail.js').then((m) => m.compose({ to: c.contact_email, subject: `${c.name} and Rightway Growth`, client_id: c.id })));
+  $('#ccal', view).addEventListener('click', () => import('./apptcal.js').then((m) => m.quickAppointment({
+    title: `${c.name} check-in`, guest_email: c.contact_email || '', client_id: c.id,
   })));
   if (tab === 'overview') return overviewTab(el, data);
   if (tab === 'accesslist') return import('./work.js').then((m) => m.accessListTab(el, c));
   if (tab === 'chat') return import('./chat.js').then((m) => m.chatView(el, c.id, { staff: true }));
   if (tab === 'meetings') return import('./meetings.js').then((m) => m.meetingsTab(el, c, user));
   if (tab === 'gbp') return import('./gbp.js').then((m) => m.gbpTab(el, c, user));
-  if (tab === 'files') return import('./gdrive.js').then((m) => m.clientDriveTab(el, c));
+  if (tab === 'files') return import('./files.js').then((m) => m.clientFilesTab(el, c));
   if (tab === 'tasks') return tasksTab(el, c, state.month || monthKey(), user);
   if (tab === 'reviews') return renderReviews(el, c.id, { staff: true, clientName: c.name });
   if (tab === 'posts') return renderPosts(el, c.id, { staff: true, ai: state.ai });

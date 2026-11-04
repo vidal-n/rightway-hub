@@ -1,6 +1,6 @@
 // Service worker: makes the Hub installable and keeps the app shell available on a weak connection.
 // API calls always go to the network, so data is never stale.
-const CACHE = 'rw-hub-v41';
+const CACHE = 'rw-hub-v42';
 const SHELL = ['/', '/index.html', '/hub.css', '/hub/app.js', '/hub/core.js', '/hub/shared.js', '/hub/staff.js', '/hub/portal.js', '/hub/crm.js', '/hub/prep.js', '/hub/texts.js', '/hub/home.js', '/hub/dialout.js', '/hub/phone.js', '/hub/calltools.js', '/hub/dispo.js', '/hub/payments.js', '/hub/stripesetup.js', '/hub/scans.js', '/hub/reports.js', '/hub/content.js', '/hub/siteaudit.js', '/hub/calltrack.js', '/hub/citations.js', '/hub/leader.js', '/js/sanitize.js', '/hub/googleapps.js', '/hub/onboarding.js', '/hub/work.js', '/hub/meetings.js', '/hub/gbp.js', '/hub/alerts.js', '/hub/slack.js', '/hub/slackapp.js', '/hub/slacktext.js', '/hub/chat.js', '/hub/assistant.js', '/hub/nav.js', '/js/guides.js',
   '/js/qr.js', '/js/map.js', '/js/grid.js', '/js/analysis.js', '/js/leadintel.js', '/js/leadfilter.js', '/js/fulfill.js', '/js/slots.js', '/js/plancopy.js', '/brand/rightway-logo-dark.svg', '/brand/rightway-logo-light.svg', '/favicon.svg'];
 

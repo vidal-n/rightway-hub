@@ -84,6 +84,7 @@ async function paintWallet(root) {
 
 // ---------- the shell ----------
 export function staffShell(app, user, active, inner) {
+  window.__rwUser = user; // the pop-up email composer reads who is sending
   active = activeKey(active);
   startPresence(user);
   document.body.classList.add('hubbg');
@@ -227,8 +228,8 @@ const PAGES = [
   ['Dashboard', '#/'], ['Dialer', '#/phone'], ['Dial out', '#/phone/out'], ['Meetings: start or join Google Meet', '#/phone/meet'], ['Texts', '#/phone/texts'], ['Calls and voicemail', '#/phone/calls'],
   ['Recordings', '#/phone/recordings'], ['Agents', '#/agents'], ['Call analytics', '#/agents/analytics'], ['Pipeline', '#/pipeline'], ['My work', '#/work'],
   ['Hours', '#/work/hours'], ['Task guides', '#/work/guides'], ['Clients', '#/clients'], ['Client view', '#/clients/view'], ['Scan tool', '/scan.html'],
-  ['Training', '#/training'], ['Scripts', '#/training/scripts'], ['Objection drills', '#/training/drills'], ['Slack', '#/slack'], ['Gmail', '#/google/mail'],
-  ['Calendar', '#/google/calendar'], ['Drive', '#/google/drive'], ['Google setup', '#/google'], ['Notifications', '#/notifications'], ['Settings', '#/settings'], ['Team', '#/settings/team'],
+  ['Training', '#/training'], ['Scripts', '#/training/scripts'], ['Objection drills', '#/training/drills'], ['Slack', '#/slack'], ['Mail', '#/mail'],
+  ['Calendar', '#/calendar'], ['New appointment', '#/calendar'], ['Files', '#/files'], ['Google (optional)', '#/google'], ['Notifications', '#/notifications'], ['Settings', '#/settings'], ['Team', '#/settings/team'],
   ['Payments', '#/payments', 'admin'], ['Phone setup', '#/phone/setup', 'admin'], ['Booking page', '/book.html'],
 ];
 let paletteOpen = false;

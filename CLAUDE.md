@@ -381,6 +381,17 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   read instead of ~270 statements (migrations add only missing columns, via `pragma_table_info`). `public/index.html` preloads the static module graph
   (`rel="modulepreload"`, checked by `test/schema.test.js`; add new statically imported modules there) and loads Google Fonts without blocking paint. Dashboard money
   widgets load after the first paint.
+- Google-free calendar, files and mail (Nov 2026, V does not want the Google API): none of this needs a Google account. Calendar `#/calendar`
+  (`public/hub/apptcal.js`, `src/hubcal.js`, `src/appointments.js` `appointmentItems`): month and list, "New appointment" form (title, date, time, length, guest,
+  link, lead, notes; click an empty day), edit and delete (table `events`, owners see all, teammates their own), booked audits and client meetings show too.
+  Each person has a private calendar feed (`users.cal_token`, `GET /api/public/cal/<token>.ics`, `POST /api/me/calendar-feed` makes a new link) that Google, Apple
+  and Outlook subscribe to once; guests can get an email invite with the .ics attached (`sendEmail` takes `attachments`, `from`). `public/js/ics.js` is pure (ics,
+  Google add links). Files `#/files` and the client Files tab (`src/files.js`, `public/hub/files.js`): R2 `files/<id>`, tables `hub_files`, `file_folders`, nested
+  folders, rename, move, delete, private share link `/api/public/f/<token>`, 25 MB cap. Mail `#/mail` (`src/hubmail.js`, `public/hub/hubmail.js`): sends through Resend
+  as "Name (Rightway Growth)" with Reply-To the person's own email, one email per recipient, logged in `mail_log` and on the lead or client timeline, address
+  suggestions, "Open in Gmail instead". Reading a Gmail inbox needs Google's API, so replies are read in Gmail. Lead and client Email and calendar buttons use these.
+  The Google page and its Gmail, Calendar, Drive modules stay in the code but the menu item is gone (`#/google`, palette "Google (optional)"); nothing calls them
+  unless someone connects Google.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

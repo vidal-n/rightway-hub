@@ -23,19 +23,26 @@ export async function bookOnCalendar(env, userId, leadId) {
   return m;
 }
 
+// Everything on the team calendar between two times: booked audits, client meetings and the appointments people add by hand.
+// Owners see all of it; teammates only theirs. Used by the calendar page and the calendar feed.
+export async function appointmentItems(env, user, from, to) {
+  const users = Object.fromEntries((await all(env, 'SELECT id, name, email FROM users')).map((u) => [u.id, (u.name || u.email || '').split(' ')[0]]));
+  const leads = await all(env, `SELECT id, business, contact_name, city, meet_at, meet_link, meet_by, owner_id, stage FROM leads WHERE meet_at >= ? AND meet_at < ? ORDER BY meet_at LIMIT 500`, from, to);
+  const mtgs = await all(env, `SELECT m.id, m.client_id, m.title, m.start_at, m.minutes, m.meet_link, c.name AS client FROM meetings m LEFT JOIN clients c ON c.id = m.client_id WHERE m.start_at >= ? AND m.start_at < ? ORDER BY m.start_at LIMIT 300`, from, to).catch(() => []);
+  const evs = await all(env, `SELECT e.*, l.business AS lead_name, c.name AS client_name FROM events e LEFT JOIN leads l ON l.id = e.lead_id LEFT JOIN clients c ON c.id = e.client_id WHERE e.start_at >= ? AND e.start_at < ? ${user.role === 'admin' ? '' : 'AND e.owner_id = ?'} ORDER BY e.start_at LIMIT 500`, from, to, ...(user.role === 'admin' ? [] : [user.id])).catch(() => []);
+  const mine = (l) => user.role === 'admin' || l.meet_by === user.id || (!l.meet_by && l.owner_id === user.id);
+  return [
+    ...leads.map((l) => ({ kind: 'audit', id: l.id, title: l.business, who: (l.contact_name || '').split(' ')[0], city: l.city, start: l.meet_at, minutes: 30, by: users[l.meet_by] || 'Booking page', stage: l.stage, link: mine(l) ? l.meet_link : null, open: mine(l) })),
+    ...mtgs.map((m) => ({ kind: 'client', id: m.client_id, title: m.client || m.title, who: m.title, start: m.start_at, minutes: m.minutes || 30, by: 'Client meeting', link: user.role !== 'client' ? m.meet_link : null, open: true })),
+    ...evs.map((e) => ({ kind: 'event', id: e.id, title: e.title, who: e.lead_name || e.client_name || '', start: e.start_at, minutes: e.minutes, by: users[e.owner_id] || '', link: e.link, note: e.note, guest_email: e.guest_email, lead_id: e.lead_id, client_id: e.client_id, lead_name: e.lead_name, open: false, edit: user.role === 'admin' || e.owner_id === user.id })),
+  ].sort((a, b) => a.start - b.start);
+}
+
 route('GET', '/api/appointments', async ({ env, user, url }) => {
   requireStaff(user);
   const from = Number(url.searchParams.get('from')) || now() - 7 * 864e5;
   const to = Math.min(Number(url.searchParams.get('to')) || now() + 35 * 864e5, from + 100 * 864e5);
-  const users = Object.fromEntries((await all(env, 'SELECT id, name, email FROM users')).map((u) => [u.id, (u.name || u.email || '').split(' ')[0]]));
-  const leads = await all(env, `SELECT id, business, contact_name, city, meet_at, meet_link, meet_by, owner_id, stage FROM leads WHERE meet_at >= ? AND meet_at < ? ORDER BY meet_at LIMIT 500`, from, to);
-  const mtgs = await all(env, `SELECT m.id, m.client_id, m.title, m.start_at, m.minutes, m.meet_link, c.name AS client FROM meetings m LEFT JOIN clients c ON c.id = m.client_id WHERE m.start_at >= ? AND m.start_at < ? ORDER BY m.start_at LIMIT 300`, from, to).catch(() => []);
-  const mine = (l) => user.role === 'admin' || l.meet_by === user.id || (!l.meet_by && l.owner_id === user.id);
-  const items = [
-    ...leads.map((l) => ({ kind: 'audit', id: l.id, title: l.business, who: (l.contact_name || '').split(' ')[0], city: l.city, start: l.meet_at, minutes: 30, by: users[l.meet_by] || 'Booking page', stage: l.stage, link: mine(l) ? l.meet_link : null, open: mine(l) })),
-    ...mtgs.map((m) => ({ kind: 'client', id: m.client_id, title: m.client || m.title, who: m.title, start: m.start_at, minutes: m.minutes || 30, by: 'Client meeting', link: user.role !== 'client' ? m.meet_link : null, open: true })),
-  ].sort((a, b) => a.start - b.start);
-  return json({ items, from, to });
+  return json({ items: await appointmentItems(env, user, from, to), from, to });
 });
 
 route('POST', '/api/leads/:id/meet-now', async ({ env, user, params }) => {

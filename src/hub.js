@@ -631,3 +631,6 @@ import './slack.js';
 import './slackuser.js';
 import './nav.js';
 import './chat.js';
+import './hubcal.js';
+import './files.js';
+import './hubmail.js';

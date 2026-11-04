@@ -135,6 +135,8 @@ async function route() {
   if (parts[0] === 'work') return import('./work.js').then((m) => m.workPage(app, u, parts[1] || '', parts[2] || ''));
   if (parts[0] === 'alerts' || parts[0] === 'notifications') return import('./alerts.js').then((m) => m.alertsPage(app, u));
   if (parts[0] === 'payments') return paymentsPage(app, u);
+  if (parts[0] === 'mail') return import('./hubmail.js').then((m) => m.mailPage(app, u));
+  if (parts[0] === 'files') return import('./files.js').then((m) => m.filesPage(app, u, parts[1] || ''));
   if (parts[0] === 'google' && parts[1] === 'drive') return import('./gdrive.js').then((m) => m.drivePage(app, u, parts[2] || ''));
   if (parts[0] === 'google' && parts[1] === 'calendar') return import('./gcal.js').then((m) => m.calendarPage(app, u, parts[2] || ''));
   if (parts[0] === 'google' && parts[1] === 'mail') return import('./mail.js').then((m) => m.mailPage(app, u, parts[2] || '', parts[3] || ''));

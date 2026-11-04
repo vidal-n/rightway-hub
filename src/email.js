@@ -3,14 +3,15 @@ export function canEmail(env) {
   return Boolean(env.RESEND_API_KEY);
 }
 
-export async function sendEmail(env, { to, subject, text, html, replyTo }, fetchImpl = fetch) {
+export async function sendEmail(env, { to, subject, text, html, replyTo, from, attachments }, fetchImpl = fetch) {
   if (!env.RESEND_API_KEY) throw new Error('Email is not set up yet.');
   const res = await fetchImpl('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      from: env.EMAIL_FROM || 'Rightway Growth <hello@rightwaygrowth.com>',
-      to: [to], subject, text, html: html || undefined, reply_to: replyTo || undefined,
+      from: from || env.EMAIL_FROM || 'Rightway Growth <hello@rightwaygrowth.com>',
+      to: Array.isArray(to) ? to : [to], subject, text, html: html || undefined, reply_to: replyTo || undefined,
+      attachments: attachments || undefined, // [{ filename, content (base64), content_type }]
     }),
   });
   if (!res.ok) {

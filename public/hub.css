@@ -1554,3 +1554,21 @@ body.settled .card, body.settled .stat, body.settled .item, body.settled .post, 
 .fx-row { display: grid; grid-template-columns: minmax(0, 1fr) 130px 40px; gap: 8px; align-items: center; }
 .tbl .num { text-align: right; }
 .pace-key { display: inline-block; width: 22px; border-top: 2px dashed var(--bad); vertical-align: middle; margin-right: 8px; }
+
+/* Hub calendar: appointments added by hand are buttons, empty days are clickable */
+button.ac-chip { width: 100%; text-align: left; border: 0; border-left: 3px solid var(--c-violet, #7c5cd6); background: rgba(124, 92, 214, .12); cursor: pointer; font-family: inherit; color: var(--ink); }
+button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
+.ac-day { cursor: pointer; }
+.ac-day:hover { background: var(--surface-2); }
+
+/* Files */
+.fl-list { display: grid; }
+.fl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 9px 4px; border-top: 1px solid var(--line); }
+.fl-row:first-child { border-top: 0; }
+.fl-ico { width: 20px; height: 20px; color: var(--c-blue, #4E7FD8); flex: none; display: inline-flex; }
+.fl-ico svg { width: 20px; height: 20px; }
+.fl-name { flex: 1 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; color: var(--ink); }
+.fl-act { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.fl-drop { border: 2px dashed transparent; border-radius: 12px; min-height: 80px; transition: border-color .15s, background .15s; }
+.fl-drop.over { border-color: var(--mint-strong); background: var(--mint-soft); }
+.empty-note { padding: 28px 8px; text-align: center; color: var(--muted, #5b6b64); }

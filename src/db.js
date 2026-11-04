@@ -149,6 +149,13 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS automation_log (id TEXT PRIMARY KEY, auto_id TEXT NOT NULL, lead_id TEXT NOT NULL, meet_at INTEGER NOT NULL, channel TEXT, status TEXT, error TEXT, to_addr TEXT, at INTEGER NOT NULL, UNIQUE (auto_id, lead_id, meet_at))`,
   `CREATE TABLE IF NOT EXISTS vault_keys (user_id TEXT PRIMARY KEY, salt TEXT NOT NULL, iters INTEGER NOT NULL, check_iv TEXT NOT NULL, check_ct TEXT NOT NULL, priv_iv TEXT NOT NULL, priv_ct TEXT NOT NULL, pub TEXT NOT NULL, at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS vault_items (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, iv TEXT NOT NULL, ct TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS file_folders (id TEXT PRIMARY KEY, client_id TEXT, parent_id TEXT, name TEXT NOT NULL, created_at INTEGER)`,
+  `CREATE TABLE IF NOT EXISTS hub_files (id TEXT PRIMARY KEY, client_id TEXT, folder_id TEXT, name TEXT NOT NULL, mime TEXT, size INTEGER NOT NULL DEFAULT 0, owner_id TEXT, share_token TEXT, created_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS idx_hub_files_scope ON hub_files (client_id, folder_id)`,
+  `CREATE TABLE IF NOT EXISTS mail_log (id TEXT PRIMARY KEY, user_id TEXT, to_email TEXT NOT NULL, subject TEXT, body TEXT, lead_id TEXT, client_id TEXT, status TEXT, error TEXT, at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS idx_mail_log_to ON mail_log (to_email, at)`,
+  `CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, title TEXT NOT NULL, start_at INTEGER NOT NULL, minutes INTEGER NOT NULL DEFAULT 30, owner_id TEXT, lead_id TEXT, client_id TEXT, guest_email TEXT, link TEXT, note TEXT, created_at INTEGER, updated_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS idx_events_start ON events (start_at)`,
   `CREATE TABLE IF NOT EXISTS cost_daily (day TEXT NOT NULL, vendor TEXT NOT NULL, kind TEXT NOT NULL, micro INTEGER NOT NULL DEFAULT 0, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, vendor, kind))`,
   `CREATE TABLE IF NOT EXISTS vault_access (item_id TEXT NOT NULL, user_id TEXT NOT NULL, eph TEXT NOT NULL, wiv TEXT NOT NULL, wkey TEXT NOT NULL, PRIMARY KEY (item_id, user_id))`,
 ];
@@ -175,7 +182,7 @@ const ADD_COLUMNS = [
   ['users', 'slack_id TEXT'], ['users', 'slack_prefs TEXT'], ['users', 'slack_token TEXT'], ['users', 'slack_uid TEXT'], ['users', 'slack_scopes TEXT'], ['users', 'slack_snooze INTEGER'], ['clients', 'chat_tried INTEGER'], ['users', 'nav_prefs TEXT'], ['clients', 'chat_channel TEXT'], ['clients', 'chat_channel_name TEXT'], ['clients', 'slack_channel TEXT'], ['clients', 'slack_channel_name TEXT'], ['clients', 'drive_folder TEXT'],
   ['users', 'status TEXT'], ['users', 'status_at INTEGER'], ['users', 'last_seen INTEGER'], ['activities', 'ended_at INTEGER'], ['activities', 'dispo_at INTEGER'],
   ['leads', 'deep_scan TEXT'], ['users', 'training TEXT'], ['leads', 'research_tried INTEGER'], ['leads', 'scrub TEXT'],
-  ['users', 'fwd_calls INTEGER'], ['users', 'fwd_texts INTEGER'], ['users', 'avatar_at INTEGER'],
+  ['users', 'fwd_calls INTEGER'], ['users', 'fwd_texts INTEGER'], ['users', 'avatar_at INTEGER'], ['users', 'cal_token TEXT'],
 ];
 
 let ready = null;
