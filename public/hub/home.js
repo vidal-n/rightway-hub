@@ -30,6 +30,7 @@ export async function homePage(app, user) {
     </div>
     <div class="home-grid">
       ${user.role === 'admin' ? '<div class="card" id="paysnap"><div class="card-head"><h2>Payments</h2></div><div class="skeleton" style="height:70px"></div></div><div class="card" id="balsnap"></div>' : ''}
+      <div class="card" id="floor"><div class="card-head"><h2>Team floor</h2><a class="btn btn-ghost btn-sm" href="#/agents">Agents</a></div><div class="skeleton" style="height:70px"></div></div>
       <div class="card"><div class="card-head"><h2>Meetings coming up</h2><a class="btn btn-ghost btn-sm" href="#/pipeline">All leads</a></div>
         ${d.meetings.length ? `<ul class="list">${d.meetings.map((m) => `<li class="item"><span class="badge">${esc(when(m.meet_at))}</span>
           <div><div class="item-title">${esc(m.business)}</div><div class="item-sub">${esc(m.contact_name || '')}</div></div>
@@ -55,6 +56,14 @@ export async function homePage(app, user) {
         : '<p class="muted">Calls, texts, and updates from the last 7 days show up here.</p>'}</div>
     </div>`;
   animateNumbers(view);
+  api('/api/agents').then((d) => {
+    const box = $('#floor', view); if (!box) return;
+    const st = (a) => ({ on_call: 'On a call', available: 'Available', break: 'Break', lunch: 'Lunch', training: 'Training', meeting: 'Meeting', admin: 'Admin work', offline: 'Offline' })[a.status] || a.status;
+    const tone = (a) => ({ on_call: 'live', available: 'good', break: 'warn', lunch: 'warn', offline: 'gray' })[a.status] || 'info';
+    box.innerHTML = `<div class="card-head"><h2>Team floor</h2><a class="btn btn-ghost btn-sm" href="#/agents">Agents</a></div>
+      <div style="display:grid;gap:8px">${d.agents.map((a) => `<div class="row" style="flex-wrap:nowrap;gap:10px"><i class="dot ${tone(a)}"></i><b style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</b>
+        <span class="small">${esc(a.call ? `with ${a.call.business || 'a lead'}` : st(a))}</span><span class="badge gray mono">${a.today.dials} dials</span></div>`).join('')}</div>`;
+  }).catch(() => $('#floor', view)?.remove());
   if (user.role === 'admin') { paymentsSnapshot($('#paysnap', view)); import('./balances.js').then((m) => m.balancesCard($('#balsnap', view))); }
   $$('[data-lead]', view).forEach((li) => li.addEventListener('click', () => leadModal(li.dataset.lead, () => homePage(app, user))));
   $('#mk-sample', view)?.addEventListener('click', async (e) => {
@@ -100,6 +109,16 @@ export async function clientViewPage(app, user, clientId) {
       <div class="cv-phone"><iframe id="cv-frame" title="Client app preview" src="${esc(src())}"></iframe></div>
     </div>`;
   const frame = $('#cv-frame', view);
+  // The app renders at a real phone size (390 x 844) and is scaled down to fit the screen, so nothing is cut off or squeezed.
+  const fit = () => {
+    const ph = $('.cv-phone', view); if (!ph) { window.removeEventListener('resize', fit); return; }
+    const top = ph.getBoundingClientRect().top + window.scrollY;
+    const avail = Math.max(480, window.innerHeight - (top < window.innerHeight * 0.6 ? top : 90) - 24);
+    const wide = Math.max(260, Math.min(ph.parentElement.clientWidth, 460) - 24);
+    ph.style.setProperty('--k', String(Math.min(1, (avail - 24) / 844, wide / 390).toFixed(3)));
+  };
+  fit(); window.addEventListener('resize', fit);
+  window.addEventListener('hashchange', () => window.removeEventListener('resize', fit), { once: true });
   $('#cv-pick', view).addEventListener('change', (e) => { location.hash = `#/clients/view/${e.target.value}`; });
   $$('[data-tab]', view).forEach((b) => b.addEventListener('click', () => {
     $$('[data-tab]', view).forEach((x) => x.classList.toggle('is-on', x === b));

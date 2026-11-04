@@ -263,7 +263,8 @@ test('custom dispositions: owner edits the list, results drive the lead, dial ou
   const t = setup();
   await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
   let r = await t.call('GET', '/api/dispositions');
-  assert.equal(r.data.dispositions.length, 9);
+  assert.equal(r.data.dispositions.length, 15);
+  assert.equal(r.data.dispositions.find((d) => d.id === "not_owner").acts, "gatekeeper");
   assert.equal(r.data.custom, false);
   // Bad lists are refused
   assert.equal((await t.call('PUT', '/api/dispositions', { dispositions: [] })).status, 400);
@@ -315,5 +316,43 @@ test('custom dispositions: owner edits the list, results drive the lead, dial ou
 
   // Reset to default
   r = await t.call('PUT', '/api/dispositions', { reset: true });
-  assert.equal(r.data.dispositions.length, 9);
+  assert.equal(r.data.dispositions.length, 15);
+});
+
+test('agents: status, presence, login time, live call, analytics with handle time and lead quality', async () => {
+  const { callStats, statusTime, isConnect, handleSecs, bucketOf } = await import('../public/js/callstats.js');
+  assert.equal(isConnect({ answered_at: 1, duration: 40, outcome: 'voicemail' }), false, 'a machine is not a contact');
+  assert.equal(isConnect({ outcome: 'hung_up' }), true);
+  assert.equal(handleSecs({ at: 0, answered_at: 5000, duration: 60, dispo_at: 95000 }), 95);
+  assert.equal(handleSecs({ at: 0, answered_at: 5000, duration: 60, dispo_at: 5 * 3600e3 }), 60 + 900, 'a forgotten popup is capped');
+  assert.equal(bucketOf(29), 0); assert.equal(bucketOf(400), 3);
+  const s = callStats([
+    { at: 0, by: 'u1', outcome: 'booked', answered_at: 1, duration: 420, source: 'csv', grade: 'A', hour: 10 },
+    { at: 0, by: 'u1', outcome: 'no_answer', source: 'csv', grade: 'B', hour: 10 },
+    { at: 0, by: 'u2', outcome: 'not_interested', answered_at: 1, duration: 25, source: 'web', grade: 'A', hour: 11 },
+    { at: 0, status: 'inbound', duration: 100 },
+  ], { users: [{ id: 'u1', name: 'Vidal' }] });
+  assert.equal(s.total.dials, 3);
+  assert.equal(s.total.connects, 2);
+  assert.equal(s.total.booked, 1);
+  assert.equal(s.agents[0].label, 'Vidal');
+  assert.equal(s.grades.find((g) => g.key === 'A').booked, 1);
+  assert.equal(s.buckets[3].booked, 1, '5 to 10 minute calls booked');
+  assert.equal(statusTime([{ status: 'available', start_at: 0, end_at: 3600e3 }, { status: 'break', start_at: 3600e3, end_at: null }], 0, 4000e3).login, 4000);
+
+  const t = setup();
+  await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  let r = await t.call('POST', '/api/me/presence');
+  assert.equal(r.data.status, 'available', 'opening the Hub logs you in');
+  r = await t.call('POST', '/api/me/status', { status: 'lunch' });
+  assert.equal(r.status, 200);
+  assert.equal((await t.call('POST', '/api/me/status', { status: 'napping' })).status, 400);
+  r = await t.call('GET', '/api/agents');
+  assert.equal(r.data.agents[0].status, 'lunch');
+  assert.equal(r.data.agents[0].online, true);
+  assert.equal(r.data.canMonitor, true);
+  r = await t.call('GET', '/api/analytics/calls?days=7');
+  assert.equal(r.status, 200);
+  assert.ok(Array.isArray(r.data.inventory));
+  await t.call('POST', '/api/auth/logout');
 });

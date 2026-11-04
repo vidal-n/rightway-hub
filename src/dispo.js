@@ -7,13 +7,16 @@ import { route } from './router.js';
 
 export const ACTS = {
   no_answer: 'No answer (try again later)', voicemail: 'Voicemail (try again later)', gatekeeper: 'Gatekeeper (try again later)',
+  hung_up: 'Hung up (counts as a contact, try again later)',
   conversation: 'Talked (follow up in 2 days)', booked: 'Booked audit', callback: 'Callback at a set time', not_interested: 'Not interested (recycle in 90 days)',
   bad_number: 'Bad number (lost)', dnc: 'Do not call', none: 'Just log it (no change to the lead)',
 };
 export const BASE_DISPOS = [
   ['no_answer', 'No answer'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'], ['conversation', 'Talked, follow up'], ['booked', 'Booked audit'],
-  ['callback', 'Callback'], ['not_interested', 'Not interested'], ['bad_number', 'Bad number'], ['dnc', 'Do not call'],
-].map(([id, label]) => ({ id, label, acts: id }));
+  ['callback', 'Callback'], ['hung_up', 'Hung up'], ['not_interested', 'Not interested'], ['bad_number', 'Bad number'],
+  ['not_owner', 'Not the decision maker', 'gatekeeper'], ['send_info', 'Wants info first', 'conversation'], ['has_agency', 'Has an agency', 'not_interested'],
+  ['not_fit', 'Not a fit', 'not_interested'], ['wrong_number', 'Wrong number', 'bad_number'], ['dnc', 'Do not call'],
+].map(([id, label, acts]) => ({ id, label, acts: acts || id }));
 
 export async function getDispos(env) {
   const raw = (await getSettings(env).catch(() => ({}))).dispositions;

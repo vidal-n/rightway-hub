@@ -333,6 +333,21 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   modal gives invite text to text, email or copy; `/book.html` offers slots from the booking settings minus Hub appointments (`hubBusy`, leads
   `meet_at` and `meetings`), holds the time, and alerts the team to confirm and send the link (`confirm: true`). With Google it also checks
   Google busy times and sends the Meet invite as before.
+- Hub v3 layout and team floor (Nov 2026): shell in `public/hub/shell.js` (`staffShell`, re-exported by staff.js): grouped rail (`GROUPS`/`groupOf` in nav.js:
+  Sell, Deliver, Team, Run), command bar (page, Ctrl K or / command palette over pages, leads incl. phone digits, clients; status pill; yellow wallet button from
+  `/api/balances/status`; alerts; cog; profile bubble), dotted paper canvas, segmented tabs, mono stat numbers ("Skin v3" at the end of hub.css). Scan tool uses the
+  same rail and bar (`.sx-*` in styles.css). Agents (`src/agents.js`, `public/hub/agents.js`, `#/agents`, replaces Live calls; `#/phone/live` redirects): statuses
+  available, break, lunch, training, meeting, admin, offline (`STATUSES` in `public/js/callstats.js`), On a call derived from live activities; `POST /api/me/presence`
+  every 45 s (first beat logs you in, gaps over 2.5 min end the stretch), `POST /api/me/status`, table `agent_log`, logout sets offline. Owners Listen, Whisper, Barge from
+  agent cards. Analytics `#/agents/analytics` (`GET /api/analytics/calls?days&rep`, pure `callStats`): dials, contacts (disposition beats Twilio answered), decision maker
+  conversations, booked, talk, handle time (dial to `dispo_at`, capped talk + 15 min), call length buckets, dispositions, best hours, lead quality by grade, source,
+  industry, time zone, lead inventory. `activities.ended_at`, `dispo_at`. More default dispositions (hung_up act counts as a contact). No recording announcement on
+  agency calls (tracking numbers keep theirs when recording is on). Dashboard Team floor card. Training (`public/hub/training.js`, `#/training/...`): scripts read from
+  `public/js/scriptprint.js` (pure, also feeds the PDFs in `public/training/`), objection drills, playbooks, fulfillment guides, owner setup, resources; progress in
+  `users.training` (`/api/me/training`). Script v6: consultant, free Google clarity audits, ten clients only, no permission ask; clarity call is the Google clarity audit.
+  Deep scan: presentation Scan slide "Run the full scan" opens `/scan.html?lead=<id>` in its own tab; Save to lead (`POST /api/leads/:id/deep-scan`, `compactScan`,
+  `leads.deep_scan`, up to 5 keywords, 15 x 15) then BroadcastChannel and window focus refresh the slide (keyword tabs, any grid size). Client view and the app slide
+  render the client app at 390 x 844 scaled into the phone frame (`--k`).
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

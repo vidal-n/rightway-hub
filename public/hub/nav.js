@@ -4,14 +4,18 @@
 import { $, $$, esc, api, toast, modal, icon } from './core.js';
 
 export const NAV = [
-  ['home', '#/', 'dash', 'Dashboard'], ['work', '#/work', 'check', 'My work'], ['slack', '#/slack', 'slack', 'Slack'], ['phone', '#/phone', 'phone', 'Phone'],
-  ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['clients', '#/clients', 'users', 'Clients'], ['payments', '#/payments', 'money', 'Payments', 'admin'],
-  ['scan', '/scan.html', 'grid', 'Scan tool'], ['google', '#/google', 'apps', 'Google'],
-  ['alerts', '#/alerts', 'bell', 'Alerts'], ['settings', '#/settings', 'note', 'Settings'],
+  ['home', '#/', 'dash', 'Dashboard'], ['phone', '#/phone', 'phone', 'Phone'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['agents', '#/agents', 'headset', 'Agents'],
+  ['work', '#/work', 'check', 'My work'], ['clients', '#/clients', 'users', 'Clients'], ['scan', '/scan.html', 'grid', 'Scan tool'],
+  ['training', '#/training', 'book', 'Training'], ['slack', '#/slack', 'slack', 'Slack'], ['google', '#/google', 'apps', 'Google'],
+  ['payments', '#/payments', 'money', 'Payments', 'admin'], ['alerts', '#/alerts', 'bell', 'Alerts'], ['settings', '#/settings', 'cog', 'Settings'],
 ];
+// The rail groups the menu by the job: selling, delivering, the team, and running the business.
+export const GROUPS = [['sell', 'Sell'], ['deliver', 'Deliver'], ['team', 'Team'], ['run', 'Run']];
+const GROUP_OF = { home: 'sell', phone: 'sell', pipeline: 'sell', agents: 'sell', work: 'deliver', clients: 'deliver', scan: 'deliver', training: 'team', slack: 'team', google: 'team', payments: 'run', alerts: 'run', settings: 'run' };
+export const groupOf = (k) => GROUP_OF[k] || 'run';
 // Which dot belongs to which menu item.
 const BADGE_KEY = { work: 'work', slack: 'slack', phone: 'phone', pipeline: 'pipeline', alerts: 'alerts' };
-const ALIAS = { dialer: 'phone', inbox: 'phone', team: 'settings', clientview: 'clients' };
+const ALIAS = { dialer: 'phone', inbox: 'phone', team: 'settings', clientview: 'clients', client: 'clients' };
 export const activeKey = (k) => ALIAS[k] || k;
 
 let prefs = null;
@@ -64,7 +68,7 @@ export function wireNav(root, user, active, openMore) {
   window.addEventListener('resize', onResize);
   window.addEventListener('hashchange', () => window.removeEventListener('resize', onResize), { once: true });
   // Server copy of the order may differ from this device: redraw once it arrives.
-  if (!loaded) loadPrefs().then(() => { const side = $('#side nav', root); if (side) side.innerHTML = sideLinks(user, active); draw(); paint(last); });
+  if (!loaded) loadPrefs().then(() => { const side = $('#side nav', root); if (side) import('./shell.js').then((m) => { side.innerHTML = m.railLinks(user, active); paint(last); }); draw(); paint(last); });
   refreshBadges();
 }
 

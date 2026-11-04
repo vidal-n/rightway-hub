@@ -4,71 +4,10 @@ import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.j
 import { billingTab } from './crm.js';
 import { onboardingTab } from './onboarding.js';
 
-import { navItems, sideLinks, wireNav, activeKey, customizeMenu, NAV } from './nav.js';
+import { NAV } from './nav.js';
 
-export function staffShell(app, user, active, inner) {
-  active = activeKey(active);
-  app.innerHTML = `
-    <div class="staff">
-      <header class="mtop">
-        <a class="mtop-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="132" height="22"><span class="tag">Hub</span></a>
-        <span class="mtop-page">${esc((NAV.find((n) => n[0] === active) || [])[3] || '')}</span>
-        <span class="ptop-m">${profileButtons(user)}</span>
-      </header>
-      <div class="ptop">${profileButtons(user)}</div>
-      <div class="side-scrim" id="scrim" hidden></div>
-      <aside class="side" id="side">
-        <div class="side-head"><a class="side-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="150" height="26"><span class="tag">Hub</span></a>
-          <button type="button" class="mtop-btn side-close" id="menu-close" aria-label="Close menu">${icon.close}</button></div>
-        <nav aria-label="Main">${sideLinks(user, active)}</nav>
-        <div class="side-foot"><button type="button" id="navcust">Customize menu</button><span class="who">${esc(user.name || user.email)}</span><button type="button" id="logout">Log out</button></div>
-      </aside>
-      <main class="main" id="view">${inner || '<div class="skeleton"></div>'}</main>
-      <nav class="bbar" id="bbar" aria-label="Quick menu"></nav>
-    </div>`;
-  const side = $('#side'), scrim = $('#scrim');
-  const setOpen = (on) => {
-    side.classList.toggle('is-open', on); scrim.hidden = !on;
-    document.body.classList.toggle('menu-open', on);
-    if (on) $('nav a.is-active, nav a', side)?.focus({ preventScroll: true });
-  };
-  $('#menu-close').addEventListener('click', () => setOpen(false));
-  scrim.addEventListener('click', () => setOpen(false));
-  side.addEventListener('click', (e) => { if (e.target.closest('nav a')) setOpen(false); });
-  const onKey = (e) => { if (e.key === 'Escape' && side.classList.contains('is-open')) setOpen(false); };
-  document.addEventListener('keydown', onKey);
-  window.addEventListener('hashchange', () => { document.removeEventListener('keydown', onKey); document.body.classList.remove('menu-open'); }, { once: true });
-  wireNav(app, user, active, () => setOpen(true));
-  $('#navcust').addEventListener('click', () => { setOpen(false); customizeMenu(user, () => location.reload()); });
-  const logout = async () => { await api('/api/auth/logout', { method: 'POST' }).catch(() => {}); location.hash = '#/login'; location.reload(); };
-  $('#logout').addEventListener('click', logout);
-  // Profile bubble (top right): who you are, settings, alerts, menu layout, log out.
-  app.querySelectorAll('[data-pbub]').forEach((b) => b.addEventListener('click', (e) => {
-    e.stopPropagation();
-    document.querySelector('.pmenu')?.remove();
-    const r = b.getBoundingClientRect();
-    const m = document.createElement('div');
-    m.className = 'pmenu';
-    m.setAttribute('role', 'menu');
-    m.style.top = `${r.bottom + 8}px`;
-    m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
-    m.innerHTML = `<div class="pmenu-who"><span class="pbub big">${esc(initials(user))}</span><div><b>${esc(user.name || 'You')}</b><div class="small muted">${esc(user.email || '')}</div><span class="badge gray">${user.role === 'admin' ? 'Owner' : 'Team'}</span></div></div>
-      <a href="#/settings" role="menuitem">${icon.cog}Settings</a>
-      <a href="#/alerts" role="menuitem">${icon.bell}Alerts and notifications</a>
-      ${user.role === 'admin' ? `<a href="#/settings/team" role="menuitem">${icon.users || icon.cog}Team</a>` : ''}
-      <button type="button" data-pm="nav" role="menuitem">${icon.edit || icon.cog}Customize menu</button>
-      <button type="button" data-pm="out" role="menuitem">${icon.close}Log out</button>`;
-    document.body.appendChild(m);
-    const close = () => { m.remove(); document.removeEventListener('click', close); };
-    setTimeout(() => document.addEventListener('click', close), 0);
-    m.querySelector('[data-pm="nav"]').onclick = () => { close(); customizeMenu(user, () => location.reload()); };
-    m.querySelector('[data-pm="out"]').onclick = logout;
-  }));
-  return $('#view');
-}
-
-const initials = (u) => String(u.name || u.email || '?').trim().split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
-const profileButtons = (u) => `<a class="pcog" href="#/settings" title="Settings" aria-label="Settings">${icon.cog}</a><button type="button" class="pbub" data-pbub title="${esc(u.name || u.email || 'Profile')}" aria-label="Profile menu">${esc(initials(u))}</button>`;
+import { staffShell, initials } from './shell.js';
+export { staffShell, initials };
 
 // Settings holds the team too.
 export const settingsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a><a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Team</a></nav>`;

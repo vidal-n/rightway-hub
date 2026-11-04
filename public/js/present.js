@@ -20,7 +20,19 @@ async function api(path, opts = {}) {
   return data;
 }
 
-const state = { i: 0, plan: 'growth', ticket: 500, jobs: 4, quote: null, entered: { setup: '', monthly: '' } };
+const state = { i: 0, plan: 'growth', ticket: 500, jobs: 4, quote: null, entered: { setup: '', monthly: '' }, kwi: 0 };
+// The deep scan run in the Scan tool tab (saved to the lead) wins over the quick research grid. One entry per keyword.
+function deepScans() {
+  const raw = D?.lead?.deep_scan;
+  if (!raw) return [];
+  try { const d = typeof raw === 'string' ? JSON.parse(raw) : raw; return Array.isArray(d.scans) ? d.scans.filter((x) => x.cells?.length) : []; } catch { return []; }
+}
+function activeGrid() {
+  const deep = deepScans();
+  if (deep.length) { const g = deep[Math.min(state.kwi, deep.length - 1)]; return { ...g, deep: true, count: deep.length }; }
+  const g = D?.intel?.grid;
+  return g ? { ...g, keyword: D.intel.keyword, center: D.intel.rank, deep: false, count: 1 } : null;
+}
 let D = null;
 
 function stars(r) { if (r == null) return ''; const n = Math.round(r); return `<span class="stars">${'★'.repeat(n)}${'☆'.repeat(5 - n)}</span> ${r.toFixed(1)}`; }
@@ -53,7 +65,7 @@ function slides() {
     <div class="anim"><p class="kicker">Local growth plan</p><h1>${esc(lead.business)}:<br>more calls from Google${city ? ` in ${esc(city)}` : ''}</h1>
     <p class="lead">Prepared for ${esc(lead.contact_name || 'you')} by Rightway Growth</p></div>
     <div class="cover-meta"><div><b>${esc(new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}</b>Date</div><div><b>${esc(kw)}</b>Main search</div>${D.rep ? `<div><b>${esc(D.rep)}</b>Your strategist</div>` : ''}</div>`,
-  `Google clarity call. Set the frame:\n\n${say('c_frame')}\n\nCheck: is everyone who decides on marketing here?`, true);
+  `Google clarity audit. Set the frame:\n\n${say('c_frame')}\n\nCheck: is everyone who decides on marketing here?`, true);
 
   add('agenda', 'Agenda', `<div class="anim"><p class="kicker">Today</p><h2>What we'll cover in 20 minutes</h2>
     <ol class="agenda"><li>How customers find ${esc(info.label.toLowerCase())} businesses in ${esc(city || 'your area')}</li><li>Where you show up today, street by street</li><li>You vs the businesses getting the calls</li><li>What's holding you back</li><li>The plan, the timeline, and the investment</li></ol></div>`,
@@ -66,21 +78,31 @@ function slides() {
       <div class="anim"><div class="box"><h3>Why every spot matters</h3><p>Most people call one of the first businesses they see on the map, and few look past the first page. Each spot higher gets more of the calls. Spots are earned with a complete Google profile, reviews, a website Google trusts, and steady activity. Every one of those is something we can work on.</p></div></div></div>`,
   `Teach them something about their own market:\n"This is exactly what your customer sees when they search ${kw}. Most people call one of the first few and few scroll past the first page."\n${comps[0] ? `${comps[0].title} gets the first look with ${comps[0].reviews ?? 'a lot of'} reviews.\n` : ''}You come up ${intel ? rankText(intel.rank) : '(run research first)'}.\n\nAsk: "When you search your own service, where do you see yourself?"`);
 
-  if (intel?.grid) {
-    const g = intel.grid;
+  const g = activeGrid();
+  const deep = deepScans();
+  const scanBtn = `<button class="replay" id="deepscan" type="button" title="Opens the Scan tool in its own tab, filled in for ${esc(lead.business)}">${g?.deep ? 'Run it again' : 'Run the full scan'}</button>`;
+  if (g) {
     const band = (c) => (c.error ? 'err' : c.rank == null ? 'none' : c.rank <= 3 ? 'top3' : c.rank <= 10 ? 'top10' : 'top20');
     const mid = Math.floor(g.cells.length / 2);
-    add('grid', 'The scan', `<p class="kicker">The scan</p><h2>${top10Of(g) ? `First page in ${top10Of(g)} of ${g.points} spots` : 'Not on the first page anywhere we checked'}</h2>
+    const gkw = g.keyword || kw;
+    const center = g.center ?? g.cells[mid]?.rank ?? null;
+    add('grid', 'The scan', `<p class="kicker">The scan${g.deep ? ` · ${g.size} x ${g.size}, ${g.radiusMiles} miles` : ''}</p><h2>${top10Of(g) ? `First page in ${top10Of(g)} of ${g.points} spots` : 'Not on the first page anywhere we checked'}</h2>
+      ${deep.length > 1 ? `<div class="kwtabs">${deep.map((x, i) => `<button type="button" data-kw="${i}" class="${i === Math.min(state.kwi, deep.length - 1) ? 'on' : ''}">${esc(x.keyword)}<b>${top10Of(x)}/${x.points}</b></button>`).join('')}</div>` : ''}
       <div class="cols" style="grid-template-columns:auto 1fr;align-items:center;gap:72px">
-        <div><div class="biggrid" id="biggrid" style="grid-template-columns:repeat(${g.size},1fr)">${g.cells.map((c, i) => `<span data-i="${i}" data-band="${band(c)}" class="${band(c)}${i === mid ? ' center' : ''}">${c.error ? '!' : c.rank ?? '20+'}</span>`).join('')}</div>
-          <div class="legend"><span><i style="background:#23B07E"></i>Top 3</span><span><i style="background:#E8A33D"></i>4 to 10</span><span><i style="background:#E07B39"></i>11 to 20</span><span><i style="background:#D64545"></i>Not found</span><button class="replay" id="greplay" type="button">Replay</button></div></div>
+        <div><div class="biggrid" id="biggrid" style="grid-template-columns:repeat(${g.size},1fr);--s:${g.size}">${g.cells.map((c, i) => `<span data-i="${i}" data-band="${band(c)}" class="${band(c)}${i === mid ? ' center' : ''}">${c.error ? '!' : c.rank ?? '20+'}</span>`).join('')}</div>
+          <div class="legend"><span><i style="background:#23B07E"></i>Top 3</span><span><i style="background:#E8A33D"></i>4 to 10</span><span><i style="background:#E07B39"></i>11 to 20</span><span><i style="background:#D64545"></i>Not found</span><button class="replay" id="greplay" type="button">Replay</button>${scanBtn}</div></div>
         <div class="gside">
           <div class="gphone" id="gphone" hidden></div>
           <div class="gstats" id="gstats" style="display:grid;gap:22px">
-            <div class="box"><div class="num">${esc(rankText(intel.rank).replace('not in the top 20', '20+'))}</div><div class="label">at your own address for "${esc(kw)}"</div></div>
+            <div class="box"><div class="num">${esc(rankText(center).replace('not in the top 20', '20+'))}</div><div class="label">at your own address for "${esc(gkw)}"</div></div>
             <div class="box"><div class="num">${top10Of(g)}<small> of ${g.points}</small></div><div class="label">spots where you are on the first page (top 10), within ${g.radiusMiles} miles</div></div>
             <div class="box"><div class="num">${g.avg ?? '20+'}</div><div class="label">average rank across the area</div></div></div></div></div>`,
-    `${say('c_scan')}\n\nLet the scan play. Narrate it:\n"I stood in ${g.points} spots around ${lead.business}, up to ${g.radiusMiles} miles out, and searched ${kw} on Google the way a customer does. Watch who comes up at each spot."\n\nWhen it finishes: "First page in ${top10Of(g)} of ${g.points}. Every red and orange square is a customer who called someone else."\n\nThen ask and wait: "What do you think that's costing you?"\n\n(Press Replay on the slide to run it again.)`);
+    `${say('c_scan')}\n\n${g.deep ? `This is the deep scan from the Scan tool tab (${deep.length} keyword${deep.length === 1 ? '' : 's'}). Click a keyword above the grid to switch.` : 'This is the quick research grid. For the full picture press "Run the full scan": it opens the Scan tool in its own tab. Run it during discovery, press Save to lead, and this slide updates by itself.'}\n\nLet the scan play. Narrate it:\n"I stood in ${g.points} spots around ${lead.business}, up to ${g.radiusMiles} miles out, and searched ${gkw} on Google the way a customer does. Watch who comes up at each spot."\n\nWhen it finishes: "First page in ${top10Of(g)} of ${g.points}. Every red and orange square is a customer who called someone else."\n\nThen ask and wait: "What do you think that's costing you?"`);
+  } else {
+    add('grid', 'The scan', `<p class="kicker">The scan</p><h2>Where ${esc(lead.business)} shows up, street by street</h2>
+      <div class="box anim" style="max-width:880px"><h3>Run it live</h3><p>Press the button: the Scan tool opens in its own tab with ${esc(lead.business)} filled in. Run the scan while you talk, press Save to lead, then come back here. This slide fills in by itself.</p>
+      <div style="margin-top:18px">${scanBtn}</div></div>`,
+    `${say('c_scan')}\n\nNo scan yet. Press "Run the full scan" (opens the Scan tool tab). Start it during discovery so it is ready by now.`);
   }
 
   if (comps.length) {
@@ -212,13 +234,13 @@ function where(g, c) {
   return `Searching ${d.toFixed(1)} miles ${dirs[Math.round(ang / 45) % 8]} of you`;
 }
 function playGrid() {
-  const g = D.intel?.grid;
+  const g = activeGrid();
   const grid = document.getElementById('biggrid');
   if (!g || !grid) return;
   const token = ++gridTimer;
   const cells = [...grid.children];
   const phone = document.getElementById('gphone'), stats = document.getElementById('gstats');
-  const kw = D.intel.keyword || 'your service';
+  const kw = g.keyword || D.intel?.keyword || 'your service';
   const half = (g.size - 1) / 2;
   const order = g.cells.map((c, i) => ({ i, d: Math.hypot(c.row - half, c.col - half), a: Math.atan2(c.col - half, half - c.row) })).sort((a, b) => a.d - b.d || a.a - b.a).map((x) => x.i);
   cells.forEach((el) => { el.className = `pend${el.dataset.i == Math.floor(cells.length / 2) ? ' center' : ''}`; el.dataset.txt = el.textContent; el.textContent = ''; });
@@ -343,6 +365,8 @@ function wireDeck() {
   const wo = document.getElementById('send-wo'); if (wo) wo.onclick = () => sendWorkOrder(wo);
   const rl = document.getElementById('run-lst'); if (rl) rl.onclick = () => runListings(rl);
   const rp = document.getElementById('greplay'); if (rp) rp.onclick = () => playGrid();
+  const ds = document.getElementById('deepscan'); if (ds) ds.onclick = () => window.open(`/scan.html?lead=${encodeURIComponent(id)}`, `rw-scan-${id}`);
+  document.querySelectorAll('[data-kw]').forEach((b) => { b.onclick = () => { state.kwi = Number(b.dataset.kw); renderDeck(); }; });
 }
 
 function startDeck() {
@@ -360,8 +384,17 @@ function startDeck() {
   let idle;
   const bar = () => { const b = document.getElementById('bar'); if (!b) return; b.classList.remove('idle'); clearTimeout(idle); idle = setTimeout(() => document.getElementById('bar')?.classList.add('idle'), 2500); };
   document.addEventListener('mousemove', bar); bar();
+  // Back from the Scan tool tab: pick up the deep scan it saved.
+  const refresh = async () => {
+    try {
+      const d = await api(`/api/leads/${encodeURIComponent(id)}`);
+      if ((d.lead.deep_scan || '') !== (D.lead.deep_scan || '') || (d.lead.listings || '') !== (D.lead.listings || '')) { D.lead = { ...D.lead, deep_scan: d.lead.deep_scan, listings: d.lead.listings }; state.kwi = 0; renderDeck(); }
+    } catch { /* keep what we have */ }
+  };
+  window.addEventListener('focus', refresh);
   chan?.addEventListener('message', (e) => {
     const m = e.data || {};
+    if (m.type === 'deep') refresh();
     if (m.type === 'go') go(m.i);
     if (m.type === 'hello') chan.postMessage({ type: 'slide', i: state.i, plan: state.plan, ticket: state.ticket, jobs: state.jobs });
   });

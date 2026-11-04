@@ -171,7 +171,10 @@ route('POST', '/api/auth/login', async ({ env, request, body }) => {
   return json({ ok: true, role: u.role }, 200, { 'set-cookie': await createSession(env, u.id, request) });
 });
 
-route('POST', '/api/auth/logout', async ({ env, request }) => json({ ok: true }, 200, { 'set-cookie': await endSession(env, request) }));
+route('POST', '/api/auth/logout', async ({ env, request, user }) => {
+  if (user && user.role !== 'client') await import('./agents.js').then((m) => m.setStatus(env, user.id, 'offline')).catch(() => {});
+  return json({ ok: true }, 200, { 'set-cookie': await endSession(env, request) });
+});
 
 route('GET', '/api/auth/invite/:token', async ({ env, params }) => {
   const u = await first(env, 'SELECT email, name, invite_expires FROM users WHERE invite_hash = ?', await sha256(params.token));
@@ -588,6 +591,7 @@ import './meetings.js';
 import './assistant.js';
 import './googlecheck.js';
 import './balances.js';
+import './agents.js';
 import './voicemail.js';
 import './gbp.js';
 import './gmail.js';

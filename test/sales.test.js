@@ -69,19 +69,24 @@ test('problems, score, plan, and script come from the research', () => {
   assert.equal(recommendPlan(lead, INTEL).plan, 'authority');
   assert.equal(recommendPlan({ ...lead, industry: 'Salon' }, { ...INTEL, competitors: [{ title: 'Y', reviews: 30 }], listing: { ...INTEL.listing, claimed: true, rating: 4.6 }, grid: { ...INTEL.grid, top3: 6 }, rank: 2, speed: null, website: null }).plan, 'starter');
   const s = buildScript(lead, INTEL, { rep: 'Vidal' });
-  assert.match(s.steps[0].lines[0], /Hey Bob, this is Vidal with RightWay Growth/i);
+  assert.match(s.steps[0].lines[0], /Bob, this is Vidal, I'm a consultant with RightWay Growth/);
+  assert.match(s.steps[0].lines[1], /free Google clarity audits for roofing businesses/i);
+  assert.doesNotMatch(s.steps.map((x) => x.lines.join(' ')).join(' '), /analyst|Do you have 30 seconds/);
   assert.equal(s.steps[0].group, 'cold');
-  assert.match(s.steps.find((x) => x.id === 'k_frame').lines.join(' '), /small group of businesses/);
+  assert.match(s.steps.find((x) => x.id === 'k_frame').lines.join(' '), /ten clients at a time/);
   assert.ok(s.steps.filter((x) => x.group === 'clarity').some((x) => x.lines.some((l) => /^\(SCREEN:/.test(l))), 'clarity call has screen cues');
-  assert.match(s.steps[0].lines[0], /Google clarity check on Summit Roofing/);
   const step = (sc, id) => sc.steps.find((x) => x.id === id).lines.join('\n');
+  const step0 = step;
+  assert.match(step0(s, 'k_hook'), /I already ran the first part on Summit Roofing/);
+  assert.match(step0(s, 'c_open'), /Google clarity audit/);
   // The real listing check feeds the cold hook and the clarity call; nothing is claimed when it has not run.
   assert.doesNotMatch(step(s, 'k_hook'), /directories/);
   assert.ok(!step(s, 'k_hook').split('\n').some((l) => !l.trim()), 'no empty lines when a variable is blank');
   const withL = buildScript({ ...lead, listings: JSON.stringify({ counts: { mismatch: 3, missing: 2, match: 1 }, results: [{ name: 'Yelp', status: 'mismatch' }, ...Array(14).fill({ name: 'X', status: 'match' })] }) }, INTEL, { rep: 'Vidal' });
   assert.match(step(withL, 'k_hook'), /5 of 15 have you wrong or missing, Yelp for one/);
   assert.match(step(withL, 'c_listings'), /5 of the 15 directories I checked/);
-  assert.match(step(withL, 'c_frame'), /small group of clients/);
+  assert.match(step(withL, 'c_open'), /ten clients at a time/);
+  assert.match(step(withL, 'c_discovery'), /Scan tool tab/);
   assert.match(step(s, 'c_scan'), /from \d+ spots around Summit Roofing/);
   assert.match(step(s, 'c_scan'), /Same search/);
   // Drop close: Market Leader first, then the recommended plan with setup + first month today.

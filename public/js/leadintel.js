@@ -331,77 +331,78 @@ export function quoteFor(lead = {}, intel = null, saved = null) {
 // Plain words to the owner: "Google", "the map", "the first page", "calls". Never "SEO", "NAP", "citations" or "algorithm".
 // Each step is one or more lines; lines that start with "Or:" are alternatives, "(" lines are coaching notes for the rep.
 // Never claim a scan when no research ran: the {..._reason} and {scan_...} lines change on their own.
-export const SCRIPT_VERSION = 5;
+export const SCRIPT_VERSION = 6;
 
 // Two scripts, one story. Cold call: earn 30 seconds, frame us as a small group agency, hook with the scan, qualify, book the
 // clarity call (or start it right there). Clarity call: the screen share that ends in a signed work order.
 export const SCRIPT_GROUPS = [
   ['cold', 'Cold call', ['k_open', 'k_frame', 'k_hook', 'k_qualify', 'k_book', 'k_lock', 'voicemail', 'gatekeeper']],
-  ['clarity', 'Clarity call', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
+  ['clarity', 'Clarity audit', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
 ];
 export const SCRIPT_KEYS = [
-  ['k_open', 'Cold: opener'], ['k_frame', 'Cold: who we are'], ['k_hook', 'Cold: the hook'], ['k_qualify', 'Cold: qualify'], ['k_book', 'Cold: book the clarity call'], ['k_lock', 'Cold: lock it in'],
-  ['c_open', 'Opener: the Google clarity call'], ['c_frame', 'Set the frame'], ['c_discovery', 'Discovery (write it down)'],
+  ['k_open', 'Cold: why I called'], ['k_frame', 'Cold: ten clients only'], ['k_hook', 'Cold: what I found'], ['k_qualify', 'Cold: qualify'], ['k_book', 'Cold: book the audit'], ['k_lock', 'Cold: lock it in'],
+  ['c_open', 'Opener: the Google clarity audit'], ['c_frame', 'Set the frame'], ['c_discovery', 'Discovery (write it down)'],
   ['c_verify', 'Verify the business'], ['c_scan', 'The clarity scan'], ['c_live', 'Search together'], ['c_why', 'Why they are up there (slow down)'],
   ['c_listings', 'Inconsistencies'], ['c_story', 'Why Rightway'], ['c_program', 'How it works'], ['c_process', 'What we need from you'],
   ['c_trial', 'Trial close'], ['c_price', 'Price: the drop close'], ['c_close', 'Close'], ['c_post', 'Work order and payment'],
-  ['c_onboard', 'Onboarding and homework'], ['c_book', 'Book the consultation instead'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'],
+  ['c_onboard', 'Onboarding and homework'], ['c_book', 'Book the audit for later'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'],
 ];
 
 export const DEFAULT_SCRIPT = {
   k_open: [
-    "Hi, is this {first_or_owner}? ... Hey {first}, this is {rep} with RightWay Growth. I know I'm catching you in the middle of your day, so I'll be quick. {opener_reason} Do you have 30 seconds?",
-    "Or: Hey {first}, {rep} with RightWay Growth. Honest answer, this is a cold call. Would it be a terrible idea if I took 30 seconds to tell you why I called, and you tell me if it's worth another minute?",
-    '(Smile when you dial. Slow, low, certain. Stop talking after the question.)',
-    '(SCREEN, yours only: Phone, Dialer. Call prep is open beside the queue: their name, the opener line, the scan and the listing check. No research yet? Press Research now while it rings.)',
+    "Hi, is this {first_or_owner}? ... {first}, this is {rep}, I'm a consultant with RightWay Growth.",
+    "The reason for my call: we're running free Google clarity audits for {industry} businesses in {city}, to see if we'd be a good fit to work with each other.",
+    '(No "how are you", no asking for their time. Say why you called in the first ten seconds, then go straight into the frame. Slow, low, certain.)',
+    '(SCREEN, yours only: Phone, Dialer. Call prep is open beside the queue: their name, the scan line and the listing check. No research yet? Press Research now while it rings.)',
   ].join('\n'),
   k_frame: [
-    "Real quick on who we are. We're a local marketing company out of Hollywood, and we only take on a small group of businesses at a time. That way we can do quality work, instead of the cookie cutter, one size fits all stuff.",
-    "Honestly, that's why most businesses fail at marketing. They get dropped into a package that was never built for them, and nobody looks at their actual situation. So I'm not calling everybody. I'm calling a few {industry} businesses in {city} where I see a clear gap.",
+    "We only take on ten clients at a time. That way we can focus on the relationship, the quality of the work, and real results, for both of us.",
+    "That's honestly why most businesses fail at marketing. They get dropped into a cookie cutter, one size fits all package, and nobody ever looks at their actual situation. So we audit first, and we only work with businesses where we know we can move the needle.",
   ].join('\n'),
   k_hook: [
-    '{scan_line}',
+    'I already ran the first part on {business}. {scan_line}',
     '{hook_impact}',
     '{listings_hook}',
-    'Quick question: when a new customer finds you now, is it mostly referrals, or do they find you on Google?',
-    '(Let them talk. Write down what they say. You will use it on the clarity call.)',
-    '(SCREEN, yours only: read the numbers off call prep, Scan and "Listings Google double checks". Never claim a scan or a listing check that is not on your screen.)',
+    '(Stop talking. Let it land.)',
+    '(SCREEN, yours only: read the numbers straight off call prep, Scan and "Listings Google double checks". Never claim a scan or a listing check that is not on your screen.)',
   ].join('\n'),
   k_qualify: [
-    "Before I take more of your time, three quick ones so I know it's even worth it.",
-    "You're the one who makes the marketing decisions there, right? (If not: who is, and can we get them on the call?)",
-    "Are you looking to take on more customers right now, or are you booked solid? (Booked solid: is it the work you want, or would you take more of the bigger jobs?)",
+    "So two quick things, to see if it even makes sense to go further.",
+    "You're the one who makes the marketing decisions there, right? (If not: who is, and when can we get them on the screen too?)",
+    "And are you set up to take on more work right now, or are you maxed out? (Maxed out: is it the work you want, or would you take more of the bigger jobs?)",
     "Ballpark, what's a typical job worth to you? (Starting guess for {industry}: {ticket}.)",
-    '(Owner, wants more work, job worth it: book it. Not the owner: get the name and a time. Truly not a fit: thank them and move on.)',
-    '(SCREEN, yours only: type their answers into the lead notes as they talk. Job value goes in the notes too, you will use it on the price.)',
+    '(Owner, wants more work, job worth it: book the audit. Not the owner: get the name and a time. Truly not a fit: thank them and move on. You are choosing who gets one of the ten spots.)',
+    '(SCREEN, yours only: type their answers into the lead notes as they talk. The job value is your number on the price slide later.)',
   ].join('\n'),
   k_book: [
-    "Here's what I'd suggest. Let me do a quick Google clarity call with you: 15 minutes on a screen share. I'll show you the scan street by street, who's getting your calls and why, and exactly what I'd fix. If it's a fit, great. If not, you keep the scan. Fair?",
-    'Do you have 15 minutes right now? Or is {slot1} or {slot2} better?',
-    '(IF RIGHT NOW: switch call prep to the Clarity call tab and go to Set the frame. IF LATER: press Book meeting and pick the time.)',
+    "Here's how the audit works. It's 15 minutes on a screen share. I walk you through the full scan street by street, who's getting your calls and why, and every listing Google has wrong. At the end we both decide if it's a fit. If it's not, you keep the audit, no hard feelings.",
+    'I have {slot1} or {slot2} open. Which one works better for you?',
+    '(Give two times. Never ask if they want it. If they say right now: "Perfect, are you in front of a computer?" Then switch call prep to the Clarity audit tab and start at the opener.)',
+    '(SCREEN, yours only: press Book meeting and pick the time they chose.)',
   ].join('\n'),
   k_lock: [
-    "Perfect. I'm sending a calendar invite with the screen share link to {email_or_ask}. What's the best email?",
-    "Is there anyone else who makes marketing decisions with you? Let's get them on the same call so they see the same map.",
-    'Is it OK if I text you a reminder and the link? (If yes, tap "They said yes to texts".)',
-    'Before we talk, search "{keyword}" from your phone and see who comes up. We\'ll go over it together.',
+    "Perfect, you're locked in for [day and time]. What's the best email for the invite?",
+    "Is anyone else involved in the marketing decisions? Have them on the screen too, because I only hold the spot once.",
+    'Is it OK if I text you a reminder with the link? (If yes, tap "They said yes to texts".)',
+    'One thing before we talk: search "{keyword}" on your phone and see who comes up. We\'ll compare it to the scan.',
     '(SCREEN, yours only: in Book meeting, Google connected sends the Meet invite by itself. Not connected: paste your Zoom or Meet link, press Book it, then Text it or Email it. Then log the call as Booked.)',
   ].join('\n'),
 
   c_open: [
-    "Hi, is this {first_or_owner}? ... Hey {first}, this is {rep} with Rightway Growth. {opener_reason} How's everything going today?",
-    "(Let them answer. Smile. Then:) Good. So this is a quick Google clarity call. I'm not here to sell you a website or a magic button. I want to show you exactly what a customer sees when they look for you on Google, and where the inconsistencies are. Fair?",
-    '(Slow, low, certain voice. You are the analyst who did the work, not a salesperson asking for time.)',
+    "Hi, is this {first_or_owner}? ... Hey {first}, it's {rep}, the consultant from RightWay Growth. We're set for your Google clarity audit.",
+    "(Smile. Then:) Quick agenda so you know how this goes. I'm going to show you exactly what a customer sees when they look for you on Google, where the inconsistencies are, and what's causing them. At the end, we'll both decide if it makes sense to work together.",
+    "Like I mentioned, we only take on ten clients at a time, so we can focus on the relationship, quality and results. So this is as much me seeing if you're a fit as you seeing if we are. Fair?",
+    "(Slow, low, certain. You are the consultant who did the work. You don't need this deal. You're deciding who gets one of the ten spots.)",
   ].join('\n'),
   c_frame: [
     "I just want to confirm, is {email_or_ask} still the best email for you? Perfect. I'm sending you a link to my screen right now. That way you see the exact same thing I see, and nothing gets lost in translation, OK?",
-    "(Send the Meet link from the lead. Then:) It's coming from Rightway Growth. Let me know when you see it. Since we're on the phone, you don't need video or audio, just the screen.",
-    "And just so you know how we work: we only take on a small group of clients at a time, so we can do quality work instead of a cookie cutter, one size fits all approach. That's why I look at every business in detail before I recommend anything.",
-    "Here's what we'll do today. First, I'll confirm your business info. Then I'll show you {frame_scan}, and we'll do a couple of searches together, live. But before I even start, I want to take a minute to get to know you and the business, if that's OK.",
-      '(SCREEN: share your screen. Presentation, cover slide. Then the agenda slide, and leave it up while you ask the discovery questions.)',
+    "(Send the link from the lead. Then:) It's coming from RightWay Growth. Let me know when you see it. Since we're on the phone, you don't need video or audio, just the screen.",
+    "Here's what we'll do. First, I'll confirm your business info. Then I'll show you {frame_scan}, and we'll do a couple of searches together, live. But before I even start, I want a few minutes to get to know you and the business, because every business is different and I don't do cookie cutter.",
+    '(SCREEN: share only the slideshow window. Cover slide, then the Agenda slide.)',
   ].join('\n'),
   c_discovery: [
-    '(Ask while they connect. Write every answer down. Make it conversational: you are the first person who cared to know.)',
+    '(SCREEN: before the first question, switch to your Scan tool tab (opened from the Scan slide, "Run the full scan"). Their business and keyword are filled in. Add their other money searches, pick 9 x 9 or bigger, press Run scan, then switch back to the Agenda slide. It scans while you ask. Don\'t share the Scan tool tab yet.)',
+    '(Ask while it scans. Write every answer down. Make it conversational: you are the first person who cared to know.)',
     '1. How long have you been in business?',
     "2. You a one man band, or you got a team working with you? (How many trucks or crews?)",
     "3. What do you do to get your name out there? Any other advertising right now? Google Ads, Yelp, Angi, mailers, another agency? ... How's that working for you?",
@@ -427,7 +428,7 @@ export const DEFAULT_SCRIPT = {
     '{scan_spread}',
     "This is the part most owners never see. Google doesn't show the same results to everybody. It changes block by block, depending on where your customer is standing. So you can look great at your shop and be invisible two miles down the road.",
     '{scan_meaning}',
-      '(SCREEN: "The scan" slide. Press Replay so they watch every spot. Point at their address first, then the farthest red square. Other money searches: open the Scan tool from the lead and run them live.)',
+      '(SCREEN: switch the share to the Scan tool tab. The scan finished during discovery. Press Replay the scan so they watch it spot by spot. Point at their address first, then the farthest red square. Click each keyword tab to show every money search. Then press Save to lead and switch back to the slideshow: the Scan slide now shows this deep scan.)',
   ].join('\n'),
   c_live: [
     "Now, we can reference the scan, but I also want to jump over to Google with these searches and see pretty much what a customer sees.",
@@ -458,7 +459,7 @@ export const DEFAULT_SCRIPT = {
     "(Slow down. This is the most personal part of the call.) Can I be straight with you for a second, {first}?",
     "Before I started RightWay, I worked inside marketing companies. I saw how this industry treats business owners. Year long contracts. Reports nobody can read. Promises of number one on Google. And when it didn't work, the owner was stuck paying anyway.",
     "I started RightWay Growth to do it the right way. You see every single task we do in your own app. You see the map every month. Nothing hidden. And after the first three months, you can leave any time with 30 days notice.",
-    "And that's why we only work with a small group of clients at a time. Quality work, not a cookie cutter, one size fits all package. That's honestly why most businesses fail at marketing: they get a package that was never built for them. Every business is different, so I only put together what yours actually needs to get where you want to go.",
+    "And that's why we only take on ten clients at a time. The relationship, the quality and the results, for both of us. Not a cookie cutter, one size fits all package. That's honestly why most businesses fail at marketing: they get a package that was never built for them. Every business is different, so I only put together what yours actually needs to get where you want to go.",
     "I want to keep you because your phone is ringing, not because a contract says you can't leave. That's the standard I hold us to.",
       '(SCREEN: "Your own Rightway app" slide. Tap through the live app: Home, Rankings, Reviews, Post a photo. Say we keep adding features every month.)',
   ].join('\n'),
@@ -514,16 +515,16 @@ export const DEFAULT_SCRIPT = {
       '(SCREEN: stop sharing. Book the onboarding call from the client page, Meetings tab.)',
   ].join('\n'),
   c_book: [
-    "(If they can't do the screen share right now.) No problem at all. The clarity scan really needs your eyes on it, it's 15 minutes. Does {slot1} or {slot2} work better for a quick consultation?",
-    "Perfect. I'm sending a calendar invite with the link to {email_or_ask}. Is there anyone else who makes marketing decisions with you? Let's get them on the same call so they see the same map.",
+    "(If they can't do the screen share right now.) No problem. The audit needs your eyes on the screen, it's 15 minutes. I have {slot1} or {slot2}. Which works better?",
+    "Perfect. I'm sending the invite with the link to {email_or_ask}. Is anyone else involved in the marketing decisions? Have them on the screen too, because I only hold the spot once.",
     "Before we talk, search \"{keyword}\" from your phone and see who comes up. We'll go over it together.",
   ].join('\n'),
   voicemail: [
-    "Hey {first}, it's {rep} with Rightway Growth. {vm_scan} Give me a call back at {my_number}. Again, {rep}, {my_number}.",
+    "Hey {first}, it's {rep}, a consultant with RightWay Growth. We're running free Google clarity audits for a few {industry} businesses in {city}. {vm_scan} We only take on ten clients, so call me back at {my_number}. Again, {rep}, {my_number}.",
     '(Under 25 seconds. Say the number twice, slowly. Text only if they gave permission or texted first.)',
   ].join('\n'),
   gatekeeper: [
-    "Hi, this is {rep} with Rightway Growth. {gk_reason} Is {first_or_owner} around?",
+    "Hi, this is {rep}, I'm a consultant with RightWay Growth. {gk_reason} Is {first_or_owner} in?",
     'Or: Who takes care of the Google listing there? ... Great, what is the best time to catch them?',
     '(Friendly and brief. Get a name and a time, not a pitch.)',
   ].join('\n'),
@@ -531,9 +532,12 @@ export const DEFAULT_SCRIPT = {
 
 // [objection, answer]. Before price, after price, then the closes. Write their discovery answers into these.
 export const DEFAULT_OBJECTIONS = [
-  ['Cold: Not interested', "No problem, I appreciate you being straight with me. Is it that more customers from Google isn't a priority right now, or that you've been burned by marketing people before? (Listen. If burned:) That's exactly why we keep it to a small group and show you everything. Would it be a bad idea if I just sent you the scan so you have it?"],
-  ["Cold: We're booked out", "That's the best problem to have. Is it the work you want, though, or would you take more of the bigger jobs if they came in? (Listen.) The clarity call shows you who's getting those bigger jobs in your area right now. 15 minutes. Does {slot1} or {slot2} work?"],
-  ['Cold: What is this about?', "Fair question. I ran a Google clarity check on {business} and found some inconsistencies in where you show up for {keyword}. I'd like to show you on a quick screen share. It's 15 minutes, and you keep the scan either way."],
+  ['Cold: Not interested', "Totally fair. Most owners aren't, until they see it. That's why the audit is free and only 15 minutes: you'll know exactly where you stand on Google either way. And if we're not a fit, I'll tell you. I have {slot1} or {slot2}. Which is better?"],
+  ["Cold: We're booked out", "That's the best problem to have. Is it the work you want, though, or would you take more of the bigger jobs if they came in? (Listen.) The audit shows you who's getting those bigger jobs in your area right now. I have {slot1} or {slot2}."],
+  ['Cold: What is this about?', "We're running free Google clarity audits for {industry} businesses in {city}. I ran part of yours and found inconsistencies in where you show up for {keyword}. We only take ten clients, so the audit is how we both see if it's a fit. 15 minutes. {slot1} or {slot2}?"],
+  ['Cold: Is this a sales call?', "It's a qualifying call. We only take on ten clients, so before I take any more of your time I want to see if you're even a fit. That's what the free audit is for. {slot1} or {slot2}?"],
+  ['Cold: How much does it cost?', "The audit is free. If we end up working together, it depends on what your business actually needs, and that's exactly what the audit shows. I'd be guessing before that, and I don't guess with people's money. {slot1} or {slot2}?"],
+  ['Cold: Just send me something', "I can, but a PDF won't show you the map street by street, and that's the part that matters. It's 15 minutes on a screen share, and you keep the audit either way. {slot1} or {slot2}?"],
   ["I don't need another sales pitch", "Look, I completely understand. As a business owner you probably get more calls than you can count, all trying to sell you something you don't need. This is a clarity call. What I'm showing you is a problem that's already costing {business} calls every single month. If there's a way to fix it and get those calls back, it's at least worth a look, right?"],
   ["I know where this is going, I'm not buying anything today", "I hear you, and if I were in your shoes I'd be burnt out too. I'm not here to sell you a widget or a new website. I want to show you what's costing you calls and how it gets fixed, so at least you understand the problem AND the solution. If it all makes sense and it doesn't cost an arm and a leg, we'll probably end up working together. Fair?"],
   ['I already have someone handling my Google', "Good, that means you take it seriously. Quick question: do they show you a map like this every month? Right now you're on the first page in {top10_of_points} spots around you. Is that where you expected to be? (Let them answer.) I'm not going to talk badly about anyone. I'll just show you how we're different, and you decide. (Back to script.)"],
@@ -716,14 +720,14 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
     scan_line: scanLine(lead, intel),
     scan_intro: intel?.found ? `Here's the clarity scan I ran on ${lead.business || 'your business'}.` : `Let me pull up Google and show you what a customer sees when they look for ${lead.business || 'you'}.`,
     // Only claim a scan when research actually ran.
-    opener_reason: intel?.found ? `I'm the analyst who ran the Google clarity check on ${lead.business || 'your business'}, and I found some inconsistencies in where you show up for ${kw ? `"${kw}"` : 'your main service'}.`
-      : `I'm doing Google clarity checks for ${info.label.toLowerCase()} businesses in ${lead.city || 'your area'}, and I wanted to look at ${lead.business || 'your business'} with you.`,
-    gk_reason: intel?.found ? `I'm calling about the Google clarity check I ran on ${lead.business || 'the business'}'s listing.` : `I'm calling about how ${lead.business || 'the business'} shows up on Google.`,
+    opener_reason: intel?.found ? `I ran a Google clarity audit on ${lead.business || 'your business'} and found some inconsistencies in where you show up for ${kw ? `"${kw}"` : 'your main service'}.`
+      : `We're running free Google clarity audits for ${info.label.toLowerCase()} businesses in ${lead.city || 'your area'}.`,
+    gk_reason: intel?.found ? `I ran a Google clarity audit on ${lead.business || 'the business'} and I need two minutes with the owner about what I found.` : `We're running free Google clarity audits for a few businesses in ${lead.city || 'the area'}, and ${lead.business || 'yours'} came up.`,
     hook_impact: g && top10Of(g) < g.points / 2 ? `That means when someone in ${lead.city || 'your area'} needs ${kw ? `"${kw}"` : 'what you do'} today, a lot of them are calling ${top?.title || 'someone else'} before they ever see you.`
       : g ? `You're strong close to home, but there are spots in ${lead.city || 'your area'} where customers see someone else first.`
       : 'Most people call one of the first businesses they see on that map, so every spot higher gets more of the calls.',
-    vm_scan: intel?.found ? `I ran a Google clarity check on ${lead.business || 'your business'}. ${g ? (top && top.wins > g.top3 ? `${top.title} is showing up ahead of you in most of ${lead.city || 'your area'}.` : `You're on the first page in ${top10Of(g)} of ${g.points} spots around you, and I see a few quick wins.`) : 'I found a few quick wins.'} I'd like to show you the map.`
-      : `I was looking at ${lead.business || 'your business'} on Google Maps and have a couple of ideas to get you more calls from it.`,
+    vm_scan: intel?.found ? `I already ran part of yours. ${g ? (top && top.wins > g.top3 ? `${top.title} is showing up ahead of you in most of ${lead.city || 'your area'}.` : `You're on the first page in ${top10Of(g)} of ${g.points} spots around you, and I see a few quick wins.`) : 'I found a few quick wins.'}`
+      : '',
     hook: probs[0] ? probs[0].talk : scanLine(lead, intel),
     problems: probs.slice(0, 3).map((p) => p.talk).join(' ') || 'A few gaps on your Google profile and website are holding you back.',
     slot1: slots[0], slot2: slots[1],

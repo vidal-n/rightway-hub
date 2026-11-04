@@ -17,7 +17,7 @@ const SOURCE_LABEL = { local: 'Google local results', maps: 'Google Maps' };
 const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 const $ = (sel) => document.querySelector(sel);
-const state = { demo: false, keyRequired: false, target: null, scan: null, map: null, runToken: 0, searchCost: 0, view: null, staff: null, clientId: null, clientName: '' };
+const state = { leadId: null, leadName: '', demo: false, keyRequired: false, target: null, scan: null, map: null, runToken: 0, searchCost: 0, view: null, staff: null, clientId: null, clientName: '' };
 
 // ---------- helpers ----------
 function esc(value) {
@@ -879,6 +879,22 @@ function setupSave(scan) {
       btn.textContent = list.length > 1 ? `Saved ${list.length} keywords to ${name}` : `Saved to ${name}`;
     } catch (err) { btn.disabled = false; setStatus($('#r-progress-label'), err.message, true); }
   };
+  // Opened from a lead (the audit): save to the lead, and the slideshow tab picks it up by itself.
+  if (state.leadId) {
+    box.innerHTML = `<button class="btn btn-primary btn-sm" type="button">Save to ${esc(state.leadName)} and update the slideshow</button>`;
+    box.firstElementChild.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const list = state.batch && state.batch.includes(scan) ? state.batch : [scan];
+      if (list.some((x) => !x.completedAt)) return setStatus($('#r-progress-label'), 'Wait for the scan to finish, then save it.', true);
+      btn.disabled = true;
+      try {
+        await hubApi(`/api/leads/${encodeURIComponent(state.leadId)}/deep-scan`, { method: 'POST', body: { scans: list.map((x) => ({ keyword: x.keyword, size: x.size, radius: x.radius, points: x.points })) } });
+        try { new BroadcastChannel(`rw-present-${state.leadId}`).postMessage({ type: 'deep' }); } catch { /* the slideshow also checks when you switch back */ }
+        btn.textContent = 'Saved. Switch back to the slideshow tab.';
+      } catch (err) { btn.disabled = false; setStatus($('#r-progress-label'), err.message, true); }
+    });
+    return;
+  }
   if (state.clientId) {
     box.innerHTML = `<button class="btn btn-ghost btn-sm" type="button">Save to ${esc(state.clientName)}</button>`;
     box.firstElementChild.addEventListener('click', (e) => save(state.clientId, state.clientName, e.currentTarget));
@@ -910,6 +926,12 @@ async function hubSession() {
   if (state.staff && leadId && !clientId) {
     try {
       const { lead: l, intel } = await hubApi(`/api/leads/${encodeURIComponent(leadId)}`);
+      state.leadId = l.id; state.leadName = l.business;
+      document.title = `Scan: ${l.business}`;
+      const bar = document.createElement('div');
+      bar.className = 'leadbar';
+      bar.innerHTML = `<b>Audit scan for ${esc(l.business)}</b><span>Run it, press Save, then switch back to the slideshow tab. The scan slide updates by itself.</span>`;
+      document.querySelector('main, .wrap, body').prepend(bar);
       if (intel?.keyword) { $('#scan-keyword').value = [intel.keyword, ...(qs.get('more') || '').split(',').filter(Boolean)].slice(0, MAX_KEYWORDS).join(', '); updateCost(); }
       const L = intel?.listing;
       if (L && typeof L.lat === 'number' && typeof L.lng === 'number') {

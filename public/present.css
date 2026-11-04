@@ -217,8 +217,8 @@ body.presenter { overflow: auto; background: #0B1411; color: #E7F1EC; }
 .svcs.many .svc b { font-size: 21px; }
 .svcs.many .svc span { font-size: 15.5px; }
 /* The live client app on the app slide */
-.phone.live { position: relative; width: 340px; height: 610px; padding: 12px; }
-.phone.live iframe { width: 100%; height: 100%; border: 0; border-radius: 32px; background: #fff; display: block; }
+.phone.live { --k: .7; position: relative; width: calc(390px * var(--k) + 24px); height: calc(844px * var(--k) + 24px); padding: 12px; overflow: hidden; }
+.phone.live iframe { position: absolute; top: 12px; left: 12px; width: 390px; height: 844px; border: 0; border-radius: 46px; background: #fff; display: block; transform: scale(var(--k)); transform-origin: 0 0; }
 .phone-hint { position: absolute; left: 0; right: 0; bottom: -30px; text-align: center; font-size: 16px; color: var(--muted); }
 /* Listing check slide */
 .lstwrap { max-height: 560px; overflow: hidden; }
@@ -227,3 +227,14 @@ body.presenter { overflow: auto; background: #0B1411; color: #E7F1EC; }
 .lst td { padding: 9px 10px; border-bottom: 1px solid var(--line); }
 .lst-tag { display: inline-block; font-size: 15px; font-weight: 700; padding: 3px 12px; border-radius: 999px; margin-right: 8px; background: var(--soft); }
 .lst-tag.bad { background: #FBEBEB; color: #B42318; } .lst-tag.warn { background: #F9EEDA; color: #8A5A00; } .lst-tag.good { background: #EAF8F1; color: #0A6B4C; }
+
+/* Grids of any size (3 x 3 research up to 13 x 13 deep scans) */
+.biggrid { gap: calc(42px / var(--s, 3)); }
+.biggrid span { font-size: calc(170px / var(--s, 3)); border-radius: calc(60px / var(--s, 3)); }
+.biggrid .none { font-size: calc(120px / var(--s, 3)); }
+.kwtabs { display: flex; gap: 10px; flex-wrap: wrap; margin: -6px 0 22px; }
+.kwtabs button { font: 600 18px var(--body, inherit); border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 16px; cursor: pointer; color: var(--ink); display: inline-flex; gap: 10px; align-items: center; }
+.kwtabs button b { font: 700 14px var(--mono, monospace); background: var(--mint, #9DEBCB); color: #0F1B17; border-radius: 999px; padding: 2px 8px; }
+.kwtabs button.on { background: #0F1B17; color: #fff; border-color: #0F1B17; }
+#deepscan { background: #0F1B17; color: #fff; border-color: #0F1B17; margin-left: 10px; }
+.box .replay { font: 600 18px var(--body, inherit); border: 1px solid #0F1B17; border-radius: 999px; padding: 10px 22px; cursor: pointer; }

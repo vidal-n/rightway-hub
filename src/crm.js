@@ -69,6 +69,7 @@ export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, not
   switch (outcome) {
     case 'no_answer':
     case 'voicemail':
+    case 'hung_up':
     case 'gatekeeper': {
       const attempts = (lead.attempts || 0) + 1;
       set.attempts = attempts;
@@ -198,7 +199,11 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
   const q = (url.searchParams.get('q') || '').trim().toLowerCase();
   const stage = url.searchParams.get('stage');
   let rows = await all(env, `SELECT ${LIST_COLS} FROM leads ${stage ? 'WHERE stage = ?' : ''} ORDER BY updated_at DESC LIMIT 5000`, ...(stage ? [stage] : []));
-  if (q) rows = rows.filter((l) => [l.business, l.contact_name, l.phone, l.email, l.city, l.industry, l.category, l.zip, l.tags].some((v) => String(v || '').toLowerCase().includes(q)));
+  const qd = q.replace(/\D/g, '');
+  if (q) rows = rows.filter((l) => [l.business, l.contact_name, l.phone, l.email, l.city, l.industry, l.category, l.zip, l.tags].some((v) => String(v || '').toLowerCase().includes(q))
+    || (qd.length >= 4 && qd.length === q.replace(/[\s()+-]/g, '').length && String(l.phone || '').replace(/\D/g, '').includes(qd)));
+  const lim = Number(url.searchParams.get('limit')) || 0;
+  if (lim > 0) rows = rows.slice(0, Math.min(lim, 200));
   const counts = await all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage');
   return json({ leads: rows.map((l) => seeAppt(decorate(l), user)), counts: Object.fromEntries(counts.map((c) => [c.stage, c.n])) });
 });
@@ -357,10 +362,10 @@ export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activ
   // Attach to this call, or the most recent unlabeled call on the lead in the last hour, so a dial counts once.
   const target = activityId ? { id: activityId }
     : await first(env, "SELECT id FROM activities WHERE lead_id = ? AND type IN ('call','manual_call') AND outcome IS NULL AND at > ? ORDER BY at DESC LIMIT 1", l.id, now() - 3600e3);
-  if (target) await run(env, "UPDATE activities SET outcome = ?, dispo = ?, note = ?, lead_id = COALESCE(lead_id, ?), body = CASE WHEN type = 'manual_call' THEN body ELSE COALESCE(?, body) END WHERE id = ?", d.acts, d.label, note || null, l.id, note || null, target.id);
+  if (target) await run(env, "UPDATE activities SET outcome = ?, dispo = ?, note = ?, dispo_at = ?, lead_id = COALESCE(lead_id, ?), body = CASE WHEN type = 'manual_call' THEN body ELSE COALESCE(?, body) END WHERE id = ?", d.acts, d.label, note || null, now(), l.id, note || null, target.id);
   else {
     const id = await logActivity(env, { lead_id: l.id, type: 'call', outcome: d.acts, body: note || null, by });
-    await run(env, 'UPDATE activities SET dispo = ?, note = ? WHERE id = ?', d.label, note || null, id);
+    await run(env, 'UPDATE activities SET dispo = ?, note = ?, dispo_at = at WHERE id = ?', d.label, note || null, id);
   }
   return d;
 }
@@ -475,3 +480,32 @@ route('POST', '/api/public/lead', async ({ env, request, defer }) => {
   if (!ct.includes('json') && redirect) return Response.redirect(redirect, 303);
   return json({ ok: true }, 200, headers);
 }, { public: true });
+
+// A deep scan run in the Scan tool tab during the audit, saved to the lead so the presentation shows it. Up to 5 keywords, 15 x 15.
+export function compactScan(x) {
+  const size = Math.max(1, Math.min(15, Number(x?.size) || Math.round(Math.sqrt((x?.points || []).length)) || 1));
+  const pts = (x?.points || []).slice(0, size * size);
+  const cells = pts.map((p, i) => ({
+    row: Number.isFinite(p.row) ? p.row : Math.floor(i / size), col: Number.isFinite(p.col) ? p.col : i % size,
+    rank: Number.isFinite(p.rank) ? p.rank : null, error: p.status === 'error' || Boolean(p.error),
+    top: (p.top || []).slice(0, 3).map((t) => ({ title: String(t.title || '').slice(0, 80), rank: Number(t.rank) || null, rating: t.rating ?? null, reviews: t.reviews ?? null })),
+  }));
+  const ok = cells.filter((c) => !c.error), ranked = ok.filter((c) => c.rank != null);
+  return {
+    keyword: String(x?.keyword || '').slice(0, 80), size, radiusMiles: Number(x?.radius) || Number(x?.radiusMiles) || null, points: ok.length,
+    top3: ranked.filter((c) => c.rank <= 3).length, top10: ranked.filter((c) => c.rank <= 10).length,
+    avg: ranked.length ? Math.round((ranked.reduce((s, c) => s + c.rank, 0) / ranked.length) * 10) / 10 : null,
+    center: cells[Math.floor(cells.length / 2)]?.rank ?? null, cells,
+  };
+}
+route('POST', '/api/leads/:id/deep-scan', async ({ env, user, params, body }) => {
+  requireStaff(user);
+  const l = await leadOr404(env, params.id);
+  const b = await body();
+  const scans = (Array.isArray(b.scans) ? b.scans : [b.scan]).filter(Boolean).slice(0, 5).map(compactScan).filter((x) => x.cells.length);
+  if (!scans.length) throw new HttpError('Run the scan first.');
+  const at = now();
+  await run(env, 'UPDATE leads SET deep_scan = ?, updated_at = ? WHERE id = ?', JSON.stringify({ at, by: user.id, scans }), at, l.id);
+  await logActivity(env, { lead_id: l.id, type: 'note', body: `Deep scan saved: ${scans.map((x) => `"${x.keyword}" first page in ${x.top10} of ${x.points}`).join(', ')}`, by: user.id });
+  return json({ ok: true, at, scans: scans.length });
+});

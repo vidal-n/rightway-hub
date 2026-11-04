@@ -212,7 +212,7 @@ async function applyCustStatus(env, a, s, duration = 0, sip = '') {
     const fresh = await first(env, 'SELECT status, answered_at FROM activities WHERE id = ?', a.id);
     if (['completed', 'busy', 'no-answer', 'failed', 'canceled'].includes(fresh?.status)) return;
     const status = s === 'completed' && fresh?.answered_at ? 'completed' : s === 'completed' ? 'no-answer' : s;
-    await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', status, Number(duration || 0), a.id);
+    await run(env, 'UPDATE activities SET status = ?, duration = ?, ended_at = COALESCE(ended_at, ?) WHERE id = ?', status, Number(duration || 0), now(), a.id);
     if (status === 'failed') await run(env, 'UPDATE activities SET body = ? WHERE id = ?', `The line would not connect${sip ? ` (code ${sip})` : ''}. Check the number.`, a.id);
     if (status !== 'completed') await endConference(env, a.conf_sid);
   }
@@ -231,7 +231,7 @@ route('POST', '/api/twilio/conf-status', async ({ env, request, url }) => {
     if (a.cust_sid && a.cust_sid.startsWith('CA') && !a.answered_at) {
       await twilioPost(env, `Calls/${a.cust_sid}.json`, { Status: 'canceled' }).catch(() => twilioPost(env, `Calls/${a.cust_sid}.json`, { Status: 'completed' }).catch(() => {}));
     }
-    await run(env, `UPDATE activities SET status = CASE WHEN status IN ('connecting','ringing') THEN 'canceled' WHEN status = 'in-progress' THEN 'completed' ELSE status END, mon_sid = NULL WHERE id = ?`, a.id);
+    await run(env, `UPDATE activities SET status = CASE WHEN status IN ('connecting','ringing') THEN 'canceled' WHEN status = 'in-progress' THEN 'completed' ELSE status END, mon_sid = NULL, ended_at = COALESCE(ended_at, ?) WHERE id = ?`, now(), a.id);
   } else if (ev === 'participant-leave' && p.CallSid && p.CallSid === a.mon_sid) {
     await run(env, 'UPDATE activities SET mon_sid = NULL, mon_by = NULL, mon_mode = NULL WHERE id = ?', a.id);
   }
@@ -318,7 +318,7 @@ route('POST', '/api/voice/calls/:id/disposition', async ({ env, user, params, bo
       return json({ ok: true, leadId, dispo: d });
     }
   }
-  await run(env, 'UPDATE activities SET outcome = ?, dispo = ?, note = ? WHERE id = ?', d.acts, d.label, note || null, a.id);
+  await run(env, 'UPDATE activities SET outcome = ?, dispo = ?, note = ?, dispo_at = ? WHERE id = ?', d.acts, d.label, note || null, now(), a.id);
   return json({ ok: true, leadId: null, dispo: d });
 });
 

@@ -129,7 +129,7 @@ export async function bookModal(lead, onDone) {
   const noGoogle = !g?.ready || (!g.connected && !g.booking?.ownerEmail);
   const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0);
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
-  const m = modal(`<div class="card-head"><h2>Book the clarity call: ${esc(lead.business)}</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+  const m = modal(`<div class="card-head"><h2>Book the Google clarity audit: ${esc(lead.business)}</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     ${noGoogle ? '<p class="muted">Google Calendar is not connected, so this books it in the Hub. Paste a Zoom or Meet link if you have one, then send them the invite text below.</p>' : `<p class="muted">Creates the event on ${esc(g.email || g.booking.ownerEmail)} with a Google Meet link and emails the invite to the lead.</p>`}
     <form id="bkf" class="form-grid">
       <label class="field"><span>Date and time (your time)</span><input type="datetime-local" name="start" value="${local}" required></label>
@@ -147,13 +147,13 @@ export async function bookModal(lead, onDone) {
     try {
       const r = await api(`/api/leads/${lead.id}/meeting`, { method: 'POST', body: { ...f, start: new Date(f.start).toISOString() } });
       const when = new Date(r.start).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-      const invite = `Hi ${(lead.contact_name || '').split(' ')[0] || 'there'}, this is ${r.rep || 'your rep'} with RightWay Growth. You're booked for your Google clarity call on ${when}.${r.meet ? ` Join here: ${r.meet}` : ' I will call you at this number and send the screen share link.'} Talk soon!`;
+      const invite = `Hi ${(lead.contact_name || '').split(' ')[0] || 'there'}, this is ${r.rep || 'your rep'} with RightWay Growth. You're booked for your free Google clarity audit on ${when}.${r.meet ? ` Join here: ${r.meet}` : ' I will call you at this number and send the screen share link.'} Talk soon!`;
       $('#bkout', m.el).innerHTML = `<div class="card" style="box-shadow:none;background:var(--mint-soft);margin-top:12px"><h3>Booked for ${esc(when)}</h3>
         ${r.meet ? `<div class="copybox"><code>${esc(r.meet)}</code></div>` : ''}
         <p class="small">${r.google === false ? 'Saved in the Hub. Send them the invite:' : 'Invite sent. The lead moved to Audit booked. Open Present before the call.'}</p>
         ${r.google === false ? `<div class="copybox"><code style="white-space:normal">${esc(invite)}</code></div><div class="row" style="gap:6px;margin-top:8px">
           ${lead.phone ? `<a class="btn btn-ghost btn-sm" href="sms:${esc(String(lead.phone).replace(/[^\d+]/g, ''))}?&body=${encodeURIComponent(invite)}">Text it</a>` : ''}
-          ${f.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(f.email)}?subject=${encodeURIComponent('Your Google clarity call')}&body=${encodeURIComponent(invite)}">Email it</a>` : ''}
+          ${f.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(f.email)}?subject=${encodeURIComponent('Your Google clarity audit')}&body=${encodeURIComponent(invite)}">Email it</a>` : ''}
           <button class="btn btn-ghost btn-sm" type="button" id="bkcopy">Copy</button></div>` : ''}</div>`;
       $('#bkcopy', m.el)?.addEventListener('click', () => navigator.clipboard?.writeText(invite).then(() => toast('Copied')));
       toast('Meeting booked');

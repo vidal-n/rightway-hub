@@ -116,12 +116,14 @@ async function route() {
     const sub = parts[0] === 'inbox' ? (parts[1] === 'calls' ? 'calls' : 'texts') : parts[1] || '';
     if (sub === 'out') return dialOutPage(app, u);
     if (sub === 'recordings') return recordingsPage(app, u);
-    if (sub === 'live') return liveCallsPage(app, u);
+    if (sub === 'live') { location.replace('#/agents'); return; }
     if (sub === 'setup') return phoneSetupPage(app, u);
     if (sub === 'texts') return inboxPage(app, u);
     if (sub === 'calls') return inboxPage(app, u, 'calls');
     return dialerPage(app, u);
   }
+  if (parts[0] === 'agents') return import('./agents.js').then((m) => m.agentsPage(app, u, parts[1] || ''));
+  if (parts[0] === 'training') return import('./training.js').then((m) => m.trainingPage(app, u, parts[1] || '', parts[2] || ''));
   if (parts[0] === 'pipeline') return pipelinePage(app, u, parts[1]);
   if (parts[0] === 'team' || (parts[0] === 'settings' && parts[1] === 'team')) return teamPage(app, u);
   if (parts[0] === 'slack') return import('./slackapp.js').then((m) => m.slackPage(app, u, parts[1] || '', parts[2] || '', parts[3] || ''));

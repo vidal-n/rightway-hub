@@ -144,6 +144,8 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS msg_lead ON messages (lead_id, at)`,
   `CREATE INDEX IF NOT EXISTS msg_sid ON messages (sid)`,
   `CREATE TABLE IF NOT EXISTS oauth_states (state TEXT PRIMARY KEY, user_id TEXT NOT NULL, at INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS agent_log (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, status TEXT NOT NULL, start_at INTEGER NOT NULL, end_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS agent_log_user ON agent_log (user_id, start_at)`,
 ];
 
 // Columns added after the first release. SQLite has no ADD COLUMN IF NOT EXISTS, so duplicates are ignored.
@@ -166,6 +168,8 @@ const ADD_COLUMNS = [
   ['posts', 'live_url TEXT'], ['posts', 'gbp_name TEXT'],
   ['activities', 'vm_sid TEXT'], ['activities', 'vm_secs INTEGER'], ['activities', 'seen_at INTEGER'], ['users', 'notify_prefs TEXT'],
   ['users', 'slack_id TEXT'], ['users', 'slack_prefs TEXT'], ['users', 'slack_token TEXT'], ['users', 'slack_uid TEXT'], ['users', 'slack_scopes TEXT'], ['users', 'slack_snooze INTEGER'], ['clients', 'chat_tried INTEGER'], ['users', 'nav_prefs TEXT'], ['clients', 'chat_channel TEXT'], ['clients', 'chat_channel_name TEXT'], ['clients', 'slack_channel TEXT'], ['clients', 'slack_channel_name TEXT'], ['clients', 'drive_folder TEXT'],
+  ['users', 'status TEXT'], ['users', 'status_at INTEGER'], ['users', 'last_seen INTEGER'], ['activities', 'ended_at INTEGER'], ['activities', 'dispo_at INTEGER'],
+  ['leads', 'deep_scan TEXT'], ['users', 'training TEXT'],
 ];
 
 let ready = null;
