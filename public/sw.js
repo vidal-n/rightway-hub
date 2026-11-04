@@ -1,6 +1,6 @@
 // Service worker: makes the Hub installable and keeps the app shell available on a weak connection.
 // API calls always go to the network, so data is never stale.
-const CACHE = 'rw-hub-v33';
+const CACHE = 'rw-hub-v34';
 const SHELL = ['/', '/index.html', '/hub.css', '/hub/app.js', '/hub/core.js', '/hub/shared.js', '/hub/staff.js', '/hub/portal.js', '/hub/crm.js', '/hub/prep.js', '/hub/texts.js', '/hub/home.js', '/hub/dialout.js', '/hub/phone.js', '/hub/calltools.js', '/hub/dispo.js', '/hub/payments.js', '/hub/stripesetup.js', '/hub/scans.js', '/hub/reports.js', '/hub/content.js', '/hub/siteaudit.js', '/hub/calltrack.js', '/hub/citations.js', '/hub/leader.js', '/js/sanitize.js', '/hub/googleapps.js', '/hub/onboarding.js', '/hub/work.js', '/hub/meetings.js', '/hub/gbp.js', '/hub/alerts.js', '/hub/slack.js', '/hub/slackapp.js', '/hub/slacktext.js', '/hub/chat.js', '/hub/assistant.js', '/hub/nav.js', '/js/guides.js',
   '/js/qr.js', '/js/map.js', '/js/grid.js', '/js/analysis.js', '/js/leadintel.js', '/js/leadfilter.js', '/js/fulfill.js', '/js/slots.js', '/js/plancopy.js', '/brand/rightway-logo-dark.svg', '/brand/rightway-logo-light.svg', '/favicon.svg'];
 
@@ -15,15 +15,18 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/r/')) return;
-  // Network first, cache as a fallback, so updates show up right away.
+  // Network first, always revalidated (no stale copies of one file mixed with new copies of another after an update),
+  // cache only as an offline fallback. A missing script never gets the home page back in its place.
+  const nav = e.request.mode === 'navigate';
+  const req = nav ? e.request : new Request(e.request, { cache: 'no-cache' });
   e.respondWith(
-    fetch(e.request).then((res) => {
+    fetch(req).then((res) => {
       if (res.ok && SHELL.includes(url.pathname)) {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));
       }
       return res;
-    }).catch(() => caches.match(e.request).then((r) => r || caches.match('/'))),
+    }).catch(() => caches.match(e.request).then((r) => r || (nav ? caches.match('/') : Response.error()))),
   );
 });
 

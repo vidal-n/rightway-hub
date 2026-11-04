@@ -169,7 +169,7 @@ async function boot() {
     if (e.status === 503) return notConnected(e.message);
     return notConnected('Could not reach the Hub. Check your connection and reload.');
   }
-  route();
+  try { route(); } catch (e) { notConnected(`Something broke while opening this page: ${e.message}. Reload, or send this message to Claude.`); }
 }
 
 window.addEventListener('hashchange', () => (state.user || location.hash.startsWith('#/invite') ? route() : boot()));

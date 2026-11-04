@@ -22,6 +22,28 @@
 <body>
   <div id="app"><div class="auth"><div class="spin" aria-label="Loading"></div></div></div>
   <noscript>Rightway Hub needs JavaScript turned on.</noscript>
+  <script>
+    // If the app has not drawn anything after 9 seconds, say why and offer a clean reload (clears old cached files).
+    (function () {
+      var errs = [];
+      window.addEventListener('error', function (e) { errs.push((e.message || 'Error') + (e.filename ? ' (' + e.filename.replace(location.origin, '') + ')' : '')); }, true);
+      window.addEventListener('unhandledrejection', function (e) { errs.push(String(e.reason && e.reason.message || e.reason)); });
+      setTimeout(function () {
+        var app = document.getElementById('app');
+        if (!app || !app.querySelector('.spin')) return;
+        app.innerHTML = '<div class="auth"><div class="auth-card"><h1 style="font-size:26px">The Hub did not load</h1><p class="muted">Usually an old copy of the app saved in this browser. Press Fix and reload.</p>'
+          + (errs.length ? '<pre style="white-space:pre-wrap;font-size:12px;background:#F2F7F4;color:#0F1B17;padding:10px;border-radius:10px">' + errs.slice(0, 4).join('\n').replace(/[<>&]/g, '') + '</pre>' : '')
+          + '<button class="btn btn-primary" id="fixrl">Fix and reload</button></div></div>';
+        document.getElementById('fixrl').onclick = function () {
+          var done = function () { location.replace('/?r=' + Date.now() + location.hash); };
+          var jobs = [];
+          if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }));
+          if (window.caches) jobs.push(caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }));
+          Promise.all(jobs).then(done, done);
+        };
+      }, 9000);
+    })();
+  </script>
   <script type="module" src="/hub/app.js"></script>
 </body>
 </html>
