@@ -101,7 +101,7 @@ function notConnected(msg) {
 }
 
 async function route() {
-  const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  const parts = location.hash.replace(/^#\/?/, '').replace(/\?.*$/, '').split('/').filter(Boolean);
   if (parts[0] === 'invite' && parts[1]) return inviteView(parts[1]);
   if (!state.users) return setupView();
   if (!state.user) return loginView();

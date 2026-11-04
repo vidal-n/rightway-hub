@@ -101,5 +101,7 @@ export async function dialOutPage(app, user) {
       } });
     } catch (err) { toast(err.message, true); } finally { busy(btn, false); }
   });
+  const pre = new URLSearchParams(location.hash.split('?')[1] || '').get('n');
+  if (pre) input.value = fmtTyped(pre);
   input.focus();
 }
