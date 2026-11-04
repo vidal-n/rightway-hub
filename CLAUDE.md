@@ -182,7 +182,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   discovery justifies), work order and payment, onboarding booking and homework. No packages: the close reads the quote's services (`services_list`),
   anchors at everything we offer (`price_anchor`), then the quoted buildout and monthly; `drop_offer` trims to the core services at the next lower price. Objections before price, after price and
   closes (fit/function/finance, think about it x4, can't afford x3, not today). Never claims a scan when no research ran (`opener_reason`, `scan_intro`,
-  `frame_scan`, `gk_reason`), never promises rankings. `SCRIPT_VERSION` (3): a script or objections saved in Settings for an older pitch are ignored
+  `frame_scan`, `gk_reason`), never promises rankings. `SCRIPT_VERSION` (5): a script or objections saved in Settings for an older pitch are ignored
   (settings `script_version`). Presentation notes pull the same script steps (`say()` in `public/js/present.js`). The presentation shows no plans: "What gets you results"
   lists the quote's services with why (top 10 tie in; hover × to drop one, Add a service), and "Your investment" shows the buildout, monthly and due
   today. The amounts start blank every meeting; the rep types them, and moving to the next slide saves them to the lead's quote, which the
@@ -326,7 +326,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   on `leads.listings`; `public/js/listings.js` (pure: `listingsLine`, `listingsTable`). Shown in call prep ("Listings Google double checks") and
   the presentation's `listings` slide (real wrong and missing directories with links, or a "Run the listing check now" button).
   Presentation app slide is the live sample client app in a phone frame (`/?as=<sampleId>`, clickable) with an "Always getting better" line.
-  Scan tool `?lead=<id>` prefills the lead's keyword and business. Script v4: `SCRIPT_GROUPS` cold (k_* steps: open, small group frame, hook,
+  Scan tool `?lead=<id>` prefills the lead's keyword and business. Script v5 (`listings_hook`, `listings_say` read the real listing check; blank lines dropped): `SCRIPT_GROUPS` cold (k_* steps: open, small group frame, hook,
   qualify, book, lock) and clarity (c_*), "(SCREEN: ...)" cues rendered as Screen lines in prep and presenter notes; prep opens the Clarity tab
   when the lead is booked or a meeting is within 3 hours. Frame: small group of clients, quality over cookie cutter, why most fail at marketing.
   Booking without Google: `/api/leads/:id/meeting` saves the appointment in the Hub (optional pasted Zoom or Meet link, email optional) and the
