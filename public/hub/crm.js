@@ -11,6 +11,7 @@ import { placeCall, startPhone, onPhoneState } from './phone.js';
 import { filterLeads } from '/js/leadfilter.js';
 import { quoteFor, recommendPlan } from '/js/leadintel.js';
 import { SERVICE_LIST } from '/js/plancopy.js';
+import { can, canRunCalls } from '/js/jobs.js';
 
 export const STAGE_LABEL = {
   new: 'New lead', attempting: 'Attempting', callback: 'Callback set', audit_requested: 'Audit requested', audit_booked: 'Audit booked',
@@ -307,6 +308,7 @@ export async function leadModal(id, onChange) {
   const l = data.lead;
   const Q = quoteFor(l, data.intel, l.quote);
   const REC = recommendPlan(l, data.intel).plan;
+  const closer = can(window.__rwUser, 'close'); // quotes, work orders, payment links and the presentation
   m.el.innerHTML = `
     <div class="card-head"><div><p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · ${l.attempts} attempts` : ''}</p><h2>${esc(l.business)}</h2>
       <div class="small">${esc([l.contact_name, l.city, l.state].filter(Boolean).join(' · '))}${l.tz_known ? ` · their time ${esc(l.local_time)}` : ''}</div></div>
@@ -324,7 +326,7 @@ export async function leadModal(id, onChange) {
     </div>
     ${l.dnc ? '<p class="badge bad" style="margin-bottom:12px">Do not call</p>' : ''}
     ${l.meet_at && l.meet_at > Date.now() - 2 * 3600e3 ? `<div class="card meet-card"><b>Audit meeting ${esc(new Date(l.meet_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b>
-      ${l.meet_link ? `<a class="btn btn-mint btn-sm" href="${esc(l.meet_link)}" target="_blank" rel="noopener">Join Google Meet</a>` : ''}<a class="btn btn-primary btn-sm" href="/present.html#${esc(l.id)}" target="_blank" rel="noopener">Open presentation</a></div>` : ''}
+      ${l.meet_link ? `<a class="btn btn-mint btn-sm" href="${esc(l.meet_link)}" target="_blank" rel="noopener">Join Google Meet</a>` : ''}${closer ? `<a class="btn btn-primary btn-sm" href="/present.html#${esc(l.id)}" target="_blank" rel="noopener">Open presentation</a>` : ''}</div>` : ''}
     <div class="card" id="lprep" style="box-shadow:none;margin-bottom:16px"></div>
     <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
       <div>
@@ -334,7 +336,7 @@ export async function leadModal(id, onChange) {
         <label class="field" style="margin-top:10px"><span>Note</span><textarea id="lnote" rows="3" placeholder="What happened on the call"></textarea></label>
         <div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="lnotebtn">Save note only</button>
           <label class="field" style="flex:1 1 160px"><select id="lstage">${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}"${k === l.stage ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div>
-        <h3 style="margin-top:22px">Close the deal</h3>
+        ${closer ? `        <h3 style="margin-top:22px">Close the deal</h3>
         <p class="small muted" style="margin:0 0 8px">Pick what they need and set the price from discovery. The client sees the services and the price, never the plan name.</p>
         <div class="field"><span>Services they need</span><div class="svc-pick">${SERVICE_LIST.map((s) => `<label class="row small" style="gap:6px;align-items:flex-start"><input type="checkbox" value="${esc(s.id)}"${Q.services.some((x) => x.id === s.id) ? ' checked' : ''}> <span>${esc(s.name)}</span></label>`).join('')}</div></div>
         <div class="row" style="margin-top:8px;gap:8px">
@@ -354,7 +356,7 @@ export async function leadModal(id, onChange) {
             <label class="field" style="flex:1 1 120px"><span>Build fee $</span><input id="wsetup" inputmode="decimal" placeholder="1500"></label>
             <label class="field" style="flex:1 1 120px"><span>Monthly care $ (optional)</span><input id="wmonthly" inputmode="decimal" placeholder="0"></label></div>
           <label class="field" style="margin-top:8px"><span>What the website includes (one per line)</span><textarea id="wscope" rows="4" placeholder="5 page website: home, about, services, service area, contact&#10;Mobile friendly design&#10;Contact form and tap to call&#10;Basic on-page setup for Google"></textarea></label>
-          <button class="btn btn-primary btn-sm" id="lwweb" style="margin-top:8px">Send website work order</button></details>
+          <button class="btn btn-primary btn-sm" id="lwweb" style="margin-top:8px">Send website work order</button></details>` : '<p class="small muted" style="margin-top:22px">The closer who runs the audit handles the quote, work order and payment.</p>'}
         ${data.orders.length ? `<h3 style="margin-top:22px">Work orders</h3><ul class="list">${data.orders.map((o) => `<li class="item"><span class="badge ${o.status === 'paid' ? '' : o.status === 'signed' ? 'warn' : 'gray'}">${esc(o.status)}</span>
           <div><div class="item-title">${o.kind === 'website' ? 'Website' : 'Local marketing'} · ${esc(fmt.money((o.setup_cents || 0) / 100))} + ${esc(fmt.money((o.monthly_cents || 0) / 100))}/mo${o.kind === 'website' ? '' : ` <span class="badge gray">${esc(PLAN_NAMES[o.plan] || o.plan)}</span>`}</div><div class="item-sub">${o.signed_name ? `Signed by ${esc(o.signed_name)} ${esc(fmt.ago(o.signed_at))}` : `Sent ${esc(fmt.ago(o.created_at))}`}</div></div>
           <button class="btn btn-ghost btn-sm" data-wo="${esc(o.token)}">Copy link</button></li>`).join('')}</ul>` : ''}
@@ -382,9 +384,11 @@ export async function leadModal(id, onChange) {
   // Who runs the booked call. Changing it checks they are free, updates the lead's invite and the team calendar.
   const cbox = $('#lcloserbox', m.el);
   if (cbox) api('/api/team').then(({ users }) => {
-    const team = (users || []).filter((u) => u.role === 'admin' || u.role === 'team');
-    const cur = l.closer_id || l.meet_by || '';
-    cbox.innerHTML = `<label class="row small" style="gap:6px">Runs the call <select id="lcloser"><option value="">Nobody yet</option>${team.map((u) => `<option value="${esc(u.id)}"${u.id === cur ? ' selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select></label>`;
+    const team = (users || []).filter(canRunCalls);
+    const cur = l.closer_id || '';
+    const me = window.__rwUser || {};
+    const mayMove = can(me, 'schedule') || [l.meet_by, l.closer_id].includes(me.id); // schedulers, closers, owners, or the person who booked it
+    cbox.innerHTML = `<label class="row small" style="gap:6px">Runs the call <select id="lcloser"${mayMove ? '' : ' disabled title="A scheduler or owner can hand this over"'}><option value="">Nobody yet</option>${team.map((u) => `<option value="${esc(u.id)}"${u.id === cur ? ' selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select></label>`;
     $('#lcloser', cbox).addEventListener('change', async (e) => {
       const send = (force) => api(`/api/leads/${l.id}/closer`, { method: 'PUT', body: { closer_id: e.target.value || null, force } });
       try { await send(false); toast('Handed over. The invite and team calendar are updated.'); changed = true; }
@@ -434,8 +438,8 @@ export async function leadModal(id, onChange) {
   const saveQuote = () => api(`/api/leads/${l.id}/quote`, { method: 'PUT', body: {
     plan: $('#lplan', m.el).value, setup: $('#lsetup', m.el).value, monthly: $('#lmonthly', m.el).value,
     services: $$('.svc-pick input:checked', m.el).map((x) => x.value) } });
-  $('#lquote', m.el).addEventListener('click', async (e) => { busy(e.target, true); try { await saveQuote(); toast('Quote saved'); changed = true; } catch (err) { toast(err.message, true); } finally { busy(e.target, false); } });
-  $('#lwweb', m.el).addEventListener('click', async (e) => {
+  $('#lquote', m.el)?.addEventListener('click', async (e) => { busy(e.target, true); try { await saveQuote(); toast('Quote saved'); changed = true; } catch (err) { toast(err.message, true); } finally { busy(e.target, false); } });
+  $('#lwweb', m.el)?.addEventListener('click', async (e) => {
     busy(e.target, true);
     try {
       const r = await api(`/api/leads/${l.id}/work-order`, { method: 'POST', body: { kind: 'website', setup: $('#wsetup', m.el).value, monthly: $('#wmonthly', m.el).value, scope: $('#wscope', m.el).value } });
@@ -443,7 +447,7 @@ export async function leadModal(id, onChange) {
         `Hi ${l.contact_name ? l.contact_name.split(' ')[0] : ''}, here is your Rightway Growth website agreement. Review it, sign, and you can pay right after: ${r.url}`);
     } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
   });
-  $('#lwo', m.el).addEventListener('click', async (e) => {
+  $('#lwo', m.el)?.addEventListener('click', async (e) => {
     busy(e.target, true);
     try {
       await saveQuote();
@@ -452,7 +456,7 @@ export async function leadModal(id, onChange) {
         `Hi ${l.contact_name ? l.contact_name.split(' ')[0] : ''}, here is your Rightway Growth work order. Review it, sign, and you can pay right after: ${r.url}`);
     } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
   });
-  $('#lpay', m.el).addEventListener('click', async (e) => {
+  $('#lpay', m.el)?.addEventListener('click', async (e) => {
     busy(e.target, true);
     const plan = $('#lplan', m.el).value;
     try {
@@ -666,7 +670,7 @@ export async function dialerPage(app, user) {
       </div>
       <div id="lowbal"></div>
       ${upcoming.length ? `<div class="card upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(new Date(m.meet_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }))} ${esc(m.business)}</span>
-        ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>`).join('')}</div>` : ''}
+        ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}${can(window.__rwUser, 'close') ? `<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>` : ''}`).join('')}</div>` : ''}
       ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
       <div class="dial-grid">
         <div class="dial-left">

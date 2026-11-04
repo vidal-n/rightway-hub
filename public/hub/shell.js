@@ -2,6 +2,7 @@
 // the presence heartbeat behind the Agents page, and the command palette (Ctrl K or /).
 import { $, $$, esc, api, toast, icon } from './core.js';
 import { navItems, wireNav, activeKey, customizeMenu, NAV, GROUPS, groupOf } from './nav.js';
+import { can, jobLabel } from '/js/jobs.js';
 import { STATUSES, statusLabel, statusTone, statusesFor } from '/js/callstats.js';
 import { avatarHtml, wireAvatars, pickAvatar, removeAvatar } from './avatar.js';
 
@@ -182,7 +183,7 @@ function profileMenu(b, user, logout) {
   m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
   const tone = statusTone(me.onCall ? 'on_call' : me.status || 'available');
   m.innerHTML = `<div class="pmenu-who"><button type="button" class="pbub big" data-pm="photo" title="Change photo" aria-label="Change profile photo">${avatarHtml(user, initials(user))}<span class="pcam">${icon.camera}</span></button><div><b>${esc(user.name || 'You')}</b><div class="small muted">${esc(user.email || '')}</div>
-      <span class="badge gray"><i class="dot ${tone}"></i>${esc(statusLabel(me.onCall ? 'on_call' : me.status || 'available'))} · ${user.role === 'admin' ? 'Owner' : 'Agent'}</span></div></div>
+      <span class="badge gray"><i class="dot ${tone}"></i>${esc(statusLabel(me.onCall ? 'on_call' : me.status || 'available'))} · ${esc(jobLabel(user))}</span></div></div>
     <button type="button" data-pm="status" role="menuitem">${icon.clock}Change status</button>
     <a href="#/agents" role="menuitem">${icon.headset || icon.users}My numbers today</a>
     <a href="#/settings" role="menuitem">${icon.cog}Settings</a>
@@ -256,11 +257,12 @@ async function palette(user) {
   const search = async () => {
     const q = input.value.trim().toLowerCase();
     const my = ++seq;
-    const pages = PAGES.filter(([n, , role]) => (!role || user.role === role) && (!q || n.toLowerCase().includes(q))).map(([label, href]) => ({ kind: 'Page', label, href }));
+    const jobOk = (href) => (/^#\/(work|clients|client)\b/.test(href) ? can(user, 'deliver') : href === '/scan.html' ? can(user, 'close') : true);
+    const pages = PAGES.filter(([n, href, role]) => (!role || user.role === role) && jobOk(href) && (!q || n.toLowerCase().includes(q))).map(([label, href]) => ({ kind: 'Page', label, href }));
     rows = pages.slice(0, q ? 6 : 10); sel = 0; draw();
     if (q.length < 2) return;
     try {
-      if (!cache) cache = await api('/api/clients').then((d) => d.clients || []).catch(() => []);
+      if (!cache) cache = can(user, 'deliver') ? await api('/api/clients').then((d) => d.clients || []).catch(() => []) : [];
       const [leads] = await Promise.all([api(`/api/leads?q=${encodeURIComponent(q)}&limit=8`).then((d) => d.leads || []).catch(() => [])]);
       if (my !== seq) return;
       const qd = q.replace(/\D/g, '');

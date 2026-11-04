@@ -8,6 +8,7 @@ import baked from './runtime-secrets.js';
 import { handleHub, handleReviewRedirect } from './hub.js';
 import { ensureSchema } from './db.js';
 import { currentUser, isStaff } from './auth.js';
+import { can } from '../public/js/jobs.js';
 import { autoScanTick } from './autoscan.js';
 import { auditTick, enqueueDueAudits } from './siteaudit.js';
 import { reviewTick } from './reputation.js';
@@ -87,7 +88,8 @@ async function staffSession(request, env) {
   if (!env.DB) return false;
   try {
     await ensureSchema(env);
-    return isStaff(await currentUser(env, request));
+    const u = await currentUser(env, request);
+    return isStaff(u) && can(u, 'close'); // the scan tool is a closing tool: closers and owners
   } catch {
     return false;
   }

@@ -1,6 +1,8 @@
 // Call prep: research snapshot, problems with talk tracks, the adaptive script, objections, booking, and presenting.
 import { $, $$, esc, api, toast, busy, modal, fmt, PLAN_NAMES, PLAN_PRICE } from './core.js';
 import { parseListings, listingsLine, listingsTable } from '/js/listings.js';
+import { markCues } from '/js/scriptprint.js';
+import { canRunCalls, can } from '/js/jobs.js';
 import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of } from '/js/leadintel.js';
 
 let customCache = null;
@@ -40,9 +42,9 @@ function snapshot(lead, intel) {
 // "Or:" lines are alternatives, "(" lines are coaching notes, everything else is what you say.
 function scriptLine(l) {
   if (/^\(SCREEN:/.test(l)) return `<p class="say-screen"><b>Screen</b> ${esc(l.replace(/^\(SCREEN:\s*/, '').replace(/\)$/, ''))}</p>`;
-  if (/^\(.*\)$/.test(l)) return `<p class="say-note">${esc(l.slice(1, -1))}</p>`;
-  if (/^Or:/i.test(l)) return `<p class="say-alt"><span class="badge gray">Or</span> ${esc(l.replace(/^Or:\s*/i, ''))}</p>`;
-  return `<p class="say-line">${esc(l)}</p>`;
+  if (/^\(.*\)$/.test(l)) return `<p class="say-note"><b class="do-tag">Do</b>${esc(l.slice(1, -1))}</p>`;
+  if (/^Or:/i.test(l)) return `<p class="say-alt"><span class="badge gray">Or</span> ${markCues(esc(l.replace(/^Or:\s*/i, '')))}</p>`;
+  return `<p class="say-line">${markCues(esc(l))}</p>`;
 }
 
 export async function prepPanel(el, lead, intel, { rep = '', onResearched, compact = false } = {}) {
@@ -65,8 +67,8 @@ export async function prepPanel(el, lead, intel, { rep = '', onResearched, compa
           <div class="small">${esc(rec.why.join(' · '))}</div></div>
         <div class="row" style="margin-left:auto">
           <button class="btn btn-ghost btn-sm" data-act="research">${intel ? 'Refresh research' : 'Research now'}</button>
-          <a class="btn btn-ghost btn-sm" href="/present.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
-          <a class="btn btn-ghost btn-sm" href="/scan.html?lead=${esc(lead.id)}" target="_blank" rel="noopener">Scan tool</a>
+          ${can(window.__rwUser, 'close') ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
+          <a class="btn btn-ghost btn-sm" href="/scan.html?lead=${esc(lead.id)}" target="_blank" rel="noopener">Scan tool</a>` : ''}
           <button class="btn btn-ghost btn-sm" data-act="book">Book meeting</button>
           <button class="btn btn-ghost btn-sm" data-act="meetnow" title="Starts a Google Meet now, invites them by email, and opens it beside the Hub">Google Meet now</button>
         </div>
@@ -85,7 +87,7 @@ export async function prepPanel(el, lead, intel, { rep = '', onResearched, compa
       <div class="seg script-groups" role="tablist">${s.groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${g.key}">${esc(g.name)}</button>`).join('')}</div>
       <div class="seg script-tabs" role="tablist">${s.steps.map((st, i) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${st.group}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
       <div class="script-body">${s.steps.map((st, i) => `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}</div>`).join('')}</div>
-      ${compact ? '' : `<h3 style="margin-top:16px">Objections</h3><div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary><p>${esc(o.a)}</p></details>`).join('')}</div>
+      ${compact ? '' : `<h3 style="margin-top:16px">Objections</h3><div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary><p>${markCues(esc(o.a))}</p></details>`).join('')}</div>
       <details class="obj playbook"><summary>Why the script works (the playbook)</summary><ul>${s.playbook.map((p) => `<li><b>${esc(p.name)}</b> <span class="small">${esc(p.from)}</span><div class="small">${esc(p.use)}</div></li>`).join('')}</ul></details>`}
     </div>`;
   $$('[data-group]', el).forEach((b) => b.addEventListener('click', () => {
@@ -141,16 +143,17 @@ export async function bookModal(lead, onDone) {
   try { g = await api('/api/google/status'); } catch { g = null; }
   const noGoogle = !g?.ready || (!g.connected && !g.booking?.ownerEmail);
   let team = [];
-  try { team = ((await api('/api/team')).users || []).filter((u) => u.role === 'admin' || u.role === 'team'); } catch { team = []; }
+  // Only closers and owners run the call. A setter or scheduler books for the first free closer unless they pick one.
+  try { team = ((await api('/api/team')).users || []).filter(canRunCalls); } catch { team = []; }
   const me = window.__rwUser?.id;
-  const pickId = lead.closer_id || me;
+  const pickId = lead.closer_id || (canRunCalls(window.__rwUser) ? me : 'auto');
   const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0);
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
   const m = modal(`<div class="card-head"><h2>Book the Google clarity audit: ${esc(lead.business)}</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     ${noGoogle ? '<p class="muted">Google Calendar is not connected, so this books it in the Hub. Paste a Zoom or Meet link if you have one, then send them the invite text below.</p>' : `<p class="muted">The lead gets a Google invite with a Meet link from the calendar of whoever runs the call (or ${esc(g.email || g.booking.ownerEmail)} if they have not connected Google), and it goes on the team calendar.</p>`}
     <form id="bkf" class="form-grid">
       <label class="field"><span>Date and time (your time)</span><input type="datetime-local" name="start" value="${local}" required></label>
-      <label class="field"><span>Who runs the call</span><select name="closer_id">${team.map((u) => `<option value="${esc(u.id)}"${u.id === pickId ? ' selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select></label>
+      <label class="field"><span>Who runs the call</span><select name="closer_id"><option value="auto"${pickId === 'auto' ? ' selected' : ''}>First free closer</option>${team.map((u) => `<option value="${esc(u.id)}"${u.id === pickId ? ' selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select></label>
       <p class="small span-all" id="bkfree" style="margin:-4px 0 0"></p>
       <label class="field"><span>Length</span><select name="minutes"><option value="20">20 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label>
       <label class="field span-all"><span>Their email${noGoogle ? ' (optional)' : ' for the invite'}</span><input type="email" name="email" value="${esc(lead.email || '')}"${noGoogle ? '' : ' required'}></label>
@@ -167,6 +170,7 @@ export async function bookModal(lead, onDone) {
       const r = await api(`/api/closers/free?start=${t}&minutes=${bf.minutes.value}&lead=${encodeURIComponent(lead.id)}`);
       const by = new Map(r.closers.map((c) => [c.id, c]));
       [...bf.closer_id.options].forEach((o) => { const c = by.get(o.value); o.textContent = `${c?.name || o.textContent.replace(/ \(busy\)$/, '')}${c?.clash ? ' (busy)' : ''}`; });
+      if (bf.closer_id.value === 'auto') { const free = r.closers.filter((x) => !x.clash); $('#bkfree', m.el).innerHTML = free.length ? `<span class="muted">${free.length} free then. The one with the fewest calls gets it.</span>` : '<span class="err-text">Every closer is busy then. Pick another time.</span>'; return; }
       const c = by.get(bf.closer_id.value);
       $('#bkfree', m.el).innerHTML = c?.clash ? `<span class="err-text">${esc(c.clash)}</span>` : `<span class="muted">${esc((c?.name || 'They').split(' ')[0])} is free then.</span>`;
     } catch { /* booking still works */ }

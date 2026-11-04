@@ -9,6 +9,19 @@ import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { accessToken, googleReady, calendarAny, calendarFull, bookingOwner, bookingConfig, busyTimes, AGENDA } from './google.js';
 import { logActivity } from './crm.js';
+import { can } from '../public/js/jobs.js';
+
+// Who can run an audit call: owners and agents whose job is closer.
+export const CLOSER_SQL = "(role = 'admin' OR (role = 'team' AND job = 'closer'))";
+export async function runsCalls(env, id) {
+  return Boolean(id && await first(env, `SELECT id FROM users WHERE id = ? AND ${CLOSER_SQL}`, id));
+}
+// The free closer with the fewest upcoming calls (owners count too). null when everyone is busy then.
+export async function autoCloser(env, start, minutes = 30, leadId = null) {
+  const rows = await all(env, `SELECT u.id, (SELECT COUNT(*) FROM leads l WHERE (l.closer_id = u.id OR (l.closer_id IS NULL AND l.meet_by = u.id)) AND l.meet_at > ?) AS n FROM users u WHERE ${CLOSER_SQL.replace(/role/g, 'u.role').replace(/job/g, 'u.job')} ORDER BY CASE u.role WHEN 'team' THEN 0 ELSE 1 END, n, u.created_at`, now());
+  for (const r of rows) if (!(await closerConflict(env, r.id, start, minutes, { leadId }))) return r.id;
+  return null;
+}
 
 const API = 'https://www.googleapis.com/calendar/v3';
 const TZ = 'America/New_York';
@@ -295,9 +308,12 @@ route('PUT', '/api/leads/:id/closer', async ({ env, user, params, body, defer })
   requireStaff(user);
   const l = await first(env, 'SELECT * FROM leads WHERE id = ?', params.id);
   if (!l) throw new HttpError('Lead not found.', 404);
+  // Schedulers (and closers, owners) hand over anyone's call; an appointment setter only the ones they booked.
+  const mineToMove = l.meet_by === user.id || l.closer_id === user.id || (!l.meet_by && l.owner_id === user.id);
+  if (!can(user, 'schedule') && !mineToMove) throw new HttpError("That appointment is someone else's. A scheduler or owner can hand it over.", 403);
   const b = await body();
-  const closer = b.closer_id ? await first(env, "SELECT id, name FROM users WHERE id = ? AND role IN ('admin','team')", b.closer_id) : null;
-  if (b.closer_id && !closer) throw new HttpError('Pick someone on the team.');
+  const closer = b.closer_id ? await first(env, `SELECT id, name FROM users WHERE id = ? AND ${CLOSER_SQL}`, b.closer_id) : null;
+  if (b.closer_id && !closer) throw new HttpError('Pick a closer or an owner. Only they run the call.');
   if (closer && l.meet_at && !b.force) {
     const clash = await closerConflict(env, closer.id, l.meet_at, 30, { leadId: l.id });
     if (clash) return json({ error: clash, conflict: true }, 409);
@@ -320,7 +336,7 @@ route('GET', '/api/closers/free', async ({ env, user, url }) => {
   const start = Number(url.searchParams.get('start'));
   const minutes = Number(url.searchParams.get('minutes')) || 30;
   const leadId = url.searchParams.get('lead') || null;
-  const team = await all(env, "SELECT id, name FROM users WHERE role IN ('admin','team') ORDER BY name");
+  const team = await all(env, `SELECT id, name FROM users WHERE ${CLOSER_SQL} ORDER BY name`);
   const out = [];
   for (const u of team) out.push({ id: u.id, name: u.name, clash: start ? await closerConflict(env, u.id, start, minutes, { leadId }) : null });
   return json({ closers: out });

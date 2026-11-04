@@ -439,6 +439,20 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   master lead export, Sheets exports, client billing, Stripe ids or MRR (stripped from `/api/clients`, `/api/clients/:id`, `/api/dashboard`), or the settings back end
   (`GET /api/settings` returns only the script and voicemail number for agents). Menus hide Vault and Automations; the router sends agents away from owner pages;
   agent Settings shows only their Google, their dialer phone and the team calendar.
+- Agent jobs (Nov 2026, `public/js/jobs.js` pure and shared, `users.job`): every agent (role team) is a closer, scheduler or appointment setter
+  (`JOBS`, `JOB_CAPS`; no job = setter). Abilities: dial, book (all), schedule (scheduler, closer: see every appointment, move and hand over anyone's),
+  close (closer: quote, work order, payment link, convert, deep scan, presentation, scan tool), deliver (closer: Clients, My work and every client route).
+  Owners pass everything. Enforced once in the `src/hub.js` dispatch (`capFor` path rules, `CAP_DENY` messages; client view `x-view-as` needs close),
+  the scan tool staff session in `src/worker.js` needs close, `present.js` refuses non-closers. Only closers and owners run calls (`CLOSER_SQL`,
+  `runsCalls`, `autoCloser` in `src/teamcal.js`): booking from a lead with `closer_id: 'auto'` (or a setter without a pick) goes to the free closer with
+  the fewest upcoming calls (409 when all are busy); a dialer Booked by a setter does the same, or leaves it unassigned and notifies owners, schedulers
+  and closers. Setters move or hand over only their own bookings (403 otherwise); a scheduler's move keeps the original `meet_by`. Round robin booking,
+  `book_rep` and `/api/closers/free` list closers and owners only. `canSeeAppt`/`apptScope`/`appointmentItems`/Hub events: `can(user, 'schedule')` sees all.
+  UI: NAV fifth field is 'admin' or an ability, router sends agents away from work/clients pages, palette skips them, lead panel hides Close the deal and
+  Present, pickers offer "First free closer". Agents page: Job on invite and per agent (`PUT /api/users/:id/job`); `currentUser` and `/api/me` return `job`.
+- Script DO notes (Nov 2026): coaching notes are no longer grey italic. Hub call prep and the Training reader show them upright on a yellow strip with a
+  black DO tag (`.say-note`, `.script-read .cue`, `.do-tag`); notes inside a spoken line get an inline DO mark via `markCues` in `public/js/scriptprint.js`
+  (spoken asides like "No stress if not" stay). PDFs use the same style (scratchpad `final/gen.mjs`). The Docs mark them with a bold "DO:" on their own line.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

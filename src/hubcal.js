@@ -8,6 +8,7 @@ import { route } from './router.js';
 import { appointmentItems } from './appointments.js';
 import { canEmail, sendEmail } from './email.js';
 import { logActivity } from './crm.js';
+import { can } from '../public/js/jobs.js';
 import { icsCalendar, googleAddUrl } from '../public/js/ics.js';
 import { mirrorEvent, unmirror } from './teamcal.js';
 
@@ -52,7 +53,7 @@ const row = (r) => ({ id: r.id, title: r.title, start: r.start_at, minutes: r.mi
 async function mine(env, user, id) {
   const e = await first(env, 'SELECT * FROM events WHERE id = ?', id);
   if (!e) throw new HttpError('Appointment not found.', 404);
-  if (user.role !== 'admin' && e.owner_id !== user.id) throw new HttpError('That appointment belongs to someone else.', 403);
+  if (!can(user, 'schedule') && e.owner_id !== user.id) throw new HttpError('That appointment belongs to someone else.', 403);
   return e;
 }
 

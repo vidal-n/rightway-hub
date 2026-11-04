@@ -5,6 +5,7 @@ import { ninetyDayPlan, reviewTarget } from './fulfill.js';
 import { PLAN_INFO, SERVICE_LIST } from './plancopy.js';
 import { qrSvg } from './qr.js';
 import { parseListings, listingsLine, listingsTable } from './listings.js';
+import { can } from './jobs.js';
 
 const root = document.getElementById('root');
 const id = decodeURIComponent(location.hash.slice(1));
@@ -430,6 +431,7 @@ async function boot() {
   if (!id) { root.innerHTML = '<div class="err">Open a presentation from a lead in the Hub.</div>'; return; }
   try {
     const [d, me, s] = await Promise.all([api(`/api/leads/${encodeURIComponent(id)}`), api('/api/me'), api('/api/settings').catch(() => ({}))]);
+    if (!can(me.user, 'close')) { root.innerHTML = '<div class="err"><div>Presentations are run by closers. Ask an owner to hand you the call.<br><a href="/">Back to the Hub</a></div></div>'; return; }
     D = { lead: d.lead, intel: d.intel, rep: (me.user?.name || '').split(' ')[0] || '', custom: { script: s.script || {}, objections: s.objections || null, number: s.number || '' } };
     const info = industryInfo(D.lead.industry, D.intel?.listing?.category || D.lead.category);
     state.quote = quoteFor(D.lead, D.intel, D.lead.quote);

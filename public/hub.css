@@ -448,7 +448,12 @@ ul.plain, ol.plain { padding-left: 20px; margin: 0 0 12px; } ul.plain li, ol.pla
 /* Script lines */
 .script-step .say-line { margin: 0 0 10px; font-size: 16px; line-height: 1.55; }
 .script-step .say-alt { margin: 0 0 10px; color: var(--ink-2); line-height: 1.5; }
-.script-step .say-note { margin: 0 0 10px; font-size: 13.5px; color: var(--muted); font-style: italic; border-left: 3px solid var(--mint); padding-left: 10px; }
+/* DO notes: directions for the rep, never read out loud. Upright and full contrast on a yellow tint, so they are easy to read and never pass for script. */
+.script-step .say-note { margin: 0 0 10px; font-size: 14.5px; line-height: 1.5; color: var(--ink); background: #FFF4D6; border-left: 4px solid #E8A317; padding: 7px 12px; border-radius: 0 8px 8px 0; }
+.do-tag { display: inline-block; background: #0F1B17; color: #FFD66B; font: 800 10.5px/1.7 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 0 6px; border-radius: 4px; margin-right: 7px; vertical-align: 1px; }
+.do-in { background: #FFF4D6; border: 1px solid #F2C14E; border-radius: 6px; padding: 1px 7px 1px 3px; font-size: .94em; font-style: normal; color: var(--ink); -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+.do-in .do-tag { margin-right: 5px; }
+@media (prefers-color-scheme: dark) { .script-step .say-note, .script-read .cue, .do-in { background: rgba(232, 163, 23, .14); color: #F7EBC9; border-color: #E8A317; } }
 .playbook ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 8px; }
 
 /* ---------- browser phone ---------- */
@@ -1334,7 +1339,7 @@ a.tr-card:hover { border-color: var(--mint-strong); transform: translateY(-1px);
 .script-read h3 { display: flex; gap: 10px; align-items: baseline; border-bottom: 2px solid var(--mint); padding-bottom: 6px; }
 .script-read h3 span { font: 700 14px var(--mono); color: var(--mint-strong); }
 .script-read p { margin: 0 0 10px; font-size: 16.5px; line-height: 1.6; }
-.script-read .cue { font-size: 14px; font-style: italic; color: var(--muted); background: var(--surface-2); border-left: 4px solid var(--mint); padding: 6px 10px; border-radius: 0 8px 8px 0; }
+.script-read .cue { font-size: 15.5px; line-height: 1.5; color: var(--ink); background: #FFF4D6; border-left: 4px solid #E8A317; padding: 8px 12px; border-radius: 0 8px 8px 0; }
 .script-read .blank { background: var(--mint-soft); border-bottom: 1.5px solid var(--mint-strong); padding: 0 3px; font-weight: 700; }
 
 @media (max-width: 640px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stat-num { font-size: 24px; } .stat { padding: 14px; } }
@@ -1572,3 +1577,4 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .fl-drop { border: 2px dashed transparent; border-radius: 12px; min-height: 80px; transition: border-color .15s, background .15s; }
 .fl-drop.over { border-color: var(--mint-strong); background: var(--mint-soft); }
 .empty-note { padding: 28px 8px; text-align: center; color: var(--muted, #5b6b64); }
+.jobs-key { margin-top: 14px; padding: 10px 12px; background: var(--surface-2); border-radius: 10px; } .jobs-key p { margin: 0 0 4px; }

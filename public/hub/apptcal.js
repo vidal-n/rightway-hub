@@ -1,5 +1,6 @@
 // The team appointment calendar, inside the Hub. Booked audits and client meetings show here on their own; anyone can add an
 // appointment with the form (no Google account needed), and a private calendar link sends everything to Google, Apple or Outlook.
+import { can } from '/js/jobs.js';
 import { $, $$, esc, api, toast, busy, modal } from './core.js';
 import { staffShell } from './shell.js';
 import { icsCalendar, googleAddUrl } from '/js/ics.js';
@@ -147,7 +148,7 @@ export async function apptCalendarPage(app, user, sub) {
         ${xs.map((x) => `<div class="row" style="flex-wrap:wrap;gap:12px;padding:8px 0;border-top:1px solid var(--line)"><span class="mono" style="min-width:76px">${esc(timeOf(x.start))}</span>
           <span class="badge ${x.kind === 'audit' ? '' : 'gray'}">${KIND[x.kind]}</span><b style="flex:1;min-width:140px">${x.open ? `<a href="${esc(hrefOf(x))}">${esc(x.title)}</a>` : x.kind === 'event' && x.edit ? `<a href="#" data-ev="${key(x)}">${esc(x.title)}</a>` : esc(x.title)}</b>
           <span class="small">${esc((x.kind === 'audit' ? [x.who, x.city, x.closer ? `${x.closer} runs it` : 'Nobody assigned', `booked by ${x.by}`] : [x.who, x.city, x.by]).filter(Boolean).join(' · '))}</span>${x.link ? `<a class="btn btn-ghost btn-sm" href="${esc(x.link)}" target="_blank" rel="noopener">Join</a>` : ''}
-          ${x.kind === 'audit' && x.open ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(x.id)}" target="_blank" rel="noopener">Present</a>` : ''}
+          ${x.kind === 'audit' && x.open && can(window.__rwUser, 'close') ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(x.id)}" target="_blank" rel="noopener">Present</a>` : ''}
           <a class="btn btn-ghost btn-sm" href="${esc(gUrl(x))}" target="_blank" rel="noopener" title="Add this one to Google Calendar">+ Google</a><button class="btn btn-ghost btn-sm" type="button" data-ics="${key(x)}" title="Download a calendar file for Apple Calendar or Outlook">.ics</button></div>`).join('')}</div>`).join('')
         : '<div class="card empty"><h3>Nothing booked in the next 30 days</h3><p>Add an appointment above, or book audits from the dialer. They show here for the whole team.</p></div>';
       $$('a[data-ev]', view).forEach((a) => a.addEventListener('click', (e) => e.preventDefault()));

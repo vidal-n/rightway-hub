@@ -1,6 +1,7 @@
 // Team home: today's calling, meetings, callbacks, pipeline, clients, deals. Plus the Client view (see the app as a client does).
 import { $, $$, esc, api, toast, busy, fmt, icon, animateNumbers } from './core.js';
 import { staffShell, clientsTabs } from './staff.js';
+import { can } from '/js/jobs.js';
 import { leadModal, STAGE_LABEL } from './crm.js';
 import { paymentsSnapshot } from './payments.js';
 import { initials } from './shell.js';
@@ -70,7 +71,7 @@ export async function homePage(app, user) {
       <div class="card w-6 wc-coral"><div class="card-head"><h2>Meetings coming up</h2><a class="btn btn-ghost btn-sm" href="#/calendar">Calendar</a></div>
         ${d.meetings.length ? `<ul class="list">${d.meetings.map((m) => `<li class="item"><span class="badge k-meet-b">${esc(when(m.meet_at))}</span>
           <div><div class="item-title">${esc(m.business)}</div><div class="item-sub">${esc(m.contact_name || '')}</div></div>
-          <div class="row" style="gap:6px">${m.meet_link ? `<a class="btn btn-mint btn-sm" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Join</a>` : ''}<a class="btn btn-primary btn-sm" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a></div></li>`).join('')}</ul>`
+          <div class="row" style="gap:6px">${m.meet_link ? `<a class="btn btn-mint btn-sm" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Join</a>` : ''}${can(user, 'close') ? `<a class="btn btn-primary btn-sm" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>` : ''}</div></li>`).join('')}</ul>`
         : '<p class="muted">No meetings booked yet. Every audit you book shows up here with its Meet link and presentation.</p>'}</div>
 
       <div class="card w-4 wc-amber"><div class="card-head"><h2>Callbacks due</h2><span class="badge ${d.due.length ? 'warn' : 'gray'}">${d.due.length}</span></div>
@@ -79,10 +80,10 @@ export async function homePage(app, user) {
         : '<p class="muted">Nothing due today. The dialer brings callbacks back at the right time automatically.</p>'}</div>
       ${admin ? '<div class="card w-4 wc-green" id="paysnap"><div class="card-head"><h2>Payments</h2></div><div class="skeleton" style="height:70px"></div></div><div class="card w-4 wc-violet" id="budsnap"><div class="card-head"><h2>Budget and costs</h2></div><div class="skeleton" style="height:120px"></div></div><div class="card w-4 wc-amber" id="balsnap"></div>' : ''}
       <div class="card w-4 wc-teal" id="floor"><div class="card-head"><h2>Team floor</h2><a class="btn btn-ghost btn-sm" href="#/agents">Agents</a></div><div class="skeleton" style="height:70px"></div></div>
-      <div class="card w-4 wc-green"><div class="card-head"><h2>Clients</h2><a class="btn btn-ghost btn-sm" href="#/clients">Open</a></div>
+      ${can(user, 'deliver') ? `<div class="card w-4 wc-green"><div class="card-head"><h2>Clients</h2><a class="btn btn-ghost btn-sm" href="#/clients">Open</a></div>
         <div class="cl-row">${ring(workPct, { size: 104, thick: 12, color: 'var(--c-green)', center: `${workPct}%`, sub: 'work done' })}<div class="cl-nums">${d.clients.mrr != null ? `<div><b class="mono">${fmt.money(d.clients.mrr)}</b><span>monthly revenue</span></div>` : ''}<div><b class="mono">${d.clients.active}</b><span>active clients</span></div><div><b class="mono">${d.orders.signed}</b><span>signed this month</span></div></div></div>
         <p class="small" style="margin-top:10px">${d.work.postsWaiting} post${d.work.postsWaiting === 1 ? '' : 's'} waiting to go out. ${d.orders.sent} agreement${d.orders.sent === 1 ? '' : 's'} out, ${d.orders.paid} paid.</p>
-        <div class="row" style="margin-top:6px">${d.clients.sample ? `<a class="btn btn-ghost btn-sm" href="#/clients/view/${esc(d.clients.sample)}">${icon.device}See the sample client app</a>` : `<button class="btn btn-ghost btn-sm" id="mk-sample">${icon.device}Create a sample client</button>`}<a class="btn btn-ghost btn-sm" href="#/phone/texts">${icon.msg}${d.unread} unread</a></div></div>
+        <div class="row" style="margin-top:6px">${d.clients.sample ? `<a class="btn btn-ghost btn-sm" href="#/clients/view/${esc(d.clients.sample)}">${icon.device}See the sample client app</a>` : `<button class="btn btn-ghost btn-sm" id="mk-sample">${icon.device}Create a sample client</button>`}<a class="btn btn-ghost btn-sm" href="#/phone/texts">${icon.msg}${d.unread} unread</a></div></div>` : ''}
       <div class="card w-12 wc-blue"><div class="card-head"><h2>Recent activity</h2></div>
         ${d.recent.length ? `<ul class="feed">${d.recent.map((a) => `<li><span class="dot ${ACT_TONE[a.type] || 'k-text'}">${a.type === 'call' ? icon.phone : a.type === 'sms' ? icon.msg : icon.note}</span>
           <div><div>${esc(ACT[a.type] || 'Update')}${a.outcome ? `: ${esc(a.outcome.replace(/_/g, ' '))}` : ''}${a.business ? ` · ${esc(a.business)}` : ''}</div>${a.body ? `<div class="small">${esc(String(a.body).slice(0, 90))}</div>` : ''}</div><span class="small">${esc(fmt.ago(a.at))}</span></li>`).join('')}</ul>`

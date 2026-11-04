@@ -6,7 +6,8 @@ import { requireStaff, requireAdmin, cleanEmail } from './auth.js';
 import { route } from './router.js';
 import { cleanLead, insertLead, logActivity, rescore, apptScope, stateCode } from './crm.js';
 import { automationTick, bookToken } from './automations.js';
-import { closerConflict, inviteLead, mirrorLead } from './teamcal.js';
+import { closerConflict, inviteLead, mirrorLead, CLOSER_SQL, autoCloser, runsCalls } from './teamcal.js';
+import { can } from '../public/js/jobs.js';
 import { openSlots } from '../public/js/slots.js';
 import { dupKeys } from '../public/js/leadintel.js';
 import { notifyLater } from './notify.js';
@@ -240,7 +241,7 @@ route('PUT', '/api/google/booking', async ({ env, user, body }) => {
   }
   if ('rep' in b) {
     const rep = String(b.rep || '');
-    if (rep && rep !== 'rr' && !(await first(env, "SELECT id FROM users WHERE id = ? AND role IN ('admin','team')", rep))) throw new HttpError('Pick someone on the team.');
+    if (rep && rep !== 'rr' && !(await first(env, `SELECT id FROM users WHERE id = ? AND ${CLOSER_SQL}`, rep))) throw new HttpError('Pick a closer or an owner. Only they run the call.');
     await setSetting(env, 'book_rep', rep);
   }
   if (b.ownerSelf) await setSetting(env, 'book_owner', user.id);
@@ -258,15 +259,28 @@ route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body, defer 
   if (!start || start < now() - 3600e3) throw new HttpError('Pick a time in the future.');
   const minutes = Math.min(120, Math.max(15, Number(b.minutes) || 30));
   const email = b.email ? cleanEmail(b.email) : lead.email;
-  const closerId = b.closer_id ? (await first(env, "SELECT id FROM users WHERE id = ? AND role IN ('admin','team')", b.closer_id))?.id : user.id;
-  if (!closerId) throw new HttpError('Pick who runs the call.');
+  // Someone else's upcoming appointment is moved by a scheduler, an owner, or the people on it.
+  const booked = lead.meet_at && lead.meet_at > now() && lead.stage === 'audit_booked';
+  if (booked && !can(user, 'schedule') && ![lead.meet_by, lead.closer_id].includes(user.id)) throw new HttpError("That appointment is someone else's. A scheduler or owner can move it.", 403);
+  // Only closers and owners run the call. "auto" (or a setter booking without picking) gives it to the free closer with the fewest calls.
+  let closerId;
+  if (b.closer_id && b.closer_id !== 'auto') {
+    closerId = (await first(env, `SELECT id FROM users WHERE id = ? AND ${CLOSER_SQL}`, b.closer_id))?.id;
+    if (!closerId) throw new HttpError('Pick a closer or an owner. Only they run the call.');
+  } else if (!b.closer_id && await runsCalls(env, user.id)) closerId = user.id;
+  else {
+    closerId = await autoCloser(env, start, minutes, lead.id);
+    if (!closerId && !b.force) return json({ error: 'Every closer is busy at that time. Pick another time.', conflict: true }, 409);
+    closerId = closerId || (await first(env, `SELECT id FROM users WHERE ${CLOSER_SQL} ORDER BY CASE role WHEN 'team' THEN 0 ELSE 1 END, created_at`))?.id;
+    if (!closerId) throw new HttpError('Nobody on the team runs calls yet. An owner can make someone a closer.');
+  }
   if (!b.force) {
     const clash = await closerConflict(env, closerId, start, minutes, { leadId: lead.id });
     if (clash) return json({ error: `${clash} Pick another time or someone else.`, conflict: true }, 409);
   }
   const link = /^https:\/\//.test(String(b.link || '').trim()) ? String(b.link).trim().slice(0, 400) : null;
   const moved = lead.meet_at && lead.meet_at !== start;
-  const set = { stage: 'audit_booked', meet_at: start, meet_by: user.id, closer_id: closerId, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
+  const set = { stage: 'audit_booked', meet_at: start, meet_by: booked && lead.meet_by ? lead.meet_by : user.id, closer_id: closerId, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
   if (link) set.meet_link = link;
   if (email && !lead.email) set.email = email;
   Object.assign(set, rescore({ ...lead, ...set }));
@@ -282,7 +296,7 @@ route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body, defer 
     await notifyLater({ env, defer }, { to: [closerId], kind: 'meeting', title: `You have a new audit: ${lead.business}`, body: new Date(start).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }), url: `/#/pipeline/${lead.id}` });
   }
   const after = await first(env, 'SELECT meet_link FROM leads WHERE id = ?', lead.id);
-  return json({ ok: true, meet: after?.meet_link || null, start, google: Boolean(g.google), googleError: gErr, rep: String(closer?.name || user.name || '').split(' ')[0] });
+  return json({ ok: true, meet: after?.meet_link || null, start, closer_id: closerId, google: Boolean(g.google), googleError: gErr, rep: String(closer?.name || user.name || '').split(' ')[0] });
 });
 
 route('GET', '/api/calendar/upcoming', async ({ env, user }) => {
@@ -322,8 +336,8 @@ async function bookingBusy(env, cfg, owner) {
 
 // Who can take online bookings: one person, everyone on the team (round robin), or nobody in particular (one booking per time, company wide).
 async function closersFor(env, cfg) {
-  if (fixedRep(cfg)) { const u = await first(env, "SELECT id FROM users WHERE id = ? AND role IN ('admin','team')", cfg.rep); return u ? [u.id] : null; }
-  if (cfg.rep === 'rr') return (await all(env, "SELECT id FROM users WHERE role IN ('admin','team') ORDER BY created_at")).map((u) => u.id);
+  if (fixedRep(cfg)) { const u = await first(env, `SELECT id FROM users WHERE id = ? AND ${CLOSER_SQL}`, cfg.rep); return u ? [u.id] : null; }
+  if (cfg.rep === 'rr') return (await all(env, `SELECT id FROM users WHERE ${CLOSER_SQL} ORDER BY created_at`)).map((u) => u.id);
   return null;
 }
 // One closer's busy times: their audits, their Hub appointments and their own Google calendar when connected.

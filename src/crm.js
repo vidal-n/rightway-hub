@@ -8,6 +8,7 @@ import { scoreLead, dupKeys } from '../public/js/leadintel.js';
 import { resolveDispo } from './dispo.js';
 import { notifyLater } from './notify.js';
 import { autoChatFor } from './chat.js';
+import { can } from '../public/js/jobs.js';
 
 export const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won', 'not_now', 'lost', 'dnc'];
 const CALLABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
@@ -162,12 +163,12 @@ export async function logActivity(env, a) {
 const TZ_SHORT = { 'America/New_York': 'ET', 'America/Chicago': 'CT', 'America/Denver': 'MT', 'America/Phoenix': 'AZ', 'America/Los_Angeles': 'PT', 'America/Anchorage': 'AK', 'Pacific/Honolulu': 'HI' };
 // Booked appointments: owners see every one; teammates only see the ones they booked (or, for older rows, on their own leads).
 export function canSeeAppt(user, l) {
-  if (!user || user.role === 'admin') return true;
+  if (!user || can(user, 'schedule')) return true; // owners, schedulers and closers see every appointment
   if (l.closer_id && l.closer_id === user.id) return true;
   return l.meet_by ? l.meet_by === user.id : Boolean(l.owner_id) && l.owner_id === user.id;
 }
 export function apptScope(user, alias = '') {
-  if (!user || user.role === 'admin') return { sql: '', args: [] };
+  if (!user || can(user, 'schedule')) return { sql: '', args: [] };
   const a = alias ? `${alias}.` : '';
   return { sql: ` AND (${a}meet_by = ? OR ${a}closer_id = ? OR (${a}meet_by IS NULL AND ${a}owner_id = ?))`, args: [user.id, user.id, user.id] };
 }

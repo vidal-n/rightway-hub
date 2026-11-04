@@ -2,11 +2,11 @@
 // the owner setup checklist and links. Each person ticks off what they have done (users.training).
 import { $, $$, esc, api, toast, icon } from './core.js';
 import { staffShell } from './shell.js';
-import { scriptSteps, objectionGroups } from '/js/scriptprint.js';
+import { scriptSteps, objectionGroups, markCues } from '/js/scriptprint.js';
 import { DEFAULT_GUIDES, PROOF_LABEL } from '/js/guides.js';
 
 const PDF = { cold: '/training/RightWay-Growth-Cold-Call-Script.pdf', clarity: '/training/RightWay-Growth-Google-Clarity-Audit-Script.pdf' };
-const blanks = (s) => esc(s).replace(/\[\[(.+?)\]\]/g, '<span class="blank">$1</span>');
+const blanks = (s) => markCues(esc(s).replace(/\[\[(.+?)\]\]/g, '<span class="blank">$1</span>'));
 
 // Playbooks: how we actually run the day in the Hub. Plain steps, kept short.
 const PLAYBOOKS = [
@@ -118,10 +118,10 @@ function scripts(view, user, which) {
       <div class="seg"><a class="btn btn-sm ${which !== 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
       <div class="row"><a class="btn btn-ghost btn-sm" href="${PDF[which === 'clarity' ? 'clarity' : 'cold']}" target="_blank" rel="noopener">${icon.down}Large print PDF</a>
         <label class="row small" style="gap:8px"><input type="checkbox" id="rd"${done.has(`script:${which}`) ? ' checked' : ''}> I have read it</label></div></div>
-    <p class="small muted" style="margin:0 0 16px">The live version with the lead's real names and numbers is in call prep and the presenter notes. Green blanks fill in there. Black boxes are the screen cues.</p>
+    <p class="small muted" style="margin:0 0 16px">The live version with the lead's real names and numbers is in call prep and the presenter notes. Green blanks fill in there. Black boxes are the screen cues. Yellow DO notes are for you, never out loud.</p>
     <div class="card script-read">${steps.map((st, i) => `<section class="st"><h3><span>${String(i + 1).padStart(2, '0')}</span>${esc(st.title)}</h3>${st.lines.map((l) =>
       l.kind === 'screen' || l.kind === 'yourscreen' ? `<div class="say-screen"><b>${l.kind === 'yourscreen' ? 'Your screen' : 'Screen'}</b>${blanks(l.text)}</div>`
-        : l.kind === 'cue' ? `<p class="cue">${blanks(l.text)}</p>`
+        : l.kind === 'cue' ? `<p class="cue"><b class="do-tag">Do</b>${blanks(l.text)}</p>`
           : l.kind === 'if' ? `<p><b>${esc(l.tag)}:</b> ${blanks(l.text)}</p>`
             : l.kind === 'or' ? `<p><b class="muted">Or:</b> ${blanks(l.text)}</p>`
               : l.kind === 'q' ? `<p><b>${esc(l.n)}.</b> ${blanks(l.text)}</p>` : `<p>${blanks(l.text)}</p>`).join('')}</section>`).join('')}</div>`;

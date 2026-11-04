@@ -2,11 +2,12 @@
 // shows as many items as fit the screen (the rest under More), and notification dots everywhere ([data-badge] elements, the menu,
 // and the app icon).
 import { $, $$, esc, api, toast, modal, icon } from './core.js';
+import { can } from '/js/jobs.js';
 
 export const NAV = [
   ['home', '#/', 'dash', 'Dashboard'], ['phone', '#/phone', 'phone', 'Phone'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['calendar', '#/calendar', 'cal', 'Calendar'],
   ['agents', '#/agents', 'headset', 'Agents'], ['automations', '#/automations', 'send', 'Automations', 'admin'],
-  ['work', '#/work', 'check', 'My work'], ['clients', '#/clients', 'users', 'Clients'], ['scan', '/scan.html', 'grid', 'Scan tool'],
+  ['work', '#/work', 'check', 'My work', 'deliver'], ['clients', '#/clients', 'users', 'Clients', 'deliver'], ['scan', '/scan.html', 'grid', 'Scan tool', 'close'],
   ['training', '#/training', 'book', 'Training'], ['vault', '#/vault', 'key', 'Vault', 'admin'], ['slack', '#/slack', 'slack', 'Slack'], ['google', '#/google', 'apps', 'Google'],
   ['payments', '#/payments', 'money', 'Payments', 'admin'], ['alerts', '#/notifications', 'bell', 'Notifications'], ['settings', '#/settings', 'cog', 'Settings'],
 ];
@@ -30,7 +31,8 @@ async function loadPrefs() {
 }
 
 export function navItems(user) {
-  const allowed = NAV.filter((n) => !n[4] || user.role === n[4]);
+  // The fifth field: 'admin' = owners only, otherwise a job ability (public/js/jobs.js) the person needs.
+  const allowed = NAV.filter((n) => !n[4] || (n[4] === 'admin' ? user.role === 'admin' : can(user, n[4])));
   const order = prefs?.order || [];
   const hidden = new Set(prefs?.hidden || []);
   const sorted = [...allowed].sort((a, b) => {

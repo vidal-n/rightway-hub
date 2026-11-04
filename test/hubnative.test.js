@@ -292,7 +292,7 @@ test('team calendar: closers, double booking guard, invites from the closer, cop
   const me = (await t.call('GET', '/api/me')).data.user;
   // A teammate (the closer) with their own Google connected.
   const kid = 'u_kiron';
-  await t.env.DB.prepare("INSERT INTO users (id, email, name, role, created_at, pass_hash) VALUES (?, 'kiron@rightwaygrowth.com', 'Kiron Lee', 'team', ?, 'x')").bind(kid, Date.now()).run();
+  await t.env.DB.prepare("INSERT INTO users (id, email, name, role, job, created_at, pass_hash) VALUES (?, 'kiron@rightwaygrowth.com', 'Kiron Lee', 'team', 'closer', ?, 'x')").bind(kid, Date.now()).run();
   await t.env.DB.prepare("UPDATE users SET google_token = ?, google_email = 'kiron@rightwaygrowth.com', google_scopes = 'openid email https://www.googleapis.com/auth/calendar' WHERE id = ?").bind(await seal(t.env, 'refresh-k'), kid).run();
 
   const made = [], patched = [], acl = [], master = [];
@@ -378,7 +378,7 @@ test('booking page round robin only offers a time to someone free, and books the
   const t = setup();
   await owner(t);
   const me = (await t.call('GET', '/api/me')).data.user;
-  await t.env.DB.prepare("INSERT INTO users (id, email, name, role, created_at, pass_hash) VALUES ('u_k', 'k@rightwaygrowth.com', 'Kiron Lee', 'team', ?, 'x')").bind(Date.now()).run();
+  await t.env.DB.prepare("INSERT INTO users (id, email, name, role, job, created_at, pass_hash) VALUES ('u_k', 'k@rightwaygrowth.com', 'Kiron Lee', 'team', 'closer', ?, 'x')").bind(Date.now()).run();
   await t.call('PUT', '/api/google/booking', { rep: 'rr' });
   let info = await t.anon('/api/public/book').then((x) => x.json());
   const slot = info.slots[0];
@@ -449,7 +449,7 @@ test('agents never reach owner areas: vault, money, exports, company files, auto
   const cid = c.client?.id || c.id;
   await t.env.DB.prepare('UPDATE clients SET mrr_cents = 44900, stripe_customer_id = ? WHERE id = ?').bind('cus_123', cid).run();
   await t.call('POST', '/api/files?name=Contract.pdf&client=&folder=', new Uint8Array([1, 2]), { 'content-type': 'application/pdf' });
-  const inv = await t.call('POST', '/api/team/invite', { email: 'kiron@rightwaygrowth.com', name: 'Kiron', role: 'team' });
+  const inv = await t.call('POST', '/api/team/invite', { email: 'kiron@rightwaygrowth.com', name: 'Kiron', role: 'team', job: 'closer' });
   await t.call('POST', '/api/auth/logout', {});
   const acc = await t.call('POST', '/api/auth/invite/accept', { token: inv.data.inviteUrl.split('/#/invite/')[1], name: 'Kiron', password: 'another long password' });
   assert.equal(acc.status, 200);
@@ -470,4 +470,63 @@ test('agents never reach owner areas: vault, money, exports, company files, auto
   assert.equal((await t.call('GET', '/api/dashboard')).data.clients.mrr, null);
   // Client folders stay open to the team.
   assert.equal((await t.call('GET', `/api/files?client=${cid}`)).status, 200);
+});
+
+// ---------- jobs: closer, scheduler, appointment setter ----------
+test('jobs: setters book for closers, schedulers manage every appointment, only closers close and work with clients', async () => {
+  const t = setup();
+  await owner(t);
+  const c = (await t.call('POST', '/api/clients', { name: 'Coastal Roof Pros', plan: 'growth' })).data;
+  const cid = c.client?.id || c.id;
+  const invite = async (name, job) => (await t.call('POST', '/api/team/invite', { email: `${name}@rightwaygrowth.com`, name, role: 'team', job })).data.inviteUrl.split('/#/invite/')[1];
+  const tokens = { sam: await invite('sam'), sky: await invite('sky', 'scheduler'), cole: await invite('cole', 'closer') };
+  const team = (await t.call('GET', '/api/team')).data.users;
+  const id = (n) => team.find((u) => u.name === n).id;
+  assert.equal(team.find((u) => u.name === 'sam').job, 'setter', 'no job picked means appointment setter');
+  assert.equal((await t.call('PUT', `/api/users/${id('sam')}/job`, { job: 'boss' })).status, 400);
+  const lead = (await t.call('POST', '/api/leads', { business: 'Smile Dental', phone: '3055550101', city: 'Miami' })).data.lead;
+  const lead2 = (await t.call('POST', '/api/leads', { business: 'Bright Smiles', phone: '3055550102', city: 'Miami' })).data.lead;
+  await t.call('POST', '/api/auth/logout', {});
+  for (const [n, tok] of Object.entries(tokens)) assert.equal((await t.call('POST', '/api/auth/invite/accept', { token: tok, password: 'another long password' })).status, 200, n);
+  const as = (n) => t.call('POST', '/api/auth/login', { email: `${n}@rightwaygrowth.com`, password: 'another long password' });
+
+  // Appointment setter: calls and books, no client work, no closing, never runs the call.
+  await as('sam');
+  assert.equal((await t.call('GET', '/api/auth/state')).data.user.job, 'setter');
+  for (const [m, path] of [['GET', '/api/clients'], ['GET', `/api/clients/${cid}`], ['GET', '/api/work'], ['PUT', `/api/leads/${lead.id}/quote`], ['POST', `/api/leads/${lead.id}/work-order`], ['POST', `/api/leads/${lead.id}/payment-link`], ['POST', `/api/leads/${lead.id}/convert`]]) {
+    assert.equal((await t.call(m, path, m === 'GET' ? undefined : {})).status, 403, `${m} ${path}`);
+  }
+  assert.equal((await t.call('GET', '/api/clients', undefined, { 'x-view-as': cid })).status, 403, 'no client view either');
+  const closers = (await t.call('GET', '/api/closers/free')).data.closers.map((x) => x.id);
+  assert.ok(closers.includes(id('cole')) && !closers.includes(id('sam')) && !closers.includes(id('sky')), 'only closers and owners run calls');
+  const start = Date.now() + 2 * 864e5;
+  const b = await t.call('POST', `/api/leads/${lead.id}/meeting`, { start: new Date(start).toISOString(), minutes: 30 });
+  assert.equal(b.status, 200);
+  assert.equal(b.data.closer_id, id('cole'), 'a setter booking goes to the free closer');
+  assert.equal((await t.call('POST', `/api/leads/${lead.id}/meeting`, { start: new Date(start).toISOString(), closer_id: id('sam') })).status, 400, 'a setter cannot run the call');
+
+  // Scheduler: sees and hands over everyone's appointments.
+  await as('sky');
+  const up = (await t.call('GET', '/api/calendar/upcoming')).data.meetings || [];
+  assert.ok(up.some((m) => m.id === lead.id), 'schedulers see appointments others booked');
+  assert.equal((await t.call('GET', '/api/clients')).status, 403);
+  const me = (await t.call('GET', '/api/me')).data.user;
+  assert.equal(me.job, 'scheduler');
+
+  // Another setter booked lead2; sam cannot move or hand over someone else's appointment.
+  const b2 = await t.call('POST', `/api/leads/${lead2.id}/meeting`, { start: new Date(start + 3 * 3600e3).toISOString(), closer_id: id('cole') });
+  assert.equal(b2.status, 200);
+  await as('sam');
+  assert.equal((await t.call('PUT', `/api/leads/${lead2.id}/closer`, { closer_id: id('cole') })).status, 403);
+  assert.equal((await t.call('POST', `/api/leads/${lead2.id}/meeting`, { start: new Date(start + 5 * 3600e3).toISOString() })).status, 403);
+  const mine = (await t.call('GET', '/api/calendar/upcoming')).data.meetings || [];
+  assert.ok(mine.some((m) => m.id === lead.id) && !mine.some((m) => m.id === lead2.id), 'setters see only their own');
+  await as('sky');
+  assert.equal((await t.call('PUT', `/api/leads/${lead2.id}/closer`, { closer_id: null })).status, 200, 'schedulers hand over anyone');
+
+  // Closer: client work and closing.
+  await as('cole');
+  assert.equal((await t.call('GET', '/api/clients')).status, 200);
+  assert.equal((await t.call('GET', '/api/work')).status, 200);
+  assert.notEqual((await t.call('PUT', `/api/leads/${lead.id}/quote`, { setup: 399, monthly: 399, services: [] })).status, 403);
 });

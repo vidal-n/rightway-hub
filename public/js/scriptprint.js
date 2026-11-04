@@ -50,6 +50,12 @@ export function classify(raw) {
   if ((m = t.match(/^(\d+)\. ([\s\S]*)$/))) return { kind: 'q', n: m[1], text: m[2] };
   return { kind: 'say', text: t };
 }
+// Directions inside a spoken line, like "(Let them answer.)", get the same DO mark as a DO line, so nobody reads them out loud.
+// Takes HTML that is already escaped. A few asides in parentheses are said out loud and stay as they are.
+const SPOKEN_ASIDE = /^(How many|No stress|end\b)/i;
+export function markCues(html) {
+  return String(html).replace(/\(([^()]{2,240})\)/g, (m, inner) => (SPOKEN_ASIDE.test(inner.trim()) ? m : `<span class="do-in"><b class="do-tag">Do</b>${inner.trim()}</span>`));
+}
 export function scriptSteps(group, script = DEFAULT_SCRIPT) {
   const g = SCRIPT_GROUPS.find((x) => x[0] === group);
   return (g ? g[2] : []).map((k) => ({ id: k, title: stepTitle(k), lines: String(script[k] || '').split('\n').filter((x) => x.trim()).map(classify).filter((l) => l.text.trim()) }));

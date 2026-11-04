@@ -14,6 +14,10 @@ import { routes, route } from './router.js';
 import { generateTasks, savedGuides } from './work.js';
 import { guideFor, proofMissing } from '../public/js/guides.js';
 import { notify, notifyLater } from './notify.js';
+import { can, capFor, JOB_CAPS, JOBS } from '../public/js/jobs.js';
+
+// What an agent sees when their job does not cover a page.
+const CAP_DENY = { close: 'Closing is for closers. Ask an owner if you need it.', deliver: 'Client work is for closers and owners.', schedule: "Managing other people's appointments is for schedulers." };
 
 const CLIENT_FIELDS = ['name', 'plan', 'status', 'start_date', 'contact_name', 'contact_email', 'phone', 'website', 'address',
   'place_id', 'cid', 'lat', 'lng', 'category', 'services', 'cities', 'keywords', 'brand_voice', 'review_url', 'notes'];
@@ -115,8 +119,14 @@ export async function handleHub(request, env, url, execCtx = null) {
     // Cross-site forms can't set custom headers, so this blocks CSRF on every write.
     if (!r.public && request.method !== 'GET' && request.headers.get('x-rw') !== '1') throw new HttpError('Missing request header.', 400);
     let user = await currentUser(env, request);
+    // Jobs: an agent only reaches the parts of the Hub their job covers (closer, scheduler, appointment setter). Checked here, once, for every route.
+    if (!r.public && user?.role === 'team') {
+      const cap = capFor(request.method, url.pathname);
+      if (cap && !can(user, cap)) throw new HttpError(CAP_DENY[cap], 403);
+    }
     // Client view: a team member sees the client app exactly as that client would. Read only.
     const viewAs = request.headers.get('x-view-as');
+    if (viewAs && user?.role === 'team' && !can(user, 'close')) throw new HttpError(CAP_DENY.deliver, 403);
     if (viewAs && user && isStaff(user)) {
       if (request.method !== 'GET') throw new HttpError('Client view is read only. Go back to the Hub to make changes.', 403);
       user = { ...user, role: 'client', client_id: viewAs, viewAs: true };
@@ -215,7 +225,7 @@ route('GET', '/api/team', async ({ env, user }) => { requireStaff(user); return 
 route('POST', '/api/team/invite', async ({ env, user, url, body }) => {
   requireAdmin(user);
   const b = await body();
-  const id = await createUser(env, { email: b.email, name: b.name, role: b.role === 'admin' ? 'admin' : 'team' });
+  const id = await createUser(env, { email: b.email, name: b.name, role: b.role === 'admin' ? 'admin' : 'team', job: b.job });
   return json({ inviteUrl: `${url.origin}/#/invite/${await issueInvite(env, id)}` });
 });
 
@@ -235,8 +245,19 @@ route('PUT', '/api/users/:id/role', async ({ env, user, params, body }) => {
   if (params.id === user.id) throw new HttpError("You can't change your own role.");
   const target = await first(env, 'SELECT * FROM users WHERE id = ?', params.id);
   if (!target || target.role === 'client') throw new HttpError('Teammate not found.', 404);
-  await run(env, 'UPDATE users SET role = ? WHERE id = ?', role, target.id);
+  await run(env, 'UPDATE users SET role = ?, job = ? WHERE id = ?', role, role === 'team' ? (JOB_CAPS[target.job] ? target.job : 'setter') : target.job, target.id);
   return json({ ok: true, role });
+});
+
+// An agent's job: closer, scheduler or appointment setter. Decides what they can reach (public/js/jobs.js).
+route('PUT', '/api/users/:id/job', async ({ env, user, params, body }) => {
+  requireAdmin(user);
+  const job = (await body()).job;
+  if (!JOB_CAPS[job]) throw new HttpError(`Pick ${JOBS.map(([, n]) => n).join(', ')}.`);
+  const target = await first(env, 'SELECT * FROM users WHERE id = ?', params.id);
+  if (!target || target.role !== 'team') throw new HttpError('Agent not found.', 404);
+  await run(env, 'UPDATE users SET job = ? WHERE id = ?', job, target.id);
+  return json({ ok: true, job });
 });
 
 route('DELETE', '/api/users/:id', async ({ env, user, params }) => {

@@ -1,5 +1,6 @@
 // Team views: all clients, one client (overview, tasks, reviews, posts, rankings, profile, access), team.
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, animateNumbers, monthKey, shiftMonth, PLAN_NAMES, PLAN_PRICE, KIND_LABEL } from './core.js';
+import { JOBS, jobOf, jobLabel } from '/js/jobs.js';
 import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.js';
 import { billingTab } from './crm.js';
 import { onboardingTab } from './onboarding.js';
@@ -357,16 +358,24 @@ export async function teamPage(app, user) {
     <div class="page-head"><div><p class="eyebrow">Settings</p><h1>Agents</h1></div></div>${settingsTabs('team', user)}
     ${user.role === 'admin' ? `<div class="card"><h2>Invite an agent or owner</h2>
       <form id="tinv" class="form-grid"><label class="field"><span>Name</span><input name="name" required></label><label class="field"><span>Email</span><input name="email" type="email" required></label>
-      <label class="field"><span>Role</span><select name="role"><option value="admin">Owner (full access)</option><option value="team">Agent (own calls, no owner settings)</option></select></label>
+      <label class="field"><span>Role</span><select name="role"><option value="team" selected>Agent</option><option value="admin">Owner (full access)</option></select></label>
+      <label class="field" id="tjob"><span>Job</span><select name="job">${JOBS.map(([k, n]) => `<option value="${k}"${k === 'setter' ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
       <div class="span-all row end"><button class="btn btn-primary" type="submit">Create invite link</button></div></form><div id="tout"></div></div>` : ''}
-    <div class="card"><h2>Owners and agents</h2><ul class="list">${users.map((u) => `<li class="item"><span class="badge ${u.active ? '' : 'warn'}">${u.role === 'admin' ? 'Owner' : 'Agent'}</span>
-      <div><div class="item-title">${esc(u.name || u.email)}${u.id === user.id ? ' (you)' : ''}</div><div class="item-sub">${esc(u.email)}${u.active ? '' : ' · invite pending'}</div></div>${user.role === 'admin' && u.id !== user.id ? `<button type="button" class="btn btn-ghost btn-sm" data-role="${esc(u.id)}" data-to="${u.role === 'admin' ? 'team' : 'admin'}">${u.role === 'admin' ? 'Make agent' : 'Make owner'}</button>` : '<span></span>'}</li>`).join('')}</ul>
+    <div class="card"><h2>Owners and agents</h2><ul class="list">${users.map((u) => `<li class="item"><span class="badge ${u.active ? '' : 'warn'}">${esc(jobLabel(u))}</span>
+      <div><div class="item-title">${esc(u.name || u.email)}${u.id === user.id ? ' (you)' : ''}</div><div class="item-sub">${esc(u.email)}${u.active ? '' : ' · invite pending'}</div></div>${user.role === 'admin' && u.id !== user.id ? `<div class="row" style="gap:6px">${u.role === 'team' ? `<select data-job="${esc(u.id)}" aria-label="Job">${JOBS.map(([k, n]) => `<option value="${k}"${k === jobOf(u) ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-role="${esc(u.id)}" data-to="${u.role === 'admin' ? 'team' : 'admin'}">${u.role === 'admin' ? 'Make agent' : 'Make owner'}</button></div>` : '<span></span>'}</li>`).join('')}</ul>
+      <div class="jobs-key">${JOBS.map(([, n, d]) => `<p class="small"><b>${esc(n)}:</b> ${esc(d)}</p>`).join('')}</div>
       <p class="small muted" style="margin:12px 0 0">Owners can listen to agents' calls, hear agents' recordings, change phone settings and manage agents. Owners never see each other's personal line, recordings or vault. Agents only see their own calls and numbers.</p></div>`;
   $$('[data-role]', view).forEach((b) => b.addEventListener('click', async () => {
     if (b.dataset.to === 'admin' && !b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Click again to confirm'; setTimeout(() => { if (document.body.contains(b)) { delete b.dataset.sure; b.textContent = 'Make owner'; } }, 4000); return; }
     try { await api(`/api/users/${b.dataset.role}/role`, { method: 'PUT', body: { role: b.dataset.to } }); toast(b.dataset.to === 'admin' ? 'Now an owner' : 'Now an agent'); teamPage(app, user); }
     catch (err) { toast(err.message, true); }
   }));
+  $$('[data-job]', view).forEach((sel) => sel.addEventListener('change', async () => {
+    try { await api(`/api/users/${sel.dataset.job}/job`, { method: 'PUT', body: { job: sel.value } }); toast(`Now ${JOBS.find(([k]) => k === sel.value)[1].toLowerCase()}. They see the change on their next page load.`); }
+    catch (err) { toast(err.message, true); teamPage(app, user); }
+  }));
+  const roleSel = $('#tinv select[name=role]', view);
+  roleSel?.addEventListener('change', () => { $('#tjob', view).hidden = roleSel.value !== 'team'; });
   $('#tinv', view)?.addEventListener('submit', async (e) => {
     e.preventDefault();
     try { const r = await api('/api/team/invite', { method: 'POST', body: Object.fromEntries(new FormData(e.target).entries()) }); showInvite($('#tout', view), r.inviteUrl, ''); }

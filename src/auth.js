@@ -1,4 +1,5 @@
 // Logins: email + password (PBKDF2), session cookie, roles.
+import { JOB_CAPS } from '../public/js/jobs.js';
 // Roles: admin (owners), team (staff), client (sees only their own business).
 import { HttpError } from './util.js';
 import { all, first, run, newId, token, now } from './db.js';
@@ -64,10 +65,10 @@ export async function currentUser(env, request) {
   const t = cookieValue(request);
   if (!t) return null;
   const row = await first(env,
-    `SELECT u.id, u.email, u.name, u.role, u.client_id, u.avatar_at, s.expires FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
+    `SELECT u.id, u.email, u.name, u.role, u.job, u.client_id, u.avatar_at, s.expires FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`,
     await sha256(t));
   if (!row || row.expires < now()) return null;
-  return { id: row.id, email: row.email, name: row.name, role: row.role, client_id: row.client_id, avatar_at: row.avatar_at || null };
+  return { id: row.id, email: row.email, name: row.name, role: row.role, job: row.role === 'team' ? (JOB_CAPS[row.job] ? row.job : 'setter') : null, client_id: row.client_id, avatar_at: row.avatar_at || null };
 }
 
 export async function endSession(env, request) {
@@ -94,7 +95,7 @@ export async function userCount(env) {
   return (await first(env, 'SELECT COUNT(*) AS n FROM users'))?.n || 0;
 }
 
-export async function createUser(env, { email, name, role, client_id, password }) {
+export async function createUser(env, { email, name, role, client_id, password, job }) {
   const e = cleanEmail(email);
   if (!['admin', 'team', 'client'].includes(role)) throw new HttpError('Unknown role.');
   if (role === 'client' && !client_id) throw new HttpError('A client login needs a client.');
@@ -102,8 +103,8 @@ export async function createUser(env, { email, name, role, client_id, password }
   const id = newId('u_');
   let hash = null, salt = null;
   if (password) ({ hash, salt } = await hashPassword(validPassword(password)));
-  await run(env, `INSERT INTO users (id, email, name, role, client_id, pass_hash, pass_salt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    id, e, String(name || '').slice(0, 120) || null, role, role === 'client' ? client_id : null, hash, salt, now());
+  await run(env, `INSERT INTO users (id, email, name, role, job, client_id, pass_hash, pass_salt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, e, String(name || '').slice(0, 120) || null, role, role === 'team' ? (JOB_CAPS[job] ? job : 'setter') : null, role === 'client' ? client_id : null, hash, salt, now());
   return id;
 }
 
@@ -125,7 +126,7 @@ export async function acceptInvite(env, { token: t, password }) {
 }
 
 export async function listUsers(env, clientId) {
-  const cols = 'id, email, name, role, client_id, created_at, last_login, (pass_hash IS NOT NULL) AS active';
+  const cols = 'id, email, name, role, job, client_id, created_at, last_login, (pass_hash IS NOT NULL) AS active';
   return clientId
     ? all(env, `SELECT ${cols} FROM users WHERE client_id = ? ORDER BY created_at`, clientId)
     : all(env, `SELECT ${cols} FROM users WHERE role IN ('admin','team') ORDER BY created_at`);
