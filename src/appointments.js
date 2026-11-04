@@ -49,3 +49,16 @@ route('POST', '/api/leads/:id/meet-now', async ({ env, user, params }) => {
   await run(env, 'UPDATE leads SET meet_link = ? WHERE id = ?', m.meet, lead.id);
   return json({ ok: true, meet: m.meet, invited: Boolean(lead.email) });
 });
+
+// Start a Google Meet now from the Phone tab (no lead needed). Invites anyone you list.
+route('POST', '/api/meet/now', async ({ env, user, body }) => {
+  requireStaff(user);
+  const b = await body();
+  const me = googleReady(env) ? await first(env, 'SELECT * FROM users WHERE id = ?', user.id) : null;
+  if (!me?.google_token) return json({ ok: false, fallback: 'https://meet.google.com/new', reason: 'Google is not connected for you yet, so this opens Meet in your browser instead.' });
+  const emails = String(b.invite || '').split(/[\s,;]+/).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)).slice(0, 20);
+  const minutes = Math.min(240, Math.max(15, Number(b.minutes) || 30));
+  const start = b.start ? Number(new Date(b.start)) || now() : now();
+  const m = await createMeeting(env, me, { summary: String(b.title || 'RightWay Growth meeting').slice(0, 120), description: String(b.note || '').slice(0, 1000), start, minutes, attendees: emails, leadId: b.leadId || null });
+  return json({ ok: true, meet: m.meet, link: m.link, invited: emails.length, start });
+});

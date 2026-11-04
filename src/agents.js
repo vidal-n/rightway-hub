@@ -20,6 +20,13 @@ export function dayStart(t = now(), tz = TZ) {
 }
 const hourIn = (t, tz = TZ) => Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' }).format(new Date(t)));
 
+// The primary owner: the first owner account (the one that set the Hub up).
+export async function isPrimary(env, user) {
+  if (!user || user.role !== 'admin') return false;
+  const p = await first(env, "SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1");
+  return p?.id === user.id;
+}
+
 export async function setStatus(env, userId, status, at = now()) {
   await run(env, 'UPDATE agent_log SET end_at = ? WHERE user_id = ? AND end_at IS NULL', at, userId);
   if (status !== 'offline') await run(env, 'INSERT INTO agent_log (id, user_id, status, start_at) VALUES (?, ?, ?, ?)', newId('al_'), userId, status, at);
@@ -30,6 +37,7 @@ route('POST', '/api/me/status', async ({ env, user, body }) => {
   requireStaff(user);
   const s = String((await body()).status || '');
   if (!STATUS_KEYS.includes(s)) throw new HttpError('Pick a status.');
+  if (s === 'maintenance' && !(await isPrimary(env, user))) throw new HttpError('Only the primary owner can use the maintenance status.', 403);
   await setStatus(env, user.id, s);
   if (s !== 'offline') await run(env, 'UPDATE users SET last_seen = ? WHERE id = ?', now(), user.id);
   return json({ ok: true, status: s, since: now() });
@@ -85,7 +93,7 @@ route('GET', '/api/agents', async ({ env, user }) => {
       today: { login: st.login, per: st.per, dials: s?.dials || 0, connects: s?.connects || 0, booked: s?.booked || 0, talk: s?.talk || 0, avgHandle: s?.avgHandle || 0, avgTalk: s?.avgTalk || 0 },
     };
   });
-  const order = { on_call: 0, available: 1, meeting: 2, training: 2, admin: 2, break: 3, lunch: 3, offline: 9 };
+  const order = { on_call: 0, available: 1, meeting: 2, training: 2, admin: 2, maintenance: 2, break: 3, lunch: 3, offline: 9 };
   out.sort((a, b) => (order[a.status] ?? 5) - (order[b.status] ?? 5) || String(a.name).localeCompare(String(b.name)));
   return json({ agents: out, canMonitor: user.role === 'admin', me: user.id, team: stats.total });
 });

@@ -58,8 +58,8 @@ export async function homePage(app, user) {
   animateNumbers(view);
   api('/api/agents').then((d) => {
     const box = $('#floor', view); if (!box) return;
-    const st = (a) => ({ on_call: 'On a call', available: 'Available', break: 'Break', lunch: 'Lunch', training: 'Training', meeting: 'Meeting', admin: 'Admin work', offline: 'Offline' })[a.status] || a.status;
-    const tone = (a) => ({ on_call: 'live', available: 'good', break: 'warn', lunch: 'warn', offline: 'gray' })[a.status] || 'info';
+    const st = (a) => ({ on_call: 'On a call', available: 'Available', break: 'Break', lunch: 'Lunch', training: 'Training', meeting: 'Meeting', admin: 'Admin work', maintenance: 'Hub maintenance', offline: 'Offline' })[a.status] || a.status;
+    const tone = (a) => ({ on_call: 'live', available: 'good', break: 'warn', lunch: 'warn', offline: 'gray', maintenance: 'maint' })[a.status] || 'info';
     box.innerHTML = `<div class="card-head"><h2>Team floor</h2><a class="btn btn-ghost btn-sm" href="#/agents">Agents</a></div>
       <div style="display:grid;gap:8px">${d.agents.map((a) => `<div class="row" style="flex-wrap:nowrap;gap:10px"><i class="dot ${tone(a)}"></i><b style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</b>
         <span class="small">${esc(a.call ? `with ${a.call.business || 'a lead'}` : st(a))}</span><span class="badge gray mono">${a.today.dials} dials</span></div>`).join('')}</div>`;

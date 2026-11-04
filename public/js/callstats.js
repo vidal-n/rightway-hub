@@ -3,8 +3,10 @@
 
 export const STATUSES = [
   ['available', 'Available', 'good'], ['break', 'Break', 'warn'], ['lunch', 'Lunch', 'warn'], ['training', 'Training', 'info'],
-  ['meeting', 'Meeting', 'info'], ['admin', 'Admin work', 'info'], ['offline', 'Offline', 'gray'],
+  ['meeting', 'Meeting', 'info'], ['admin', 'Admin work', 'info'], ['maintenance', 'Hub maintenance', 'maint'], ['offline', 'Offline', 'gray'],
 ];
+// Hub maintenance is only for the primary owner (the person who set the Hub up).
+export const statusesFor = (user) => STATUSES.filter(([k]) => k !== 'maintenance' || user?.primary);
 export const STATUS_KEYS = STATUSES.map((s) => s[0]);
 export const statusLabel = (k) => (k === 'on_call' ? 'On a call' : (STATUSES.find((s) => s[0] === k) || STATUSES[STATUSES.length - 1])[1]);
 export const statusTone = (k) => (k === 'on_call' ? 'live' : (STATUSES.find((s) => s[0] === k) || STATUSES[STATUSES.length - 1])[2]);

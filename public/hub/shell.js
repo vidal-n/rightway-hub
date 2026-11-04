@@ -2,7 +2,7 @@
 // the presence heartbeat behind the Agents page, and the command palette (Ctrl K or /).
 import { $, $$, esc, api, toast, icon } from './core.js';
 import { navItems, wireNav, activeKey, customizeMenu, NAV, GROUPS, groupOf } from './nav.js';
-import { STATUSES, statusLabel, statusTone } from '/js/callstats.js';
+import { STATUSES, statusLabel, statusTone, statusesFor } from '/js/callstats.js';
 
 export const initials = (u) => String(u.name || u.email || '?').trim().split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 
@@ -51,7 +51,7 @@ function statusMenu(anchor) {
   m.setAttribute('role', 'menu');
   m.style.top = `${r.bottom + 8}px`;
   m.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
-  m.innerHTML = `<p class="pmenu-cap">Your status</p>${STATUSES.map(([k, label, tone]) => `<button type="button" role="menuitemradio" aria-checked="${me.status === k}" data-st="${k}" class="${me.status === k ? 'is-on' : ''}"><i class="dot ${tone}"></i>${esc(label)}</button>`).join('')}
+  m.innerHTML = `<p class="pmenu-cap">Your status</p>${statusesFor(me.user).map(([k, label, tone]) => `<button type="button" role="menuitemradio" aria-checked="${me.status === k}" data-st="${k}" class="${me.status === k ? 'is-on' : ''}"><i class="dot ${tone}"></i>${esc(label)}</button>`).join('')}
     <p class="pmenu-note">Calls switch you to On a call by themselves. Login time and status time show on the Agents page.</p>`;
   document.body.appendChild(m);
   const close = () => { m.remove(); document.removeEventListener('click', close); };
@@ -207,7 +207,7 @@ export function paintMaint(on) {
 
 // ---------- command palette ----------
 const PAGES = [
-  ['Dashboard', '#/'], ['Dialer', '#/phone'], ['Dial out', '#/phone/out'], ['Texts', '#/phone/texts'], ['Calls and voicemail', '#/phone/calls'],
+  ['Dashboard', '#/'], ['Dialer', '#/phone'], ['Dial out', '#/phone/out'], ['Meetings: start or join Google Meet', '#/phone/meet'], ['Texts', '#/phone/texts'], ['Calls and voicemail', '#/phone/calls'],
   ['Recordings', '#/phone/recordings'], ['Agents', '#/agents'], ['Call analytics', '#/agents/analytics'], ['Pipeline', '#/pipeline'], ['My work', '#/work'],
   ['Hours', '#/work/hours'], ['Task guides', '#/work/guides'], ['Clients', '#/clients'], ['Client view', '#/clients/view'], ['Scan tool', '/scan.html'],
   ['Training', '#/training'], ['Scripts', '#/training/scripts'], ['Objection drills', '#/training/drills'], ['Slack', '#/slack'], ['Gmail', '#/google/mail'],

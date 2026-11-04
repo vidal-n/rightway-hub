@@ -4,10 +4,10 @@ import { $, $$, esc, api, toast, busy, icon } from './core.js';
 import { staffShell, initials } from './shell.js';
 import { setMyStatus, onStatus } from './shell.js';
 import { joinCall, onPhoneState, phoneState, pretty } from './phone.js';
-import { STATUSES, statusLabel, statusTone, clock, pct } from '/js/callstats.js';
+import { STATUSES, statusLabel, statusTone, statusesFor, clock, pct } from '/js/callstats.js';
 import { lineChart, barChart, legend } from '/js/charts.js';
 
-const TONE_COLOR = { good: '#23B07E', warn: '#E8A33D', info: '#4E7FD8', gray: '#9AA8A2', live: '#D64545' };
+const TONE_COLOR = { good: '#23B07E', warn: '#E8A33D', info: '#4E7FD8', gray: '#9AA8A2', live: '#D64545', maint: '#8B5CF6' };
 const stColor = (k) => TONE_COLOR[statusTone(k)] || '#9AA8A2';
 const tabs = (active) => `<nav class="tabs"><a href="#/agents" class="${active === 'board' ? 'is-active' : ''}">Agents</a><a href="#/agents/analytics" class="${active === 'analytics' ? 'is-active' : ''}">Call analytics</a><a href="#/agents/sheet" class="${active === 'sheet' ? 'is-active' : ''}">Master sheet</a></nav>`;
 // Only touch the page when something changed, so refreshes never flash.
@@ -19,7 +19,7 @@ export async function agentsPage(app, user, sub) {
   if (sub === 'sheet') return masterSheet(app, user);
   const view = staffShell(app, user, 'agents');
   view.innerHTML = `<div class="page-head"><div><p class="eyebrow">Team floor</p><h1>Agents</h1></div>
-      <div class="seg" id="mine" aria-label="Your status">${STATUSES.map(([k, l]) => `<button type="button" data-st="${k}">${esc(l)}</button>`).join('')}</div></div>
+      <div class="seg" id="mine" aria-label="Your status">${statusesFor(user).map(([k, l]) => `<button type="button" data-st="${k}">${esc(l)}</button>`).join('')}</div></div>
     ${tabs('board')}
     <div class="stats" id="agtot"></div>
     <div class="legend" style="margin:-6px 0 14px">${[['on_call', 'On a call'], ...STATUSES.map(([k, l]) => [k, l])].map(([k, l]) => `<span><i class="dot ${statusTone(k)}"></i>${esc(l)}</span>`).join('')}

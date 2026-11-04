@@ -25,6 +25,7 @@ export function bindCaller(root, id = 'dfrom') {
 // Phone: the dialer, texts, calls and voicemail, recordings and (owners) live calls and setup, in one place.
 export const dialTabs = (active, user) => {
   const tabs = [['queue', '#/phone', 'Dialer'], ['out', '#/phone/out', 'Dial out'], ['texts', '#/phone/texts', 'Texts', 'texts'], ['calls', '#/phone/calls', 'Calls and voicemail', 'calls'], ['recordings', '#/phone/recordings', 'Recordings']];
+  tabs.splice(2, 0, ['meet', '#/phone/meet', 'Meetings']);
   tabs.push(['line', '#/phone/line', 'My line'], ['agents', '#/agents', 'Agents']);
   if (user?.role === 'admin') tabs.push(['setup', '#/phone/setup', 'Phone setup']);
   setTimeout(() => import('./nav.js').then((m) => m.refreshBadges()), 0);

@@ -157,7 +157,7 @@ export async function handleReviewRedirect(request, env, url) {
 
 // ---------- auth ----------
 route('GET', '/api/auth/state', async ({ env, user }) => json({
-  users: (await userCount(env)) > 0, user, email: canEmail(env), ai: Boolean(env.ANTHROPIC_API_KEY), media: Boolean(env.MEDIA), maintenance: await maintenance(env),
+  users: (await userCount(env)) > 0, user: user && user.role === 'admin' ? { ...user, primary: await import('./agents.js').then((m) => m.isPrimary(env, user)) } : user, email: canEmail(env), ai: Boolean(env.ANTHROPIC_API_KEY), media: Boolean(env.MEDIA), maintenance: await maintenance(env),
 }));
 
 let mtCache = { at: 0, v: { on: false } };

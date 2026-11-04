@@ -119,6 +119,7 @@ async function route() {
     if (sub === 'live') { location.replace('#/agents'); return; }
     if (sub === 'setup') return phoneSetupPage(app, u);
     if (sub === 'line') return import('./lines.js').then((m) => m.linesPage(app, u));
+    if (sub === 'meet') return import('./meet.js').then((m) => m.meetPage(app, u));
     if (sub === 'texts') return inboxPage(app, u);
     if (sub === 'calls') return inboxPage(app, u, 'calls');
     return dialerPage(app, u);

@@ -1411,3 +1411,6 @@ body.settled .card, body.settled .stat, body.settled .item, body.settled .post, 
 .mtbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 18px; z-index: 115; background: #E8A33D; color: #0F1B17; font: 600 13.5px var(--body); padding: 10px 14px; border-radius: 12px; box-shadow: 0 12px 30px rgba(6, 14, 11, .3); display: flex; gap: 10px; align-items: center; }
 .mtbar button { border: 0; background: #0F1B17; color: #fff; border-radius: 8px; padding: 6px 10px; font: 600 13px var(--body); cursor: pointer; }
 @media (max-width: 900px) { .mtbar { bottom: calc(84px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); } }
+.stpill[data-tone=maint] i, .dot.maint { background: #8B5CF6; box-shadow: 0 0 0 3px rgba(139, 92, 246, .22); }
+.stpill[data-tone=maint] { border-color: rgba(139, 92, 246, .55); }
+.ag[data-tone=maint] { border-color: rgba(139, 92, 246, .5); }
