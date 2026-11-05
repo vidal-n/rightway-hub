@@ -142,7 +142,7 @@ export async function renderPosts(el, clientId, { staff = false, ai = false } = 
   await loadPosts($('#pl', el), clientId, staff, () => renderPosts(el, clientId, { staff, ai }));
 }
 
-async function loadPosts(box, clientId, staff, refresh) {
+export async function loadPosts(box, clientId, staff, refresh) {
   box.innerHTML = '<div class="skeleton"></div>';
   let posts;
   try { ({ posts } = await api(`/api/clients/${clientId}/posts`)); } catch (e) { box.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }

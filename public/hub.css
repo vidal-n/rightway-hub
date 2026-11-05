@@ -1628,3 +1628,17 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .tour-list { display: grid; gap: 10px; }
 .tour-list .item { align-items: flex-start; }
 @media (prefers-reduced-motion: reduce) { .tour-spot, .tour-card { transition: none; } }
+
+/* Client photos (public/hub/photos.js) */
+.ph-thumbs { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ph-thumbs:empty { display: none; }
+.ph-thumbs img { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line, #DCE6E1); }
+.ph-more { width: 64px; height: 64px; display: grid; place-items: center; border-radius: 10px; background: var(--mint-soft, #EAF8F1); font-weight: 600; }
+.ph-count { flex-basis: 100%; }
+.ph-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+.ph-tile { margin: 0; background: var(--card, #fff); border: 1px solid var(--line, #DCE6E1); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+.ph-tile img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; background: var(--mint-soft, #EAF8F1); }
+.ph-tile figcaption { padding: 8px 10px 0; display: grid; gap: 2px; }
+.ph-foot { padding: 8px 10px 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: auto; }
+.sec-h { font-size: 18px; margin: 22px 0 10px; }
+@media (max-width: 520px) { .ph-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } }

@@ -3,7 +3,7 @@
 // phone and website, and read calls, direction requests, website clicks and views (Business Profile Performance API).
 // Google must approve API access for the Cloud project first (the GBP API access form); until then calls fail with a clear message.
 import { HttpError, json } from './util.js';
-import { first, run, newId, now } from './db.js';
+import { first, run, newId, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireClientAccess } from './auth.js';
 import { route } from './router.js';
 import { googleReady } from './google.js';
@@ -22,13 +22,29 @@ export const METRICS = {
 };
 const text = (v, max = 1500) => (v == null ? null : String(v).replace(/\u0000/g, '').trim().slice(0, max) || null);
 
+// Google gives a new Cloud project 0 Business Profile requests per minute until it approves API access, so "Quota exceeded ...
+// Requests per minute" usually means "not approved yet", not "too busy". A real per minute limit clears on its own, so we wait and
+// retry twice before giving up, and the error says how to tell the two apart.
+export const GBP_QUOTA_HELP = 'Google is refusing Business Profile requests (quota). In Google Cloud open APIs and Services, My Business Account Management API, Quotas. '
+  + 'If Requests per minute shows 0, Google has not approved Business Profile API access yet: send the access request form at support.google.com/business/contact/api_default '
+  + 'with the project number from the error. Approval usually takes a few days. If it shows a number above 0, wait a minute and try again.';
+export const GBP_ACCESS_HELP = 'Turn on My Business Account Management API, My Business Business Information API and Business Profile Performance API in Google Cloud '
+  + "for the Hub's project, and make sure Google has approved Business Profile API access for it.";
+const isQuota = (m) => /quota|RESOURCE_EXHAUSTED|rate limit|429/i.test(m);
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function g(env, user, url, opts = {}) {
   const row = await userFor(env, user || { id: null }, 'gbp');
-  try { return await gfetch(env, row, url, { label: 'Google Business Profile', ...opts }); } catch (e) {
-    if (/has not been used|is disabled|quota|PERMISSION_DENIED|403/i.test(e.message)) {
-      throw new HttpError(`${e.message}. Google Business Profile API access must be approved for the Hub's Google Cloud project, and the APIs turned on.`, 400);
+  for (let i = 0; ; i++) {
+    try { return await gfetch(env, row, url, { label: 'Google Business Profile', ...opts }); } catch (e) {
+      const m = String(e.message || '');
+      if (isQuota(m)) {
+        if (i < 2 && !opts.noRetry) { await wait(2500 * (i + 1)); continue; }
+        throw new HttpError(`${GBP_QUOTA_HELP} (Google said: ${m.replace(/\.+$/, '')}.)`, 429);
+      }
+      if (/has not been used|is disabled|PERMISSION_DENIED|403/i.test(m)) throw new HttpError(`${m.replace(/\.+$/, '')}. ${GBP_ACCESS_HELP}`, 400);
+      throw e;
     }
-    throw e;
   }
 }
 
@@ -103,8 +119,13 @@ export function profileChecks(p) {
 }
 
 // ---------- routes ----------
-route('GET', '/api/gbp/locations', async ({ env, user }) => {
+route('GET', '/api/gbp/locations', async ({ env, user, url }) => {
   requireStaff(user);
+  // The list barely changes, and every account costs requests, so it is kept for 10 minutes per person (Refresh skips it).
+  const ck = `gbp_locs:${user.id}`;
+  if (!url.searchParams.get('fresh')) {
+    try { const hit = JSON.parse((await getSettings(env))[ck] || 'null'); if (hit && now() - hit.at < 10 * 60e3) return json({ locations: hit.locations, cached: true }); } catch { /* fetch fresh */ }
+  }
   const accts = await g(env, user, `${ACCT}/accounts?pageSize=20`);
   const out = [];
   for (const a of (accts.accounts || []).slice(0, 10)) {
@@ -113,6 +134,7 @@ route('GET', '/api/gbp/locations', async ({ env, user }) => {
       out.push({ account: a.name, accountName: a.accountName || '', location: l.name, title: l.title, address: (l.storefrontAddress?.addressLines || []).concat(l.storefrontAddress?.locality || []).join(', '), phone: l.phoneNumbers?.primaryPhone || '', website: l.websiteUri || '' });
     }
   }
+  await setSetting(env, ck, JSON.stringify({ at: now(), locations: out })).catch(() => {});
   return json({ locations: out });
 });
 

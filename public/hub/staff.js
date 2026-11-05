@@ -123,7 +123,7 @@ export function clientForm(client, onSaved) {
 // Authority and Market Leader, the quarterly plan on Market Leader main businesses.
 const tabsFor = (c) => TABS.filter(([k]) => (k === 'locations' ? !c.parent_id && (c.plan === 'leader' || c.locations > 0)
   : k === 'reputation' ? ['authority', 'leader'].includes(c.plan) : k === 'plan' ? c.plan === 'leader' && !c.parent_id : true));
-const TABS = [['overview', 'Overview'], ['locations', 'Locations'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['chat', 'Messages'], ['accesslist', 'Access'], ['meetings', 'Meetings'], ['gbp', 'Google profile'], ['reviews', 'Reviews'], ['reputation', 'Reputation'], ['posts', 'Posts'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['plan', 'Quarterly plan'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['citations', 'Citations'], ['website', 'Website'], ['files', 'Files'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
+const TABS = [['overview', 'Overview'], ['locations', 'Locations'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['chat', 'Messages'], ['accesslist', 'Access'], ['meetings', 'Meetings'], ['gbp', 'Google profile'], ['reviews', 'Reviews'], ['reputation', 'Reputation'], ['posts', 'Posts'], ['photos', 'Photos'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['plan', 'Quarterly plan'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['citations', 'Citations'], ['website', 'Website'], ['files', 'Files'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
 
 export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   const view = staffShell(app, user, 'clients');
@@ -159,6 +159,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   if (tab === 'tasks') return tasksTab(el, c, state.month || monthKey(), user);
   if (tab === 'reviews') return renderReviews(el, c.id, { staff: true, clientName: c.name });
   if (tab === 'posts') return renderPosts(el, c.id, { staff: true, ai: state.ai });
+  if (tab === 'photos') return import('./photos.js').then((m) => m.photosTab(el, c));
   if (tab === 'rankings') return renderRankings(el, c.id, { staff: true });
   if (tab === 'reports') return import('./reports.js').then((m) => m.reportsTab(el, c));
   if (tab === 'content') return import('./content.js').then((m) => m.contentTab(el, c, state.sub));

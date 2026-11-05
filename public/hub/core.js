@@ -114,8 +114,8 @@ export function modal(html, { onClose } = {}) {
 
 export function busy(btn, on, label) {
   if (!btn) return;
-  if (on) { btn.dataset.label = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span>${label ? ` ${esc(label)}` : ''}`; }
-  else { btn.disabled = false; if (btn.dataset.label) btn.innerHTML = btn.dataset.label; }
+  if (on) { if (!btn.disabled || !btn.dataset.label) btn.dataset.label = btn.innerHTML; btn.disabled = true; btn.innerHTML = `<span class="spin"></span>${label ? ` ${esc(label)}` : ''}`; }
+  else { btn.disabled = false; if (btn.dataset.label) btn.innerHTML = btn.dataset.label; delete btn.dataset.label; }
 }
 
 export const PLAN_NAMES = { starter: 'Starter', growth: 'Growth', authority: 'Authority', leader: 'Market Leader' };

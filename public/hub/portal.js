@@ -45,8 +45,8 @@ export async function portal(app, user, tab, state) {
     return renderReviews(v, c.id, { clientName: c.name });
   }
   if (tab === 'post') {
-    const v = shell(app, c, user, 'post', 'Post a photo', 'Snap a job, send it, and we handle the captions and posting.');
-    return renderPosts(v, c.id, { staff: false, ai: state.ai });
+    const v = shell(app, c, user, 'post', 'Send photos', 'Snap a job or pick a whole batch. We handle the captions and posting.');
+    return import('./photos.js').then((m) => m.clientPhotosView(v, c));
   }
   if (tab === 'start') {
     const v = shell(app, c, user, 'home', 'Get started', 'A few details so we can get to work.');

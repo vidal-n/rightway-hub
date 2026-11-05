@@ -30,6 +30,7 @@ export function explain(check, status, body = {}) {
   if (status === 403 && /insufficient|scope|PERMISSION_DENIED.*scope/i.test(msg)) {
     return { reason: `Google did not give the Hub access to ${check.label}.`, fix: `Click Turn on for ${check.label}. On Google's screen, tick its box (or Select all) before Continue.` };
   }
+  if ((status === 429 || /quota/i.test(msg)) && /mybusiness|businessprofile|Business Profile/i.test(msg)) return { reason: 'Google is refusing Business Profile requests. A new Cloud project gets 0 requests per minute until Google approves Business Profile API access.', fix: 'Google Cloud, APIs and Services, My Business Account Management API, Quotas. If Requests per minute is 0, send the access form at support.google.com/business/contact/api_default with your project number. If it is above 0, wait a minute and check again.' };
   if (status === 429 || /quota/i.test(msg)) return { reason: 'Google says the quota is used up for now.', fix: 'Wait a few minutes and check again. If it keeps happening, raise the quota in Google Cloud.' };
   if (check.app === 'gbp' && status === 403) return { reason: 'Google has not approved Business Profile API access for your project yet.', fix: 'Apply on the Business Profile APIs access form. Until then posts are copied by hand.' };
   return { reason: msg || `Google answered with error ${status}.`, fix: 'Send this message to Claude.' };

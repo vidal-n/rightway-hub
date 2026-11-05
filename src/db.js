@@ -94,6 +94,8 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS time_client ON time_entries (client_id, started_at)`,
   `CREATE INDEX IF NOT EXISTS time_user ON time_entries (user_id, ended_at)`,
   `CREATE INDEX IF NOT EXISTS time_task ON time_entries (task_id)`,
+  `CREATE TABLE IF NOT EXISTS client_photos (id TEXT PRIMARY KEY, client_id TEXT NOT NULL, media_key TEXT NOT NULL, media_type TEXT, size INTEGER NOT NULL DEFAULT 0, note TEXT, post_id TEXT, created_by TEXT, created_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS idx_client_photos_client ON client_photos (client_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS client_access (
     client_id TEXT NOT NULL, item TEXT NOT NULL, status TEXT NOT NULL, note TEXT, updated_at INTEGER, updated_by TEXT, PRIMARY KEY (client_id, item))`,
   `CREATE TABLE IF NOT EXISTS meetings (

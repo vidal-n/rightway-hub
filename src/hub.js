@@ -648,6 +648,7 @@ import './appointments.js';
 import './lines.js';
 import './voicemail.js';
 import './gbp.js';
+import './photos.js';
 import './gmail.js';
 import './gcal.js';
 import './gdrive.js';

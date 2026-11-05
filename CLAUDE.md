@@ -476,6 +476,14 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   `public/js/agreement.js` stays). Do not bring up GoHighLevel, V is cancelling it.
 - Hub opening animation and tour (Nov 2026): `public/hub/intro.js` plays once per browser session, `public/hub/tour.js` offers a spotlight tour once per
   person (job aware steps, `tour:hub` in `/api/me/training`), replayable from Training, Hub tour.
+- Client photos (Nov 2026, `src/photos.js`, `public/hub/photos.js`, table `client_photos`, R2 `photos/<clientId>/<id>`): the client app Post tab is now
+  "Send photos": pick any number at once (resized to 2000 px in the browser, sent 6 per request, server takes up to 20 per request, 8 MB each) with one
+  optional note; staff are notified. Hub client tab "Photos" (`#/client/<id>/photos`): grid, upload, Make post (draft post with captions, same file,
+  `client_photos.post_id`), Make posts from all waiting, Delete (file kept if a post uses it). Client sees their photos and the drafts to approve.
+- Google Business Profile quota (Nov 2026): "Quota exceeded ... Requests per minute" on mybusinessaccountmanagement means Google has not approved Business
+  Profile API access yet (new projects get 0 per minute). `g()` in `src/gbp.js` retries twice, then says how to check the Quotas page and where to apply
+  (support.google.com/business/contact/api_default); `/api/gbp/locations` is cached 10 min per person (`gbp_locs:<userId>`, `?fresh=1` skips it).
+  Until approval, fulfill Google profile work by hand in business.google.com with the manager access.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 
