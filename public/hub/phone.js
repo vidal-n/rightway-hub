@@ -102,12 +102,15 @@ function renderBar(view) {
   b.classList.remove('out');
   b.dataset.state = view.state;
   const live = view.state === 'live';
+  const longLabel = String(view.label || '').length > 14; // long messages go on their own line so the name is never squeezed out
   b.innerHTML = `
     <div class="cb-top">
       <div class="cb-av${view.state === 'ringing' || view.state === 'incoming' || view.state === 'dialing' ? ' pulse' : ''}">${picon.phone}</div>
-      <div class="cb-who"><b>${esc(view.name || pretty(view.number))}</b><span>${esc(view.name ? pretty(view.number) : '')}${view.from ? `${view.name ? ' · ' : ''}${view.incoming ? 'to' : 'from'} ${esc(pretty(view.from))}` : ''}</span></div>
-      <div class="cb-status" aria-live="polite">${esc(view.label)}</div>
+      <div class="cb-who"><b>${esc(view.name || pretty(view.number))}</b>${view.who ? `<em class="cb-p">${view.who.known ? `${esc(view.who.name)} <u>${esc(view.who.role)}</u>` : esc(view.who.line)}</em>` : ''}<span>${esc(view.name ? pretty(view.number) : '')}${view.from ? `${view.name ? ' · ' : ''}${view.incoming ? 'to' : 'from'} ${esc(pretty(view.from))}` : ''}</span></div>
+      <div class="cb-status" aria-live="polite">${longLabel ? '' : esc(view.label)}</div>
     </div>
+    ${longLabel ? `<div class="cb-note" aria-live="polite">${esc(view.label)}</div>` : ''}
+    ${view.cat ? `<div class="cb-cat"><i class="cc cc-${esc(view.cat.id)}">${esc(view.cat.label)}</i><span>${esc(view.cat.lead)}</span></div>` : ''}
     ${view.recording && view.state !== 'ended' ? '<div class="cb-rec"><i></i>Recording</div>' : ''}
     ${live ? '<div class="cb-level" aria-hidden="true"><i></i></div>' : ''}
     ${live && view.pad ? `<div class="cb-pad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((k) => `<button type="button" data-dtmf="${k}">${k}</button>`).join('')}</div>` : ''}
@@ -209,13 +212,13 @@ function track(call, view, { onEnd, act } = {}) {
 }
 
 // Outgoing: checks the number on the server, then connects through the browser.
-export async function placeCall({ to, leadId, from, name, onEnd } = {}) {
+export async function placeCall({ to, leadId, from, name, who, cat, onEnd } = {}) {
   if (st.call) throw new Error('You are already on a call. Hang up first.');
   // "Use my phone": the Hub rings your mobile, then connects the lead. Works with the screen locked or in another app.
-  if (callMode() === 'phone' && leadId && !to) return bridgeCall({ leadId, from, name, onEnd });
+  if (callMode() === 'phone' && leadId && !to) return bridgeCall({ leadId, from, name, who, cat, onEnd });
   const prep = await api('/api/voice/prepare', { method: 'POST', body: { to, leadId, from } });
   const d = await startPhone();
-  const view = { state: 'dialing', label: 'Calling...', name: name || prep.name, number: prep.to, from: prep.from, kind: 'out', recording: Boolean(prep.recording) };
+  const view = { state: 'dialing', label: 'Calling...', name: name || prep.name, who, cat, number: prep.to, from: prep.from, kind: 'out', recording: Boolean(prep.recording) };
   renderBar(view);
   st.call = { pending: true };
   let call;
@@ -227,10 +230,10 @@ export async function placeCall({ to, leadId, from, name, onEnd } = {}) {
 
 // The ring-my-mobile route: the Hub calls the rep's saved mobile, and when it is answered it dials the lead.
 const BRIDGE_END = { completed: 1, 'no-answer': 1, busy: 1, failed: 1, canceled: 1, you_busy: 1, 'you_no-answer': 1, you_failed: 1, you_canceled: 1 };
-async function bridgeCall({ leadId, from, name, onEnd }) {
+async function bridgeCall({ leadId, from, name, who, cat, onEnd }) {
   const r = await api('/api/dialer/call', { method: 'POST', body: { leadId, from } });
   const id = r.activityId;
-  const view = { state: 'ringing', label: 'Your phone is ringing. Answer it.', name: name || 'Lead', number: '', from: '', kind: 'bridge' };
+  const view = { state: 'ringing', label: 'Your phone is ringing. Answer it.', name: name || 'Lead', who, cat, number: '', from: '', kind: 'bridge' };
   renderBar(view);
   let poll = null, done = false;
   const call = { bridge: true, disconnect: () => finish('') };

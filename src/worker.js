@@ -18,6 +18,7 @@ import { ensureClientChats } from './chat.js';
 import { automationTick } from './automations.js';
 import { researchTick } from './autoresearch.js';
 import { scrubTick } from './scrub.js';
+import { finderTick } from './leadfinder.js';
 import { costTick } from './costs.js';
 import { masterTick, inviteTick } from './teamcal.js';
 import { googleHealthTick } from './googlecheck.js';
@@ -44,6 +45,7 @@ export default {
       await automationTick(env).catch((e) => console.error('automations', e));
       if (used < 20) await researchTick(env, 1).catch((e) => console.error('auto research', e));
       if (used < 25) await scrubTick(env, 3).catch((e) => console.error('scrub', e));
+      if (used < 30) await finderTick(env, Math.min(12, 40 - used)).catch((e) => console.error('lead finder', e));
       // Every active client gets this month's tasks on the 1st, the team gets a morning digest, and meeting reminders go out.
       await ensureMonthTasks(env).catch((e) => console.error('task engine', e));
       await digestTick(env).catch((e) => console.error('digest', e));

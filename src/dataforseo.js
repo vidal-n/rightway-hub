@@ -19,7 +19,7 @@ export function dfsMessage(code, msg = '') {
   return `DataForSEO: ${msg || 'no result'}`;
 }
 
-async function liveSerp(env, endpoint, task, fetchImpl = fetch) {
+async function liveSerp(env, endpoint, task, fetchImpl = fetch, kind = null) {
   const auth = btoa(`${env.DATAFORSEO_LOGIN}:${env.DATAFORSEO_PASSWORD}`);
   let res;
   try {
@@ -39,7 +39,7 @@ async function liveSerp(env, endpoint, task, fetchImpl = fetch) {
   if (!t || t.status_code !== 20000) throw new HttpError(dfsMessage(t?.status_code, t?.status_message), 502);
   const r = t.result?.[0] || {};
   const cost = Number(t.cost ?? data.cost ?? 0);
-  await logCost(env, 'dataforseo', endpoint.includes('local_finder') ? 'grid (local finder)' : endpoint.includes('/maps/') ? 'grid or lookup (maps)' : 'web search', cost);
+  await logCost(env, 'dataforseo', kind || (endpoint.includes('local_finder') ? 'grid (local finder)' : endpoint.includes('/maps/') ? 'grid or lookup (maps)' : 'web search'), cost);
   return { items: Array.isArray(r.items) ? r.items : [], types: r.item_types || [], cost };
 }
 
@@ -64,6 +64,32 @@ export function slim(i) {
     address: i.address || '',
     phone: i.phone || '',
     url: i.url || '',
+    domain: i.domain || '',
+    lat: num(i.latitude),
+    lng: num(i.longitude),
+    claimed: typeof i.is_claimed === 'boolean' ? i.is_claimed : null,
+    photos: num(i.total_photos),
+    hours: Boolean(i.work_hours && i.work_hours.timetable && Object.keys(i.work_hours.timetable).length),
+  };
+}
+
+// Lead finder record: everything a Maps result tells us about a business, flat and small enough to store by the thousand.
+export function fat(i) {
+  const a = i.address_info || {};
+  return {
+    title: i.title || '',
+    cid: i.cid || '',
+    place_id: i.place_id || '',
+    category: i.category || '',
+    cats: Array.isArray(i.additional_categories) ? i.additional_categories.slice(0, 4) : [],
+    rating: num(i.rating?.value),
+    reviews: num(i.rating?.votes_count) ?? 0,
+    address: i.address || '',
+    city: a.city || '',
+    state: a.region || '',
+    zip: a.zip || '',
+    phone: i.phone || '',
+    website: i.url || '',
     domain: i.domain || '',
     lat: num(i.latitude),
     lng: num(i.longitude),
@@ -123,6 +149,16 @@ export async function rankAtPoint(env, q, fetchImpl) {
     types,
     cost,
   };
+}
+
+// One Google Maps search at a map view: up to 100 businesses (billed per 100). Used by the lead finder.
+export async function mapsSearch(env, { keyword, lat, lng, zoom = 14, depth = 100 }, fetchImpl) {
+  const { items, cost } = await liveSerp(
+    env, MAPS,
+    { keyword, location_coordinate: `${Number(lat).toFixed(7)},${Number(lng).toFixed(7)},${zoom}z`, language_code: 'en', depth, device: 'desktop' },
+    fetchImpl, 'lead finder (maps)',
+  );
+  return { results: organicListings(items).filter((i) => i.type === 'maps_search' || !i.type).map(fat), cost };
 }
 
 // Full profile details for one business (used for the head-to-head table).

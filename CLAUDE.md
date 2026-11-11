@@ -519,6 +519,23 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   clarity calls and closing, client work or coaching, wrap up at 6, build block 6:15 to 7:45 (Fri weekly review), Saturday deep build, Sunday planning. Teammates start blank (optional dial day
   starter). Owners open anyone's week from the picker and edit it. Setters and schedulers (no `deliver`) get a "My schedule" menu item instead of My work (`'!deliver'` in `NAV`).
   The page shows Right now / Next up with the day's dial goal against today's dials, a week grid on computers, one day at a time on phones, a week summary by kind, and Print.
+- Lead finder (Nov 2026, owners only, `src/leadfinder.js`, `public/hub/finder.js`, pure maths and filters `public/js/finder.js`, `#/finder`, menu item after Pipeline): our own Outscraper style
+  Google Maps scraper, server side so it works from an iPad or any browser (no extension or bookmarklet, V dropped that). A search is keywords (max 10) x areas (max 12, geocoded with
+  OpenStreetMap Nominatim, or "lat,lng") x coverage (Quick 3x3, Standard 5x5, Deep 7x7, Max 9x9 grid of map views, `taskList`, zoom from `zoomFor`) because one Maps search returns about
+  100 businesses. DataForSEO Maps live advanced via `mapsSearch` in `src/dataforseo.js` (`fat()` keeps title, cid, place_id, category, rating, reviews, address, phone, website, lat, lng,
+  claimed, photos, hours), $0.002 a search, `MAX_REQUESTS` 2000 per job (about $4), spend logged as `lead finder (maps)` in `cost_daily`. Tables `finder_jobs` and `finder_results`
+  (PK job_id + rkey from `keyOf`: place_id, else cid, else name|phone). The cron `finderTick` (PARALLEL 6, lock 60s, resumes from `finder_jobs.done`, fatal on an empty DataForSEO wallet without
+  advancing) and the open page (`POST /api/finder/tick` every 5s) move jobs along. Filters (reviews, rating, website, phone, claimed, category, exclude words) are `passes()`, shared by page
+  and server. Results table, Outscraper style CSV (`csvText`), "Add to the Pipeline" or auto add through `importLeads` in `src/crm.js` (the same path as CSV import: dedupe by phone, website
+  domain, name + city or zip, DNC, free scrub, background enrichment; leads keep place_id, cid, lat, lng so research skips the Google lookup). Notifies the creator when done. Demo mode
+  without DataForSEO creds uses `mockFinder` in `src/mock.js`. Routes `/api/finder/*` all `requireAdmin`. Not yet run against live DataForSEO or Nominatim.
+- Call categories and names on the dialer (Nov 2026): `callCategory(lead)` and `whoIs(lead)` in `public/js/leadintel.js` (pure, tested in `test/callcat.test.js`). One main category per lead
+  from what we know (stage, source, website, reviews, rating, map rank once researched): Asked for us, Following up, No website, Not on Google, Not on page one, Few reviews (under 25),
+  Low rating (under 4.3), Close to the top (#4 to #10), Already strong (top 3 with reviews and rating), General. Each has a "lead with" line (`CALL_CATS`) and extra tags (high value trade, mobile).
+  `GET /api/dialer/queue` takes `cat` and returns `cats` counts (counted ignoring the filter); the dialer has a "Call type" chip row, a chip in Up next, a Speaking with line and category
+  block on the dial card, the category chip on every power dial card, and a live card in the power dial popup while the call is up (business, person, phone, category). `placeCall` takes
+  `who` and `cat` so the floating call bar shows business, person (owner, else contact, else "Ask for the owner") and the category; long status text goes on its own line so the name is
+  never squeezed out. The power dial popup class is `pd compact` (`.mini` is a generic stat grid, do not reuse it).
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

@@ -264,6 +264,62 @@ export function scoreLead(lead = {}, intel = null) {
   return { score, grade, reasons };
 }
 
+// ---------- call categories ----------
+// What to lead with on a call, worked out from what we already know about the business. Pure: it reads the lead row (Google rating,
+// reviews, website, map rank if researched, stage, source), so a cold Finder lead has a category before anyone runs a scan.
+export const CALL_CATS = [
+  { id: 'asked', label: 'Asked for us', lead: 'They reached out or asked for the audit. Start with what they asked for.' },
+  { id: 'followup', label: 'Following up', lead: 'You already talked. Pick up where it ended and ask for the next step.' },
+  { id: 'no_site', label: 'No website', lead: 'No website. Lead with being found on Google and a simple site that turns searches into calls.' },
+  { id: 'not_found', label: 'Not on Google', lead: 'Google could not find their profile. Lead with getting them found on the map at all.' },
+  { id: 'off_page_one', label: 'Not on page one', lead: 'They are not on the first page of the map. Lead with the calls going to the businesses that are.' },
+  { id: 'reviews', label: 'Few reviews', lead: 'Under 25 reviews. Lead with reviews: more trust and more clicks from the same searches.' },
+  { id: 'rating', label: 'Low rating', lead: 'Rating under 4.3 stars. Lead with fixing the reputation and getting fresh reviews.' },
+  { id: 'close', label: 'Close to the top', lead: 'On page one but below the top 3. Lead with how close they are to the spots that get the calls.' },
+  { id: 'strong', label: 'Already strong', lead: 'They already rank well. Lead with holding the spot, more cities and more calls from the same work.' },
+  { id: 'general', label: 'General', lead: 'No clear weak spot yet. Ask how they get customers today and where the phone is slow.' },
+];
+const CAT_BY_ID = Object.fromEntries(CALL_CATS.map((c) => [c.id, c]));
+
+export function callCategory(lead = {}) {
+  const researched = Boolean(lead.intel_at);
+  const rank = researched && lead.map_rank != null ? Number(lead.map_rank) : null;
+  const reviews = lead.reviews == null || lead.reviews === '' ? null : Number(lead.reviews);
+  const rating = lead.rating == null || lead.rating === '' ? null : Number(lead.rating);
+  const flags = {
+    asked: lead.stage === 'audit_requested' || lead.source === 'website' || lead.source === 'booking',
+    followup: ['callback', 'follow_up', 'no_show', 'not_now'].includes(lead.stage),
+    no_site: !String(lead.website || '').trim(),
+    not_found: researched && lead.map_rank == null,
+    off_page_one: rank != null && rank > 10,
+    reviews: reviews != null && reviews < 25,
+    rating: rating != null && rating > 0 && rating < 4.3,
+    close: rank != null && rank > 3 && rank <= 10,
+    strong: rank != null && rank <= 3 && (reviews == null || reviews >= 25) && (rating == null || rating >= 4.3),
+  };
+  const id = CALL_CATS.find((c) => flags[c.id])?.id || 'general';
+  const facts = [];
+  if (reviews != null) facts.push(`${reviews} review${reviews === 1 ? '' : 's'}${rating ? `, ${rating} stars` : ''}`);
+  else if (rating) facts.push(`${rating} stars`);
+  if (rank != null) facts.push(rank > 20 ? 'not in the top 20' : `#${rank} on the map`);
+  if (flags.no_site) facts.push('no website');
+  const tags = CALL_CATS.filter((c) => flags[c.id] && c.id !== id).map((c) => ({ id: c.id, label: c.label }));
+  const info = industryInfo(lead.industry, lead.category);
+  if (info.tier === 'high') tags.push({ id: 'high_value', label: 'High value trade' });
+  if (lead.phone_type === 'mobile') tags.push({ id: 'mobile', label: 'Mobile number' });
+  return { id, label: CAT_BY_ID[id].label, lead: CAT_BY_ID[id].lead, facts, tags };
+}
+
+// Who to ask for. The owner when we know one, else the contact on file, else a plain prompt.
+export function whoIs(lead = {}) {
+  const owner = String(lead.owner_name || '').trim();
+  const contact = String(lead.contact_name || '').trim();
+  const same = owner && contact && owner.toLowerCase() === contact.toLowerCase();
+  if (owner) return { name: owner, role: 'Owner', also: contact && !same ? contact : '', line: `Ask for ${owner}`, known: true };
+  if (contact) return { name: contact, role: 'Contact', also: '', line: `Ask for ${contact}`, known: true };
+  return { name: '', role: '', also: '', line: 'Ask for the owner', known: false };
+}
+
 // ---------- workload tier ----------
 // Internal only (never shown, never priced): how heavy this lead's work looks, which sets the default tabs and guide steps.
 export function recommendPlan(lead = {}, intel = null) {

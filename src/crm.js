@@ -6,7 +6,7 @@ import { PLANS, tasksForMonth, monthKey } from './plans.js';
 import { scopeFromLead } from './scopeof.js';
 import { tierOf as scopeTier } from '../public/js/scope.js';
 import { route } from './router.js';
-import { scoreLead, dupKeys } from '../public/js/leadintel.js';
+import { scoreLead, dupKeys, callCategory } from '../public/js/leadintel.js';
 import { resolveDispo } from './dispo.js';
 import { notifyLater } from './notify.js';
 import { autoChatFor } from './chat.js';
@@ -225,7 +225,7 @@ route('POST', '/api/leads', async ({ env, user, body }) => {
 });
 
 // Existing dedupe keys: phone, website domain, and name plus city or zip.
-async function existingKeys(env) {
+export async function existingKeys(env) {
   const rows = await all(env, 'SELECT id, business, phone_digits, website, city, zip, dnc FROM leads');
   const keys = new Map();
   for (const r of rows) for (const k of dupKeys(r)) if (!keys.has(k)) keys.set(k, r);
@@ -237,29 +237,29 @@ async function findDuplicate(env, data) {
   return null;
 }
 
-route('POST', '/api/leads/import', async ({ env, user, body }) => {
-  requireStaff(user);
-  const { rows, source, tags } = await body();
-  if (!Array.isArray(rows) || !rows.length) throw new HttpError('No rows to import.');
-  if (rows.length > 5000) throw new HttpError('Import up to 5,000 leads at a time.');
+// The one import path: the CSV import and the lead finder both come through here, so they dedupe, scrub and queue the same way.
+// Returns the counts plus `rows`, one entry per input row: { id } for a new lead or { skipped, lead_id } for one that was not added.
+export async function importLeads(env, user, rows, { source, tags } = {}) {
   const keys = await existingKeys(env);
   const items = [];
+  const out = new Array(rows.length);
   const skipped = { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0 };
   const reason = { p: 'phone', d: 'website', n: 'name' };
   const tagText = text(tags, 200);
-  for (const r of rows) {
+  for (const [n, r] of rows.entries()) {
     let d;
-    try { d = cleanLead({ ...r, source: r.source || source || 'import' }); } catch { skipped.invalid++; continue; }
-    if (!d.phone_digits && !d.email) { skipped.invalid++; continue; }
+    try { d = cleanLead({ ...r, source: r.source || source || 'import' }); } catch { skipped.invalid++; out[n] = { skipped: 'invalid' }; continue; }
+    if (!d.phone_digits && !d.email) { skipped.invalid++; out[n] = { skipped: 'invalid' }; continue; }
     const ks = dupKeys(d);
     const hit = ks.find((k) => keys.has(k));
-    if (hit) { const prev = keys.get(hit); skipped[prev?.dnc ? 'dnc' : reason[hit[0]]]++; continue; }
+    if (hit) { const prev = keys.get(hit); const why = prev?.dnc ? 'dnc' : reason[hit[0]]; skipped[why]++; out[n] = { skipped: why, lead_id: prev?.id || null }; continue; }
     if (tagText) d.tags = [d.tags, tagText].filter(Boolean).join(', ');
     const l = { ...cleanNewLead(d), id: newId('ld_'), stage: 'new', created_at: now(), updated_at: now(), owner_id: user.id };
     Object.assign(l, rescore(l));
     for (const k of ks) keys.set(k, l);
     const cols = Object.keys(l);
     items.push([`INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...cols.map((k) => l[k])]);
+    out[n] = { id: l.id };
   }
   // Free scrub before anything is called: bad and toll free numbers never reach the queue. Research and grading run in the background.
   const { scrubReason } = await import('./autoresearch.js');
@@ -274,7 +274,16 @@ route('POST', '/api/leads/import', async ({ env, user, body }) => {
   // The full scrub (website emails, owner name, email check) runs in the background for everything that is still open.
   await queueScrub(env, items.filter((it) => !it[0].includes(' scrub,') && !it[0].includes(', scrub)')).map((it) => it[1 + it[0].match(/\(([^)]*)\)/)[1].split(', ').indexOf('id')]));
   const total = Object.values(skipped).reduce((a, b) => a + b, 0);
-  return json({ imported: items.length, skipped: total, skippedBy: skipped, scrubbed });
+  return { imported: items.length, skipped: total, skippedBy: skipped, scrubbed, rows: out };
+}
+
+route('POST', '/api/leads/import', async ({ env, user, body }) => {
+  requireStaff(user);
+  const { rows, source, tags } = await body();
+  if (!Array.isArray(rows) || !rows.length) throw new HttpError('No rows to import.');
+  if (rows.length > 5000) throw new HttpError('Import up to 5,000 leads at a time.');
+  const { rows: _rows, ...result } = await importLeads(env, user, rows, { source, tags });
+  return json(result);
 });
 
 // Duplicate groups among leads already in the Hub.
@@ -461,7 +470,7 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const rows = await all(env, `SELECT * FROM leads WHERE dnc = 0 AND stage IN (${CALLABLE.map(() => '?').join(',')})
     AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...CALLABLE, t);
   const priority = { callback: 0, audit_requested: 1, no_show: 2, follow_up: 3, new: 4, attempting: 5, not_now: 6 };
-  const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier', 'data'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
+  const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier', 'data', 'cat'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
   const minScore = Number(url.searchParams.get('minScore')) || 0;
   const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
   const ready = rows
@@ -470,17 +479,19 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
     .filter((l) => (!f.tz || l.tz_short === f.tz) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())
       && has(`${l.industry} ${l.category}`, f.industry) && has(l.tags, f.tag) && has(l.city, f.city) && (l.score || 0) >= minScore)
     .filter((l) => !f.tier || tierOf(l) === f.tier)
+    .filter((l) => !f.cat || callCategory(l).id === f.cat)
     .filter((l) => !f.data || (f.data === 'mobile' ? l.phone_type === 'mobile' : f.data === 'owner' ? Boolean(l.owner_name || l.contact_name) : f.data === 'email' ? Boolean(l.email) && !['bad', 'no_mail_server'].includes(l.email_status) : true))
     .sort((a, b) => (priority[a.stage] ?? 9) - (priority[b.stage] ?? 9) || (b.score || 0) - (a.score || 0) || (b.data_score || 0) - (a.data_score || 0) || (a.next_action_at || 0) - (b.next_action_at || 0));
   const now_ = ready.filter((l) => l.callable_now);
   // Sub queues by lead quality, counted on everything callable now (ignores the tier filter so the tabs always show their size).
   const tiers = { hot: 0, good: 0, maybe: 0, low: 0, fresh: 0 };
-  for (const l of rows) { if (!(l.last_call_at && t - l.last_call_at < 3 * 3600e3)) { const d = decorate(l); if (d.callable_now) tiers[tierOf(d)]++; } }
+  const cats = {};
+  for (const l of rows) { if (!(l.last_call_at && t - l.last_call_at < 3 * 3600e3)) { const d = decorate(l); if (d.callable_now) { tiers[tierOf(d)]++; const c = callCategory(d).id; cats[c] = (cats[c] || 0) + 1; } } }
   const later = ready.length - now_.length;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const stats = await first(env, `SELECT COUNT(*) AS dials, SUM(outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(outcome = 'booked') AS booked
     FROM activities WHERE type = 'call' AND by = ? AND at >= ?`, user.id, today.getTime());
-  return json({ queue: now_.slice(0, Number(url.searchParams.get('limit')) || 50), waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0 }, tiers });
+  return json({ queue: now_.slice(0, Number(url.searchParams.get('limit')) || 50), waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0 }, tiers, cats });
 });
 // Quality tiers: callbacks and booked follow ups always count as hot; not researched yet is its own queue.
 export function tierOf(l) {

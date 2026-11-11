@@ -228,7 +228,7 @@ export function paintMaint(on) {
 // ---------- command palette ----------
 const PAGES = [
   ['Dashboard', '#/'], ['Dialer', '#/phone'], ['Dial out', '#/phone/out'], ['Meetings: start or join Google Meet', '#/phone/meet'], ['Texts', '#/phone/texts'], ['Calls and voicemail', '#/phone/calls'],
-  ['Recordings', '#/phone/recordings'], ['Agents', '#/agents'], ['Call analytics', '#/agents/analytics'], ['Pipeline', '#/pipeline'], ['My work', '#/work'],
+  ['Recordings', '#/phone/recordings'], ['Agents', '#/agents'], ['Call analytics', '#/agents/analytics'], ['Pipeline', '#/pipeline'], ['Lead finder', '#/finder'], ['My work', '#/work'],
   ['Hours', '#/work/hours'], ['Task guides', '#/work/guides'], ['Clients', '#/clients'], ['Client view', '#/clients/view'], ['Scan tool', '/scan.html'],
   ['Training', '#/training'], ['Scripts', '#/training/scripts'], ['Objection drills', '#/training/drills'], ['Slack', '#/slack'], ['Mail', '#/mail'],
   ['Calendar', '#/calendar'], ['New appointment', '#/calendar'], ['Files', '#/settings/files'], ['Team calendar', '#/settings'], ['Gmail', '#/google/mail'], ['Google Calendar', '#/google/calendar'], ['Google Drive', '#/google/drive'], ['Google setup', '#/google'], ['Notifications', '#/notifications'], ['Settings', '#/settings'], ['Team', '#/settings/team'],

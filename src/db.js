@@ -161,6 +161,13 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, title TEXT NOT NULL, start_at INTEGER NOT NULL, minutes INTEGER NOT NULL DEFAULT 30, owner_id TEXT, lead_id TEXT, client_id TEXT, guest_email TEXT, link TEXT, note TEXT, created_at INTEGER, updated_at INTEGER)`,
   `CREATE INDEX IF NOT EXISTS idx_events_start ON events (start_at)`,
   `CREATE TABLE IF NOT EXISTS cost_daily (day TEXT NOT NULL, vendor TEXT NOT NULL, kind TEXT NOT NULL, micro INTEGER NOT NULL DEFAULT 0, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, vendor, kind))`,
+  `CREATE TABLE IF NOT EXISTS finder_jobs (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, keywords TEXT NOT NULL, areas TEXT NOT NULL, filters TEXT, auto_add INTEGER NOT NULL DEFAULT 0, tag TEXT,
+    status TEXT NOT NULL DEFAULT 'queued', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0,
+    found INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0, error TEXT, demo INTEGER NOT NULL DEFAULT 0,
+    locked_until INTEGER, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, finished_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS finder_jobs_status ON finder_jobs (status, created_at)`,
+  `CREATE TABLE IF NOT EXISTS finder_results (job_id TEXT NOT NULL, rkey TEXT NOT NULL, data TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'new', lead_id TEXT, PRIMARY KEY (job_id, rkey))`,
   `CREATE TABLE IF NOT EXISTS vault_access (item_id TEXT NOT NULL, user_id TEXT NOT NULL, eph TEXT NOT NULL, wiv TEXT NOT NULL, wkey TEXT NOT NULL, PRIMARY KEY (item_id, user_id))`,
 ];
 

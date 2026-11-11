@@ -5,7 +5,7 @@ import { $, $$, esc, api, toast, modal, icon } from './core.js';
 import { can } from '/js/jobs.js';
 
 export const NAV = [
-  ['home', '#/', 'dash', 'Dashboard'], ['phone', '#/phone', 'phone', 'Phone'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['calendar', '#/calendar', 'cal', 'Calendar'],
+  ['home', '#/', 'dash', 'Dashboard'], ['phone', '#/phone', 'phone', 'Phone'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['finder', '#/finder', 'search', 'Lead finder', 'admin'], ['calendar', '#/calendar', 'cal', 'Calendar'],
   ['agents', '#/agents', 'headset', 'Agents'], ['automations', '#/automations', 'send', 'Automations', 'admin'],
   ['work', '#/work', 'check', 'My work', 'deliver'], ['schedule', '#/work/schedule', 'clock', 'My schedule', '!deliver'], ['clients', '#/clients', 'users', 'Clients', 'deliver'], ['scan', '/scan.html', 'grid', 'Scan tool', 'close'],
   ['training', '#/training', 'book', 'Training'], ['vault', '#/vault', 'key', 'Vault', 'admin'], ['slack', '#/slack', 'slack', 'Slack'], ['google', '#/google', 'apps', 'Google'],
@@ -13,7 +13,7 @@ export const NAV = [
 ];
 // The rail groups the menu by the job: selling, delivering, the team, and running the business.
 export const GROUPS = [['sell', 'Sell'], ['deliver', 'Deliver'], ['team', 'Team'], ['run', 'Run']];
-const GROUP_OF = { home: 'sell', phone: 'sell', pipeline: 'sell', calendar: 'sell', agents: 'sell', automations: 'sell', vault: 'team', work: 'deliver', schedule: 'deliver', clients: 'deliver', scan: 'deliver', training: 'team', slack: 'team', google: 'team', payments: 'run', alerts: 'run', settings: 'run' };
+const GROUP_OF = { home: 'sell', phone: 'sell', pipeline: 'sell', finder: 'sell', calendar: 'sell', agents: 'sell', automations: 'sell', vault: 'team', work: 'deliver', schedule: 'deliver', clients: 'deliver', scan: 'deliver', training: 'team', slack: 'team', google: 'team', payments: 'run', alerts: 'run', settings: 'run' };
 export const groupOf = (k) => GROUP_OF[k] || 'run';
 // Which dot belongs to which menu item.
 const BADGE_KEY = { work: 'work', slack: 'slack', phone: 'phone', pipeline: 'pipeline', alerts: 'alerts' };

@@ -649,6 +649,7 @@ import './balances.js';
 import './scrub.js';
 import './agents.js';
 import './automations.js';
+import './leadfinder.js';
 import './costs.js';
 import './avatar.js';
 import './autoresearch.js';

@@ -9,7 +9,7 @@ import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { placeCall, startPhone, onPhoneState } from './phone.js';
 import { filterLeads } from '/js/leadfilter.js';
-import { quoteFor } from '/js/leadintel.js';
+import { quoteFor, callCategory, whoIs, CALL_CATS } from '/js/leadintel.js';
 import { SCOPE, effort, hoursOf } from '/js/scope.js';
 import { can, canRunCalls } from '/js/jobs.js';
 import { PHONE_TYPE_LABEL } from '/js/scrub.js';
@@ -671,6 +671,9 @@ function importModal(onDone) {
 
 // ---------- power dialer ----------
 const DIAL_KEY = 'rw-dial-filter';
+// Call category chip: what to lead with on this call, from what we know about the business.
+const catChip = (c) => `<i class="cc cc-${esc(c.id)}" title="${esc(c.lead)}">${esc(c.label)}</i>`;
+const whoHtml = (w) => (w.known ? `<b>${esc(w.name)}</b><span class="cc-role">${esc(w.role)}</span>${w.also ? `<span class="small muted">also ${esc(w.also)}</span>` : ''}` : `<b class="muted">${esc(w.line)}</b>`);
 export async function dialerPage(app, user) {
   setRep(user);
   const view = staffShell(app, user, 'dialer');
@@ -706,7 +709,7 @@ export async function dialerPage(app, user) {
       pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial · <b>${pdCalls}</b> calls · <b>${sessClock()}</b></span><span class="pd-count">${left}</span></div>
         <div class="pd-bar" style="width:${(100 * (pdWait - left)) / pdWait}%"></div>
         <div class="pd-list">${next.map((l, i) => `<div class="pd-card${i === 0 ? ' first' : ''}"><span class="g ${esc(l.grade || '')}">${esc(l.grade || '?')}</span>
-          <div style="min-width:0"><b>${esc(l.business)}</b><span class="small">${esc([l.contact_name, l.city, l.local_time ? `${l.local_time} their time` : ''].filter(Boolean).join(' · '))}</span></div>
+          <div style="min-width:0"><b>${esc(l.business)}</b><span class="small">${esc([whoIs(l).name || 'Ask for the owner', l.city, l.local_time ? `${l.local_time} their time` : ''].filter(Boolean).join(' · '))}</span>${catChip(callCategory(l))}</div>
           <span class="small">${i === 0 ? 'Calling next' : `Then #${i + 1}`}</span></div>`).join('')}</div>
         <div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdnow">Call now</button><button class="btn btn-ghost btn-sm" id="pdskip">Skip</button><button class="btn btn-ghost btn-sm" id="pdpause">Pause</button>
           <label class="row small" style="gap:6px;margin-left:auto">Wait <select id="pdw" style="width:auto;min-height:32px;padding:4px 8px">${[3, 5, 8, 12].map((v) => `<option${v === pdWait ? ' selected' : ''}>${v}</option>`).join('')}</select> s</label></div>`;
@@ -722,7 +725,15 @@ export async function dialerPage(app, user) {
     const btn = document.getElementById('dhub');
     if (!btn || btn.disabled) { toast('The browser phone is not ready. Check Phone setup.', true); return powerStop(); }
     pdCalls++;
-    if (pdBox) { pdBox.className = 'pd mini'; pdBox.querySelector('.pd-count').textContent = 'LIVE'; }
+    if (pdBox) {
+      const l = q.queue[idx], c = l && callCategory(l), w = l && whoIs(l);
+      pdBox.className = 'pd compact'; pdBox.querySelector('.pd-count').textContent = 'LIVE';
+      const hs = pdBox.querySelector('.pd-head > span'); if (hs) hs.innerHTML = `Power dial · <b>${pdCalls}</b> calls · <b>${sessClock()}</b>`;
+      pdBox.querySelector('.pd-live')?.remove();
+      if (l) pdBox.querySelector('.pd-head').insertAdjacentHTML('afterend', `<div class="pd-live"><h3>${esc(l.business)}</h3><div class="dial-who">${whoHtml(w)}</div>
+        <div class="pd-ph">${esc(l.phone || '')}${l.local_time ? ` <span class="small muted">${esc(l.local_time)} their time</span>` : ''}</div>
+        <div class="dial-cat">${catChip(c)}<span>${esc(c.lead)}</span></div></div>`);
+    }
     btn.click();
   };
   const intelCache = new Map();
@@ -750,7 +761,7 @@ export async function dialerPage(app, user) {
   const upcoming = (cal.meetings || []).filter((m) => m.meet_at > Date.now() - 3600e3).slice(0, 4);
   // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.
   setTimeout(() => api('/api/balances/status').then((b) => { const el = document.getElementById('lowbal'); if (el && b.low?.length) el.innerHTML = `<div class="card" style="border-color:#E8A33D;margin-bottom:12px"><b>${b.low.map((x) => esc(x.name)).join(' and ')} balance ${b.low.some((x) => x.empty) ? 'is empty' : 'is low'}.</b> <span class="small">${b.low.some((x) => x.key === 'twilio') ? 'Calls and texts stop when Twilio runs out. ' : ''}${b.low.some((x) => x.key === 'dataforseo') ? 'Research and scans stop when DataForSEO runs out. ' : ''}An owner can add funds from the Dashboard.</span></div>`; }).catch(() => {}), 50);
-  const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier').map(([k, v]) => `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`).join(' · ');
+  const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier' && k !== 'cat').map(([k, v]) => `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`).join(' · ');
   let lay = { queue: true, prep: true, compact: false };
   try { lay = { ...lay, ...JSON.parse(localStorage.getItem('rw-dial-layout') || '{}') }; } catch { /* ignore */ }
   const render = () => {
@@ -763,6 +774,9 @@ export async function dialerPage(app, user) {
       ${dialTabs('queue', user)}
       <div class="tiers">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
         .map(([k, n, t]) => `<button type="button" data-tier="${k}" title="${esc(t)}" class="${(flt.tier || '') === k ? 'is-on' : ''}">${n}<b>${k ? (q.tiers?.[k] ?? 0) : Object.values(q.tiers || {}).reduce((a, b) => a + b, 0)}</b></button>`).join('')}</div>
+      <div class="tiers cats" aria-label="Call type"><span class="small muted">Call type</span>${[['', 'All', 'every call type'], ...CALL_CATS.map((c) => [c.id, c.label, c.lead])]
+        .filter(([k]) => !k || q.cats?.[k] || (flt.cat || '') === k)
+        .map(([k, n, t]) => `<button type="button" data-cat="${k}" title="${esc(t)}" class="${(flt.cat || '') === k ? 'is-on' : ''}">${esc(n)}<b>${k ? (q.cats?.[k] ?? 0) : Object.values(q.cats || {}).reduce((a, b) => a + b, 0)}</b></button>`).join('')}</div>
       ${fold('dfilters', 'More filters and research status', `<div class="row small" style="margin:-4px 0 10px;gap:8px">Data: <div class="seg">${[['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Has an email']].map(([k, n]) => `<button type="button" data-dq="${k}" class="${(flt.data || '') === k ? 'is-on' : ''}">${n}</button>`).join('')}</div></div>
       <div id="rsx" class="small muted" style="margin:6px 0 0"></div>
       ${filterText ? `<div class="row small" style="margin:6px 0 0">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}`, Boolean(filterText))}
@@ -774,12 +788,14 @@ export async function dialerPage(app, user) {
       ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
       <div class="dial-grid${lay.queue ? '' : ' no-queue'}${lay.prep ? '' : ' no-prep'}${lay.compact ? ' tight' : ''}">
         <aside class="dial-queue card" aria-label="Up next"><div class="card-head"><h3>Up next</h3><span class="small muted">${Math.max(0, q.queue.length - idx - 1)} after this</span></div>
-          <ol>${q.queue.slice(idx, idx + 12).map((x, i) => `<li><button type="button" data-jump="${idx + i}" class="${i === 0 ? 'is-on' : ''}">${gradeBadge(x.grade, x.score)}<span class="dq-t"><b>${esc(x.business)}</b><small>${esc([x.city, x.state].filter(Boolean).join(', '))}${x.local_time ? ` · ${esc(x.local_time)}` : ''}</small></span></button></li>`).join('')}</ol></aside>
+          <ol>${q.queue.slice(idx, idx + 12).map((x, i) => `<li><button type="button" data-jump="${idx + i}" class="${i === 0 ? 'is-on' : ''}">${gradeBadge(x.grade, x.score)}<span class="dq-t"><b>${esc(x.business)}</b><small>${esc([x.city, x.state].filter(Boolean).join(', '))}${x.local_time ? ` · ${esc(x.local_time)}` : ''}</small>${catChip(callCategory(x))}</span></button></li>`).join('')}</ol></aside>
         <div class="dial-left">
           <div class="card dial-card">
             <p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · attempt ${l.attempts + 1}` : ''}${l.next_action ? ` · ${esc(l.next_action)}` : ''}</p>
             <div class="row" style="gap:12px;flex-wrap:nowrap"><span id="dgrade">${gradeBadge(l.grade, l.score)}</span><h2 style="font-size:28px;margin:0;min-width:0">${esc(l.business)}</h2></div>
-            <div class="muted" style="margin-top:6px">${esc([l.contact_name, l.industry || l.category, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div>
+            <div class="dial-who" id="dwho"><span class="small muted">Speaking with</span>${whoHtml(whoIs(l))}</div>
+            <div class="muted" style="margin-top:6px">${esc([l.industry || l.category, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div>
+            ${(() => { const c = callCategory(l); return `<div class="dial-cat">${catChip(c)}<span>${esc(c.lead)}</span>${c.facts.length || c.tags.length ? `<small class="muted">${esc([...c.facts, ...c.tags.map((t) => t.label)].join(' · '))}</small>` : ''}</div>`; })()}
             <div class="row" style="margin:12px 0"><span class="badge">${l.tz_known ? `Their time: ${esc(l.local_time)}` : 'Time zone unknown: add the state'}</span>${l.sms_consent ? '<span class="badge">Agreed to texts</span>' : ''}${l.reviews != null ? `<span class="badge gray">${l.reviews} reviews${l.rating ? ` · ${l.rating}★` : ''}</span>` : ''}</div>
             <div class="dial-phone">${esc(l.phone || '')}</div>
             <div class="row" style="margin-top:14px">
@@ -812,6 +828,7 @@ export async function dialerPage(app, user) {
     $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
     $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
     $$('[data-dq]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, data: b.dataset.dq }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
+    $$('[data-cat]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, cat: b.dataset.cat }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $$('[data-tier]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, tier: b.dataset.tier }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $('#pdgo', view)?.addEventListener('click', () => { power = !power; if (power) { pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
@@ -828,7 +845,7 @@ export async function dialerPage(app, user) {
       const btn = e.currentTarget;
       busy(btn, true);
       try {
-        await placeCall({ leadId: l.id, from: callerVal(), name: l.business, onEnd: ({ answered }) => {
+        await placeCall({ leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), onEnd: ({ answered }) => {
           if (q.queue[idx]?.id !== l.id) return;
           dispositionModal({ title: l.business, sub: answered ? 'Pick how it went. It moves the lead to the right next step.' : 'No one picked up? Pick the result.', answered,
             onSave: async (r) => {

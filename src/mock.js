@@ -124,3 +124,37 @@ export function mockWeb(keyword) {
   const base = keyword.toLowerCase().replace(/[^a-z0-9]+/g, '');
   return { results: [0, 1, 2].map((i) => ({ url: `https://www.${base.slice(0, 14)}${i}.example/`, title: `${keyword} (example ${i + 1})`, snippet: 'Demo result. Connect DataForSEO for real results.', domain: `${base.slice(0, 14)}${i}.example` })), cost: 0 };
 }
+
+// ---------- lead finder demo ----------
+// A fixed world of businesses on a lattice (one possible business every 0.012 degrees), so neighbouring map views see some of the same
+// ones, the way real Google results overlap. Deterministic: the same keyword and view always give the same list.
+const hash = (str) => { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
+const FIRST = ['Sunshine', 'Coastal', 'Palm', 'Bayside', 'Gulf', 'Magic City', 'Atlantic', 'Everglades', 'Biscayne', 'Tropic', 'Royal', 'Ace', 'Premier', 'Sunset', 'Island'];
+const CITY = ['Miami', 'Hialeah', 'Coral Gables', 'Miami Beach', 'Doral', 'Hollywood', 'Fort Lauderdale', 'Miramar'];
+const STEP = 0.012;
+export function mockFinder({ keyword, lat, lng, zoom = 14 }) {
+  const word = String(keyword || 'business').replace(/\b\w/g, (c) => c.toUpperCase());
+  const spanDeg = Math.max(0.01, (1000 * 156543.03 * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom / 111320 / 2);
+  const results = [];
+  const i0 = Math.floor((lat - spanDeg) / STEP), i1 = Math.ceil((lat + spanDeg) / STEP);
+  const j0 = Math.floor((lng - spanDeg) / STEP), j1 = Math.ceil((lng + spanDeg) / STEP);
+  for (let i = i0; i <= i1; i++) {
+    for (let j = j0; j <= j1; j++) {
+      const h = hash(`${keyword}|${i}|${j}`);
+      if (h % 5 > 1) continue; // about two in five sites have one
+      const n = hash(`n|${keyword}|${i}|${j}`);
+      const name = `${FIRST[n % FIRST.length]} ${word.split(' ')[0]} ${['Pros', 'Co', 'Services', 'Experts', 'Group'][(n >>> 4) % 5]}`;
+      const exch = 2 + (n % 8), line = String(1000 + ((n >>> 3) % 9000));
+      const hasSite = (n >>> 6) % 3 !== 0;
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '');
+      results.push({
+        title: name, cid: `demo-${i}-${j}`, place_id: `demo-place-${i}-${j}`, category: word, cats: [], rating: Math.round((3 + ((n >>> 8) % 20) / 10) * 10) / 10,
+        reviews: (n >>> 10) % 400, address: `${100 + (n % 900)} Demo St, ${CITY[(n >>> 2) % CITY.length]}, FL 331${String(10 + ((n >>> 5) % 80))}`,
+        city: CITY[(n >>> 2) % CITY.length], state: 'Florida', zip: `331${String(10 + ((n >>> 5) % 80))}`, phone: `(305) ${exch}${String(10 + ((n >>> 12) % 89))}-${line}`,
+        website: hasSite ? `https://www.${slug}.example` : '', domain: hasSite ? `${slug}.example` : '', lat: i * STEP, lng: j * STEP,
+        claimed: (n >>> 14) % 4 !== 0, photos: (n >>> 16) % 60, hours: true,
+      });
+    }
+  }
+  return { results: results.slice(0, 100), cost: 0 };
+}
