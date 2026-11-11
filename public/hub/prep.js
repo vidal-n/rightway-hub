@@ -3,6 +3,7 @@ import { $, $$, esc, api, toast, busy, modal, fmt } from './core.js';
 import { parseListings, listingsLine, listingsTable } from '/js/listings.js';
 import { markCues } from '/js/scriptprint.js';
 import { canRunCalls, can } from '/js/jobs.js';
+import { fromInputs, inputsIn, bothTimes, whenIn, ZONE_CHOICES, validZone } from '/js/apptime.js';
 import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of, quoteFor, scopeOfQuote } from '/js/leadintel.js';
 import { effort, hoursOf } from '/js/scope.js';
 
@@ -167,12 +168,22 @@ export async function bookModal(lead, onDone) {
   try { team = ((await api('/api/team')).users || []).filter(canRunCalls); } catch { team = []; }
   const me = window.__rwUser?.id;
   const pickId = lead.closer_id || (canRunCalls(window.__rwUser) ? me : 'auto');
-  const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0);
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
+  // The time is typed in the lead's zone (their clock), and the Hub shows it in yours too. No zone on the lead: say so and default to Eastern.
+  const yourTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+  const leadTz = validZone(lead.timezone);
+  const theirTz = leadTz || 'America/New_York';
+  const zoneOpts = [...new Map([...(leadTz ? [[leadTz, '']] : []), ...ZONE_CHOICES, [yourTz, '']]).entries()];
+  const zoneName = (z) => (ZONE_CHOICES.find(([v]) => v === z)?.[1] || z.replace(/^.*\//, '').replace(/_/g, ' '));
+  const tomorrow = inputsIn(Date.now() + 864e5, theirTz);
   const m = modal(`<div class="card-head"><h2>Book the Google clarity audit: ${esc(lead.business)}</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     ${noGoogle ? '<p class="muted">Google Calendar is not connected, so this books it in the Hub. Paste a Zoom or Meet link if you have one, then send them the invite text below.</p>' : `<p class="muted">The lead gets a Google invite with a Meet link from the calendar of whoever runs the call (or ${esc(g.email || g.booking.ownerEmail)} if they have not connected Google), and it goes on the team calendar.</p>`}
     <form id="bkf" class="form-grid">
-      <label class="field"><span>Date and time (your time)</span><input type="datetime-local" name="start" value="${local}" required></label>
+      <label class="field"><span>Their time zone</span><select name="tz">${zoneOpts.map(([z]) => `<option value="${esc(z)}"${z === theirTz ? ' selected' : ''}>${esc(zoneName(z))}</option>`).join('')}</select></label>
+      <label class="field"><span>Date</span><input type="date" name="day" value="${tomorrow.date}" required></label>
+      <label class="field"><span>Time (their clock)</span><input type="time" name="clock" value="10:00" step="900" required></label>
+      <input type="hidden" name="start" value="">
+      <p class="small span-all" id="bktimes" style="margin:-4px 0 0"></p>
+      ${leadTz ? '' : '<p class="small span-all err-text" style="margin:-4px 0 0">We do not know their time zone yet. Check it above before you book.</p>'}
       <label class="field"><span>Who runs the call</span><select name="closer_id"><option value="auto"${pickId === 'auto' ? ' selected' : ''}>First free closer</option>${team.map((u) => `<option value="${esc(u.id)}"${u.id === pickId ? ' selected' : ''}>${esc(u.name || u.email)}</option>`).join('')}</select></label>
       <p class="small span-all" id="bkfree" style="margin:-4px 0 0"></p>
       <label class="field"><span>Length</span><select name="minutes"><option value="20">20 minutes</option><option value="30" selected>30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label>
@@ -183,8 +194,19 @@ export async function bookModal(lead, onDone) {
     </form><div id="bkout"></div>`);
   // Who is free at that time: busy people are marked, and the chosen person's clash is spelled out before booking.
   const bf = $('#bkf', m.el);
+  // The moment for the typed day and time in their zone, and both clocks shown under the fields.
+  const momentNow = () => fromInputs(bf.day.value, bf.clock.value, bf.tz.value);
+  const showTimes = () => {
+    const t = momentNow();
+    bf.start.value = t ? String(t) : '';
+    $('#bktimes', m.el).innerHTML = t
+      ? `<strong>${esc(bothTimes(t, bf.tz.value, yourTz))}</strong>${bf.tz.value !== yourTz ? ` <span class="muted">· ${esc(whenIn(t, yourTz))} for you</span>` : ''}`
+      : '<span class="err-text">That day or time does not exist there. Pick another.</span>';
+  };
+  ['day', 'clock', 'tz'].forEach((k) => bf[k].addEventListener('change', () => { showTimes(); checkFree(); }));
+  showTimes();
   const checkFree = async () => {
-    const t = new Date(bf.start.value).getTime();
+    const t = Number(bf.start.value);
     if (!t || !bf.closer_id) return;
     try {
       const r = await api(`/api/closers/free?start=${t}&minutes=${bf.minutes.value}&lead=${encodeURIComponent(lead.id)}`);
@@ -195,23 +217,28 @@ export async function bookModal(lead, onDone) {
       $('#bkfree', m.el).innerHTML = c?.clash ? `<span class="err-text">${esc(c.clash)}</span>` : `<span class="muted">${esc((c?.name || 'They').split(' ')[0])} is free then.</span>`;
     } catch { /* booking still works */ }
   };
-  ['start', 'closer_id', 'minutes'].forEach((k) => bf[k]?.addEventListener('change', checkFree));
+  ['closer_id', 'minutes'].forEach((k) => bf[k]?.addEventListener('change', checkFree));
   checkFree();
   $('#bkf', m.el).addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target).entries());
+    const at = momentNow();
+    if (!at) { toast('That day or time does not exist there. Pick another.', true); return; }
+    const payload = { closer_id: f.closer_id, minutes: f.minutes, email: f.email, link: f.link, note: f.note, start: new Date(at).toISOString(), tz: f.tz };
     const btn = e.target.querySelector('button[type=submit]');
     busy(btn, true, 'Booking...');
     try {
       let r;
-      try { r = await api(`/api/leads/${lead.id}/meeting`, { method: 'POST', body: { ...f, start: new Date(f.start).toISOString() } }); }
+      try { r = await api(`/api/leads/${lead.id}/meeting`, { method: 'POST', body: payload }); }
       catch (err) {
         if (err.status !== 409 || !confirm(`${err.message}\n\nBook it anyway?`)) throw err;
-        r = await api(`/api/leads/${lead.id}/meeting`, { method: 'POST', body: { ...f, start: new Date(f.start).toISOString(), force: true } });
+        r = await api(`/api/leads/${lead.id}/meeting`, { method: 'POST', body: { ...payload, force: true } });
       }
-      const when = new Date(r.start).toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      const moment = new Date(r.start).getTime();
+      const when = whenIn(moment, f.tz);   // the lead reads their own zone in the invite text
+      const both = bothTimes(moment, f.tz, yourTz);
       const invite = `Hi ${(lead.contact_name || '').split(' ')[0] || 'there'}, this is ${r.rep || 'your rep'} with RightWay Growth. You're booked for your free Google clarity audit on ${when}.${r.meet ? ` Join here: ${r.meet}` : ' I will call you at this number and send the screen share link.'} Talk soon!`;
-      $('#bkout', m.el).innerHTML = `<div class="card" style="box-shadow:none;background:var(--mint-soft);margin-top:12px"><h3>Booked for ${esc(when)}</h3>
+      $('#bkout', m.el).innerHTML = `<div class="card" style="box-shadow:none;background:var(--mint-soft);margin-top:12px"><h3>Booked for ${esc(both)}</h3>
         ${r.meet ? `<div class="copybox"><code>${esc(r.meet)}</code></div>` : ''}
         <p class="small">${r.google === false ? 'Saved in the Hub. Send them the invite:' : 'Invite sent. The lead moved to Audit booked. Open Present before the call.'}</p>
         ${r.google === false ? `<div class="copybox"><code style="white-space:normal">${esc(invite)}</code></div><div class="row" style="gap:6px;margin-top:8px">

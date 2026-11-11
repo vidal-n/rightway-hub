@@ -14,6 +14,8 @@ import { quoteFor, callCategory, whoIs, CALL_CATS } from '/js/leadintel.js';
 import { SCOPE, effort, hoursOf } from '/js/scope.js';
 import { can, canRunCalls } from '/js/jobs.js';
 import { PHONE_TYPE_LABEL } from '/js/scrub.js';
+import { bothTimes, validZone } from '/js/apptime.js';
+const yourZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
 import { licenseSearchUrl, sunbizSearchUrl } from '/js/freedata.js';
 import { registryFor } from '/js/registries.js';
 import { RESEARCH_DEPTHS, adsLine, adLibraryLinks, directoryLinks } from '/js/freedata.js';
@@ -551,7 +553,7 @@ export async function leadModal(id, onChange) {
       <button class="btn btn-ghost" id="ledit">Edit</button>
     </div></div>
     ${l.dnc ? '<p class="badge bad" style="margin-bottom:12px">Do not call</p>' : ''}
-    ${l.meet_at && l.meet_at > Date.now() - 2 * 3600e3 ? `<div class="card meet-card"><b>Audit meeting ${esc(new Date(l.meet_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b>
+    ${l.meet_at && l.meet_at > Date.now() - 2 * 3600e3 ? `<div class="card meet-card"><b>Audit meeting ${esc(bothTimes(l.meet_at, validZone(l.timezone) || yourZone(), yourZone()))}</b>
       ${l.meet_link ? `<a class="btn btn-mint btn-sm" href="${esc(l.meet_link)}" target="_blank" rel="noopener">Join Google Meet</a>` : ''}${closer ? `<a class="btn btn-primary btn-sm" href="/present.html#${esc(l.id)}" target="_blank" rel="noopener">Open presentation</a>` : ''}</div>` : ''}
     <div class="card" id="lprep" style="box-shadow:none;margin-bottom:16px"></div>
     <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
@@ -936,7 +938,7 @@ export async function dialerPage(app, user) {
       <div class="dstrip" aria-label="Today"><span><b>${q.stats.dials}</b> dials <i>of 60</i></span><span><b>${q.stats.talks}</b> owner talks</span><span><b>${q.stats.booked}</b> booked</span><span><b>${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</b> contact rate</span>
         <details class="dlayout"><summary>Layout</summary><div class="dlayout-body"><label><input type="checkbox" id="lay-q"${lay.queue ? ' checked' : ''}> Up next list</label><label><input type="checkbox" id="lay-p"${lay.prep ? ' checked' : ''}> Script and research</label><label><input type="checkbox" id="lay-c"${lay.compact ? ' checked' : ''}> Tighter spacing</label></div></details></div>
       <div id="lowbal"></div>
-      ${upcoming.length ? `<div class="card upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(new Date(m.meet_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }))} ${esc(m.business)}</span>
+      ${upcoming.length ? `<div class="card upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(bothTimes(m.meet_at, validZone(m.timezone) || yourZone(), yourZone()))} ${esc(m.business)}</span>
         ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}${can(window.__rwUser, 'close') ? `<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>` : ''}`).join('')}</div>` : ''}
       ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
       <div class="dial-grid${lay.queue ? '' : ' no-queue'}${lay.prep ? '' : ' no-prep'}${lay.compact ? ' tight' : ''}">

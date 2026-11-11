@@ -10,6 +10,7 @@ import { logClaude } from './costs.js';
 import { token } from './db.js';
 import { icsCalendar, googleAddUrl } from '../public/js/ics.js';
 import { zoned, wallDate } from '../public/js/slots.js';
+import { clockIn, validZone } from '../public/js/apptime.js';
 
 export const TRIGGERS = { booked: 'When an appointment is booked', morning: 'The morning of the appointment', before: 'Before the appointment', after: 'After a missed appointment (no show)' };
 export const VARS = ['first', 'business', 'date', 'time', 'when', 'meet_line', 'meet_or_call', 'link', 'rep', 'rep_first', 'book', 'company'];
@@ -84,9 +85,10 @@ const TZ_DEFAULT = 'America/New_York';
 // Fill the template for one lead and appointment. Pure.
 export function fillTemplate(t, { lead = {}, start, rep = '', repFirst = '', tz = TZ_DEFAULT, bookUrl = '' } = {}) {
   const d = start ? new Date(start) : null;
-  const zone = lead.timezone || tz;
+  // The time is written in the lead's own zone with its name (12:45 PM EST), so it matches what they see on their clock.
+  const zone = validZone(lead.timezone) || validZone(tz) || TZ_DEFAULT;
   const date = d ? d.toLocaleDateString('en-US', { timeZone: zone, weekday: 'long', month: 'long', day: 'numeric' }) : '';
-  const time = d ? `${d.toLocaleTimeString('en-US', { timeZone: zone, hour: 'numeric', minute: '2-digit' })}${zone !== TZ_DEFAULT ? '' : ' Eastern'}` : '';
+  const time = d ? clockIn(d, zone) : '';
   const v = {
     first: (lead.contact_name || '').split(' ')[0] || 'there', business: lead.business || 'your business', date, time, when: d ? `${date} at ${time}` : '',
     link: lead.meet_link ? `Join here: ${lead.meet_link}` : 'We will call you at this number and send the screen share link.',

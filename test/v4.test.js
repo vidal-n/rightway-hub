@@ -28,7 +28,7 @@ test('automations: the sets, confirmation right away, morning of, 3 hours, 10 mi
   const late = { id: 'l2', meet_at: t + 30 * 60e3, timezone: 'America/New_York' };
   assert.deepEqual(dueFor(DEFAULT_AUTOMATIONS, late, t).map((a) => a.id), ['confirm_email']);
   const ctx = { lead: { contact_name: 'Mike Diaz', business: 'Sunrise', meet_link: 'https://meet.google.com/x', timezone: 'America/New_York' }, start: lead.meet_at, rep: 'Vidal, RightWay Growth', repFirst: 'Vidal' };
-  assert.match(fillTemplate('Hi {first}, {business} on {date} at {time}. {link}', ctx), /Hi Mike, Sunrise on Friday, November 6 at 2:00 PM Eastern\. Join here: https:\/\/meet/);
+  assert.match(fillTemplate('Hi {first}, {business} on {date} at {time}. {link}', ctx), /Hi Mike, Sunrise on Friday, November 6 at 2:00 PM EST\. Join here: https:\/\/meet/);
   assert.match(fillTemplate(DEFAULT_AUTOMATIONS[0].body, ctx), /It's Vidal from RightWay Growth[\s\S]*\nhttps:\/\/meet\.google\.com\/x\n/);
   assert.match(fillTemplate(AUTOMATION_SETS.sms.list[3].body, ctx), /here's the Google Meet, super excited to chat with you\. https:\/\/meet/);
   assert.match(fillTemplate('{meet_or_call}', { lead: {} }), /call you/);

@@ -302,7 +302,7 @@ route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body, defer 
 route('GET', '/api/calendar/upcoming', async ({ env, user }) => {
   requireStaff(user);
   const scope = apptScope(user);
-  const meetings = await all(env, `SELECT id, business, contact_name, phone, meet_at, meet_link, stage, score, grade, plan FROM leads WHERE meet_at >= ?${scope.sql} ORDER BY meet_at LIMIT 50`, now() - 2 * 3600e3, ...scope.args);
+  const meetings = await all(env, `SELECT id, business, contact_name, phone, timezone, meet_at, meet_link, stage, score, grade, plan FROM leads WHERE meet_at >= ?${scope.sql} ORDER BY meet_at LIMIT 50`, now() - 2 * 3600e3, ...scope.args);
   let events = [];
   const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);
   if (googleReady(env) && me?.google_token) {

@@ -3,6 +3,7 @@
 // closer's Google calendar (whoever runs the call, leads.closer_id); the person who booked it stays in leads.meet_by. Before a time is given to
 // a closer the Hub checks that closer's other audits, their Hub appointments and their Google busy times, so nobody gets double booked.
 // The copies are kept in step by the cron (masterTick) as well as right away, so every booking path is covered.
+import { whenIn, validZone } from '../public/js/apptime.js';
 import { HttpError, json } from './util.js';
 import { all, first, run, now, getSettings, setSetting, token } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
@@ -87,7 +88,9 @@ export async function inviteLead(env, leadId, { minutes = 30, note = '' } = {}) 
   const closerEmail = closer ? (closer.google_email || closer.email || '').toLowerCase() : '';
   const start = { dateTime: new Date(l.meet_at).toISOString() };
   const end = { dateTime: new Date(l.meet_at + minutes * 60e3).toISOString() };
-  const description = [AGENDA(l.business), closer ? `\nYour consultant: ${firstName(closer.name)}, Rightway Growth.` : '', note ? `\nNote: ${String(note).slice(0, 500)}` : ''].join('');
+  const theirZone = validZone(l.timezone);
+  const when = theirZone ? `\nTheir time: ${whenIn(l.meet_at, theirZone)} (${theirZone.replace(/_/g, ' ')}).` : '';
+  const description = [AGENDA(l.business), when, closer ? `\nYour consultant: ${firstName(closer.name)}, Rightway Growth.` : '', note ? `\nNote: ${String(note).slice(0, 500)}` : ''].join('');
   if (l.gcal_event_id) {
     // Moving or handing over an existing invite: change it where it lives, so the lead gets an update, not a second invite.
     let org = await userRow(env, l.gcal_owner);
