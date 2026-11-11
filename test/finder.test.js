@@ -217,6 +217,6 @@ test('finder with DataForSEO: real shape, cost counted, empty balance stops the 
   assert.equal(a.website, 'https://roofer1.test/');
   assert.equal(a.reviews, 11);
   assert.equal(a.claimed, false);
-  const spend = await all(t.env, "SELECT kind, n FROM cost_daily WHERE vendor = 'dataforseo'");
-  assert.ok(spend.some((s) => s.kind === 'lead finder (maps)' && s.n >= 9), 'finder spend shows up in the budget on its own line');
+  const spend = await all(t.env, "SELECT kind, n FROM cost_daily WHERE vendor = 'leads'");
+  assert.ok(spend.some((s) => s.kind === 'lead finder (maps)' && s.n >= 9), 'finder spend shows up under Lead data in the budget');
 });

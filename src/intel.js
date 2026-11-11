@@ -93,12 +93,12 @@ export async function researchLead(env, lead, { gridSize = 3, radiusMiles = 2, f
   let listing = null;
 
   if (lead.cid && lead.lat != null && lead.lng != null && !demo) {
-    const d = await businessDetails(env, { title: lead.business, cid: lead.cid, place_id: lead.place_id || '', lat: lead.lat, lng: lead.lng }, fetchImpl).catch(() => null);
+    const d = await businessDetails(env, { title: lead.business, cid: lead.cid, place_id: lead.place_id || '', lat: lead.lat, lng: lead.lng }, fetchImpl, 'lead research (maps)').catch(() => null);
     if (d) { cost += d.cost || 0; listing = d.business; }
   }
   if (!listing) {
     if (!lead.business || !location) throw new HttpError('Add the city and state so the Hub can find this business on Google.');
-    const s = demo ? mockSearch({ name: lead.business, location }) : await searchBusinesses(env, { name: lead.business, location }, fetchImpl);
+    const s = demo ? mockSearch({ name: lead.business, location }) : await searchBusinesses(env, { name: lead.business, location }, fetchImpl, 'lead research (maps)');
     cost += s.cost || 0;
     listing = matchListing(s.results, lead);
   }
@@ -115,7 +115,7 @@ export async function researchLead(env, lead, { gridSize = 3, radiusMiles = 2, f
     tasks.push(Promise.all(pts.map(async (p) => {
       const q = { keyword: intel.keyword, lat: p.lat, lng: p.lng, zoom: 13, cid: listing.cid, place_id: listing.place_id, title: listing.title, source: 'local', device: 'desktop' };
       try {
-        const r = demo ? mockRank(q) : await rankAtPoint(env, q, fetchImpl);
+        const r = demo ? mockRank(q) : await rankAtPoint(env, q, fetchImpl, 'lead research (grid)');
         cost += r.cost || 0;
         return { row: p.row, col: p.col, lat: p.lat, lng: p.lng, rank: r.rank, top: r.top.slice(0, 5) };
       } catch { return { row: p.row, col: p.col, lat: p.lat, lng: p.lng, rank: null, error: true, top: [] }; }

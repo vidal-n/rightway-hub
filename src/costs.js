@@ -7,7 +7,9 @@ import { requireAdmin } from './auth.js';
 import { route } from './router.js';
 
 const TZ = 'America/New_York';
-export const VENDORS = [['dataforseo', 'DataForSEO'], ['claude', 'Claude'], ['twilio', 'Twilio']];
+// Lead data is its own line: lead finder and lead research spend (kinds starting "lead ") and lists or other lead costs entered by hand.
+// Twilio lookups are already in Twilio's own usage, so they are not logged here again.
+export const VENDORS = [['dataforseo', 'DataForSEO'], ['claude', 'Claude'], ['twilio', 'Twilio'], ['leads', 'Lead data']];
 export const dayOf = (t = Date.now()) => new Date(t).toLocaleDateString('en-CA', { timeZone: TZ });
 const parse = (s, d) => { try { return s ? JSON.parse(s) : d; } catch { return d; } };
 const usd = (micro) => Math.round(Number(micro || 0)) / 1e6;
@@ -16,6 +18,7 @@ const r2 = (n) => Math.round(n * 100) / 100;
 // Written by the code that spends the money. Never throws: a missed ledger line must not break a scan or a reply.
 export async function logCost(env, vendor, kind, dollars, n = 1) {
   if (!env?.DB || !(dollars > 0)) return;
+  if (/^lead /.test(String(kind || ''))) vendor = 'leads';
   try {
     await run(env, `INSERT INTO cost_daily (day, vendor, kind, micro, n) VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(day, vendor, kind) DO UPDATE SET micro = micro + excluded.micro, n = n + excluded.n`, dayOf(), vendor, kind, Math.round(dollars * 1e6), n);
@@ -109,6 +112,18 @@ export async function costSummary(env, days = 30, fetchImpl = fetch) {
 route('GET', '/api/costs', async ({ env, user, url }) => {
   requireAdmin(user);
   return json(await costSummary(env, url.searchParams.get('days')));
+});
+
+// A lead expense entered by hand (a list bought, a data tool paid for). Counted today, on the Lead data line.
+route('POST', '/api/costs/entry', async ({ env, user, body }) => {
+  requireAdmin(user);
+  const b = await body();
+  const name = String(b.name || '').trim().slice(0, 60);
+  const amt = Number(b.dollars);
+  if (!name) throw new HttpError('Name the expense.');
+  if (!Number.isFinite(amt) || amt <= 0 || amt > 1e6) throw new HttpError('Enter a dollar amount above zero.');
+  await logCost(env, 'leads', `bought: ${name}`, Math.round(amt * 100) / 100);
+  return json(await costSummary(env, 30));
 });
 
 route('PUT', '/api/costs/budget', async ({ env, user, body }) => {

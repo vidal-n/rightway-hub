@@ -125,21 +125,21 @@ export function sameBusiness(item, target) {
   return Boolean(target.title && item.title && norm(item.title) === norm(target.title));
 }
 
-export async function searchBusinesses(env, { name, location }, fetchImpl) {
+export async function searchBusinesses(env, { name, location }, fetchImpl, kind = null) {
   const { items, cost } = await liveSerp(
     env, MAPS,
     { keyword: `${name} ${location}`, location_code: US, language_code: 'en', depth: 10 },
-    fetchImpl,
+    fetchImpl, kind,
   );
   return { results: organicListings(items).filter((i) => i.type === 'maps_search' || !i.type).slice(0, 8).map(slim), cost };
 }
 
-export async function rankAtPoint(env, q, fetchImpl) {
+export async function rankAtPoint(env, q, fetchImpl, kind = null) {
   const maps = q.source === 'maps';
   const task = maps
     ? { keyword: q.keyword, location_coordinate: `${q.lat.toFixed(7)},${q.lng.toFixed(7)},${q.zoom}z`, language_code: 'en', depth: 20, device: q.device }
     : { keyword: q.keyword, location_coordinate: `${q.lat.toFixed(7)},${q.lng.toFixed(7)}`, language_code: 'en', depth: 20, device: q.device };
-  const { items, types, cost } = await liveSerp(env, maps ? MAPS : LOCAL, task, fetchImpl);
+  const { items, types, cost } = await liveSerp(env, maps ? MAPS : LOCAL, task, fetchImpl, kind);
   const list = organicListings(items).slice(0, 20);
   const pos = list.findIndex((i) => sameBusiness(i, q));
   return {
@@ -162,11 +162,11 @@ export async function mapsSearch(env, { keyword, lat, lng, zoom = 14, depth = 10
 }
 
 // Full profile details for one business (used for the head-to-head table).
-export async function businessDetails(env, q, fetchImpl) {
+export async function businessDetails(env, q, fetchImpl, kind = null) {
   const { items, cost } = await liveSerp(
     env, MAPS,
     { keyword: q.title, location_coordinate: `${q.lat.toFixed(7)},${q.lng.toFixed(7)},14z`, language_code: 'en', depth: 10 },
-    fetchImpl,
+    fetchImpl, kind,
   );
   const list = organicListings(items);
   const hit = list.find((i) => sameBusiness(i, q)) || list.find((i) => norm(i.title) === norm(q.title)) || null;

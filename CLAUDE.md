@@ -536,6 +536,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   block on the dial card, the category chip on every power dial card, and a live card in the power dial popup while the call is up (business, person, phone, category). `placeCall` takes
   `who` and `cat` so the floating call bar shows business, person (owner, else contact, else "Ask for the owner") and the category; long status text goes on its own line so the name is
   never squeezed out. The power dial popup class is `pd compact` (`.mini` is a generic stat grid, do not reuse it).
+- Lead data cost line (Nov 2026): `logCost` (`src/costs.js`) puts any spend whose kind starts with "lead " under vendor `leads` ("Lead data"): Lead finder searches (`lead finder (maps)`), lead research (`lead research (maps)`, `lead research (grid)`), and owner entries via `POST /api/costs/entry` ({name, dollars}, counted today, kind `bought: <name>`). Budget vendor caps include Lead data. Twilio Lookup phone type checks are not logged again, since they are already in Twilio's usage. Client scans and listing checks stay on DataForSEO.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

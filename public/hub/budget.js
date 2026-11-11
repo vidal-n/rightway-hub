@@ -4,12 +4,13 @@ import { staffShell, settingsTabs } from './staff.js';
 import { stackBars, donut, legend } from '/js/charts.js';
 
 export const usd = (n, d = 2) => `${n < 0 ? '-' : ''}$${Math.abs(Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })}`;
-const VENDOR = { dataforseo: ['DataForSEO', 'var(--c-blue)'], claude: ['Claude', 'var(--c-violet)'], twilio: ['Twilio', 'var(--c-coral)'], fixed: ['Subscriptions', 'var(--c-amber)'] };
-const WHAT = { dataforseo: 'Scans, lead research, listing checks', claude: 'Ask Claude, captions, page drafts, replies', twilio: 'Calls, texts, numbers' };
+const KEYS = ['dataforseo', 'claude', 'twilio', 'leads'];
+const VENDOR = { dataforseo: ['DataForSEO', 'var(--c-blue)'], claude: ['Claude', 'var(--c-violet)'], twilio: ['Twilio', 'var(--c-coral)'], leads: ['Lead data', 'var(--c-green)'], fixed: ['Subscriptions', 'var(--c-amber)'] };
+const WHAT = { dataforseo: 'Client scans, listing checks, reviews', claude: 'Ask Claude, captions, page drafts, replies', twilio: 'Calls, texts, numbers, phone type checks', leads: 'Lead finder searches, lead research, lists and tools you buy' };
 const dayLabel = (d) => new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 const tone = (pct) => (pct == null ? '' : pct >= 100 ? 'bad' : pct >= 80 ? 'warn' : '');
 
-const seriesOf = (d) => ['dataforseo', 'claude', 'twilio'].map((k) => ({ name: VENDOR[k][0], color: VENDOR[k][1], values: d.series.map((x) => x[k] || 0) }));
+const seriesOf = (d) => KEYS.map((k) => ({ name: VENDOR[k][0], color: VENDOR[k][1], values: d.series.map((x) => x[k] || 0) }));
 const mkBar = (pct, cls = '') => `<div class="bgt ${cls}"><i style="width:${Math.min(100, Math.max(0, pct || 0))}%"></i></div>`;
 
 // ---------- Dashboard widget ----------
@@ -41,7 +42,7 @@ export async function budgetPage(app, user) {
   const draw = (d) => {
     const m = d.month, b = d.budget, r = d.revenue;
     const S = seriesOf(d);
-    const parts = [...['dataforseo', 'claude', 'twilio'].map((k) => ({ label: VENDOR[k][0], value: m.by[k], color: VENDOR[k][1] })), { label: VENDOR.fixed[0], value: m.fixed, color: VENDOR.fixed[1] }];
+    const parts = [...KEYS.map((k) => ({ label: VENDOR[k][0], value: m.by[k], color: VENDOR[k][1] })), { label: VENDOR.fixed[0], value: m.fixed, color: VENDOR.fixed[1] }];
     const paceDaily = b.monthly ? Math.max(0, (b.monthly - m.fixed) / m.days) : 0;
     view.innerHTML = `<div class="page-head"><div><p class="eyebrow">Settings</p><h1>Budget and costs</h1></div>
       <div class="seg" id="bg-range">${[14, 30, 60, 90].map((n) => `<button type="button" data-d="${n}" class="${d.days === n ? 'is-on' : ''}">${n} days</button>`).join('')}</div></div>
@@ -65,27 +66,38 @@ export async function budgetPage(app, user) {
         <div class="card"><div class="card-head"><h2>Monthly budget</h2><span class="badge ${tone(b.pct) || 'gray'}">${b.monthly ? `${b.pct}% used` : 'Not set'}</span></div>
           <form id="bg-form" class="bg-form">
             <label class="field"><span>Total for the month (usage plus subscriptions)</span><input name="monthly" type="number" min="0" step="1" inputmode="decimal" value="${b.monthly || ''}" placeholder="e.g. 300"></label>
-            <div class="bg-caps">${['dataforseo', 'claude', 'twilio'].map((k) => `<label class="field"><span>${VENDOR[k][0]} cap</span><input name="v_${k}" type="number" min="0" step="1" inputmode="decimal" value="${b.vendors[k] || ''}" placeholder="optional"></label>`).join('')}</div>
-            <div class="bg-vend">${['dataforseo', 'claude', 'twilio'].map((k) => { const cap = b.vendors[k]; const pct = cap ? Math.round((100 * m.by[k]) / cap) : null; return `<div><div class="bg-line"><span class="small"><i class="dot" style="background:${VENDOR[k][1]}"></i> ${VENDOR[k][0]}</span><span class="small mono">${usd(m.by[k])}${cap ? ` of ${usd(cap, 0)}` : ''}</span></div>${cap ? mkBar(pct, tone(pct)) : ''}</div>`; }).join('')}</div>
+            <div class="bg-caps">${KEYS.map((k) => `<label class="field"><span>${VENDOR[k][0]} cap</span><input name="v_${k}" type="number" min="0" step="1" inputmode="decimal" value="${b.vendors[k] || ''}" placeholder="optional"></label>`).join('')}</div>
+            <div class="bg-vend">${KEYS.map((k) => { const cap = b.vendors[k]; const pct = cap ? Math.round((100 * m.by[k]) / cap) : null; return `<div><div class="bg-line"><span class="small"><i class="dot" style="background:${VENDOR[k][1]}"></i> ${VENDOR[k][0]}</span><span class="small mono">${usd(m.by[k])}${cap ? ` of ${usd(cap, 0)}` : ''}</span></div>${cap ? mkBar(pct, tone(pct)) : ''}</div>`; }).join('')}</div>
             <p class="small muted">The Hub sends an owner notification once at 80% and again at 100% of the monthly total.</p>
             <button class="btn btn-primary" type="submit">Save budget</button></form></div>
         <div class="card"><div class="card-head"><h2>Monthly subscriptions</h2><span class="badge gray mono">${usd(m.fixed)}</span></div>
-          <p class="small muted" style="margin:0 0 10px">The flat bills that are not tied to usage: Cloudflare, Resend, Google Workspace, Slack, domains. They count toward the budget.</p>
+          <p class="small muted" style="margin:0 0 10px">The flat bills that are not tied to usage: Cloudflare, Resend, Google Workspace, Slack, domains, and any lead list you pay for every month. They count toward the budget.</p>
           <form id="fx-form"><div id="fx-rows" class="fx-rows"></div>
             <div class="row" style="margin-top:10px"><button type="button" class="btn btn-ghost btn-sm" id="fx-add">${'+'} Add a subscription</button><button class="btn btn-primary btn-sm" type="submit">Save subscriptions</button></div></form></div>
+        <div class="card"><div class="card-head"><h2>Add a lead expense</h2><span class="badge gray mono">${usd(m.by.leads || 0)} this month</span></div>
+          <p class="small muted" style="margin:0 0 10px">A one-off cost for finding or buying leads: a list, a tool, a data pull. It goes on the Lead data line for today. The Lead finder and lead research are counted automatically.</p>
+          <form id="le-form" class="bg-form"><label class="field"><span>What it was</span><input name="name" maxlength="60" placeholder="e.g. Florida licensed HVAC list"></label>
+            <label class="field"><span>Amount</span><input name="dollars" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="e.g. 49"></label>
+            <div class="row"><button class="btn btn-primary btn-sm" type="submit">Add expense</button></div></form></div>
         <div class="card" id="balbox"></div>
         <div class="card bg-wide"><div class="card-head"><h2>What each cost is for</h2><span class="small muted">this month</span></div>
           ${d.kinds.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>Service</th><th>What</th><th class="num">Calls</th><th class="num">Cost</th></tr></thead><tbody>${d.kinds.map((k) => `<tr><td><i class="dot" style="background:${VENDOR[k.vendor]?.[1] || 'var(--muted)'}"></i> ${esc(VENDOR[k.vendor]?.[0] || k.vendor)}</td><td>${esc(k.kind)}</td><td class="num mono">${k.n.toLocaleString()}</td><td class="num mono">${usd(k.usd, 4)}</td></tr>`).join('')}${m.twilioConnected ? `<tr><td><i class="dot" style="background:var(--c-coral)"></i> Twilio</td><td>Voice ${usd(m.twilio.calls)}, texts ${usd(m.twilio.sms)}, numbers ${usd(m.twilio.numbers)}, recordings ${usd(m.twilio.recordings)}</td><td class="num mono">-</td><td class="num mono">${usd(m.by.twilio, 4)}</td></tr>` : ''}</tbody></table></div>`
         : '<p class="muted">Nothing logged yet this month. Scans, research, Ask Claude and drafts show up here as they run.</p>'}</div>
       </div>`;
     $$('#bg-range [data-d]', view).forEach((x) => x.addEventListener('click', () => { days = Number(x.dataset.d); load(); }));
+    $('#le-form', view).addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = e.currentTarget, btn = $('button[type=submit]', f);
+      busy(btn, true, 'Adding...');
+      try { await api('/api/costs/entry', { method: 'POST', body: { name: f.name.value, dollars: f.dollars.value } }); toast('Lead expense added'); load(); } catch (err) { toast(err.message, true); busy(btn, false); }
+    });
     import('./balances.js').then((mod) => mod.balancesCard($('#balbox', view)));
     $('#bg-form', view).addEventListener('submit', async (e) => {
       e.preventDefault();
       const f = e.currentTarget, btn = $('button[type=submit]', f);
       busy(btn, true, 'Saving...');
       try {
-        await api('/api/costs/budget', { method: 'PUT', body: { monthly: f.monthly.value, vendors: { dataforseo: f.v_dataforseo.value, claude: f.v_claude.value, twilio: f.v_twilio.value } } });
+        await api('/api/costs/budget', { method: 'PUT', body: { monthly: f.monthly.value, vendors: { dataforseo: f.v_dataforseo.value, claude: f.v_claude.value, twilio: f.v_twilio.value, leads: f.v_leads.value } } });
         toast('Budget saved'); load();
       } catch (err) { toast(err.message, true); busy(btn, false); }
     });
