@@ -336,10 +336,25 @@ async function homePage(view) {
 
 // ---------- one search: progress, filters, results ----------
 async function jobPage(view, id) {
-  view.innerHTML = '<div class="skeleton"></div>';
+  view.innerHTML = '<div class="skeleton"></div><p class="small muted" id="jload" style="margin-top:10px">Loading the results</p>';
   let job, rows = [], capped = false, total = 0;
-  const loadResults = async () => { const r = await api(`/api/finder/jobs/${id}/results`); job = r.job; rows = r.results; capped = r.capped; total = r.total; };
-  try { await loadResults(); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p><a href="#/finder">Back to the lead finder</a>`; return; }
+  // The results come a page at a time (a big search has thousands), so the server never does too much in one go.
+  const MAX_ROWS = 40000;
+  const loadResults = async (onPage) => {
+    const out = [];
+    let after = '', firstPage = true;
+    for (;;) {
+      const r = await api(`/api/finder/jobs/${id}/results?after=${encodeURIComponent(after)}`);
+      if (firstPage) { job = r.job; total = r.total; firstPage = false; }
+      out.push(...r.results);
+      onPage?.(out.length, total);
+      if (!r.next || out.length >= MAX_ROWS) { capped = Boolean(r.next); break; }
+      after = r.next;
+    }
+    rows = out;
+  };
+  const loading = (n, t) => { const el = $('#jload', view); if (el) el.textContent = `Loading ${num(n)} of ${num(t)}`; };
+  try { await loadResults(loading); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p><a href="#/finder">Back to the lead finder</a>`; return; }
   let f = cleanFilters(job.filters);
   let q = '', sort = 'reviews_desc', shown = 100;
   const picked = new Set();
@@ -422,7 +437,7 @@ async function jobPage(view, id) {
     const a = b.dataset.a;
     try {
       if (a === 'clear') { picked.clear(); drawRows(); drawBar(); }
-      else if (a === 'refresh') { busy(b, true, 'Loading'); await loadResults(); draw(); }
+      else if (a === 'refresh') { busy(b, true, 'Loading'); await loadResults((n, t) => busy(b, true, `Loading ${num(n)} of ${num(t)}`)); draw(); }
       else if (a === 'stop' || a === 'resume') { job = (await api(`/api/finder/jobs/${id}/${a}`, { method: 'POST' })).job; drawTop(); drawBar(); }
       else if (a === 'csv') {
         const list = visible();
@@ -430,18 +445,30 @@ async function jobPage(view, id) {
         const el = document.createElement('a'); el.href = URL.createObjectURL(blob); el.download = `${job.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'leads'}.csv`; el.click(); setTimeout(() => URL.revokeObjectURL(el.href), 5000);
       } else if (a === 'add') {
         busy(b, true, 'Adding');
-        // Picked rows go in batches of 25 so one request never does too much work on the server.
-        const batches = picked.size ? chunkList([...picked], 25).map((keys) => ({ keys })) : [{ filters: f }];
+        // The ticked rows, or every new one that matches the filters, go in batches of 25 so one request never does too much on the server.
+        // Each answer says what happened to each row, so the list updates in place without loading it all again.
+        const keys = picked.size ? [...picked] : addable(visible()).map((x) => x.key);
+        const byKey = new Map(rows.map((x) => [x.key, x]));
         const r = { imported: 0, skipped: 0, skippedBy: {} };
-        for (const [i, body] of batches.entries()) {
-          busy(b, true, `Adding ${i * 25 + 1}+`);
-          const part = await api(`/api/finder/jobs/${id}/add`, { method: 'POST', body });
-          r.imported += part.imported; r.skipped += part.skipped;
-          for (const [k, v] of Object.entries(part.skippedBy || {})) r.skippedBy[k] = (r.skippedBy[k] || 0) + v;
+        let sent = 0;
+        try {
+          for (const part of chunkList(keys, 25)) {
+            busy(b, true, `Adding ${num(sent)} of ${num(keys.length)}`);
+            const res = await api(`/api/finder/jobs/${id}/add`, { method: 'POST', body: { keys: part } });
+            sent += part.length;
+            r.imported += res.imported; r.skipped += res.skipped;
+            for (const [k, v] of Object.entries(res.skippedBy || {})) r.skippedBy[k] = (r.skippedBy[k] || 0) + v;
+            for (const [k, v] of Object.entries(res.results || {})) { const row = byKey.get(k); if (row) { row.st = v.st; row.lead_id = v.lead_id; } picked.delete(k); }
+            if (res.job) job = res.job;
+          }
+        } catch (x) {
+          // Whatever went in before the error stays in; the rest can be added again (anything already added is skipped).
+          toast(`${num(r.imported)} added before it stopped: ${x.message} Press Add again to carry on.`, true);
+          draw(); return;
         }
         const why = Object.entries(r.skippedBy).filter(([, v]) => v).map(([k, v]) => `${v} ${{ phone: 'same phone', website: 'same website', name: 'same name', invalid: 'no phone', dnc: 'do not call' }[k] || k}`).join(', ');
         toast(`${num(r.imported)} added to the Pipeline${r.skipped ? `, ${num(r.skipped)} skipped (${why})` : ''}`);
-        picked.clear(); await loadResults(); draw();
+        picked.clear(); draw();
       }
     } catch (x) { toast(x.message, true); busy(b, false); }
   });
@@ -456,7 +483,9 @@ async function jobPage(view, id) {
       const t = await api('/api/finder/tick', { method: 'POST' });
       const mine = t.jobs.find((j) => j.id === id);
       if (mine) { job = mine; drawTop(); }
-      if (!active(job) || job.found - lastRows >= 60) { lastRows = job.found; await loadResults(); draw(); }
+      if (!active(job)) { await loadResults(); draw(); }
+      else if (job.found <= 1500 && job.found - lastRows >= 60) { lastRows = job.found; await loadResults(); draw(); }
+      else if (job.found > rows.length) { total = job.found; drawStats(); $('#jnote', view).textContent = `${num(job.found - rows.length)} more found since this list loaded. Press Refresh to see them, or wait: the list reloads when the search finishes.`; }
     } catch { /* try again */ }
     ticking = false;
   }, 5000);

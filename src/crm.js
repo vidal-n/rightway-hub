@@ -239,7 +239,7 @@ async function findDuplicate(env, data) {
 
 // The one import path: the CSV import and the lead finder both come through here, so they dedupe, scrub and queue the same way.
 // Returns the counts plus `rows`, one entry per input row: { id } for a new lead or { skipped, lead_id } for one that was not added.
-export async function importLeads(env, user, rows, { source, tags, defer } = {}) {
+export async function importLeads(env, user, rows, { source, tags, merge = true } = {}) {
   const keys = await existingKeys(env);
   const items = [];
   const out = new Array(rows.length);
@@ -273,10 +273,8 @@ export async function importLeads(env, user, rows, { source, tags, defer } = {})
   for (let i = 0; i < items.length; i += 100) await batch(env, items.slice(i, i + 100));
   // Duplicates with the leads already in the Hub (including name variants) are merged now, so the call list is clean from the start.
   const newIds = out.filter((x) => x?.id).map((x) => x.id);
-  // Big imports pass `defer` so the merge runs after the response; the rows are already saved, so the team sees them at once.
-  const mergeNow = () => autoMergeAfterImport(env, user, newIds).catch((e) => { console.error('auto merge', e.message); return 0; });
-  let merged = 0;
-  if (defer && newIds.length) defer(mergeNow()); else merged = await mergeNow();
+  // `merge: false` skips it for callers whose rows were all checked against the Hub just above (it reads every lead, which is slow).
+  const merged = merge ? await autoMergeAfterImport(env, user, newIds).catch((e) => { console.error('auto merge', e.message); return 0; }) : 0;
   // The full scrub (website emails, owner name, email check) runs in the background for everything that is still open.
   await queueScrub(env, items.filter((it) => !it[0].includes(' scrub,') && !it[0].includes(', scrub)')).map((it) => it[1 + it[0].match(/\(([^)]*)\)/)[1].split(', ').indexOf('id')]));
   const total = Object.values(skipped).reduce((a, b) => a + b, 0);

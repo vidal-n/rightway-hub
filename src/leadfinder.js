@@ -21,7 +21,10 @@ const isDemo = (env) => !env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD;
 const LOCK_MS = 60e3;
 export const PER_TICK = 12; // searches per tick (Workers allow about 50 outside requests per run)
 const PARALLEL = 6;
-const RESULT_CAP = 8000;
+// Every request works on a small slice, so a big search never runs past the Worker's time limit (Cloudflare answers 503 then).
+const PAGE = 400;        // results per page when the list is opened
+const ADD_MAX = 100;     // businesses per Add request
+const AUTO_STEP = 300;   // rows looked at per run while auto add works through a finished search
 const parse = (s, d) => { try { return s ? JSON.parse(s) : d; } catch { return d; } };
 const text = (v, max) => String(v ?? '').replace(/\u0000/g, '').trim().slice(0, max);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -68,10 +71,17 @@ route('POST', '/api/finder/geocode', async ({ env, user, body }) => {
 // ---------- jobs ----------
 const clampRadius = (v) => Math.round(Math.min(30, Math.max(0.5, v)) * 10) / 10;
 
+// Searches run one at a time, oldest first, so the others show as waiting rather than searching.
+function listView(jobs) {
+  const live = jobs.filter((j) => j.status === 'queued' || j.status === 'running').sort((a, b) => a.created_at - b.created_at);
+  const working = new Set(live.filter((j, i) => i === 0 || (j.locked_until && j.locked_until > now())).map((j) => j.id));
+  return jobs.map((j) => { const v = jobView(j); if (v.status === 'running' && !working.has(j.id)) v.status = 'queued'; return v; });
+}
+
 route('GET', '/api/finder', async ({ env, user }) => {
   requireAdmin(user);
   const jobs = await all(env, 'SELECT * FROM finder_jobs ORDER BY created_at DESC LIMIT 40');
-  return json({ jobs: jobs.map(jobView), demo: isDemo(env), free: await isFreeMode(env), limits: { maxRequests: MAX_REQUESTS, maxOsmRequests: MAX_OSM_REQUESTS, maxKeywords: MAX_KEYWORDS, maxAreas: MAX_AREAS } });
+  return json({ jobs: listView(jobs), demo: isDemo(env), free: await isFreeMode(env), limits: { maxRequests: MAX_REQUESTS, maxOsmRequests: MAX_OSM_REQUESTS, maxKeywords: MAX_KEYWORDS, maxAreas: MAX_AREAS } });
 });
 
 route('POST', '/api/finder/jobs', async ({ env, user, body }) => {
@@ -148,12 +158,17 @@ route('DELETE', '/api/finder/jobs/:id', async ({ env, user, params }) => {
 // ---------- results ----------
 const dupShape = (r) => ({ business: r.title, phone: r.phone, website: r.website, city: r.city, zip: r.zip });
 
-route('GET', '/api/finder/jobs/:id/results', async ({ env, user, params }) => {
+// One page at a time (`after` = the last key of the page before; `next` is set while there is more). The page keeps the list open fast.
+route('GET', '/api/finder/jobs/:id/results', async ({ env, user, params, url }) => {
   requireAdmin(user);
   const job = await jobOr404(env, params.id);
-  const rows = await all(env, 'SELECT rkey, data, state, lead_id FROM finder_results WHERE job_id = ? LIMIT ?', job.id, RESULT_CAP);
-  const total = (await first(env, 'SELECT COUNT(*) AS n FROM finder_results WHERE job_id = ?', job.id))?.n || 0;
-  const keys = await existingKeys(env);
+  const after = String(url.searchParams.get('after') || '').slice(0, 400);
+  const limit = Math.min(1000, Math.max(1, Math.round(Number(url.searchParams.get('limit'))) || PAGE));
+  const rows = await all(env, 'SELECT rkey, data, state, lead_id FROM finder_results WHERE job_id = ? AND rkey > ? ORDER BY rkey LIMIT ?', job.id, after, limit + 1);
+  const more = rows.length > limit;
+  if (more) rows.pop();
+  const total = after ? job.found : (await first(env, 'SELECT COUNT(*) AS n FROM finder_results WHERE job_id = ?', job.id))?.n || 0;
+  const keys = rows.some((r) => r.state === 'new') ? await existingKeys(env) : new Map();
   const results = rows.map((r) => {
     const rec = parse(r.data, {});
     let st = r.state, leadId = r.lead_id || null;
@@ -171,52 +186,84 @@ route('GET', '/api/finder/jobs/:id/results', async ({ env, user, params }) => {
     const l = byId.get(r.lead_id);
     if (l) Object.assign(r, { email: l.email || '', email_status: l.email_status || '', owner_name: l.owner_name || '', phone_type: l.phone_type || '', data_score: l.data_score ?? null, socials: parse(l.socials, null), lead_stage: l.stage });
   }
-  return json({ job: jobView(job), results, total, capped: total > results.length });
+  const next = more ? rows[rows.length - 1].rkey : null;
+  return json({ job: jobView(job), results, total, next, capped: false });
 });
 
 // Put businesses into the Pipeline. Either the keys the person ticked, or everything that passes the filters.
-export async function addToPipeline(env, job, rows, by, { tag, defer } = {}) {
+export async function addToPipeline(env, job, rows, by, { tag } = {}) {
   const recs = rows.map((r) => ({ key: r.rkey, rec: parse(r.data, {}) }));
-  const out = await importLeads(env, { id: by }, recs.map(({ rec }) => leadRow(rec)), { source: 'Lead finder', tags: tag || job.tag || job.name, defer });
+  const out = await importLeads(env, { id: by }, recs.map(({ rec }) => leadRow(rec)), { source: 'Lead finder', tags: tag || job.tag || job.name, merge: false });
   const ops = out.rows.map((o, i) => (o.id
     ? ["UPDATE finder_results SET state = 'added', lead_id = ? WHERE job_id = ? AND rkey = ?", o.id, job.id, recs[i].key]
     : ['UPDATE finder_results SET state = ?, lead_id = ? WHERE job_id = ? AND rkey = ?', o.skipped === 'dnc' ? 'dnc' : o.skipped === 'invalid' ? 'nophone' : 'inhub', o.lead_id || null, job.id, recs[i].key]));
   for (let i = 0; i < ops.length; i += 100) await batch(env, ops.slice(i, i + 100));
   await run(env, 'UPDATE finder_jobs SET added = added + ?, updated_at = ? WHERE id = ?', out.imported, now(), job.id);
+  const st = (o) => (o.id ? 'added' : o.skipped === 'dnc' ? 'dnc' : o.skipped === 'invalid' ? 'nophone' : 'inhub');
+  out.byKey = Object.fromEntries(out.rows.map((o, i) => [recs[i].key, { st: st(o), lead_id: o.id || o.lead_id || null }]));
   return out;
 }
 
-route('POST', '/api/finder/jobs/:id/add', async ({ env, user, params, body, defer }) => {
+// Either the keys the person ticked (up to ADD_MAX a request; the page sends them in batches), or what passes the filters,
+// looked at AUTO_STEP rows at a time from `after` (`next` says where to carry on).
+route('POST', '/api/finder/jobs/:id/add', async ({ env, user, params, body }) => {
   requireAdmin(user);
   const job = await jobOr404(env, params.id);
   const b = await body();
-  let rows = await all(env, "SELECT rkey, data FROM finder_results WHERE job_id = ? AND state = 'new'", job.id);
-  if (Array.isArray(b.keys)) { const want = new Set(b.keys.map(String)); rows = rows.filter((r) => want.has(r.rkey)); }
-  else { const f = cleanFilters(b.filters ?? parse(job.filters, {})); rows = rows.filter((r) => passes(parse(r.data, {}), f)); }
-  if (!rows.length) throw new HttpError('Nothing to add. These are already in the Hub, or none match the filters.');
-  let imported = 0, skipped = 0, scrubbed = 0;
-  const skippedBy = { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0 };
-  for (let i = 0; i < rows.length; i += 25) {
-    const r = await addToPipeline(env, job, rows.slice(i, i + 25), user.id, { tag: text(b.tag, 60), defer });
-    imported += r.imported; skipped += r.skipped; scrubbed += r.scrubbed;
-    for (const k of Object.keys(skippedBy)) skippedBy[k] += r.skippedBy[k] || 0;
+  let rows, next = null;
+  if (Array.isArray(b.keys)) {
+    const keys = [...new Set(b.keys.map(String))];
+    if (keys.length > ADD_MAX) throw new HttpError(`Send up to ${ADD_MAX} at a time.`);
+    rows = keys.length ? await all(env, `SELECT rkey, data FROM finder_results WHERE job_id = ? AND state = 'new' AND rkey IN (${keys.map(() => '?').join(',')})`, job.id, ...keys) : [];
+    if (!rows.length) return json({ imported: 0, skipped: 0, skippedBy: {}, scrubbed: 0, results: {}, job: jobView(job) });
+  } else {
+    const f = cleanFilters(b.filters ?? parse(job.filters, {}));
+    const page = await all(env, 'SELECT rkey, data, state FROM finder_results WHERE job_id = ? AND rkey > ? ORDER BY rkey LIMIT ?', job.id, String(b.after || ''), AUTO_STEP + 1);
+    if (page.length > AUTO_STEP) { page.pop(); next = page[page.length - 1].rkey; }
+    rows = page.filter((r) => r.state === 'new' && passes(parse(r.data, {}), f));
+    if (!rows.length && !next) throw new HttpError('Nothing to add. These are already in the Hub, or none match the filters.');
   }
-  return json({ imported, skipped, skippedBy, scrubbed, job: jobView(await jobOr404(env, job.id)) });
+  const out = { imported: 0, skipped: 0, scrubbed: 0, skippedBy: { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0 }, results: {} };
+  for (let i = 0; i < rows.length; i += 25) {
+    const r = await addToPipeline(env, job, rows.slice(i, i + 25), user.id, { tag: text(b.tag, 60) });
+    out.imported += r.imported; out.skipped += r.skipped; out.scrubbed += r.scrubbed;
+    for (const k of Object.keys(out.skippedBy)) out.skippedBy[k] += r.skippedBy[k] || 0;
+    Object.assign(out.results, r.byKey);
+  }
+  return json({ ...out, next, job: jobView(await jobOr404(env, job.id)) });
 });
 
 // ---------- the queue ----------
-async function autoAdd(env, job) {
+// Auto add works through a finished search AUTO_STEP rows per run (auto_add 1 = still going, 2 = finished), so no run reads the whole search.
+async function autoAddStep(env, job) {
   const f = cleanFilters(parse(job.filters, {}));
-  const rows = (await all(env, "SELECT rkey, data FROM finder_results WHERE job_id = ? AND state = 'new'", job.id)).filter((r) => passes(parse(r.data, {}), f));
+  const page = await all(env, 'SELECT rkey, data, state FROM finder_results WHERE job_id = ? AND rkey > ? ORDER BY rkey LIMIT ?', job.id, job.auto_cursor || '', AUTO_STEP + 1);
+  const last = page.length <= AUTO_STEP;
+  if (!last) page.pop();
+  const want = page.filter((r) => r.state === 'new' && passes(parse(r.data, {}), f));
   let added = 0;
-  for (let i = 0; i < rows.length; i += 1000) added += (await addToPipeline(env, job, rows.slice(i, i + 1000), job.created_by)).imported;
-  return added;
+  for (let i = 0; i < want.length; i += 25) added += (await addToPipeline(env, job, want.slice(i, i + 25), job.created_by)).imported;
+  await run(env, 'UPDATE finder_jobs SET auto_cursor = ?, auto_add = ? WHERE id = ?', page.length ? page[page.length - 1].rkey : job.auto_cursor || '', last ? 2 : 1, job.id);
+  return { added, last };
+}
+async function autoAddTick(env, at) {
+  const job = await first(env, "SELECT * FROM finder_jobs WHERE status = 'done' AND auto_add = 1 AND (locked_until IS NULL OR locked_until < ?) ORDER BY finished_at LIMIT 1", at);
+  if (!job) return;
+  const claim = await run(env, 'UPDATE finder_jobs SET locked_until = ? WHERE id = ? AND (locked_until IS NULL OR locked_until < ?)', at + LOCK_MS, job.id, at);
+  if ((claim?.meta?.changes ?? 1) < 1) return;
+  try {
+    const { last } = await autoAddStep(env, job);
+    if (last) {
+      const done = await jobOr404(env, job.id);
+      await notify(env, { to: job.created_by ? [job.created_by] : 'admins', kind: 'lead', title: `Lead search added to the Pipeline: ${(done.added || 0).toLocaleString('en-US')} businesses`, body: job.name, url: `/#/finder/${job.id}`, slack: false }).catch(() => {});
+    }
+  } finally { await run(env, 'UPDATE finder_jobs SET locked_until = NULL WHERE id = ?', job.id); }
 }
 
 // Work on the oldest waiting search for up to `budget` map views. Returns how many were run (the cron uses it to share the outside request budget).
 export async function finderTick(env, budget = PER_TICK, { fetchImpl, at = now() } = {}) {
   const job = await first(env, "SELECT * FROM finder_jobs WHERE status IN ('queued', 'running') AND (locked_until IS NULL OR locked_until < ?) ORDER BY created_at LIMIT 1", at);
-  if (!job) return 0;
+  if (!job) { await autoAddTick(env, at).catch((e) => console.error('finder auto add', e)); return 0; }
   const claim = await run(env, "UPDATE finder_jobs SET locked_until = ?, status = 'running' WHERE id = ? AND (locked_until IS NULL OR locked_until < ?)", at + LOCK_MS, job.id, at);
   if ((claim?.meta?.changes ?? 1) < 1) return 0;
   const osm = job.source === 'osm';
@@ -247,8 +294,10 @@ export async function finderTick(env, budget = PER_TICK, { fetchImpl, at = now()
   await run(env, 'UPDATE finder_jobs SET done = ?, errors = errors + ?, found = ?, cost = cost + ?, status = ?, error = ?, locked_until = NULL, updated_at = ?, finished_at = ? WHERE id = ?',
     i, errors, found, cost, status, error || null, now(), finished || fatal ? now() : null, job.id);
   if (status === 'done') {
-    const added = job.auto_add ? await autoAdd(env, job).catch((e) => { console.error('finder auto add', e); return 0; }) : 0;
-    await notify(env, { to: job.created_by ? [job.created_by] : 'admins', kind: 'lead', title: `Lead search finished: ${found.toLocaleString('en-US')} businesses`, body: `${job.name}${added ? `. ${added.toLocaleString('en-US')} added to the Pipeline.` : '. Review them and add the ones you want.'}`, url: `/#/finder/${job.id}`, slack: false }).catch(() => {});
+    // The first step of auto add runs now; a big search carries on in the next runs.
+    const step = job.auto_add === 1 ? await autoAddStep(env, { ...job, auto_cursor: '' }).catch((e) => { console.error('finder auto add', e); return { added: 0, last: true }; }) : null;
+    const tail = step ? `. ${step.added.toLocaleString('en-US')} added to the Pipeline${step.last ? '.' : ' so far, the rest are being added now.'}` : '. Review them and add the ones you want.';
+    await notify(env, { to: job.created_by ? [job.created_by] : 'admins', kind: 'lead', title: `Lead search finished: ${found.toLocaleString('en-US')} businesses`, body: `${job.name}${tail}`, url: `/#/finder/${job.id}`, slack: false }).catch(() => {});
   }
   return used;
 }
@@ -257,5 +306,5 @@ route('POST', '/api/finder/tick', async ({ env, user }) => {
   requireAdmin(user);
   const used = await finderTick(env, PER_TICK);
   const jobs = await all(env, "SELECT * FROM finder_jobs WHERE status IN ('queued', 'running') OR finished_at > ? ORDER BY created_at DESC LIMIT 40", now() - 60e3);
-  return json({ used, jobs: jobs.map(jobView) });
+  return json({ used, jobs: listView(jobs) });
 });
