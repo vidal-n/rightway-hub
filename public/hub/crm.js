@@ -27,7 +27,7 @@ const CLOSED = ['not_now', 'lost', 'dnc'];
 // Built in results, used until the custom list loads and for older call records.
 const OUTCOMES = [
   ['no_answer', 'No answer', '1'], ['voicemail', 'Voicemail', '2'], ['gatekeeper', 'Gatekeeper', '3'], ['conversation', 'Talked, follow up', '4'],
-  ['booked', 'Booked audit', '5'], ['callback', 'Callback', '6'], ['not_interested', 'Not interested', '7'], ['bad_number', 'Bad number', '8'], ['dnc', 'Do not call', '9'],
+  ['booked', 'Booked audit', '5'], ['callback', 'Callback', '6'], ['not_interested', 'Not interested', '7'], ['bad_number', 'Bad number', '8'], ['dnc', 'Do not call', '9'], ['phone_menu', 'Phone menu, nobody to reach', ''],
 ];
 const dueText = (ms) => {
   if (!ms) return '';

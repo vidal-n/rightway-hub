@@ -12,7 +12,7 @@ export const statusLabel = (k) => (k === 'on_call' ? 'On a call' : (STATUSES.fin
 export const statusTone = (k) => (k === 'on_call' ? 'live' : (STATUSES.find((s) => s[0] === k) || STATUSES[STATUSES.length - 1])[2]);
 
 const INBOUND = ['inbound', 'missed', 'voicemail', 'inbound_answered'];
-const NOT_HUMAN = ['no_answer', 'voicemail', 'bad_number'];
+const NOT_HUMAN = ['no_answer', 'voicemail', 'bad_number', 'phone_menu'];
 const HUMAN = ['conversation', 'booked', 'callback', 'not_interested', 'gatekeeper', 'dnc', 'won', 'hung_up'];
 const DECISION = ['conversation', 'booked', 'callback', 'not_interested', 'won'];
 

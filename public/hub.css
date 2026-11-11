@@ -1879,3 +1879,10 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 /* Scrub progress strip on the Pipeline */
 .scstrip { margin: 0 0 14px; padding: 14px 16px; }
 .scstrip .row { gap: 12px; align-items: center; }
+
+/* Calmer script: one step at a time, coaching notes off until asked for, spoken lines larger */
+.script-body.hide-notes .say-note, .script-body.hide-notes .do-in { display: none; }
+.script-step .say-line { font-size: 19px; line-height: 1.6; margin: 0 0 16px; }
+.script-step .say-alt { margin: -6px 0 16px 14px; font-size: 15px; opacity: .85; }
+.script-step .say-screen { margin: 0 0 14px; padding: 6px 10px; font-size: 13px; }
+.script-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--mint-mid); }

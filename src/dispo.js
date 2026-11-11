@@ -9,11 +9,11 @@ export const ACTS = {
   no_answer: 'No answer (try again later)', voicemail: 'Voicemail (try again later)', gatekeeper: 'Gatekeeper (try again later)',
   hung_up: 'Hung up (counts as a contact, try again later)',
   conversation: 'Talked (follow up in 2 days)', booked: 'Booked audit', callback: 'Callback at a set time', not_interested: 'Not interested (recycle in 90 days)',
-  bad_number: 'Bad number (lost)', dnc: 'Do not call', none: 'Just log it (no change to the lead)',
+  bad_number: 'Bad number (lost)', phone_menu: 'Phone menu, nobody to reach (lost, tagged)', dnc: 'Do not call', none: 'Just log it (no change to the lead)',
 };
 export const BASE_DISPOS = [
   ['no_answer', 'No answer'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'], ['conversation', 'Talked, follow up'], ['booked', 'Booked audit'],
-  ['callback', 'Callback'], ['hung_up', 'Hung up'], ['not_interested', 'Not interested'], ['bad_number', 'Bad number'],
+  ['callback', 'Callback'], ['hung_up', 'Hung up'], ['not_interested', 'Not interested'], ['bad_number', 'Bad number'], ['phone_menu', 'Phone menu (press a number)'],
   ['not_owner', 'Not the decision maker', 'gatekeeper'], ['send_info', 'Wants info first', 'conversation'], ['has_agency', 'Has an agency', 'not_interested'],
   ['not_fit', 'Not a fit', 'not_interested'], ['wrong_number', 'Wrong number', 'bad_number'], ['dnc', 'Do not call'],
 ].map(([id, label, acts]) => ({ id, label, acts: acts || id }));

@@ -14,3 +14,12 @@ test('Game Plan script: own group, filled with rep, company and business', () =>
   assert.equal(scriptSteps('plan').length, 3);
   assert.ok(PRINT_VARS.company && PRINT_VARS.rep);
 });
+
+import { applyOutcome } from '../src/crm.js';
+test('phone menu outcome takes the lead off the list and tags it', () => {
+  const set = applyOutcome({ stage: 'new', tags: 'roofing', attempts: 0 }, 'phone_menu');
+  assert.equal(set.stage, 'lost');
+  assert.equal(set.tags, 'roofing, phone menu');
+  assert.equal(set.next_action_at, null);
+  assert.equal(applyOutcome({ stage: 'new', tags: 'phone menu' }, 'phone_menu').tags, 'phone menu');
+});

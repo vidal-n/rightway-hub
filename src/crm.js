@@ -96,6 +96,10 @@ export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, not
     case 'bad_number':
       Object.assign(set, { stage: 'lost', next_action_at: null, next_action: null });
       break;
+    case 'phone_menu':
+      // An automated menu ("press 1 for sales") with no way to reach a person: taken off the call list, tagged so it can be found.
+      Object.assign(set, { stage: 'lost', next_action_at: null, next_action: 'Phone menu: nobody to reach', tags: /phone menu/i.test(lead.tags || '') ? lead.tags : [lead.tags, 'phone menu'].filter(Boolean).join(', ') });
+      break;
     case 'dnc':
       Object.assign(set, { stage: 'dnc', dnc: 1, next_action_at: null, next_action: 'Do not call' });
       break;

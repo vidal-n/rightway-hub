@@ -86,8 +86,13 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
       ${!intel ? `<div class="caption" style="margin:12px 0">Not researched yet. Research finds their Google profile, checks where they rank around their address, reads their website, and tests mobile speed. About 4 cents.</div>` : intel.demo ? '<p class="badge warn" style="margin:10px 0 0">Demo data: DataForSEO is not connected</p>' : ''}
       <div class="fold-bar"><button type="button" class="linkbtn" data-folds="open">Open all</button><button type="button" class="linkbtn" data-folds="close">Close all</button></div>
       ${fold('script', 'Script', `<div class="seg script-groups" role="tablist">${s.groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${g.key}">${esc(g.name)}</button>`).join('')}</div>
+      <label class="row small script-notes-sw" style="gap:8px;margin:8px 0 0"><input type="checkbox" id="scnotes"> Show coaching notes</label>
       <div class="seg script-tabs" role="tablist">${s.steps.map((st, i) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${st.group}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
-      <div class="script-body">${s.steps.map((st, i) => `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}</div>`).join('')}</div>`, true)}
+      <div class="script-body hide-notes">${s.steps.map((st, i) => {
+        const sib = s.steps.map((x, j) => [x, j]).filter(([x]) => x.group === st.group), at = sib.findIndex(([, j]) => j === i);
+        const back = sib[at - 1], next = sib[at + 1];
+        return `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}<div class="script-nav">${back ? `<button type="button" class="btn btn-ghost btn-sm" data-go="${back[1]}">Back</button>` : '<span></span>'}${next ? `<button type="button" class="btn btn-primary btn-sm" data-go="${next[1]}">Next: ${esc(next[0].title)}</button>` : ''}</div></div>`;
+      }).join('')}</div>`, true)}
       ${intel ? fold('snapshot', 'Their numbers', `<div class="prep-grid">
         <div>${snapshot(lead, intel)}</div>
         ${intel.grid ? `<div class="prep-map">${miniGrid(intel.grid)}<div class="small" style="text-align:center">Rank around them</div></div>` : ''}
@@ -106,6 +111,11 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
     tabs.forEach((t) => { t.hidden = t.dataset.g !== b.dataset.group; });
     tabs.find((t) => !t.hidden)?.click();
   }));
+  const notes = $('#scnotes', el);
+  try { notes.checked = localStorage.getItem('rw-script-notes') === '1'; } catch { /* ignore */ }
+  const paintNotes = () => { $('.script-body', el).classList.toggle('hide-notes', !notes.checked); try { localStorage.setItem('rw-script-notes', notes.checked ? '1' : '0'); } catch { /* ignore */ } };
+  notes.addEventListener('change', paintNotes); paintNotes();
+  $$('[data-go]', el).forEach((b) => b.addEventListener('click', () => { $(`[data-step="${b.dataset.go}"]`, el)?.click(); $('.script-tabs', el)?.scrollIntoView({ block: 'nearest' }); }));
   $$('[data-step]', el).forEach((b) => b.addEventListener('click', () => {
     $$('[data-step]', el).forEach((x) => x.classList.toggle('is-on', x === b));
     $$('[data-body]', el).forEach((x) => { x.hidden = x.dataset.body !== b.dataset.step; });
