@@ -5,7 +5,8 @@ import { HttpError, json } from './util.js';
 import { getSettings, setSetting } from './db.js';
 import { requireAdmin } from './auth.js';
 import { route } from './router.js';
-import { stateCode, registryFor, openDataUrl, normalizeRows } from '../public/js/registries.js';
+import { stateCode, registryFor, openDataUrl, normalizeRows, newFilingsUrl, NEW_FILING_STATES } from '../public/js/registries.js';
+import { nameStem } from '../public/js/freedata.js';
 import { overpassQuery, osmRecord, sunbizSearchUrl, parseSunbizResults, pickEntity, parseSunbizDetail, pickOwner, yearsSince, entityName } from '../public/js/freedata.js';
 
 const UA = 'RightwayHub/1.0 (hello@rightwaygrowth.com)';
@@ -105,4 +106,26 @@ route('PUT', '/api/lead-mode', async ({ env, user, body }) => {
   if ('mode' in b) { if (!['free', 'paid'].includes(b.mode)) throw new HttpError('Mode must be free or paid.'); await setSetting(env, 'lead_mode', b.mode); }
   if ('sunbiz' in b) await setSetting(env, 'sunbiz_auto', b.sunbiz ? '1' : '0');
   return json({ ...(await leadMode(env)), paidReady: Boolean(env.DATAFORSEO_LOGIN && env.DATAFORSEO_PASSWORD) });
+});
+
+// New businesses from the state filings (free): filed in the last N days, with the industry words in the name.
+// Owners only. Up to 5 states at once. Rows have no phone number, so they are a list to research and call by hand.
+route('GET', '/api/finder/new-filings', async ({ user, url }) => {
+  requireAdmin(user);
+  const q = new URL(url, 'https://x.local').searchParams;
+  const states = String(q.get('states') || '').split(',').map((x) => stateCode(x)).filter((c) => NEW_FILING_STATES.includes(c)).slice(0, 5);
+  if (!states.length) throw new HttpError(`Choose one or more states with open filing data: ${NEW_FILING_STATES.join(', ')}. Other states have no free query.`);
+  const days = Math.max(1, Math.min(730, Number(q.get('days')) || 120));
+  const stems = String(q.get('industries') || '').split('|').map((k) => nameStem(k)).filter(Boolean);
+  const fetchImpl = fetch;
+  const out = [], errors = [];
+  for (const code of states) {
+    const u = newFilingsUrl(code, { days, stems });
+    try {
+      const res = await withTimeout(fetchImpl, u, { headers: { 'user-agent': UA, accept: 'application/json' } }, 15000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      out.push(...normalizeRows(code, await res.json()).map((r) => ({ ...r, state: code })));
+    } catch (e) { errors.push({ state: code, error: String(e.message || e).slice(0, 120) }); }
+  }
+  return json({ days, stems, count: out.length, filings: out.sort((a, b) => String(b.filed).localeCompare(String(a.filed))).slice(0, 500), errors });
 });

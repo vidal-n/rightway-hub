@@ -5,7 +5,12 @@ import { $, $$, esc, api, toast, busy } from './core.js';
 import { staffShell } from './shell.js';
 import { COVERAGE, estimate, parseKeywords, parseAreas, MAX_REQUESTS, MAX_OSM_REQUESTS, MAX_AREAS, OSM_SIZES, SOURCES, passes, cleanFilters, csvText } from '/js/finder.js';
 import { CITIES, DEFAULT_TOP, expandAreas, chunkAreas } from '/js/cities.js';
-import { STATES } from '/js/registries.js';
+import { STATES, NEW_FILING_STATES } from '/js/registries.js';
+import { TARGET_INDUSTRIES } from '/js/leadintel.js';
+import { directoryLinks } from '/js/freedata.js';
+const MINE_KEY = 'rw-finder-industries';
+const mineRead = () => { try { return JSON.parse(localStorage.getItem(MINE_KEY) || '[]'); } catch { return []; } };
+const mineSave = (v) => { try { localStorage.setItem(MINE_KEY, JSON.stringify(v)); } catch { /* private window: nothing saved */ } };
 
 const num = (n) => Number(n || 0).toLocaleString('en-US');
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
@@ -60,6 +65,11 @@ async function homePage(view) {
         </div>
         <div id="fcities" class="row" style="flex-wrap:wrap;gap:8px 16px;margin-top:12px"></div>
         <div class="row" style="margin-top:10px;gap:8px"><button class="btn btn-ghost btn-sm" id="fall" type="button">Tick all</button><button class="btn btn-ghost btn-sm" id="fnone" type="button">Clear</button><button class="btn btn-primary btn-sm" id="fadd_pick" type="button">Add ticked cities</button></div>
+      </div></details>
+      <details class="fold" style="margin-top:10px" id="find"><summary><span>Pick industries instead of typing keywords</span></summary><div class="fold-body">
+        <p class="small muted" style="margin-top:0">Tick the industries you work with. Each one fills in its search keyword above. Your picks are remembered on this device.</p>
+        <div class="row" style="flex-wrap:wrap;gap:6px 16px" id="findlist">${TARGET_INDUSTRIES.map((x, i) => `<label class="row small" style="gap:6px"><input type="checkbox" data-ind="${i}"> ${esc(x.label)}</label>`).join('')}</div>
+        <div class="row" style="margin-top:10px;gap:8px"><button class="btn btn-ghost btn-sm" type="button" id="findadd">Add ticked to keywords</button><button class="btn btn-ghost btn-sm" type="button" id="findclr">Clear ticks</button></div>
       </div></details>
       <p class="small muted" style="margin:10px 0 6px"><b>Where from</b></p>
       <div class="seg" id="fsrc">${SOURCES.map(([k, l]) => `<button type="button" data-src="${k}" class="${k === source ? 'is-on' : ''}"${k === 'google' && d.free ? ' disabled title="Free lead data mode is on"' : ''}>${esc(l)}</button>`).join('')}</div>
@@ -154,6 +164,59 @@ async function homePage(view) {
       toast(started.length > 1 ? `${started.length} searches started` : 'Search started');
       location.hash = `#/finder/${started[0]}`;
     } catch (x) { err.textContent = x.message; err.hidden = false; busy(e.currentTarget, false); }
+  });
+
+  // Industries: remembered picks, and a button that writes their keywords into the keyword box.
+  const mine = new Set(mineRead());
+  $$('#findlist [data-ind]', view).forEach((x) => { x.checked = mine.has(TARGET_INDUSTRIES[Number(x.dataset.ind)].keyword); });
+  $('#findlist', view).addEventListener('change', (e) => {
+    const x = e.target.closest('[data-ind]'); if (!x) return;
+    const k = TARGET_INDUSTRIES[Number(x.dataset.ind)].keyword;
+    if (x.checked) mine.add(k); else mine.delete(k);
+    mineSave([...mine]);
+  });
+  $('#findadd', view).addEventListener('click', () => {
+    const have = parseKeywords($('#fkw', view).value, 99).map((k) => k.toLowerCase());
+    const add = [...mine].filter((k) => !have.includes(k.toLowerCase()));
+    $('#fkw', view).value = [$('#fkw', view).value.trim(), ...add].filter(Boolean).join('\n');
+    est(); toast(add.length ? `${add.length} keyword${add.length === 1 ? '' : 's'} added` : 'Those are already in the keywords');
+  });
+  $('#findclr', view).addEventListener('click', () => { mine.clear(); mineSave([]); $$('#findlist [data-ind]', view).forEach((x) => { x.checked = false; }); });
+
+  // New businesses: filings in the last few months from the states that publish them (free). These have no phone, so research and call by hand.
+  const newBox = document.createElement('div');
+  newBox.className = 'card'; newBox.style.marginTop = '22px';
+  newBox.innerHTML = `<div class="card-head"><h3>New businesses (state filings, free)</h3></div>
+    <p class="small muted" style="margin:0 0 10px">Companies that just filed with the state, so they often need a website, a Google profile and marketing. Only ${NEW_FILING_STATES.join(', ')} publish this for free. The filing does not show phone numbers or whether they have a Google listing, so check Google by hand (the links open the search).</p>
+    <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
+      <label class="field" style="flex:1 1 200px"><span>States (up to 5)</span><select id="nfstate" multiple size="4">${NEW_FILING_STATES.map((c) => `<option value="${c}"${c === 'CO' ? ' selected' : ''}>${esc(STATES.find((x) => x[0] === c)?.[1] || c)}</option>`).join('')}</select></label>
+      <label class="field" style="flex:0 0 130px"><span>Filed in the last</span><select id="nfdays"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="180">6 months</option><option value="365">1 year</option></select></label>
+      <button class="btn btn-primary btn-sm" id="nfgo" type="button">Find new businesses</button>
+    </div>
+    <p class="small muted" style="margin:8px 0 0">Industries: ${mine.size ? esc([...mine].join(', ')) : 'none picked (all businesses). Pick industries above to narrow it.'}</p>
+    <div id="nfout" style="margin-top:12px"></div>`;
+  $('#fjobs', view).parentElement.appendChild(newBox);
+  $('#nfgo', view).addEventListener('click', async (e) => {
+    const states = [...$('#nfstate', view).selectedOptions].map((o) => o.value);
+    if (!states.length) return toast('Choose a state', true);
+    busy(e.currentTarget, true, 'Searching');
+    try {
+      const q = new URLSearchParams({ states: states.join(','), days: $('#nfdays', view).value, industries: [...mine].join('|') });
+      const r = await api(`/api/finder/new-filings?${q}`);
+      const rows = r.filings;
+      const link = (x) => directoryLinks({ business: x.name, city: x.city, state: x.state }).filter((l) => ['google', 'yelp'].includes(l.key)).map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>`).join(' · ');
+      $('#nfout', view).innerHTML = `<p class="small"><b>${num(r.count)}</b> filed in the last ${esc(r.days)} days${r.errors?.length ? ` · <span class="err-text">${r.errors.map((x) => `${x.state} could not be read (${esc(x.error)})`).join('; ')}</span>` : ''}</p>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Business</th><th>State</th><th>City</th><th>Filed</th><th>Status</th><th>Agent</th><th>Check Google</th></tr></thead><tbody>
+        ${rows.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.state)}</td><td>${esc(x.city)}</td><td>${esc(x.filed)}</td><td class="small">${esc(x.status || '')}</td><td class="small">${esc(x.agent || '')}</td><td class="small">${link(x)}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Nothing filed in that time with those words.</td></tr>'}
+        </tbody></table></div>
+        ${rows.length ? '<div class="row" style="margin-top:8px"><button class="btn btn-ghost btn-sm" id="nfcsv" type="button">Download list (CSV)</button></div>' : ''}`;
+      $('#nfcsv', view)?.addEventListener('click', () => {
+        const head = ['business', 'state', 'city', 'filed', 'status', 'agent'];
+        const body = rows.map((x) => [x.name, x.state, x.city, x.filed, x.status, x.agent].map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','));
+        const el = document.createElement('a'); el.href = URL.createObjectURL(new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv' })); el.download = 'new-businesses.csv'; el.click();
+      });
+    } catch (x) { toast(x.message, true); }
+    busy(e.currentTarget, false);
   });
 
   let jobs = d.jobs;

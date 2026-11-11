@@ -571,6 +571,11 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   state, code or name, becomes its top N cities as "City, ST"; duplicates dropped), `chunkAreas(list, perJob)`. The Finder page expands areas on Find and on the cost line, and "Pick cities by state" adds ticked cities.
   Each job takes up to `MAX_AREAS` (12) areas and stays under the search cap, so a long list runs as several jobs started in turn (the page opens the first). `geocode` results in a different state than the
   ", XX" on the line are skipped (`skippedAreas`), so a wrong city from the list is never searched.
+- Industry picker and new businesses (Nov 2026): `TARGET_INDUSTRIES` (exported from `public/js/leadintel.js`, from the `INDUSTRIES` scoring list) feeds the Finder's "Pick industries instead of typing keywords" fold
+  (ticks fill the keyword box; picks saved in localStorage `rw-finder-industries`). `newFilingsUrl(code, {days, stems})` in `public/js/registries.js` queries the open-data states (CO, OR, CT, NY, PA) for filings in
+  the last N days with the industry words in the name. `GET /api/finder/new-filings?states=&days=&industries=a|b` (owners, `src/freedata.js`, up to 5 states, per-state errors reported) feeds the "New businesses
+  (state filings, free)" card on the Finder page with CSV download. Filings have no phone, so these are research and call-by-hand lists, not pipeline imports. Not built: checking whether a business has a Google listing
+  (Google's results can't be read for free without breaking its terms; the card links the Google search instead).
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

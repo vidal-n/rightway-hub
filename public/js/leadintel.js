@@ -64,6 +64,8 @@ export function top10Of(g) {
   return (g.cells || []).filter((c) => !c.error && c.rank != null && c.rank <= 10).length;
 }
 
+// The industries the Hub knows how to score and pitch, for the Lead finder's picker: label, search keyword, typical ticket size and tier.
+export const TARGET_INDUSTRIES = INDUSTRIES.map(([, label, keyword, ticket]) => ({ label, keyword, ticket, tier: ticket >= 3000 ? 'high' : ticket >= 400 ? 'mid' : 'low' }));
 export function industryInfo(industry = '', category = '') {
   for (const text of [industry, category]) {
     if (!text) continue;

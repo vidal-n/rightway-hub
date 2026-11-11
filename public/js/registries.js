@@ -122,3 +122,16 @@ export function normalizeRows(code, rows) {
     };
   }).filter((r) => r.name);
 }
+
+// Businesses that filed with the state in the last N days, for the terms given (a word from the business name, e.g. "roof").
+// Only the five open data states can be asked this way; the others need their own search page.
+export function newFilingsUrl(code, { days = 120, stems = [], limit = 200, nowMs = Date.now() } = {}) {
+  const c = OPEN_DATA[code];
+  if (!c || !c.filed) return '';
+  const since = new Date(nowMs - Math.max(1, Math.min(730, Number(days) || 120)) * 864e5).toISOString().slice(0, 19);
+  const terms = [...new Set(stems.map((x) => String(x || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim()).filter((x) => x.length >= 3))].slice(0, 12);
+  const name = terms.length ? ` AND (${terms.map((t) => `upper(${c.name}) like '%${soql(t)}%'`).join(' OR ')})` : '';
+  const where = `${c.filed} >= '${since}'${name}`;
+  return `https://${c.domain}/resource/${c.id}.json?$where=${encodeURIComponent(where)}&$order=${encodeURIComponent(`${c.filed} DESC`)}&$limit=${Math.max(1, Math.min(500, Number(limit) || 200))}`;
+}
+export const NEW_FILING_STATES = Object.keys(OPEN_DATA);
