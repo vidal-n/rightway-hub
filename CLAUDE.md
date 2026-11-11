@@ -597,6 +597,10 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   The card has a switch with the price for each automatic job (research with depth, rep depth and leads a day, monthly scans, Twilio phone type check, scrub), today and month spend, and a "What things cost" table.
   `GET/PUT /api/spend` (owners). Owners see a price next to paid buttons: an empty `<span class="cost-hint" data-cost="<PRICES id>" data-n="<count>">` is filled by `startCostHints()` (MutationObserver, started in
   `shell.js`; `research_call` follows the rep depth setting). Keep new paid features on this: add the price to `PRICES`, put the span on the button, and gate any automatic run with `bgOk`.
+- Fill in missing info (Nov 2026, V: know exactly what a scrub looks for): Pipeline link "Fill in missing info..." (`public/hub/fillin.js`, pure `fillItems`/`fillPlan` in `public/js/fillin.js`, tests `test/fillin.test.js`).
+  A modal lists each lookup with how many open leads in the current view lack it, where it looks and the price: time zone (owners, free, runs for every lead), business names, owner name, email, social pages (all free, one website read per lead), phone type (Twilio Lookup, `PRICES.phone_lookup`, total shown, disabled without Twilio).
+  Nothing runs until Start. `scrubMany(leads, onDone, {lookup})`, `POST /api/leads/:id/scrub {lookup}` and `POST /api/scrub/queue {ids, lookup}` do a one time phone type check (`leads.scrub_lookup`, cleared by `scrubLead`). `socials` shows as `has_socials` in LIST_COLS.
+  Switch fix: `.switch` is `display:block` (a label in a block wrapper was inline and ignored its size) with a visible off track.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

@@ -134,7 +134,7 @@ export async function pipelinePage(app, user, openId) {
           <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop10"${f.notTop10 ? ' checked' : ''}> Not on the first page</label>
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
       </div>
-      <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)<span class="cost-hint" data-cost="research_call" data-n="${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)}"></span></button>${rows.some((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)) ? ` · <button class="linkbtn" id="scruball">Scrub the ${rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length} not scrubbed yet (free)</button>` : ''}${user.role === 'admin' && all.some((l) => !l.tz_known || !l.tz_how) ? ` · <button class="linkbtn" id="fixtz">${all.some((l) => !l.tz_known) ? `Find the time zone for the ${all.filter((l) => !l.tz_known).length} unknown (free)` : 'Re-check time zones (free)'}</button>` : ''}</div>
+      <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)<span class="cost-hint" data-cost="research_call" data-n="${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)}"></span></button>${rows.some((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)) ? ` · <button class="linkbtn" id="scruball">Scrub the ${rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length} not scrubbed yet (free)</button>` : ''}${` · <button class="linkbtn" id="fillin">Fill in missing info...</button>`}${user.role === 'admin' && all.some((l) => !l.tz_known || !l.tz_how) ? ` · <button class="linkbtn" id="fixtz">${all.some((l) => !l.tz_known) ? `Find the time zone for the ${all.filter((l) => !l.tz_known).length} unknown (free)` : 'Re-check time zones (free)'}</button>` : ''}</div>
       <div id="pbody"></div>`;
     const body = $('#pbody', view);
     if (p.view === 'list') renderList(body, rows); else renderBoard(body, by);
@@ -231,6 +231,7 @@ export async function pipelinePage(app, user, openId) {
       render();
     }));
     $('#scruball', view)?.addEventListener('click', () => scrubMany(filterLeads(all, p).filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)), reload));
+    $('#fillin', view)?.addEventListener('click', () => import('./fillin.js').then((m) => m.fillInPanel(filterLeads(all, p), { scrubMany, onDone: reload, owner: user.role === 'admin' })));
     $('#fixtz', view)?.addEventListener('click', async (e) => {
       const btn = e.currentTarget; btn.disabled = true;
       let after = '', checked = 0, fixed = 0, unknown = 0;
@@ -343,10 +344,10 @@ const CALL_LIST_SORT = { few: 'reviews', page2: '-score' };
 const LIST_KEYS = ['minData', 'phoneType', 'owner', 'email', 'site', 'maxReviews', 'notTop10'];
 
 // Scrub from the browser: three at a time with a progress bar. Free (website reads and an email check); line type only when an owner turned it on.
-export function scrubMany(leads, onDone) {
+export function scrubMany(leads, onDone, opts = {}) {
   if (!leads.length) return toast('Nothing to scrub in this view.');
   if (leads.length > 400) {
-    api('/api/scrub/queue', { method: 'POST', body: { ids: leads.map((l) => l.id) } }).then((r) => toast(`${r.queued} leads queued. They scrub in the background, a few a minute.`)).catch((e) => toast(e.message, true));
+    api('/api/scrub/queue', { method: 'POST', body: { ids: leads.map((l) => l.id), lookup: Boolean(opts.lookup) } }).then((r) => toast(`${r.queued} leads queued. They scrub in the background, a few a minute.`)).catch((e) => toast(e.message, true));
     return;
   }
   let stop = false, done = 0, found = 0;
@@ -360,7 +361,7 @@ export function scrubMany(leads, onDone) {
     while (queue.length && !stop) {
       const l = queue.shift();
       let note = '';
-      try { const r = await api(`/api/leads/${l.id}/scrub`, { method: 'POST' }); const s = r.scrub; if (s.owner || s.emails?.some((x) => x.ok)) found++; note = s.name?.changed ? `${s.name.raw} is now ${s.name.clean}` : r.lead.business; }
+      try { const r = await api(`/api/leads/${l.id}/scrub`, { method: 'POST', body: { lookup: Boolean(opts.lookup) } }); const s = r.scrub; if (s.owner || s.emails?.some((x) => x.ok)) found++; note = s.name?.changed ? `${s.name.raw} is now ${s.name.clean}` : r.lead.business; }
       catch (e) { note = `${l.business}: ${e.message}`; }
       done++;
       $('#scbar', m.el).style.width = `${Math.round((done / leads.length) * 100)}%`;

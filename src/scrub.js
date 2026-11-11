@@ -114,7 +114,7 @@ export async function scrubLead(env, lead, opts = {}) {
   if (report.site?.ok && report.site.url && lead.website && !/^https?:/i.test(lead.website)) set.website = report.site.url;
   const merged = { ...lead, ...set };
   const ds = dataScore(merged);
-  Object.assign(set, { data_score: ds.score, scrub_data: JSON.stringify({ ...report, missing: ds.missing }), scrubbed_at: now(), scrub_queued: 0 });
+  Object.assign(set, { data_score: ds.score, scrub_data: JSON.stringify({ ...report, missing: ds.missing }), scrubbed_at: now(), scrub_queued: 0, scrub_lookup: 0 });
   // Bad and toll free numbers leave the call queue with the reason, only if nobody has worked the lead yet.
   if (ph.problem && ['new', 'attempting'].includes(lead.stage) && !lead.scrub) Object.assign(set, { scrub: ph.problem, stage: 'lost', next_action: `Scrubbed: ${ph.problem}`, next_action_at: null });
   set.updated_at = now();
@@ -132,7 +132,7 @@ export async function scrubTick(env, max = 3, fetchImpl = fetch) {
     const lead = await first(env, `SELECT * FROM leads WHERE scrub_queued = 1 AND (scrub_tried IS NULL OR scrub_tried < ?) ORDER BY created_at DESC LIMIT 1`, now() - 3600e3);
     if (!lead) break;
     await run(env, 'UPDATE leads SET scrub_tried = ? WHERE id = ?', now(), lead.id);
-    try { await scrubLead(env, lead, { fetchImpl, lookup: cfg.lookup }); } catch (e) { console.error('scrub', lead.id, e.message); await run(env, 'UPDATE leads SET scrub_queued = 0 WHERE id = ?', lead.id); }
+    try { await scrubLead(env, lead, { fetchImpl, lookup: cfg.lookup || lead.scrub_lookup === 1 }); } catch (e) { console.error('scrub', lead.id, e.message); await run(env, 'UPDATE leads SET scrub_queued = 0 WHERE id = ?', lead.id); }
     n++;
   }
   return n;
@@ -153,12 +153,13 @@ export async function queueScrub(env, ids) {
   return ids.length;
 }
 
-route('POST', '/api/leads/:id/scrub', async ({ env, user, params }) => {
+route('POST', '/api/leads/:id/scrub', async ({ env, user, params, body }) => {
   requireStaff(user);
+  const b = await body().catch(() => ({}));
   const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', params.id);
   if (!lead) throw new HttpError('Lead not found.', 404);
   const cfg = await scrubSettings(env);
-  const r = await scrubLead(env, lead, { lookup: cfg.lookup });
+  const r = await scrubLead(env, lead, { lookup: cfg.lookup || Boolean(b?.lookup) });   // b.lookup: one time phone type check asked for in the Pipeline
   return json({ ok: true, scrub: r, lead: await first(env, 'SELECT id, business, business_raw, contact_name, email, email_status, owner_name, phone_type, phone_carrier, socials, data_score, website, stage, scrub FROM leads WHERE id = ?', lead.id) });
 });
 
@@ -171,7 +172,7 @@ route('POST', '/api/scrub/queue', async ({ env, user, body }) => {
     const ids = b.ids.slice(0, 5000);
     for (let i = 0; i < ids.length; i += 200) {
       const part = ids.slice(i, i + 200);
-      await run(env, `UPDATE leads SET scrub_queued = 1, scrub_tried = NULL WHERE id IN (${part.map(() => '?').join(',')})`, ...part);
+      await run(env, `UPDATE leads SET scrub_queued = 1, scrub_tried = NULL${b.lookup ? ', scrub_lookup = 1' : ''} WHERE id IN (${part.map(() => '?').join(',')})`, ...part);
     }
     n = ids.length;
   } else if (b.all) {

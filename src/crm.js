@@ -186,7 +186,8 @@ function decorate(l) {
 }
 const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, website, city, state, zip, timezone, tz_alt, tz_how, industry, category, tags, source, stage, plan,
   next_action_at, next_action, owner_id, attempts, last_call_at, dnc, sms_consent, client_id, score, grade, rating, reviews, map_rank, problems,
-  intel_at, meet_at, meet_link, meet_by, closer_id, created_at, updated_at, business_raw, phone_type, email_status, owner_name, data_score, scrubbed_at, scrub`;
+  intel_at, meet_at, meet_link, meet_by, closer_id, created_at, updated_at, business_raw, phone_type, email_status, owner_name, data_score, scrubbed_at, scrub,
+  (CASE WHEN socials IS NULL OR socials IN ('', '{}') THEN 0 ELSE 1 END) AS has_socials`;
 
 async function updateLead(env, id, set) {
   const cols = Object.keys(set);
