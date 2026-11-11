@@ -226,6 +226,7 @@ export function extractProfile(html) {
   out.hasForm = /<form\b/i.test(raw);
   out.hasChat = /(tawk\.to|livechat|intercom|drift\.com|tidio|crisp\.chat|hs-scripts|podium)/i.test(raw);
   out.hasBooking = /(calendly|housecallpro|jobber|servicetitan|acuityscheduling|setmore|squareup\.com\/appointments)/i.test(raw);
+  out.ads = adSignals(raw);
   out.cms = /wp-content|wordpress/i.test(raw) ? 'WordPress' : /wixstatic|wix\.com/i.test(raw) ? 'Wix' : /squarespace/i.test(raw) ? 'Squarespace' : /godaddy|secureserver|websitebuilder/i.test(raw) ? 'GoDaddy' : /shopify/i.test(raw) ? 'Shopify' : /weebly/i.test(raw) ? 'Weebly' : /webflow/i.test(raw) ? 'Webflow' : '';
   return out;
 }
@@ -236,5 +237,65 @@ export function mergeProfiles(a, b) {
     ...a, description: a.description || b.description, services: uniq(a.services, b.services, 10), areas: uniq(a.areas, b.areas, 12), years: a.years ?? b.years, founded: a.founded ?? b.founded,
     license: a.license || b.license, hours: a.hours || b.hours, team: uniq(a.team, b.team, 6), family: a.family || b.family, emergency: a.emergency || b.emergency, freeEstimate: a.freeEstimate || b.freeEstimate,
     financing: a.financing || b.financing, warranty: a.warranty || b.warranty, cms: a.cms || b.cms, hasForm: a.hasForm || b.hasForm, hasChat: a.hasChat || b.hasChat, hasBooking: a.hasBooking || b.hasBooking, reviewsOnSite: a.reviewsOnSite || b.reviewsOnSite,
+    ads: mergeAds(a.ads, b.ads),
   };
 }
+
+// ---------- ads (free) ----------
+// Ad tracking on a business's own site. A pixel or call tracking script means they pay for ads now or did before: it is not proof that
+// money is being spent this week. Ad libraries (links below) show what is running right now, and they are free to look at.
+export function adSignals(html) {
+  const h = String(html || '');
+  const out = { google: false, meta: false, tiktok: false, bing: false, linkedin: false, callTracking: [], googleIds: [], metaIds: [], analytics: false, tagManager: false };
+  const gads = [...h.matchAll(/\bAW-(\d{6,12})\b/g)].map((m) => `AW-${m[1]}`);
+  out.googleIds = [...new Set(gads)].slice(0, 3);
+  out.google = gads.length > 0 || /googleadservices\.com|googleads\.g\.doubleclick\.net|pagead\/(?:viewthrough|conversion)|google_conversion/i.test(h);
+  out.metaIds = [...new Set([...h.matchAll(/fbq\(\s*['"]init['"]\s*,\s*['"]?(\d{8,18})/g)].map((m) => m[1]))].slice(0, 3);
+  out.meta = out.metaIds.length > 0 || /connect\.facebook\.net\/[^"']*fbevents\.js|facebook\.com\/tr\?/i.test(h);
+  out.tiktok = /analytics\.tiktok\.com|ttq\.load/i.test(h);
+  out.bing = /bat\.bing\.com|uetq/i.test(h);
+  out.linkedin = /snap\.licdn\.com|_linkedin_partner_id/i.test(h);
+  const CT = [['CallRail', /callrail\.com|calltrk\.com/i], ['CallTrackingMetrics', /calltrackingmetrics\.com|tctm\.co/i], ['WhatConverts', /whatconverts\.com/i], ['Invoca', /invoca\.net|invocacdn/i], ['Marchex', /marchex\.io|marchex\.com/i], ['DialogTech', /dialogtech\.com|mongoosemetrics/i], ['Nimbata', /nimbata\.com/i]];
+  out.callTracking = CT.filter(([, re]) => re.test(h)).map(([n]) => n);
+  out.analytics = /googletagmanager\.com\/gtag\/js|\bG-[A-Z0-9]{8,12}\b|google-analytics\.com/i.test(h);
+  out.tagManager = /googletagmanager\.com\/gtm\.js|\bGTM-[A-Z0-9]{4,8}\b/i.test(h);
+  const names = [out.google && 'Google Ads', out.meta && 'Meta (Facebook, Instagram)', out.tiktok && 'TikTok', out.bing && 'Microsoft Ads', out.linkedin && 'LinkedIn'].filter(Boolean);
+  out.platforms = names;
+  out.any = names.length > 0 || out.callTracking.length > 0;
+  return out;
+}
+export function mergeAds(a, b) {
+  if (!a) return b || null; if (!b) return a;
+  const out = { ...a };
+  for (const k of ['google', 'meta', 'tiktok', 'bing', 'linkedin', 'analytics', 'tagManager', 'any']) out[k] = Boolean(a[k] || b[k]);
+  for (const k of ['callTracking', 'googleIds', 'metaIds', 'platforms']) out[k] = [...new Set([...(a[k] || []), ...(b[k] || [])])];
+  return out;
+}
+// One sentence for the rep. Never says "running ads" from a pixel alone.
+export function adsLine(ads) {
+  if (!ads) return '';
+  if (!ads.any) return ads.analytics || ads.tagManager ? 'No ad tracking on the site (only analytics).' : 'No ad tracking found on the site.';
+  const bits = [];
+  if (ads.platforms.length) bits.push(`ad tracking for ${ads.platforms.join(', ')}`);
+  if (ads.callTracking.length) bits.push(`call tracking (${ads.callTracking.join(', ')})`);
+  return `Site has ${bits.join(' and ')}. That means they pay for ads or did. Check the ad libraries to see what is live now.`;
+}
+const hostOf = (u) => { if (!u) return ''; try { return new URL(/^https?:/i.test(u) ? u : `https://${u}`).hostname.replace(/^www\./, ''); } catch { return ''; } };
+// Free ad libraries: what a business is running right now.
+export function adLibraryLinks({ website, business } = {}) {
+  const dom = hostOf(website), name = String(business || '').trim();
+  const out = [];
+  if (dom) out.push({ label: 'Google Ads Transparency', url: `https://adstransparency.google.com/?region=US&domain=${encodeURIComponent(dom)}` });
+  if (name) out.push({ label: 'Meta Ad Library', url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=${encodeURIComponent(name)}&search_type=keyword_unordered` });
+  return out;
+}
+
+// ---------- research depth (what one lead's research costs) ----------
+// DataForSEO bills about $0.002 per Maps search and $0.004 per Local Finder search. Website, speed (own check), registry and ad signals are free.
+export const RESEARCH_DEPTHS = {
+  free: { label: 'Free', searches: 0, cost: 0, what: 'No paid searches. Website, ads, registry and speed only. No map rank.' },
+  lite: { label: 'Lite', searches: 1, cost: 0.002, what: 'One map check at the business. Gives the rank and top competitors. About $0.002 to $0.004.' },
+  standard: { label: 'Standard', searches: 9, cost: 0.018, what: '3 x 3 map grid from Maps. About $0.02 a lead.' },
+  full: { label: 'Full', searches: 9, cost: 0.036, what: '3 x 3 grid from Local Finder, the most exact. About $0.04 a lead.' },
+};
+export const cleanDepth = (d, fallback = 'lite') => (RESEARCH_DEPTHS[d] ? d : fallback);

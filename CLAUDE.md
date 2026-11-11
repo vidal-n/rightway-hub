@@ -552,6 +552,14 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Business registries for every state and DC (`STATES` in `registries.js`): Florida reads Sunbiz (officers, so it can set `owner_name`; stored in `report.sunbiz` too), CO, OR, CT, NY and PA read their Socrata open
   data (`OPEN_DATA` column maps, `openDataUrl`, `normalizeRows`; registered agent shown but never used as the owner), the other 44 states return `linkOnly` with the official search page. Blank state counts as Florida.
   Florida DBPR license data is only a link (`licenseSearchUrl`). None of the registry endpoints, Overpass or Nominatim has been run against the live services yet (the build sandbox cannot reach them): check the first real run.
+- Lowest cost research and ad signals (Nov 2026, V: spend only when we must): `researchLead(env, lead, {depth})` in `src/intel.js`, depths in `RESEARCH_DEPTHS` (`public/js/freedata.js`):
+  `free` (no paid search, only for leads that carry Google facts from the Lead finder, otherwise a 400 telling the rep Lite is needed), `lite` (one Maps check at the business, saves `intel.rank` and
+  competitors, `intel.grid` stays null so nothing claims a grid; about $0.002 to $0.004), `standard` (3 x 3 from Maps, about $0.02), `full` (3 x 3 from Local Finder, old behaviour, about $0.04, still used by
+  client onboarding). Leads with cid, lat, lng, rating and reviews (Lead finder leads) skip the paid profile lookup at lite, standard and free. Settings `research_depth` (automatic, default lite) and
+  `research_depth_call` (one lead opened by a rep, default standard), `PUT /api/research/settings {depth, callDepth}`, Settings research card shows the cost. Ads: `adSignals(html)` reads Google Ads (AW- ids,
+  googleadservices), Meta pixel ids, TikTok, Microsoft, LinkedIn and call tracking vendors from the site (in `parseSite` as `intel.website.ads` and in `extractProfile` as `profile.ads`); it means "pays or paid for
+  ads", never "running ads now". Lead data card shows it with free links to Google Ads Transparency (by domain) and the Meta Ad Library (by name) via `adLibraryLinks`. Client scans still use Local Finder
+  (matches BrightLocal); Maps costs half, if V wants cheaper scans change `source` in `src/autoscan.js`.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

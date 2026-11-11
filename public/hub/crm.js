@@ -16,6 +16,7 @@ import { can, canRunCalls } from '/js/jobs.js';
 import { PHONE_TYPE_LABEL } from '/js/scrub.js';
 import { licenseSearchUrl, sunbizSearchUrl } from '/js/freedata.js';
 import { registryFor } from '/js/registries.js';
+import { RESEARCH_DEPTHS, adsLine, adLibraryLinks } from '/js/freedata.js';
 
 export const STAGE_LABEL = {
   new: 'New lead', attempting: 'Attempting', callback: 'Callback set', audit_requested: 'Audit requested', audit_booked: 'Audit booked',
@@ -372,6 +373,12 @@ function sunbizRows(l, scrub) {
     ${sb.filed ? `<dt>Filed</dt><dd>${esc(sb.filed)}${sb.years != null ? ` · ${sb.years} years ago` : ''}</dd>` : ''}
     ${people ? `<dt>Officers</dt><dd>${people}</dd>` : ''}${sb.agent ? `<dt>Registered agent</dt><dd>${esc(sb.agent)}</dd>` : ''}`;
 }
+function adsRows(l, ads) {
+  const links = adLibraryLinks({ website: l.website, business: l.business });
+  if (!ads && !links.length) return '';
+  const tags = ads ? [...(ads.platforms || []), ...(ads.callTracking || []).map((x) => `${x} call tracking`)] : [];
+  return `<dt>Ads</dt><dd>${ads ? `${tags.length ? tags.map((t) => `<span class="badge warn">${esc(t)}</span>`).join(' ') + '<br>' : ''}<span class="small muted">${esc(adsLine(ads))}</span>` : '<span class="small muted">Site not read yet.</span>'}${links.length ? `<br>${links.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.label)}</a>`).join(' · ')}` : ''}</dd>`;
+}
 function profileRows(p) {
   if (!p) return '';
   const flags = [['freeEstimate', 'free estimates'], ['emergency', '24/7 or same day'], ['financing', 'financing'], ['warranty', 'warranty'], ['family', 'family owned'], ['reviewsOnSite', 'testimonials'], ['hasChat', 'live chat'], ['hasBooking', 'online booking'], ['hasForm', 'contact form']].filter(([k]) => p[k]).map(([, t]) => t);
@@ -402,7 +409,7 @@ function leadDataCard(box, l, scrub, onChange) {
       <dt>Owner</dt><dd>${esc(l.owner_name || l.contact_name || 'Not found')}</dd>
       <dt>Email</dt><dd>${emails.length ? emails.slice(0, 4).map((x) => `${esc(x.email)} <span class="badge ${x.mx === false ? 'bad' : x.role ? 'warn' : ''}">${esc(x.mx === false ? 'no mail server' : x.role ? 'shared inbox' : x.mx ? 'valid' : 'not checked')}</span>`).join('<br>') : 'None found'}</dd>
       ${Object.keys(socials).length ? `<dt>Social</dt><dd>${Object.entries(socials).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(k === 'x' ? 'X' : k.charAt(0).toUpperCase() + k.slice(1))}</a>`).join(' · ')}</dd>` : ''}
-      ${sunbizRows(l, scrub)}${profileRows(scrub?.profile)}
+      ${sunbizRows(l, scrub)}${profileRows(scrub?.profile)}${adsRows(l, scrub?.profile?.ads)}
       ${scrub?.site && !scrub.site.ok ? `<dt>Website</dt><dd class="err-text">${esc(scrub.site.error || 'Did not load')}</dd>` : ''}
       ${scrub?.missing?.length ? `<dt>Missing</dt><dd class="small muted">${esc(scrub.missing.join(', '))}</dd>` : ''}</dl>`}</div>`;
   $('#lscrub', box).addEventListener('click', async (e) => {
@@ -1042,14 +1049,25 @@ export async function settingsPage(app, user) {
         <button class="btn btn-ghost btn-sm" id="lmsave">Save</button></div>
       <hr style="margin:16px 0;border:0;border-top:1px solid var(--line)">
       <div class="card-head" style="padding:0"><h2>Lead research and scrubbing</h2><span class="small muted">${r.left} waiting · ${r.scrubbed} scrubbed</span></div>
-      <p class="small">Every imported lead is researched in the background (about $0.04 each on DataForSEO), scored, graded and split into the dialer's quality queues. Bad and toll free numbers and businesses closed on Google are scrubbed out.</p>
+      <p class="small">Every imported lead is researched in the background (DataForSEO bills per search, from nothing up to about $0.04 a lead, depending on the depth below), scored, graded and split into the dialer's quality queues. Bad and toll free numbers and businesses closed on Google are scrubbed out.</p>
       <div class="row"><label class="row" style="gap:8px"><input type="checkbox" id="rson"${r.on ? ' checked' : ''}> Research every new lead automatically</label>
-        <label class="row small" style="gap:6px">Daily cap <input id="rscap" type="number" min="0" max="5000" value="${r.cap}" style="width:100px"> leads (about $${(r.cap * 0.04).toFixed(0)} a day at most)</label>
-        <button class="btn btn-ghost btn-sm" id="rssave">Save</button></div>`;
+        <label class="row small" style="gap:6px">Daily cap <input id="rscap" type="number" min="0" max="5000" value="${r.cap}" style="width:100px"> leads (<span id="rscost"></span> a day at most)</label></div>
+      <div class="row" style="margin-top:10px;gap:16px">
+        <label class="field" style="flex:1 1 240px"><span>Automatic research (in the background)</span><select id="rsdepth">${Object.entries(RESEARCH_DEPTHS).map(([k, v]) => `<option value="${k}"${r.depth === k ? ' selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
+        <label class="field" style="flex:1 1 240px"><span>When a rep opens one lead</span><select id="rscall">${Object.entries(RESEARCH_DEPTHS).map(([k, v]) => `<option value="${k}"${r.callDepth === k ? ' selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
+        <button class="btn btn-ghost btn-sm" id="rssave" style="align-self:flex-end">Save</button></div>
+      <p class="small muted" id="rsdx" style="margin:6px 0 0"></p>`;
+    const depthNote = () => {
+      const a = RESEARCH_DEPTHS[$('#rsdepth', box).value], c = RESEARCH_DEPTHS[$('#rscall', box).value];
+      $('#rscost', box).textContent = a.cost ? `about $${(Number($('#rscap', box).value || 0) * (a.cost + 0.002)).toFixed(0)}` : '$0';
+      $('#rsdx', box).innerHTML = `Automatic: <b>${esc(a.label)}</b>, ${esc(a.what)}<br>One lead opened by a rep: <b>${esc(c.label)}</b>, ${esc(c.what)} Leads from the Lead finder already carry their Google details, so they skip the profile lookup. The website, speed check, registry and ad tracking are always free.`;
+    };
+    box.addEventListener('input', (e) => { if (e.target.matches('#rsdepth, #rscall, #rscap')) depthNote(); });
+    depthNote();
     $('#lmsave', box).addEventListener('click', async () => {
       try { await api('/api/lead-mode', { method: 'PUT', body: { mode: box.querySelector('[name=lmode]:checked')?.value || 'paid', sunbiz: $('#lmsb', box).checked } }); toast('Saved'); settingsPage(app, user); } catch (e) { toast(e.message, true); }
     });
-    $('#rssave', box).addEventListener('click', async () => { try { await api('/api/research/settings', { method: 'PUT', body: { on: $('#rson', box).checked, cap: Number($('#rscap', box).value) } }); toast('Saved'); } catch (e) { toast(e.message, true); } });
+    $('#rssave', box).addEventListener('click', async () => { try { await api('/api/research/settings', { method: 'PUT', body: { on: $('#rson', box).checked, cap: Number($('#rscap', box).value), depth: $('#rsdepth', box).value, callDepth: $('#rscall', box).value } }); toast('Saved'); } catch (e) { toast(e.message, true); } });
     api('/api/scrub/status').then((sc) => {
       const d = document.createElement('div');
       d.innerHTML = `<h3 style="margin-top:18px">Data scrubber</h3>

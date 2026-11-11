@@ -8,6 +8,7 @@ import { searchBusinesses, rankAtPoint, businessDetails } from './dataforseo.js'
 import { pageSpeed } from './pagespeed.js';
 import { mockSearch, mockRank, mockPageSpeed } from './mock.js';
 import { gridPoints } from '../public/js/grid.js';
+import { adSignals, cleanDepth } from '../public/js/freedata.js';
 import { keywordFor, normName, scoreLead, findProblems, recommendPlan } from '../public/js/leadintel.js';
 
 const isDemo = (env) => !env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD;
@@ -58,6 +59,7 @@ export function parseSite(html, { finalUrl = '', city = '', keyword = '' } = {})
     tel: /href=["']tel:/i.test(html),
     viewport: /<meta[^>]+name=["']viewport/i.test(html),
     mapEmbed: /google\.com\/maps\/embed|maps\.googleapis/i.test(html),
+    ads: adSignals(html),
     form: /<form[\s>]/i.test(html),
     platform,
     kb: Math.round(html.length / 1024),
@@ -86,34 +88,55 @@ async function withTimeout(p, ms) {
 }
 
 // The research itself. fetchImpl lets the tests stub the network.
-export async function researchLead(env, lead, { gridSize = 3, radiusMiles = 2, fetchImpl } = {}) {
+// depth: free (no paid searches), lite (one Maps check), standard (3 x 3 from Maps), full (3 x 3 from Local Finder, the old behaviour).
+// A lead that came from the Lead finder already carries its Google facts (cid, place, position, rating, reviews), so the profile lookup is skipped.
+export async function researchLead(env, lead, { gridSize = 3, radiusMiles = 2, fetchImpl, depth = 'full' } = {}) {
+  depth = cleanDepth(depth, 'full');
   const demo = isDemo(env);
+  const paid = !demo && depth !== 'free';
   const location = [lead.city, lead.state].filter(Boolean).join(' ');
   let cost = 0;
   let listing = null;
 
-  if (lead.cid && lead.lat != null && lead.lng != null && !demo) {
+  if (lead.cid && lead.lat != null && lead.lng != null && lead.rating != null && lead.reviews != null && depth !== 'full') {
+    listing = { title: lead.business, cid: lead.cid, place_id: lead.place_id || '', lat: lead.lat, lng: lead.lng, rating: lead.rating, reviews: lead.reviews, category: lead.category || '', url: lead.website || '', address: lead.address || '', phone: lead.phone || '' };
+  } else if (lead.cid && lead.lat != null && lead.lng != null && paid) {
     const d = await businessDetails(env, { title: lead.business, cid: lead.cid, place_id: lead.place_id || '', lat: lead.lat, lng: lead.lng }, fetchImpl, 'lead research (maps)').catch(() => null);
     if (d) { cost += d.cost || 0; listing = d.business; }
   }
-  if (!listing) {
+  if (!listing && depth === 'free') {
+    // Without a paid search the Hub cannot tell "not on Google" from "not looked up", so it says so instead of guessing.
+    throw new HttpError('Free research needs the Google details a Lead finder search saves. This lead has none, so it needs Lite research (about $0.004).');
+  } else if (!listing) {
     if (!lead.business || !location) throw new HttpError('Add the city and state so the Hub can find this business on Google.');
     const s = demo ? mockSearch({ name: lead.business, location }) : await searchBusinesses(env, { name: lead.business, location }, fetchImpl, 'lead research (maps)');
     cost += s.cost || 0;
     listing = matchListing(s.results, lead);
   }
 
-  const intel = { at: now(), demo, found: Boolean(listing), keyword: null, listing: null, rank: null, grid: null, competitors: [], website: null, speed: null, cost: 0 };
+  const intel = { at: now(), demo, depth, found: Boolean(listing), keyword: null, listing: null, rank: null, grid: null, competitors: [], website: null, speed: null, cost: 0 };
   if (listing) {
     intel.listing = { ...listing, city: lead.city || null };
     intel.keyword = keywordFor(lead, { listing });
   }
 
   const tasks = [];
-  if (listing && intel.keyword && listing.lat != null && listing.lng != null) {
+  if (listing && intel.keyword && listing.lat != null && listing.lng != null && depth === 'lite') {
+    // One check at the business itself: its rank and who is above it. No grid is claimed.
+    const q = { keyword: intel.keyword, lat: listing.lat, lng: listing.lng, zoom: 13, cid: listing.cid, place_id: listing.place_id, title: listing.title, source: 'maps', device: 'desktop' };
+    tasks.push((async () => {
+      try {
+        const r = demo ? mockRank(q) : await rankAtPoint(env, q, fetchImpl, 'lead research (rank)');
+        cost += r.cost || 0;
+        intel.rank = r.rank;
+        intel.competitors = r.top.filter((t) => t.cid !== listing.cid && !(t.place_id && t.place_id === listing.place_id) && normName(t.title) !== normName(listing.title)).slice(0, 5)
+          .map((t) => ({ title: t.title, cid: t.cid, rating: t.rating, reviews: t.reviews, category: t.category, domain: t.domain, wins: t.rank <= 3 ? 1 : 0, best: t.rank }));
+      } catch { intel.rank = null; }
+    })());
+  } else if (listing && intel.keyword && listing.lat != null && listing.lng != null && depth !== 'free') {
     const pts = gridPoints(listing.lat, listing.lng, gridSize, radiusMiles);
     tasks.push(Promise.all(pts.map(async (p) => {
-      const q = { keyword: intel.keyword, lat: p.lat, lng: p.lng, zoom: 13, cid: listing.cid, place_id: listing.place_id, title: listing.title, source: 'local', device: 'desktop' };
+      const q = { keyword: intel.keyword, lat: p.lat, lng: p.lng, zoom: 13, cid: listing.cid, place_id: listing.place_id, title: listing.title, source: depth === 'standard' ? 'maps' : 'local', device: 'desktop' };
       try {
         const r = demo ? mockRank(q) : await rankAtPoint(env, q, fetchImpl, 'lead research (grid)');
         cost += r.cost || 0;
@@ -183,7 +206,9 @@ route('POST', '/api/leads/:id/research', async ({ env, user, params, body }) => 
   const b = await body();
   if (!b.force && lead.intel && lead.intel_at && now() - lead.intel_at < 14 * 864e5) return json({ cached: true, intel: JSON.parse(lead.intel) });
   const s = await getSettings(env);
-  const intel = await researchLead(env, lead, { gridSize: 3, radiusMiles: Number(s.research_radius) || 2 });
+  // A rep asking for research on one lead gets the 3 x 3 grid from Maps (about $0.02). The owner can ask for more with depth.
+  const depth = b.depth ? cleanDepth(b.depth, 'standard') : cleanDepth(s.research_depth_call, 'standard');
+  const intel = await researchLead(env, lead, { gridSize: 3, radiusMiles: Number(s.research_radius) || 2, depth });
   const set = leadFieldsFromIntel(lead, intel);
   const cols = Object.keys(set);
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), lead.id);
