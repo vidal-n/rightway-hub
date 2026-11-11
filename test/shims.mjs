@@ -6,7 +6,7 @@ const toSql = (v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 :
 class Stmt {
   constructor(db, sql, args = []) { this.db = db; this.sql = sql; this.args = args; }
   bind(...args) { return new Stmt(this.db, this.sql, args.map(toSql)); }
-  _s() { return this.db.prepare(this.sql); }
+  _s() { if (this.args.length > 100) throw new Error(`D1_ERROR: too many SQL variables (${this.args.length}): SQLITE_ERROR`); return this.db.prepare(this.sql); }
   async first(col) {
     const row = this._s().get(...this.args);
     if (!row) return null;

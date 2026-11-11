@@ -180,8 +180,8 @@ route('GET', '/api/finder/jobs/:id/results', async ({ env, user, params, url }) 
   // What the background scrub found for the ones already in the Hub: emails, owner, phone type, socials.
   const ids = [...new Set(results.map((r) => r.lead_id).filter(Boolean))];
   const byId = new Map();
-  for (let i = 0; i < ids.length; i += 200) {
-    const part = ids.slice(i, i + 200);
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90);
     for (const l of await all(env, `SELECT id, email, email_status, owner_name, phone_type, data_score, socials, stage FROM leads WHERE id IN (${part.map(() => '?').join(',')})`, ...part)) byId.set(l.id, l);
   }
   for (const r of results) {

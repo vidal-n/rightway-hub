@@ -370,19 +370,19 @@ route('POST', '/api/leads/bulk', async ({ env, user, body }) => {
   requireStaff(user);
   const { ids, action, value } = await body();
   if (!Array.isArray(ids) || !ids.length || ids.length > 5000) throw new HttpError('Select some leads first.');
-  const ph = ids.map(() => '?').join(',');
-  if (action === 'stage') {
-    if (!STAGES.includes(value)) throw new HttpError('Unknown stage.');
-    await run(env, `UPDATE leads SET stage = ?, dnc = CASE WHEN ? = 'dnc' THEN 1 ELSE dnc END, updated_at = ? WHERE id IN (${ph})`, value, value, now(), ...ids);
-  } else if (action === 'tag') {
-    const t = text(value, 60);
-    if (!t) throw new HttpError('Type a tag.');
-    await run(env, `UPDATE leads SET tags = CASE WHEN tags IS NULL OR tags = '' THEN ? ELSE tags || ', ' || ? END, updated_at = ? WHERE id IN (${ph})`, t, t, now(), ...ids);
-  } else if (action === 'delete') {
-    await batch(env, [[`DELETE FROM activities WHERE lead_id IN (${ph})`, ...ids], [`DELETE FROM leads WHERE id IN (${ph})`, ...ids]]);
-  } else if (action === 'callnow') {
-    await run(env, `UPDATE leads SET next_action_at = ?, updated_at = ? WHERE id IN (${ph}) AND dnc = 0`, now(), now(), ...ids);
-  } else throw new HttpError('Unknown action.');
+  if (!['stage', 'tag', 'delete', 'callnow'].includes(action)) throw new HttpError('Unknown action.');
+  if (action === 'stage' && !STAGES.includes(value)) throw new HttpError('Unknown stage.');
+  const t = action === 'tag' ? text(value, 60) : '';
+  if (action === 'tag' && !t) throw new HttpError('Type a tag.');
+  // D1 allows 100 bound values per statement, so work in slices of 90 ids.
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90);
+    const ph = part.map(() => '?').join(',');
+    if (action === 'stage') await run(env, `UPDATE leads SET stage = ?, dnc = CASE WHEN ? = 'dnc' THEN 1 ELSE dnc END, updated_at = ? WHERE id IN (${ph})`, value, value, now(), ...part);
+    else if (action === 'tag') await run(env, `UPDATE leads SET tags = CASE WHEN tags IS NULL OR tags = '' THEN ? ELSE tags || ', ' || ? END, updated_at = ? WHERE id IN (${ph})`, t, t, now(), ...part);
+    else if (action === 'delete') await batch(env, [[`DELETE FROM activities WHERE lead_id IN (${ph})`, ...part], [`DELETE FROM leads WHERE id IN (${ph})`, ...part]]);
+    else await run(env, `UPDATE leads SET next_action_at = ?, updated_at = ? WHERE id IN (${ph}) AND dnc = 0`, now(), now(), ...part);
+  }
   return json({ ok: true, count: ids.length });
 });
 

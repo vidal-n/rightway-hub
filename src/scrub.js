@@ -146,8 +146,8 @@ export function cleanNewLead(data) {
 }
 export async function queueScrub(env, ids) {
   if (!ids?.length || !(await scrubSettings(env)).auto) return 0;
-  for (let i = 0; i < ids.length; i += 200) {
-    const part = ids.slice(i, i + 200);
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90);
     await run(env, `UPDATE leads SET scrub_queued = 1 WHERE id IN (${part.map(() => '?').join(',')}) AND scrubbed_at IS NULL`, ...part);
   }
   return ids.length;
@@ -170,16 +170,16 @@ route('POST', '/api/scrub/queue', async ({ env, user, body }) => {
   let n = 0;
   if (Array.isArray(b.ids) && b.ids.length) {
     const ids = b.ids.slice(0, 5000);
-    for (let i = 0; i < ids.length; i += 200) {
-      const part = ids.slice(i, i + 200);
+    for (let i = 0; i < ids.length; i += 90) {
+      const part = ids.slice(i, i + 90);
       await run(env, `UPDATE leads SET scrub_queued = 1, scrub_tried = NULL${b.lookup ? ', scrub_lookup = 1' : ''} WHERE id IN (${part.map(() => '?').join(',')})`, ...part);
     }
     n = ids.length;
   } else if (b.all) {
     requireAdmin(user);
     const r = await all(env, `SELECT id FROM leads WHERE scrubbed_at IS NULL AND dnc = 0 AND stage IN (${OPEN.map(() => '?').join(',')}) LIMIT 5000`, ...OPEN);
-    for (let i = 0; i < r.length; i += 200) {
-      const part = r.slice(i, i + 200).map((x) => x.id);
+    for (let i = 0; i < r.length; i += 90) {
+      const part = r.slice(i, i + 90).map((x) => x.id);
       await run(env, `UPDATE leads SET scrub_queued = 1, scrub_tried = NULL WHERE id IN (${part.map(() => '?').join(',')})`, ...part);
     }
     n = r.length;
