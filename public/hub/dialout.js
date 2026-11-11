@@ -29,7 +29,7 @@ export const dialTabs = (active, user) => {
   tabs.push(['line', '#/phone/line', 'My line'], ['agents', '#/agents', 'Agents']);
   if (user?.role === 'admin') tabs.push(['setup', '#/phone/setup', 'Phone setup']);
   setTimeout(() => import('./nav.js').then((m) => m.refreshBadges()), 0);
-  return `<div class="tabs" style="margin-bottom:14px">${tabs.map(([k, h, n, b]) => `<a class="${active === k ? 'is-active' : ''}" href="${h}">${n}${b ? ` <b class="nbadge" data-badge="${b}" hidden></b>` : ''}</a>`).join('')}<button type="button" class="tab-audio" data-audio title="Mic, speaker and noise settings">Audio</button></div>`;
+  return `<div class="tabs" style="margin-bottom:14px">${tabs.map(([k, h, n, b]) => `<a class="${active === k ? 'is-active' : ''}" href="${h}">${n}${b ? ` <b class="nbadge" data-badge="${b}" hidden></b>` : ''}</a>`).join('')}<button type="button" class="tab-audio" data-audio title="Mic, speaker, noise cancellation and tests">Mic and noise</button></div>`;
 };
 
 export function phoneBadge(s = phoneState()) {

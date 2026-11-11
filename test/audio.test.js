@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, NOISE, normalize, plan, constraintsFor, gateThreshold, gateStep, pickInput, permissionHelp, deviceLabel } from '../public/js/audiocfg.js';
+import { DEFAULTS, NOISE, normalize, plan, constraintsFor, gateThreshold, gateStep, pickInput, permissionHelp, deviceLabel, lockThreshold, learnLevel, meterPct, isIOS, looksBluetooth, advice, toneWav, constraintsAnyMic } from '../public/js/audiocfg.js';
 
 test('audio settings stay inside safe limits', () => {
   assert.deepEqual(normalize(undefined), DEFAULTS);
@@ -57,4 +57,79 @@ test('permission help is specific to the device', () => {
   assert.match(permissionHelp('Mozilla/5.0 (Linux; Android 14) Chrome/120')[0], /lock icon/);
   assert.match(permissionHelp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit Version/17 Safari/605')[0], /Safari open Settings/);
   assert.match(permissionHelp('Mozilla/5.0 (Windows NT 10.0) Chrome/120 Safari/537')[0], /Site settings/);
+});
+
+test('cleanup levels map to the voice engine', () => {
+  assert.equal(plan({ noise: 'light' }).ai, 0, 'light is the browser cleanup alone');
+  assert.equal(plan({ noise: 'standard' }).ai, 0.5);
+  assert.equal(plan({ noise: 'strong' }).ai, 0.85);
+  assert.equal(plan({ noise: 'strong', ai: 20 }).ai, 0.2, 'the slider wins over the preset');
+  assert.equal(plan({ noise: 'off', ai: 40 }).processor, true);
+  assert.equal(normalize({ ai: 999 }).ai, 100);
+  assert.equal(normalize({ ai: 'x' }).ai, -1);
+});
+
+test('headset mode skips the browser cleanup unless told otherwise', () => {
+  assert.equal(plan({ noise: 'standard', headset: true }).ns, false);
+  assert.equal(plan({ noise: 'standard', headset: true, ns: 'on' }).ns, true);
+  assert.equal(constraintsFor({ headset: true }).noiseSuppression, false);
+});
+
+test('voice lock needs a learned level and turns auto level off', () => {
+  assert.equal(plan({ lock: true }).lock, 0, 'no learned level yet, so nothing is locked');
+  const p = plan({ lock: true, level: 0.1, strict: 6 });
+  assert.ok(p.lock > 0 && p.lock < 0.1);
+  assert.equal(p.auto, false);
+  assert.equal(p.processor, true);
+  assert.equal(plan({ lock: false, level: 0.1 }).lock, 0);
+  assert.equal(constraintsFor({ lock: true, level: 0.1 }).autoGainControl, false);
+  assert.ok(lockThreshold(0.1, 10) > lockThreshold(0.1, 1), 'stricter means a higher bar');
+  assert.equal(lockThreshold(0, 5), 0);
+  assert.equal(normalize({ level: -4 }).level, 0);
+  assert.equal(normalize({ strict: 99 }).strict, 10);
+});
+
+test('learnLevel takes the median of the speech and ignores pauses', () => {
+  const frames = [];
+  for (let i = 0; i < 80; i++) frames.push(0.003);                         // room
+  for (let i = 0; i < 120; i++) frames.push(0.08 + (i % 10) * 0.004);        // speech around 0.1
+  const l = learnLevel(frames);
+  assert.ok(l > 0.08 && l < 0.13, String(l));
+  assert.equal(learnLevel(new Array(100).fill(0.003)), 0, 'a silent room teaches nothing');
+  assert.equal(learnLevel([0.1, 0.2]), 0);
+  assert.equal(learnLevel(undefined), 0);
+});
+
+test('meter, device and tip helpers', () => {
+  assert.equal(meterPct(0), 0);
+  assert.equal(meterPct(1), 100);
+  assert.ok(meterPct(0.01) > 30 && meterPct(0.01) < 40);
+  assert.equal(isIOS('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)'), true);
+  assert.equal(isIOS('Mozilla/5.0 (Macintosh; Intel Mac OS X)', 5), true, 'iPad pretending to be a Mac');
+  assert.equal(isIOS('Mozilla/5.0 (Macintosh; Intel Mac OS X)', 0), false);
+  assert.equal(looksBluetooth('AirPods Pro'), true);
+  assert.equal(looksBluetooth('MacBook Pro Microphone'), false);
+  assert.ok(advice({ micLabel: 'Jabra Evolve2 (Bluetooth)' }).length >= 2);
+  assert.ok(advice({ ios: true }).some((t) => /Voice Isolation/.test(t)));
+  assert.deepEqual(advice({}), []);
+  assert.equal(constraintsAnyMic({ mic: 'abc' }).deviceId, undefined);
+});
+
+test('speaker test tone is a valid WAV', () => {
+  const w = toneWav();
+  assert.equal(String.fromCharCode(...w.slice(0, 4)), 'RIFF');
+  assert.equal(String.fromCharCode(...w.slice(8, 12)), 'WAVE');
+  const v = new DataView(w.buffer);
+  assert.equal(v.getUint32(4, true), w.length - 8);
+  assert.equal(v.getUint32(40, true), w.length - 44);
+  let peak = 0; for (let i = 44; i < w.length; i += 2) peak = Math.max(peak, Math.abs(v.getInt16(i, true)));
+  assert.ok(peak > 3000 && peak < 20000, 'audible but not loud');
+});
+
+test('no em or en dashes in audio copy', async () => {
+  const fs = await import('node:fs');
+  for (const f of ['public/js/audiocfg.js', 'public/hub/audioset.js', 'public/js/denoise-worklet.js']) {
+    const t = fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
+    assert.ok(!/[\u2013\u2014]/.test(t), f);
+  }
 });

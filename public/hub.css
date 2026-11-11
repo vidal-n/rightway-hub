@@ -1647,8 +1647,9 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 
 /* ---------- Phone audio panel ---------- */
 .modal:has(.aud) { width: min(580px, 94vw); max-width: 94vw; }
-.aud { display: grid; gap: 12px; max-height: 82vh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: env(safe-area-inset-bottom); }
-.aud-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 2; background: var(--card); padding-bottom: 6px; }
+.modal:has(.aud) { padding: 0 20px 20px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.aud { display: grid; gap: 12px; padding-bottom: env(safe-area-inset-bottom); }
+.aud-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 5; background: var(--surface); margin: 0 -20px; padding: 18px 20px 10px; border-bottom: 1px solid var(--line); }
 .aud-head h2 { margin: 0; font-size: 20px; }
 .aud-sec { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; background: var(--card-2); }
 .aud-sec h3 { margin: 0; font: 600 11px var(--font-mono, monospace); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
@@ -1831,3 +1832,16 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .pd-head svg { width: 18px; height: 18px; flex: none; }
 .pd-card div .small { display: block; margin-top: 2px; }
 .pd-card .cc { margin-top: 4px; }
+
+/* Phone audio panel: two meters, voice lock, details */
+.aud-meters { display: grid; gap: 6px; }
+.aud-meters > div { display: grid; gap: 3px; }
+.aud-meter.out i { background: var(--accent); }
+.aud-meter.out i.cut { background: #9aa8a2; }
+.aud-lock { border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; background: var(--card); }
+.aud-lock.on { border-style: solid; border-color: var(--mint-strong); }
+.aud-diag { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 13px; }
+.aud-diag dt { color: var(--muted); } .aud-diag dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .aud-diag { grid-template-columns: 1fr; } .aud-diag dd { margin-bottom: 4px; } }
+.aud-checks label, .aud-lock > label { align-items: flex-start !important; flex-wrap: nowrap !important; }
+.aud-checks input[type="checkbox"], .aud-lock input[type="checkbox"] { flex: none; margin-top: 3px; }

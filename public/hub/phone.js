@@ -1,7 +1,7 @@
 // Browser phone: calls go out and come in through the computer's mic and speakers (Twilio Voice JS SDK, vendored in /vendor).
 // One Device per tab, created after login. A call bar floats over every page while a call is live.
 import { api, esc, toast } from './core.js';
-import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter } from './audioset.js';
+import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter, warmAudio } from './audioset.js';
 
 const SDK = '/vendor/twilio-voice-2.18.5.min.js';
 const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -206,7 +206,7 @@ function track(call, view, { onEnd, act } = {}) {
     if (action === 'hang') call.disconnect();
     if (action === 'mute') call.mute(!call.isMuted());
     if (action === 'pad') set({ pad: !view.pad });
-    if (action === 'accept') { set({ state: 'dialing', label: 'Connecting...', incoming: true }); prepareAudio(st.device).catch(() => {}).finally(() => call.accept()); }
+    if (action === 'accept') { warmAudio(); set({ state: 'dialing', label: 'Connecting...', incoming: true }); prepareAudio(st.device).catch(() => {}).finally(() => call.accept()); }
     if (action === 'decline') { call.reject(); end('Declined'); }
   };
 }
@@ -214,6 +214,7 @@ function track(call, view, { onEnd, act } = {}) {
 // Outgoing: checks the number on the server, then connects through the browser.
 export async function placeCall({ to, leadId, from, name, who, cat, onEnd } = {}) {
   if (st.call) throw new Error('You are already on a call. Hang up first.');
+  warmAudio();   // before any await: iPhone and iPad only start audio inside the tap that began the call
   // "Use my phone": the Hub rings your mobile, then connects the lead. Works with the screen locked or in another app.
   if (callMode() === 'phone' && leadId && !to) return bridgeCall({ leadId, from, name, who, cat, onEnd });
   const prep = await api('/api/voice/prepare', { method: 'POST', body: { to, leadId, from } });

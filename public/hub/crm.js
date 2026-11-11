@@ -8,6 +8,7 @@ import { loadDispos, keyed, dispositionModal } from './dispo.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { placeCall, startPhone, onPhoneState } from './phone.js';
+import { warmAudio } from './audioset.js';
 import { filterLeads } from '/js/leadfilter.js';
 import { quoteFor, callCategory, whoIs, CALL_CATS } from '/js/leadintel.js';
 import { SCOPE, effort, hoursOf } from '/js/scope.js';
@@ -830,7 +831,7 @@ export async function dialerPage(app, user) {
     $$('[data-dq]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, data: b.dataset.dq }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $$('[data-cat]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, cat: b.dataset.cat }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $$('[data-tier]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, tier: b.dataset.tier }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
-    $('#pdgo', view)?.addEventListener('click', () => { power = !power; if (power) { pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
+    $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); startPhone().catch(() => {}); power = !power; if (power) { pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
     prefetch(l);

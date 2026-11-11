@@ -189,6 +189,7 @@ function profileMenu(b, user, logout) {
     <a href="#/agents" role="menuitem">${icon.headset || icon.users}My numbers today</a>
     <a href="#/settings" role="menuitem">${icon.cog}Settings</a>
     <a href="#/notifications" role="menuitem">${icon.bell}Notifications</a>
+    <button type="button" data-audio role="menuitem">${icon.mic || icon.headset || icon.cog}Phone audio and noise</button>
     <button type="button" data-pm="photo" role="menuitem">${icon.camera}${user.avatar_at ? 'Change profile photo' : 'Add a profile photo'}</button>
     ${user.avatar_at ? `<button type="button" data-pm="nophoto" role="menuitem">${icon.trash}Remove photo</button>` : ''}
     ${user.role === 'admin' ? `<a href="#/settings/team" role="menuitem">${icon.users}Agents</a><button type="button" data-pm="mt" role="menuitem">${icon.cog}Maintenance mode</button>` : ''}

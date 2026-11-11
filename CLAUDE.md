@@ -503,12 +503,19 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Listen/Whisper/Barge: `joinState(viewer, call, target)` in `src/agents.js` always answers with a reason (own call, other owner, line still starting, call that came in through the phone number).
   Agent cards always draw the three buttons for owners (greyed with the reason); the Dashboard Team floor has a Listen button; the monitor leg reports `leave` so a stale "you are listening" clears
   and re-joining works (`phoneState().monitoring`); `POST /api/voice/monitor/:id` clears and says "You have left that call" when Twilio no longer has you. Whisper still needs Agent Conference in Twilio.
-  Phone audio (`public/js/audiocfg.js` pure + tested, `public/hub/audioset.js`, "Audio" pill in the Phone tab bar and on the call bar): settings in localStorage `rw-audio` per device: mic and speaker
-  picker (speaker not on iPhone/iPad, Safari cannot), mic volume 20 to 300%, noise Off/Light/Standard/Strong (browser suppression plus an own high pass and quiet-room gate through a Twilio
-  `AudioProcessor`, only added when needed so the default path is untouched; falls back to the plain mic if the AudioContext will not start), echo and auto level toggles, live level meter,
-  4 second record and play back test, mic permission status with per-device "always allow" steps (web pages cannot force it), Bluetooth plug/unplug toasts (`watchDevices`), Wake Lock during calls,
-  and call mode "Use my phone" (`callMode()`): `placeCall` for a lead rings the saved mobile through the old bridge (`/api/dialer/call`, `bridgeCall` in `public/hub/phone.js`), which keeps working
-  with the screen locked on an iPhone. `prepareAudio` runs right before connect (inside the tap) and `releaseAudio` after the call so the mic is not held open.
+  Phone audio v2 (Nov 2026; `public/js/audiocfg.js` pure + tested, `public/js/denoise-worklet.js` AudioWorklet `rw-voice`, `public/hub/audioset.js`; entry points: "Mic and noise" pill in the Phone tab bar,
+  Audio button on the call bar, profile bubble "Phone audio and noise"): settings in localStorage `rw-audio` per device. Cleanup levels Off, Light (browser only, default, no processor), Standard (ai 50, rumble 90),
+  Strong (ai 85, rumble 120, gate 4), plus sliders for cleanup strength (`ai`), quiet gate and mic volume 20 to 300%. The worklet does rumble filter, adaptive spectral noise suppression (512 FFT, learns steady noise
+  per bin, decision directed Wiener gain; 13 to 23 dB on steady noise in tests, voice within 3 dB; NOT a neural model, so TV and talkers are only quieter), quiet gate, volume and "My voice only" voice lock
+  (`lock`, `level`, `strict`: learned by reading a sentence for 6 s via `learnLevel`, gate opens only above `lockThreshold(level, strict)` on the input level, which also forces auto level off; background
+  louder than you or at the same moment as you still leaks). `headset` option skips the browser's own cleanup. One shared AudioContext (`getCtx`, `warmAudio` is called first thing inside the tap in `placeCall`,
+  Answer and Start power dial because iPhone and iPad only start audio inside a tap; not suspended between calls on iOS). `RwProcessor` (Twilio `AudioProcessor`) waits 1.2 s for the worklet heartbeat, else `useBasic`
+  rewires the same stream to a biquad high pass + timer gate (also after 3 s without a beat mid call); resumes the context on statechange, visibility, pageshow, touch. Mic lost mid call (`rw-audio-lost`) moves to
+  the default mic; a headset connected mid call with the default mic selected re-grabs the default. `openMic` retries without the exact deviceId when the saved mic is gone. Panel: live meters (your mic and what they hear,
+  or the call's own audio during a call), 4 s test recording that plays back with and without cleanup, speaker test tone (`toneWav`, plays on the chosen speaker where `setSinkId` exists), permission help, Bluetooth and
+  iOS tips (`advice`), details (engine status, sample rate, browser cleanup actually applied). The old settings (mic and speaker picker, speaker not on iPhone/iPad, permission steps, Bluetooth plug/unplug toasts,
+  Wake Lock, call mode "Use my phone" via `callMode()` and the ring-my-mobile bridge) are unchanged. `prepareAudio` runs right before connect and `releaseAudio` after the call so the mic is not held open.
+  Control Center Mic Mode, Voice Isolation on iPhone and iPad is Apple's own cleanup and is recommended in the tips.
   Dialer layout (`public/hub/crm.js` render, CSS "GHL style dialer" at the end of `hub.css`): compact stats strip, tier chips, "More filters" fold, three panes (Up next | lead + outcomes | script and
   research) that scroll on their own, "Layout" switch (Up next, Script and research, tighter spacing; localStorage `rw-dial-layout`), one column under 1100px. `fold()` and `wireFolds()` in
   `public/hub/prep.js` make collapsible sections that remember open or closed in localStorage `rw-fold-<key>`: used by call prep (Script, Their numbers, Problems, Listings, Objections) and the
