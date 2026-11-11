@@ -261,10 +261,9 @@ export function researchMany(leads, onDone) {
   const m = modal(`<div class="card-head"><h2>Researching ${leads.length} leads</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     <p class="muted">Each lead: find the Google profile, rank check at 9 points around them, website read, mobile speed. About 4 cents each, ${esc(fmt.money(leads.length * 0.04))} max.</p>
     <div class="progress"><span id="rmbar" style="width:0%"></span></div><p class="small" id="rmtxt">Starting...</p>
-    <div class="row end"><button class="btn btn-ghost btn-sm" id="rmstop">Stop</button></div>`, { onClose: () => { stop = true; onDone?.(); } });
+    <div class="row end"><button class="btn btn-ghost btn-sm" id="rmstop">Pause</button></div>`, { onClose: () => { stop = true; onDone?.(); } });
   let done = 0, failed = 0, cost = 0;
   const queue = leads.slice();
-  $('#rmstop', m.el).addEventListener('click', () => { stop = true; });
   const tick = (l, err) => {
     done++;
     $('#rmbar', m.el).style.width = `${Math.round((done / leads.length) * 100)}%`;
@@ -277,7 +276,16 @@ export function researchMany(leads, onDone) {
       catch (err) { failed++; tick(l, err.message); }
     }
   };
-  Promise.all([worker(), worker(), worker()]).then(() => { $('#rmtxt', m.el).textContent += stop ? ' Stopped.' : ' All done.'; $('#rmstop', m.el).textContent = 'Done'; $('#rmstop', m.el).onclick = () => m.close(); });
+  const btn = $('#rmstop', m.el);
+  const run = () => {
+    stop = false; btn.textContent = 'Pause'; btn.onclick = () => { stop = true; btn.disabled = true; };
+    Promise.all([worker(), worker(), worker()]).then(() => {
+      btn.disabled = false;
+      if (queue.length) { $('#rmtxt', m.el).textContent += ` Paused with ${queue.length} left.`; btn.textContent = `Resume (${queue.length} left)`; btn.onclick = run; }
+      else { $('#rmtxt', m.el).textContent += ' All done.'; btn.textContent = 'Done'; btn.onclick = () => m.close(); }
+    });
+  };
+  run();
 }
 
 async function duplicatesModal(onDone) {
@@ -348,35 +356,39 @@ const LIST_KEYS = ['minData', 'phoneType', 'owner', 'email', 'site', 'maxReviews
 // Scrub: queue the leads on the server, then a progress strip on the Pipeline watches the queue and keeps it moving
 // (two leads per call, two calls at a time). It also finishes on its own in the background if the page is closed.
 let scrubTimer = null, scrubBusy = false, scrubDoneCb = null;
-const scrubKey = 'rw-scrub-total';
-const stripHtml = (queued, total, scrubbed) => {
+const scrubKey = 'rw-scrub-total', pausedKey = 'rw-scrub-paused';
+const store = (k, v) => { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, String(v)); } catch {} };
+const load = (k) => { try { return sessionStorage.getItem(k); } catch { return null; } };
+const stripHtml = (queued, total, scrubbed, paused) => {
   const done = Math.max(0, total - queued);
   const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 100;
-  return queued
-    ? `<div class="card scstrip"><div class="row"><strong>Scrubbing</strong><span class="small">${done} of ${total} done · ${queued} left</span><span class="spacer"></span><button class="btn btn-ghost btn-sm" id="scpause">Stop</button></div><div class="progress" style="margin-top:8px"><span style="width:${pct}%"></span></div><p class="small muted" style="margin:6px 0 0">Reading websites, checking emails, cleaning names. Keep this page open to go faster. It also runs in the background.</p></div>`
-    : `<div class="card scstrip"><div class="row"><strong>Scrub finished</strong><span class="small">${total} lead${total === 1 ? '' : 's'} done. ${scrubbed} scrubbed in total.</span><span class="spacer"></span><button class="btn btn-ghost btn-sm" id="scclose">Dismiss</button></div><div class="progress" style="margin-top:8px"><span style="width:100%"></span></div></div>`;
+  const bar = `<div class="progress" style="margin-top:8px"><span style="width:${pct}%"></span></div>`;
+  if (!queued) return `<div class="card scstrip"><div class="row"><strong>Scrub finished</strong><span class="small">${total} lead${total === 1 ? '' : 's'} done. ${scrubbed} scrubbed in total.</span><span class="spacer"></span><button class="btn btn-ghost btn-sm" id="scclose">Dismiss</button></div>${bar}</div>`;
+  if (paused) return `<div class="card scstrip paused"><div class="row"><strong>Scrub paused</strong><span class="small">${done} of ${total} done · ${queued} left${typeof paused === 'string' ? ` · ${esc(paused)}` : ''}</span><span class="spacer"></span><button class="btn btn-primary btn-sm" id="scresume">Resume</button><button class="btn btn-ghost btn-sm" id="scclear">Clear the rest</button></div>${bar}</div>`;
+  return `<div class="card scstrip"><div class="row"><strong>Scrubbing</strong><span class="small">${done} of ${total} done · ${queued} left</span><span class="spacer"></span><button class="btn btn-ghost btn-sm" id="scpause">Pause</button></div>${bar}<p class="small muted" style="margin:6px 0 0">Reading websites, checking emails, cleaning names. Keep this page open to go faster. It also runs in the background.</p></div>`;
 };
-function paintStrip(queued, total, scrubbed) {
+function paintStrip(queued, total, scrubbed, paused) {
   const el = document.getElementById('scstrip');
   if (!el) return false;
-  el.innerHTML = total || queued ? stripHtml(queued, total, scrubbed) : '';
-  document.getElementById('scpause')?.addEventListener('click', async () => {
-    clearInterval(scrubTimer); scrubTimer = null;
+  el.innerHTML = total || queued ? stripHtml(queued, total, scrubbed, paused) : '';
+  const stopTimer = () => { clearInterval(scrubTimer); scrubTimer = null; };
+  document.getElementById('scpause')?.addEventListener('click', () => { stopTimer(); store(pausedKey, '1'); paintStrip(queued, total, scrubbed, true); });
+  document.getElementById('scresume')?.addEventListener('click', () => { store(pausedKey, null); paintStrip(queued, total, scrubbed, false); watchScrub(0, scrubDoneCb); });
+  document.getElementById('scclear')?.addEventListener('click', async () => {
+    stopTimer();
     try { await api('/api/scrub/cancel', { method: 'POST' }); } catch (e) { toast(e.message, true); }
-    try { sessionStorage.removeItem(scrubKey); } catch {}
-    el.innerHTML = '';
+    store(scrubKey, null); store(pausedKey, null); el.innerHTML = '';
     scrubDoneCb?.();
   });
-  document.getElementById('scclose')?.addEventListener('click', () => { try { sessionStorage.removeItem(scrubKey); } catch {} el.innerHTML = ''; });
+  document.getElementById('scclose')?.addEventListener('click', () => { store(scrubKey, null); el.innerHTML = ''; });
   return true;
 }
 export function watchScrub(added = 0, onDone) {
   if (onDone) scrubDoneCb = onDone;
-  let total = 0;
-  try { total = Number(sessionStorage.getItem(scrubKey)) || 0; } catch {}
-  total += added;
-  try { sessionStorage.setItem(scrubKey, String(total)); } catch {}
-  if (scrubTimer) { return; }
+  store(pausedKey, null);
+  let total = (Number(load(scrubKey)) || 0) + added;
+  store(scrubKey, total);
+  if (scrubTimer) return;
   const step = async () => {
     if (scrubBusy) return;
     if (!document.getElementById('scstrip')) { clearInterval(scrubTimer); scrubTimer = null; return; }   // left the Pipeline
@@ -384,23 +396,31 @@ export function watchScrub(added = 0, onDone) {
     try {
       const rs = await Promise.all([api('/api/scrub/tick', { method: 'POST' }), api('/api/scrub/tick', { method: 'POST' })]);
       const st = rs[rs.length - 1];
-      try { total = Math.max(Number(sessionStorage.getItem(scrubKey)) || 0, st.queued); sessionStorage.setItem(scrubKey, String(total)); } catch { total = Math.max(total, st.queued); }
-      paintStrip(st.queued, total, st.scrubbed);
+      total = Math.max(Number(load(scrubKey)) || 0, st.queued); store(scrubKey, total);
+      paintStrip(st.queued, total, st.scrubbed, false);
       if (!st.queued) { clearInterval(scrubTimer); scrubTimer = null; scrubDoneCb?.(); }
-    } catch (e) { clearInterval(scrubTimer); scrubTimer = null; toast(e.message, true); }
+    } catch (e) {
+      // Interrupted (offline, server busy): stop and offer Resume instead of failing quietly.
+      clearInterval(scrubTimer); scrubTimer = null; store(pausedKey, '1');
+      try { const st = await api('/api/scrub/status'); paintStrip(st.queued, Math.max(total, st.queued), st.scrubbed, 'stopped: ' + e.message); } catch { paintStrip(1, Math.max(total, 1), 0, 'stopped: ' + e.message); }
+    }
     scrubBusy = false;
   };
   scrubTimer = setInterval(step, 1500);
   step();
 }
-// Pick the strip up again after a refresh or coming back to the Pipeline.
+// Pick the strip up again after a refresh or coming back to the Pipeline. Paused stays paused until Resume.
 export async function resumeScrub(onDone) {
   try {
     const st = await api('/api/scrub/status');
-    let total = 0;
-    try { total = Number(sessionStorage.getItem(scrubKey)) || 0; } catch {}
-    if (st.queued) { total = Math.max(total, st.queued); try { sessionStorage.setItem(scrubKey, String(total)); } catch {} paintStrip(st.queued, total, st.scrubbed); watchScrub(0, onDone); }
-    else if (total) paintStrip(0, total, st.scrubbed);
+    let total = Number(load(scrubKey)) || 0;
+    if (scrubDoneCb == null || onDone) scrubDoneCb = onDone || scrubDoneCb;
+    if (st.queued) {
+      total = Math.max(total, st.queued); store(scrubKey, total);
+      const paused = load(pausedKey) === '1';
+      paintStrip(st.queued, total, st.scrubbed, paused);
+      if (!paused) watchScrub(0, onDone);
+    } else if (total) paintStrip(0, total, st.scrubbed, false);
   } catch {}
 }
 export async function scrubMany(leads, onDone, opts = {}) {
@@ -408,8 +428,8 @@ export async function scrubMany(leads, onDone, opts = {}) {
   try {
     const r = await api('/api/scrub/queue', { method: 'POST', body: { ids: leads.map((l) => l.id), lookup: Boolean(opts.lookup) } });
     toast(`${r.queued} lead${r.queued === 1 ? '' : 's'} queued.`);
-    try { sessionStorage.removeItem(scrubKey); } catch {}
-    paintStrip(r.queued, r.queued, 0);
+    store(scrubKey, null);
+    paintStrip(r.queued, r.queued, 0, false);
     watchScrub(r.queued, onDone);
   } catch (e) { toast(e.message, true); }
 }

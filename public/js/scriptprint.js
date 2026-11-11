@@ -4,7 +4,7 @@ import { DEFAULT_SCRIPT, SCRIPT_KEYS, SCRIPT_GROUPS, DEFAULT_OBJECTIONS, voiceTe
 
 const B = (t) => `[[${t}]]`;
 export const PRINT_VARS = {
-  first: B('first name'), first_or_owner: B('first name'), rep: B('your name'), my_number: B('your number'), business: B('business'), city: B('city'),
+  first: B('first name'), first_or_owner: B('first name'), rep: B('your name'), company: B('company name'), my_number: B('your number'), business: B('business'), city: B('city'),
   industry: B('industry'), keyword: B('keyword'), top_name_or_them: B('top competitor'), top10_of_points: B('X of Y'), ticket: B('job value'),
   price: B('monthly'), setup: B('buildout'), today_total: B('buildout + monthly'), city_suffix: ` in ${B('city')}`, pain: B('their pain'),
   scan_spread: `${B('spread line from call prep')} Same search, a couple of blocks apart, and you go from the first page to nowhere.`,

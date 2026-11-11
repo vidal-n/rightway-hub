@@ -109,6 +109,7 @@ export async function trainingPage(app, user, sub, arg) {
     <div class="tr-grid">
       ${card('#/training/tour', 'spark', 'Hub tour', 'A one minute walk through the menu and the top bar, fitted to your job.', `<span class="tr-done">${done.has('tour:hub') ? `${icon.check}Done` : 'Not taken yet'}</span>`)}
       ${card('#/training/scripts/cold', 'phone', 'Cold call script', 'Pattern interrupt, the free plan, book it on this call, discovery after.', `<span class="tr-done">${done.has('script:cold') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
+      ${card('#/training/scripts/plan', 'msg', 'Google Game Plan script (website audit)', 'Three short parts: the call, what to say if they ask, and what to say once they pick a time.', `<span class="tr-done">${done.has('script:plan') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/scripts/clarity', 'device', 'Google clarity audit script', 'The screen share pitch with every screen cue: slideshow, Scan tool tab and Google.', `<span class="tr-done">${done.has('script:clarity') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/drills', 'msg', 'Objection drills', 'Flash cards for every objection, before price, after price and the closes.', `<span class="tr-done">${n(['drill:cold', 'drill:before', 'drill:after', 'drill:any'])} of 4 sets done</span>`)}
       ${card('#/training/playbooks', 'note', 'Playbooks', 'How we run the calling day, the audit, closing, onboarding and the monthly work.', `<span class="tr-done">${n(pbKeys)} of ${pbKeys.length} done</span>`)}
@@ -120,11 +121,13 @@ export async function trainingPage(app, user, sub, arg) {
 
 function scripts(view, user, which) {
   const voice = voiceFor(user);
-  const steps = scriptSteps(which === 'clarity' ? 'clarity' : 'cold', undefined, voice);
-  view.innerHTML = `${head(which === 'clarity' ? 'Google clarity audit script' : 'Cold call script', 'Scripts')}${tabs('scripts', user)}
+  which = ['clarity', 'plan'].includes(which) ? which : 'cold';
+  const NAMES = { cold: 'Cold call script', clarity: 'Google clarity audit script', plan: 'Google Game Plan script (website audit)' };
+  const steps = scriptSteps(which, undefined, voice);
+  view.innerHTML = `${head(NAMES[which], 'Scripts')}${tabs('scripts', user)}
     <div class="row" style="justify-content:space-between;margin-bottom:16px">
-      <div class="seg"><a class="btn btn-sm ${which !== 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
-      <div class="row"><a class="btn btn-ghost btn-sm" href="${(voice === 'I' ? PDF : PDF_TEAM)[which === 'clarity' ? 'clarity' : 'cold']}" target="_blank" rel="noopener">${icon.down}Large print PDF</a>
+      <div class="seg"><a class="btn btn-sm ${which === 'cold' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'plan' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/plan">Game Plan</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
+      <div class="row">${which === 'plan' ? '' : `<a class="btn btn-ghost btn-sm" href="${(voice === 'I' ? PDF : PDF_TEAM)[which]}" target="_blank" rel="noopener">${icon.down}Large print PDF</a>`}
         ${user.role === 'admin' ? `<div class="seg"><button class="btn btn-sm ${voice === 'I' ? 'btn-primary' : 'btn-ghost'}" data-voice="I">Owner copy (I)</button><button class="btn btn-sm ${voice === 'we' ? 'btn-primary' : 'btn-ghost'}" data-voice="we">Team copy (we)</button></div>` : ''}
         <label class="row small" style="gap:8px"><input type="checkbox" id="rd"${done.has(`script:${which}`) ? ' checked' : ''}> I have read it</label></div></div>
     <p class="small muted" style="margin:0 0 16px">The live version with the lead's real names and numbers is in call prep and the presenter notes. Green blanks fill in there. Black boxes are the screen cues. Yellow DO notes are for you, never out loud.</p>

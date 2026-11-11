@@ -442,6 +442,7 @@ export const SCRIPT_VERSION = 10;
 // clarity call (or start it right there). Clarity call: the screen share that ends in a signed work order.
 export const SCRIPT_GROUPS = [
   ['cold', 'Cold call', ['k_open', 'k_site', 'k_hook', 'k_why', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
+  ['plan', 'Game Plan (website audit)', ['g_call', 'g_ask', 'g_set']],
   ['clarity', 'Clarity audit', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
 ];
 export const SCRIPT_KEYS = [
@@ -451,10 +452,32 @@ export const SCRIPT_KEYS = [
   ['c_verify', 'Verify the business'], ['c_scan', 'The clarity scan'], ['c_live', 'Search together'], ['c_why', 'Why they are up there (slow down)'],
   ['c_listings', 'Inconsistencies'], ['c_story', 'Why we are having this conversation'], ['c_program', 'What to expect'], ['c_process', 'Your app and your part'],
   ['c_trial', 'Trial close'], ['c_price', 'Price: the drop close'], ['c_close', 'Close'], ['c_post', 'Work order and payment'],
+  ['g_call', 'The call'], ['g_ask', 'If they ask what it is'], ['g_set', 'Once they give you a time'],
   ['c_onboard', 'Onboarding and homework'], ['c_book', 'Book the audit for later'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'],
 ];
 
 export const DEFAULT_SCRIPT = {
+  // Game Plan call (also run as a website audit): the lead asked for it, so this is a short call or text that books the walk through.
+  g_call: [
+    "Hi {first_or_owner}? It's {rep} with {company}.",
+    "As requested, we have your free Google Game Plan finished for {business}.",
+    "Or: As requested, we have your free website audit finished for {business}.",
+    "I/we have two spots left for tomorrow to take care of any questions about the report.",
+    "12pm or 4pm. Which works better for you?",
+  ].join('\n'),
+  g_ask: [
+    "IF THEY ASK WHAT IS THIS ABOUT: It's your free Google Game Plan. It shows where you rank on Google and why.",
+    "Or: It's your free website audit. It shows where you rank on Google and why.",
+    "And we also threw in a competitor analysis, so you know what to tweak with no guessing.",
+    "Both are yours to keep!",
+    "12pm or 4pm?",
+  ].join('\n'),
+  g_set: [
+    "Got it. You'll receive your email confirmation in the next few minutes.",
+    "We recommend having a computer or tablet handy, so we can share our screen and walk you through the Game Plan in real time.",
+    "Please make sure to keep your appointment, because we have limited availability.",
+    "(Book it in the Hub first, so the confirmation email goes out.)",
+  ].join('\n'),
   k_open: [
     "Hey, is this {first_or_owner}?",
     "(Only if the line really cut out: 'You broke up there, is this {first_or_owner}?')",
@@ -810,6 +833,7 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
     first_or_owner: first || 'the owner',
     ...coldVars(lead, intel, { kw, top, first, L, lbad, worst }),
     rep: ctx.rep || '',
+    company: ctx.company || 'Rightway Growth',
     my_number: ctx.number || '',
     business: lead.business || '',
     city: lead.city || intel?.listing?.city || '',
