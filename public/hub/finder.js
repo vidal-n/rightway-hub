@@ -21,19 +21,43 @@ const active = (j) => j.status === 'queued' || j.status === 'running';
 const ago = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
 
 // The filter boxes, used when starting a search and when looking through the results.
+const opts = (list) => list.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+const REVIEWS_MIN = [['', 'Any'], ['1', 'At least 1'], ['5', 'At least 5'], ['10', 'At least 10'], ['25', 'At least 25'], ['50', 'At least 50'], ['100', 'At least 100']];
+const REVIEWS_MAX = [['', 'Any'], ['10', 'Up to 10'], ['25', 'Up to 25'], ['50', 'Up to 50'], ['100', 'Up to 100'], ['250', 'Up to 250'], ['500', 'Up to 500']];
+const RATING_MIN = [['', 'Any'], ['3', '3.0 or more'], ['3.5', '3.5 or more'], ['4', '4.0 or more'], ['4.3', '4.3 or more'], ['4.5', '4.5 or more'], ['4.8', '4.8 or more']];
+const RATING_MAX = [['', 'Any'], ['3.5', '3.5 or less'], ['4', '4.0 or less'], ['4.3', '4.3 or less'], ['4.5', '4.5 or less'], ['4.8', '4.8 or less']];
+// Big national chains a lead list often has, skipped with one tick each.
+const CHAINS = ['Home Depot', "Lowe's", 'Walmart', 'Target', 'Best Buy', 'Costco', "Sam's Club", 'Menards', 'Ace Hardware', 'Sherwin-Williams', 'Staples', 'Harbor Freight'];
+const FILTER_SETS = {
+  category: { options: TARGET_INDUSTRIES.map((x) => ({ value: x.keyword, label: x.label })), label: 'Any category' },
+  exclude: { options: CHAINS.map((x) => ({ value: x, label: x })), label: 'Keep all' },
+};
 const filterHtml = () => `<div class="fgrid">
-  <label class="field"><span>Reviews at least</span><input data-f="minReviews" inputmode="numeric" placeholder="any"></label>
-  <label class="field"><span>Reviews at most</span><input data-f="maxReviews" inputmode="numeric" placeholder="any"></label>
-  <label class="field"><span>Rating at least</span><input data-f="minRating" inputmode="decimal" placeholder="any"></label>
-  <label class="field"><span>Rating at most</span><input data-f="maxRating" inputmode="decimal" placeholder="any"></label>
+  <label class="field"><span>Reviews at least</span><select data-f="minReviews">${opts(REVIEWS_MIN)}</select></label>
+  <label class="field"><span>Reviews at most</span><select data-f="maxReviews">${opts(REVIEWS_MAX)}</select></label>
+  <label class="field"><span>Rating at least</span><select data-f="minRating">${opts(RATING_MIN)}</select></label>
+  <label class="field"><span>Rating at most</span><select data-f="maxRating">${opts(RATING_MAX)}</select></label>
   <label class="field"><span>Website</span><select data-f="website"><option value="any">Any</option><option value="has">Has a website</option><option value="none">No website</option></select></label>
   <label class="field"><span>Phone</span><select data-f="phone"><option value="has">Has a phone</option><option value="any">Any</option></select></label>
   <label class="field"><span>Google profile</span><select data-f="claimed"><option value="any">Any</option><option value="claimed">Claimed</option><option value="unclaimed">Not claimed</option></select></label>
-  <label class="field"><span>Category contains</span><input data-f="category" placeholder="roof, gutter"></label>
-  <label class="field"><span>Skip names with</span><input data-f="exclude" placeholder="home depot, lowe's"></label>
+  <div class="field"><span>Category</span><div data-ms="category"></div><input type="hidden" data-f="category"></div>
+  <div class="field"><span>Skip big chains</span><div data-ms="exclude"></div><input type="hidden" data-f="exclude"></div>
 </div>`;
+// Tick-box menus for the list filters. Each writes its picks into a hidden field, so reading and refiltering work as before.
+function mountFilters(root) {
+  $$('[data-ms]', root).forEach((host) => {
+    if (host._ms) return;
+    const key = host.dataset.ms;
+    const hidden = root.querySelector(`input[data-f="${key}"]`);
+    host._ms = multiSelect(host, { ...FILTER_SETS[key], onChange: (vals) => { hidden.value = vals.join(', '); hidden.dispatchEvent(new Event('change', { bubbles: true })); } });
+  });
+}
 const readFilters = (root) => cleanFilters(Object.fromEntries($$('[data-f]', root).map((el) => [el.dataset.f, el.value])));
-const setFilters = (root, f) => { const c = cleanFilters(f); $$('[data-f]', root).forEach((el) => { el.value = c[el.dataset.f] ?? ''; }); };
+const setFilters = (root, f) => {
+  const c = cleanFilters(f);
+  $$('[data-f]', root).forEach((el) => { el.value = c[el.dataset.f] ?? ''; });
+  $$('[data-ms]', root).forEach((host) => host._ms?.set(String(c[host.dataset.ms] || '').split(',').map((x) => x.trim()).filter(Boolean)));
+};
 
 export async function finderPage(app, user, jobId = '') {
   const view = staffShell(app, user, 'finder');
@@ -101,6 +125,7 @@ async function homePage(view) {
     </div>
     <h3 style="margin:22px 0 10px">Searches</h3><div id="fjobs"></div>
 `;
+  mountFilters($('#fnew', view));
   setFilters($('#fnew', view), {});
 
   // Dropdowns: industries (remembered on this device), states, cities.
@@ -186,17 +211,19 @@ async function homePage(view) {
     $$('#fsrc button', view).forEach((x) => x.classList.toggle('is-on', x.dataset.src === source));
     $('#fsrcx', view).textContent = SOURCES.find((x) => x[0] === source)?.[2] || '';
     $('#fcustom', view).hidden = custom == null;
-    if (custom != null) $('#fviews', view).value = custom;
   };
   drawCov(); est();
   $('#fzip', view).addEventListener('input', est);
   $('#fextra', view).addEventListener('input', est);
   $('#fcap', view).addEventListener('change', est);
+  // While typing, only a whole number from 1 counts; an empty box keeps the last value. Leaving the box tidies it.
   $('#fviews', view).addEventListener('input', () => {
-    if (custom == null) return;
-    custom = Math.min(MAX_VIEWS, Math.max(1, Math.round(Number($('#fviews', view).value)) || 1));
+    const n = Math.round(Number($('#fviews', view).value));
+    if (custom == null || !(n >= 1)) return;
+    custom = Math.min(MAX_VIEWS, n);
     size = customSize(custom); drawCov(); est();
   });
+  $('#fviews', view).addEventListener('change', () => { if (custom != null) $('#fviews', view).value = custom; });
   $('#fsrc', view).addEventListener('click', (e) => {
     const b = e.target.closest('[data-src]'); if (!b || b.disabled) return;
     source = b.dataset.src; size = source === 'osm' ? 3 : 5; drawCov(); est();
@@ -327,6 +354,7 @@ async function jobPage(view, id) {
       <div class="tbl-wrap" style="margin-top:10px"><table class="tbl sheet"><thead><tr><th style="width:30px"><input type="checkbox" id="jall" title="Pick everything shown that is not in the Hub yet"></th><th>Business</th><th>Category</th><th>Phone</th><th>Website</th><th class="n">Rating</th><th class="n">Reviews</th><th>City</th><th>Status</th><th>Email</th><th>Owner</th></tr></thead><tbody id="jrows"></tbody></table></div>
       <div class="row" style="justify-content:center;margin-top:10px"><button class="btn btn-ghost" id="jmore" hidden>Show more</button></div>
       <p class="small muted" id="jnote" style="margin:10px 0 0"></p></div>`;
+  mountFilters(view);
   setFilters(view, f);
 
   const ST = { new: ['New', ''], added: ['Added', ''], inhub: ['In the Hub', 'gray'], dnc: ['Do not call', 'bad'], nophone: ['No phone', 'gray'] };
