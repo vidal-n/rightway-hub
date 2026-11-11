@@ -412,3 +412,19 @@ test('the script reads as I for owners and we for everyone else', async () => {
   const we = buildScript(lead, null, { rep: 'Sam', voice: 'we' }, {});
   assert.ok(we.steps.flatMap((st) => st.lines).some((l) => /our founder Vidal/.test(l)), 'the founder story is said as the team');
 });
+
+test('speed test falls back to our own page check when Google is out of quota', async () => {
+  const { pageSpeed } = await import('../src/pagespeed.js');
+  const page = '<html><head><meta name="viewport" content="width=device-width"><script src="/a.js"></script><script src="/b.js"></script><script src="/c.js"></script></head><body><img src="x.jpg"></body></html>';
+  const f = async (u) => (String(u).includes('pagespeedonline')
+    ? new Response(JSON.stringify({ error: { message: "Quota exceeded for quota metric 'Queries' and limit 'Queries per day'" } }), { status: 429 })
+    : new Response(page, { status: 200, headers: { 'content-type': 'text/html' } }));
+  const r = await pageSpeed({}, 'https://example.com', f, { fallback: true });
+  assert.equal(r.basic, true);
+  assert.equal(r.score, null);
+  assert.equal(r.blocking, 3);
+  assert.match(r.googleError, /PAGESPEED_KEY/);
+  await assert.rejects(() => pageSpeed({}, 'https://example.com', f), /PAGESPEED_KEY/);
+  const ok = async () => new Response(JSON.stringify({ lighthouseResult: { categories: { performance: { score: 0.87 } }, audits: {} } }), { status: 200 });
+  assert.equal((await pageSpeed({}, 'https://example.com', ok, { fallback: true })).score, 87);
+});

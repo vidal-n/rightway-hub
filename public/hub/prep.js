@@ -47,6 +47,14 @@ function scriptLine(l) {
   return `<p class="say-line">${markCues(esc(l))}</p>`;
 }
 
+// Collapsible section. Open or closed is remembered per section on this device, so the page opens the way the rep left it.
+const foldOpen = (key, dflt) => { try { const v = localStorage.getItem(`rw-fold-${key}`); return v === null ? dflt : v === '1'; } catch { return dflt; } };
+export const fold = (key, title, body, dflt = true, count = null) => `<details class="fold" data-fold="${esc(key)}"${foldOpen(key, dflt) ? ' open' : ''}><summary><span>${esc(title)}</span>${count != null ? `<b class="fold-n">${count}</b>` : ''}</summary><div class="fold-body">${body}</div></details>`;
+export function wireFolds(root) {
+  $$('details.fold', root).forEach((d) => d.addEventListener('toggle', () => { try { localStorage.setItem(`rw-fold-${d.dataset.fold}`, d.open ? '1' : '0'); } catch { /* ignore */ } }));
+  $$('[data-folds]', root).forEach((b) => b.addEventListener('click', () => $$('details.fold', root).forEach((d) => { d.open = b.dataset.folds === 'open'; })));
+}
+
 export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onResearched, compact = false } = {}) {
   const custom = await scriptSettings();
   const probs = findProblems(intel, lead);
@@ -73,23 +81,23 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
           <button class="btn btn-ghost btn-sm" data-act="meetnow" title="Starts a Google Meet now, invites them by email, and opens it beside the Hub">Google Meet now</button>
         </div>
       </div>
-      ${!intel ? `<div class="caption" style="margin:12px 0">Not researched yet. Research finds their Google profile, checks where they rank around their address, reads their website, and tests mobile speed. About 4 cents.</div>` : `
-      ${intel.demo ? '<p class="badge warn" style="margin:10px 0 0">Demo data: DataForSEO is not connected</p>' : ''}
-      <div class="prep-grid">
+      ${!intel ? `<div class="caption" style="margin:12px 0">Not researched yet. Research finds their Google profile, checks where they rank around their address, reads their website, and tests mobile speed. About 4 cents.</div>` : intel.demo ? '<p class="badge warn" style="margin:10px 0 0">Demo data: DataForSEO is not connected</p>' : ''}
+      <div class="fold-bar"><button type="button" class="linkbtn" data-folds="open">Open all</button><button type="button" class="linkbtn" data-folds="close">Close all</button></div>
+      ${fold('script', 'Script', `<div class="seg script-groups" role="tablist">${s.groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${g.key}">${esc(g.name)}</button>`).join('')}</div>
+      <div class="seg script-tabs" role="tablist">${s.steps.map((st, i) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${st.group}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
+      <div class="script-body">${s.steps.map((st, i) => `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}</div>`).join('')}</div>`, true)}
+      ${intel ? fold('snapshot', 'Their numbers', `<div class="prep-grid">
         <div>${snapshot(lead, intel)}</div>
         ${intel.grid ? `<div class="prep-map">${miniGrid(intel.grid)}<div class="small" style="text-align:center">Rank around them</div></div>` : ''}
       </div>
       <div class="small" style="margin-top:6px">${esc(info.label)}${intel.listing?.category ? ` · Google category: ${esc(intel.listing.category)}` : ''}${age ? ` · researched ${esc(age)}` : ''}</div>
-      ${intel.competitors?.length ? `<div class="comps">${intel.competitors.slice(0, 3).map((c, i) => `<span class="badge gray">#${i + 1} ${esc(c.title)}${c.reviews != null ? ` · ${c.reviews} reviews` : ''}${c.rating ? ` · ${c.rating}★` : ''}</span>`).join('')}</div>` : ''}
-      ${probs.length ? `<h3 style="margin-top:16px">Problems to pitch (${probs.length})</h3><ul class="probs">${probs.map((p) => `<li class="prob sev-${p.severity}"><div class="item-title">${esc(p.title)}</div><div class="small">${esc(p.detail)}</div><div class="say">Say: ${esc(p.talk)}</div></li>`).join('')}</ul>` : '<p class="muted" style="margin-top:12px">No major problems found. Pitch protecting their spot and growing into more keywords and areas.</p>'}`}
-      <div class="prep-lst" id="preplst"></div>
-      <h3 style="margin-top:18px">Script</h3>
-      <div class="seg script-groups" role="tablist">${s.groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${g.key}">${esc(g.name)}</button>`).join('')}</div>
-      <div class="seg script-tabs" role="tablist">${s.steps.map((st, i) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${st.group}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
-      <div class="script-body">${s.steps.map((st, i) => `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}</div>`).join('')}</div>
-      ${compact ? '' : `<h3 style="margin-top:16px">Objections</h3><div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary><p>${markCues(esc(o.a))}</p></details>`).join('')}</div>
-      <details class="obj playbook"><summary>Why the script works (the playbook)</summary><ul>${s.playbook.map((p) => `<li><b>${esc(p.name)}</b> <span class="small">${esc(p.from)}</span><div class="small">${esc(p.use)}</div></li>`).join('')}</ul></details>`}
+      ${intel.competitors?.length ? `<div class="comps">${intel.competitors.slice(0, 3).map((c, i) => `<span class="badge gray">#${i + 1} ${esc(c.title)}${c.reviews != null ? ` · ${c.reviews} reviews` : ''}${c.rating ? ` · ${c.rating}★` : ''}</span>`).join('')}</div>` : ''}`, true)
+      + fold('problems', 'Problems to pitch', probs.length ? `<ul class="probs">${probs.map((p) => `<li class="prob sev-${p.severity}"><div class="item-title">${esc(p.title)}</div><div class="small">${esc(p.detail)}</div><div class="say">Say: ${esc(p.talk)}</div></li>`).join('')}</ul>` : '<p class="muted" style="margin:0">No major problems found. Pitch protecting their spot and growing into more keywords and areas.</p>', false, probs.length) : ''}
+      ${fold('listings', 'Listings Google double checks', '<div class="prep-lst" id="preplst"></div>', false)}
+      ${compact ? '' : fold('objections', 'Objections', `<div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary><p>${markCues(esc(o.a))}</p></details>`).join('')}</div>
+      <details class="obj playbook"><summary>Why the script works (the playbook)</summary><ul>${s.playbook.map((p) => `<li><b>${esc(p.name)}</b> <span class="small">${esc(p.from)}</span><div class="small">${esc(p.use)}</div></li>`).join('')}</ul></details>`, false)}
     </div>`;
+  wireFolds(el);
   $$('[data-group]', el).forEach((b) => b.addEventListener('click', () => {
     $$('[data-group]', el).forEach((x) => x.classList.toggle('is-on', x === b));
     const tabs = $$('[data-step]', el);
@@ -126,7 +134,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
   // The real listing check: which directories show wrong info or none at all. The "inconsistencies" in the pitch, for this business.
   const lst = $('#preplst', el);
   const drawLst = (L) => {
-    lst.innerHTML = `<h3 style="margin-top:16px">Listings Google double checks</h3>${L ? `<p class="small" style="margin:0 0 8px">${esc(listingsLine(L))} <span class="muted">Checked ${esc(fmt.ago(L.at))}${L.demo ? ' (demo data)' : ''}.</span></p>${listingsTable(L, { max: 15 })}` : '<p class="small muted" style="margin:0 0 8px">Not checked yet. Searches 15 directories for this business and flags wrong phone numbers, wrong ZIP codes and missing listings. About 3 cents.</p>'}
+    lst.innerHTML = `${L ? `<p class="small" style="margin:0 0 8px">${esc(listingsLine(L))} <span class="muted">Checked ${esc(fmt.ago(L.at))}${L.demo ? ' (demo data)' : ''}.</span></p>${listingsTable(L, { max: 15 })}` : '<p class="small muted" style="margin:0 0 8px">Not checked yet. Searches 15 directories for this business and flags wrong phone numbers, wrong ZIP codes and missing listings. About 3 cents.</p>'}
       <button class="btn btn-ghost btn-sm" data-act="lst" style="margin-top:8px">${L ? 'Check again' : 'Check listings'}</button>`;
     $('[data-act="lst"]', lst).addEventListener('click', async (e) => {
       busy(e.target, true, 'Checking 15 directories...');

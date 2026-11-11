@@ -1,6 +1,7 @@
 // Browser phone: calls go out and come in through the computer's mic and speakers (Twilio Voice JS SDK, vendored in /vendor).
 // One Device per tab, created after login. A call bar floats over every page while a call is live.
 import { api, esc, toast } from './core.js';
+import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter } from './audioset.js';
 
 const SDK = '/vendor/twilio-voice-2.18.5.min.js';
 const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -20,9 +21,11 @@ export const pretty = (n) => { const d = String(n || '').replace(/\D/g, '').repl
 const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 // ---------- device ----------
-const st = { status: 'off', reason: '', device: null, call: null };
+const st = { status: 'off', reason: '', device: null, call: null, monAct: '' };
 const listeners = new Set();
-export const phoneState = () => ({ status: st.status, reason: st.reason, onCall: Boolean(st.call) });
+export const phoneState = () => ({ status: st.status, reason: st.reason, onCall: Boolean(st.call), monitoring: st.call ? st.monAct : '' });
+export const phoneDevice = () => st.device;
+setDeviceGetter(phoneDevice);
 export function onPhoneState(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 const emit = () => listeners.forEach((fn) => { try { fn(phoneState()); } catch { /* ignore */ } });
 const setStatus = (status, reason = '') => { st.status = status; st.reason = reason; emit(); };
@@ -53,6 +56,7 @@ export function startPhone() {
     d.on('unregistered', () => { if (st.status === 'ready') setStatus('loading'); });
     d.on('error', (e) => { if (!st.call && /token/i.test(e?.message || '')) setStatus('error', 'The phone lost its sign in. Reload the page.'); });
     st.device = d;
+    watchDevices(d);
     try { await d.register(); } catch { /* outgoing still works without registration */ }
     if (st.status !== 'ready') setStatus('ready');
     return d;
@@ -113,7 +117,8 @@ function renderBar(view) {
       ${view.state === 'incoming' ? `<button type="button" class="cb-btn cb-decline" data-act="decline">${picon.hang}<span>Decline</span></button><button type="button" class="cb-btn cb-accept" data-act="accept">${picon.phone}<span>Answer</span></button>` : ''}
       ${live && view.kind !== 'monitor' ? `<button type="button" class="cb-btn${view.muted ? ' on' : ''}" data-act="mute" aria-pressed="${view.muted}">${view.muted ? picon.micOff : picon.mic}<span>${view.muted ? 'Unmute' : 'Mute'}</span></button>
         <button type="button" class="cb-btn${view.pad ? ' on' : ''}" data-act="pad" aria-pressed="${Boolean(view.pad)}">${picon.pad}<span>Keypad</span></button>` : ''}
-      ${['dialing', 'ringing', 'live'].includes(view.state) ? `<button type="button" class="cb-btn cb-hang" data-act="hang">${picon.hang}<span>${view.kind === 'monitor' ? 'Leave' : 'Hang up'}</span></button>` : ''}
+      ${['dialing', 'ringing', 'live', 'incoming'].includes(view.state) && view.kind !== 'bridge' ? `<button type="button" class="cb-btn" data-act="audio" title="Mic, speaker and noise">${picon.mic}<span>Audio</span></button>` : ''}
+      ${['dialing', 'ringing', 'live'].includes(view.state) ? `<button type="button" class="cb-btn cb-hang" data-act="hang">${picon.hang}<span>${view.kind === 'monitor' ? 'Leave' : view.kind === 'bridge' ? 'Done' : 'Hang up'}</span></button>` : ''}
     </div>`;
 }
 
@@ -122,6 +127,7 @@ const MODE_LABEL = { listen: 'Listening', whisper: 'Whispering', barge: 'On the 
 
 function track(call, view, { onEnd, act } = {}) {
   st.call = call;
+  awakeDuringCall(true);
   emit();
   let started = 0;
   let answered = false;
@@ -134,6 +140,8 @@ function track(call, view, { onEnd, act } = {}) {
     ringback(false);
     if (st.call !== call) return;
     st.call = null;
+    awakeDuringCall(false);
+    releaseAudio(st.device);
     emit();
     const secs = answered ? Math.round((Date.now() - started) / 1000) : 0;
     set({ state: 'ended', label: label || endLabel || (answered ? `Call ended ${clock(secs)}` : 'No answer') });
@@ -175,7 +183,7 @@ function track(call, view, { onEnd, act } = {}) {
   call.on('reject', () => end('Declined'));
   call.on('error', (e) => {
     const code = e?.code;
-    const msg = code === 31401 || code === 31208 ? 'Allow the microphone for this site (lock icon in the address bar), then call again.'
+    const msg = code === 31401 || code === 31208 ? 'The microphone is blocked. Open Audio (on the call bar or the dialer) for the steps to allow it, then call again.'
       : code === 31402 ? 'No microphone found. Plug in a headset or mic and try again.'
       : `Call problem: ${e?.message || 'unknown error'}`;
     toast(msg, true);
@@ -191,10 +199,11 @@ function track(call, view, { onEnd, act } = {}) {
       return;
     }
     const action = btn.dataset.act;
+    if (action === 'audio') { audioPanel({ device: st.device }); return; }
     if (action === 'hang') call.disconnect();
     if (action === 'mute') call.mute(!call.isMuted());
     if (action === 'pad') set({ pad: !view.pad });
-    if (action === 'accept') { call.accept(); set({ state: 'dialing', label: 'Connecting...', incoming: true }); }
+    if (action === 'accept') { set({ state: 'dialing', label: 'Connecting...', incoming: true }); prepareAudio(st.device).catch(() => {}).finally(() => call.accept()); }
     if (action === 'decline') { call.reject(); end('Declined'); }
   };
 }
@@ -202,15 +211,52 @@ function track(call, view, { onEnd, act } = {}) {
 // Outgoing: checks the number on the server, then connects through the browser.
 export async function placeCall({ to, leadId, from, name, onEnd } = {}) {
   if (st.call) throw new Error('You are already on a call. Hang up first.');
+  // "Use my phone": the Hub rings your mobile, then connects the lead. Works with the screen locked or in another app.
+  if (callMode() === 'phone' && leadId && !to) return bridgeCall({ leadId, from, name, onEnd });
   const prep = await api('/api/voice/prepare', { method: 'POST', body: { to, leadId, from } });
   const d = await startPhone();
   const view = { state: 'dialing', label: 'Calling...', name: name || prep.name, number: prep.to, from: prep.from, kind: 'out', recording: Boolean(prep.recording) };
   renderBar(view);
   st.call = { pending: true };
   let call;
-  try { call = await d.connect({ params: { act: prep.activityId } }); }
-  catch (e) { st.call = null; emit(); renderBar({ ...view, state: 'ended', label: 'Call failed' }); hideBar(2000); throw e; }
+  try { await prepareAudio(d); call = await d.connect({ params: { act: prep.activityId } }); }
+  catch (e) { st.call = null; releaseAudio(d); emit(); renderBar({ ...view, state: 'ended', label: 'Call failed' }); hideBar(2000); throw e; }
   track(call, view, { onEnd: (r) => onEnd?.({ ...r, activityId: prep.activityId, leadId: prep.leadId || leadId || null, to: prep.to, name: view.name }), act: prep.activityId });
+  return call;
+}
+
+// The ring-my-mobile route: the Hub calls the rep's saved mobile, and when it is answered it dials the lead.
+const BRIDGE_END = { completed: 1, 'no-answer': 1, busy: 1, failed: 1, canceled: 1, you_busy: 1, 'you_no-answer': 1, you_failed: 1, you_canceled: 1 };
+async function bridgeCall({ leadId, from, name, onEnd }) {
+  const r = await api('/api/dialer/call', { method: 'POST', body: { leadId, from } });
+  const id = r.activityId;
+  const view = { state: 'ringing', label: 'Your phone is ringing. Answer it.', name: name || 'Lead', number: '', from: '', kind: 'bridge' };
+  renderBar(view);
+  let poll = null, done = false;
+  const call = { bridge: true, disconnect: () => finish('') };
+  st.call = call;
+  awakeDuringCall(true);
+  emit();
+  const finish = (label, res = {}) => {
+    if (done) return; done = true;
+    clearInterval(poll);
+    if (st.call === call) { st.call = null; awakeDuringCall(false); emit(); }
+    renderBar({ ...view, state: 'ended', label: label || (res.answered ? `Call ended ${clock(res.duration || 0)}` : 'Call finished') });
+    hideBar(2200);
+    onEnd?.({ answered: Boolean(res.answered), seconds: res.duration || 0, activityId: id, leadId, name: view.name });
+  };
+  const bar = ensureBar();
+  bar.onclick = (ev) => { if (ev.target.closest('[data-act="hang"]')) finish(''); };
+  poll = setInterval(async () => {
+    try {
+      const s = await api(`/api/voice/calls/${id}`);
+      if (s.status === 'connecting') { view.label = 'Connected to your phone. Calling the lead...'; renderBar(view); }
+      if (BRIDGE_END[s.status] || s.status?.startsWith('you_')) {
+        const mine = s.status.startsWith('you_');
+        finish(mine ? 'Your phone did not answer' : '', { answered: !mine && s.duration > 0, duration: s.duration });
+      }
+    } catch { /* keep trying */ }
+  }, 1500);
   return call;
 }
 
@@ -222,9 +268,12 @@ export async function joinCall({ act, mode = 'listen', name, number, rep } = {})
   renderBar(view);
   st.call = { pending: true };
   let call;
-  try { call = await d.connect({ params: { monitor: act, mode } }); }
+  try { if (mode !== 'listen') await prepareAudio(d); call = await d.connect({ params: { monitor: act, mode } }); }
   catch (e) { st.call = null; emit(); renderBar({ ...view, state: 'ended', label: 'Could not join' }); hideBar(2000); throw e; }
-  track(call, view, { act, onEnd: () => {} });
+  st.monAct = act;
+  const clear = () => { if (st.monAct === act) { st.monAct = ''; emit(); } };
+  try { call.once('disconnect', clear); call.once('cancel', clear); call.once('error', clear); } catch { /* older SDK */ }
+  track(call, view, { act, onEnd: clear });
   return call;
 }
 

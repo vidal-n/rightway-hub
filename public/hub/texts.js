@@ -118,7 +118,7 @@ async function callsView(view, user) {
       <span class="badge ${tone}">${l}</span>
       <div><div class="item-title">${esc(c.lead?.business || c.fromPretty || 'Unknown caller')}</div>
         <div class="item-sub">${esc(c.fromPretty || '')} · ${esc(fmt.ago(c.at))}${c.duration ? ` · ${c.duration}s` : ''}${c.calledBack ? ' · called back' : ''}</div>
-        ${c.voicemail ? `<audio controls preload="none" src="/api/voicemail/${esc(c.id)}/audio" style="width:100%;max-width:360px;margin-top:6px"></audio>` : ''}</div>
+        ${c.voicemail ? `<audio controls preload="metadata" src="/api/voicemail/${esc(c.id)}/audio" style="width:100%;max-width:360px;margin-top:6px"></audio> <a class="small" href="/api/voicemail/${esc(c.id)}/audio?download=1" download>Download</a>` : ''}</div>
       <div class="item-actions">${c.from ? `<button class="btn btn-primary btn-sm" data-call="${esc(c.from)}" data-lead="${esc(c.lead?.id || '')}" data-name="${esc(c.lead?.business || c.fromPretty)}">${icon.phone}Call back</button>` : ''}
         ${c.lead ? `<button class="btn btn-ghost btn-sm" data-lead-open="${esc(c.lead.id)}">Lead</button>` : c.from ? '<button class="btn btn-ghost btn-sm" data-addlead>Add as lead</button>' : ''}
         ${(c.status === 'voicemail' || c.status === 'missed') && !c.seen ? '<button class="icon-btn" data-seen title="Mark heard">' + icon.check + '</button>' : ''}</div></li>`; }).join('')}</ul>`

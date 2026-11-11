@@ -4,6 +4,7 @@
 import { HttpError, json } from './util.js';
 import { all, first, run, newId, now } from './db.js';
 import { requireStaff, requireAdmin, requireClientAccess } from './auth.js';
+import { serveRecording } from './audio.js';
 import { route } from './router.js';
 import { e164 } from './crm.js';
 import { verifiedParams, twiml, xml, twilioReady, resetNumberCache } from './calls.js';
@@ -225,12 +226,5 @@ route('GET', '/api/tracked-calls/:id/audio', async ({ env, user, params, url, re
   requireClientAccess(user, c.client_id);
   const sid = url.searchParams.get('k') === 'vm' ? c.vm_sid : c.rec_sid;
   if (!sid) throw new HttpError('No audio for this call.', 404);
-  const headers = { Authorization: auth(env) };
-  const range = request.headers.get('range');
-  if (range) headers.Range = range;
-  const res = await fetch(`${tw(env)}/Recordings/${sid}.mp3`, { headers });
-  if (!res.ok && res.status !== 206) throw new HttpError('Twilio did not return the audio. It may have been deleted.', 502);
-  const out = new Headers({ 'content-type': 'audio/mpeg', 'cache-control': 'private, max-age=3600', 'accept-ranges': 'bytes' });
-  for (const h of ['content-length', 'content-range']) { const v = res.headers.get(h); if (v) out.set(h, v); }
-  return new Response(res.body, { status: res.status, headers: out });
+  return serveRecording(env, request, { sid, twilioUrl: `${tw(env)}/Recordings/${sid}.mp3`, twilioAuth: auth(env), filename: `call-${c.id}.mp3`, download: Boolean(url.searchParams.get('download')), gone: 'Twilio did not return the audio. It may have been deleted.' });
 });

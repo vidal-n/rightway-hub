@@ -10,6 +10,7 @@
 import { HttpError, json } from './util.js';
 import { first, all, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
+import { serveRecording, forgetRecording } from './audio.js';
 import { e164, inCallingHours, logActivity, recordOutcome, insertLead, cleanLead } from './crm.js';
 import { resolveDispo } from './dispo.js';
 import { route } from './router.js';
@@ -160,12 +161,13 @@ route('POST', '/api/twilio/client-voice', async ({ env, request, url }) => {
     const u = await userForIdentity(env, p.From);
     if (!u || u.role !== 'admin') return no('Only an owner can listen to calls.');
     const a = await first(env, 'SELECT * FROM activities WHERE id = ?', p.monitor);
-    if (!a || !a.conf_sid || !LIVE.includes(a.status)) return no('That call has ended.');
+    if (!a || !LIVE.includes(a.status)) return no('That call has ended.');
+    if (!a.conf_sid) return no('That call is not on a line you can join yet. Try again in a moment.');
     if (!(await import('./lines.js').then((m) => m.canSeeCallBy(env, u, a.by)))) return no('Owners cannot listen to each other.');
     const mode = MODES.includes(p.mode) ? p.mode : 'listen';
     await run(env, 'UPDATE activities SET mon_sid = ?, mon_by = ?, mon_mode = ? WHERE id = ?', p.CallSid || null, u.id, mode, a.id);
     const coach = mode === 'whisper' && a.call_sid ? ` coach="${xml(a.call_sid)}"` : '';
-    return twiml(`<Dial><Conference beep="false" startConferenceOnEnter="false" endConferenceOnExit="false" muted="${mode === 'listen'}"${coach} participantLabel="coach" waitUrl="">${room(a.id)}</Conference></Dial>`);
+    return twiml(`<Dial><Conference beep="false" startConferenceOnEnter="false" endConferenceOnExit="false" muted="${mode === 'listen'}"${coach} participantLabel="coach" statusCallback="${xml(`${url.origin}/api/twilio/conf-status?a=${a.id}`)}" statusCallbackEvent="leave" waitUrl="">${room(a.id)}</Conference></Dial>`);
   }
 
   const a = p.act ? await first(env, 'SELECT * FROM activities WHERE id = ?', p.act) : null;
@@ -345,6 +347,11 @@ route('POST', '/api/voice/monitor/:id', async ({ env, user, params, body }) => {
   try { await twilioPost(env, `Conferences/${a.conf_sid}/Participants/${a.mon_sid}.json`, f); }
   catch (e) {
     if (/16000|agent conference|coach/i.test(e.message)) throw new HttpError('Whisper needs Agent Conference turned on in Twilio: Voice, Settings, Conferences.', 400);
+    // You already left the line (Twilio no longer has you in the room): clear it so the next click joins again.
+    if (/not found|HTTP 404|20404|no longer|completed/i.test(e.message)) {
+      await run(env, 'UPDATE activities SET mon_sid = NULL, mon_by = NULL, mon_mode = NULL WHERE id = ? AND mon_by = ?', a.id, user.id);
+      throw new HttpError('You have left that call. Tap Listen to join again.', 409);
+    }
     throw e;
   }
   await run(env, 'UPDATE activities SET mon_mode = ? WHERE id = ?', mode, a.id);
@@ -372,23 +379,17 @@ async function recordingFor(env, user, id) {
   return a;
 }
 
-route('GET', '/api/recordings/:id/audio', async ({ env, user, params, request }) => {
+route('GET', '/api/recordings/:id/audio', async ({ env, user, params, request, url }) => {
   requireStaff(user);
   const a = await recordingFor(env, user, params.id);
-  const headers = { Authorization: twAuth(env) };
-  const range = request.headers.get('range');
-  if (range) headers.Range = range;
-  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Recordings/${a.rec_sid}.mp3`, { headers });
-  if (!res.ok && res.status !== 206) throw new HttpError('Twilio did not return the recording. It may have been deleted.', 502);
-  const out = new Headers({ 'content-type': 'audio/mpeg', 'cache-control': 'private, max-age=3600', 'accept-ranges': 'bytes' });
-  for (const h of ['content-length', 'content-range']) { const v = res.headers.get(h); if (v) out.set(h, v); }
-  return new Response(res.body, { status: res.status, headers: out });
+  return serveRecording(env, request, { sid: a.rec_sid, twilioUrl: `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Recordings/${a.rec_sid}.mp3`, twilioAuth: twAuth(env), filename: `call-${a.id}.mp3`, download: Boolean(url.searchParams.get('download')) });
 });
 
 route('DELETE', '/api/recordings/:id', async ({ env, user, params }) => {
   requireAdmin(user);
   const a = await recordingFor(env, user, params.id);
   await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Recordings/${a.rec_sid}.json`, { method: 'DELETE', headers: { Authorization: twAuth(env) } }).catch(() => {});
+  await forgetRecording(env, a.rec_sid);
   await run(env, 'UPDATE activities SET rec_sid = NULL, rec_secs = NULL WHERE id = ?', a.id);
   return json({ ok: true });
 });

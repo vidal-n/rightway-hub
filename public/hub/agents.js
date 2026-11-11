@@ -42,7 +42,6 @@ export async function agentsPage(app, user, sub) {
       <div class="stat"><div class="stat-num">${avail}</div><div class="stat-label">available</div></div>
       <div class="stat"><div class="stat-num">${d.team.dials}</div><div class="stat-label">dials today, ${d.team.connects} contacts, ${d.team.booked} booked</div></div>
       <div class="stat"><div class="stat-num">${clock(d.team.talk)}</div><div class="stat-label">talk time today</div></div>`);
-    const busyPhone = phoneState().onCall;
     const changed = setHtml($('#ags', view), d.agents.map((a) => {
       const tone = statusTone(a.status);
       const per = a.today.per || {};
@@ -54,8 +53,7 @@ export async function agentsPage(app, user, sub) {
           <div style="min-width:0;flex:1"><div class="ag-name">${esc(a.name)}${a.id === d.me ? ' <span class="badge gray">You</span>' : ''}</div>
             <div class="ag-st">${esc(statusLabel(a.status))}${a.status !== 'offline' && a.since ? ` · ${ago(a.since)}` : a.lastSeen ? ` · seen ${ago(a.lastSeen)} ago` : ''} · ${a.role === 'admin' ? 'Owner' : 'Team'}</div></div></div>
         ${c ? `<div class="ag-call"><div><b>${esc(c.business || pretty(c.number) || 'Dialing')}</b> <span class="small">${talking ? `talking ${clock((Date.now() - (c.answeredAt || c.at)) / 1000)}` : 'ringing'}${c.monitoredBy ? ` · ${c.mine ? `you are ${c.mode === 'barge' ? 'on the call' : `${c.mode}ing`}` : 'an owner is listening'}` : ''}</span></div>
-          ${d.canMonitor && c.canJoin ? `<div class="row" style="gap:6px">${['listen', 'whisper', 'barge'].map((m) => `<button type="button" class="btn btn-ghost btn-sm${c.mine && c.mode === m ? ' is-on' : ''}" data-mon="${esc(c.id)}" data-mode="${m}" data-agent="${esc(a.name)}"${!c.mine && busyPhone ? ' disabled' : ''}>${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}
-            ${c.leadId ? `<a class="btn btn-ghost btn-sm" href="#/pipeline/${esc(c.leadId)}">Lead</a>` : ''}</div>` : ''}</div>` : ''}
+          ${d.canMonitor ? monitorBlock(c, a, phoneState()) : ''}</div>` : ''}
         <div class="ag-nums"><div><b>${clock(a.today.login)}</b><span>logged in</span></div><div><b>${a.today.dials}</b><span>dials</span></div>
           <div><b>${clock(a.today.talk)}</b><span>talk</span></div><div><b>${clock(a.today.avgHandle)}</b><span>avg handle</span></div></div>
         <div class="ag-bar" title="Today by status">${Object.entries(per).map(([k, v]) => `<i style="width:${(100 * v) / tot}%;background:${stColor(k)}" title="${esc(statusLabel(k))}: ${clock(v)}"></i>`).join('')}</div>
@@ -67,7 +65,7 @@ export async function agentsPage(app, user, sub) {
       const a = d.agents.find((x) => x.call?.id === b.dataset.mon);
       busy(b, true);
       try {
-        if (a.call.mine) await api(`/api/voice/monitor/${a.call.id}`, { method: 'POST', body: { mode: b.dataset.mode } });
+        if (phoneState().monitoring === a.call.id) await api(`/api/voice/monitor/${a.call.id}`, { method: 'POST', body: { mode: b.dataset.mode } });
         else await joinCall({ act: a.call.id, mode: b.dataset.mode, name: a.call.business, number: a.call.number, rep: a.name });
         setTimeout(draw, 800);
       } catch (e) { toast(e.message, true); busy(b, false); }
@@ -76,6 +74,22 @@ export async function agentsPage(app, user, sub) {
   draw();
   timer = setInterval(draw, 5000);
   const off = onPhoneState(() => { if (!document.body.contains(view)) { off(); return; } draw(); });
+}
+
+// Listen, Whisper and Barge for an owner. Always drawn on another rep's live call; greyed out with the reason when it cannot be used.
+function monitorBlock(c, a, ph) {
+  const j = c.join || { ok: c.canJoin, why: '' };
+  const here = ph.monitoring === c.id;
+  const busyElsewhere = ph.onCall && !here;
+  const off = !j.ok || busyElsewhere;
+  const why = !j.ok ? j.why : busyElsewhere ? 'Hang up your own call first, then join.' : '';
+  if (!j.ok && !j.why) return '';
+  const btns = ['listen', 'whisper', 'barge'].map((m) => {
+    const on = here && c.mine && c.mode === m;
+    return `<button type="button" class="btn btn-ghost btn-sm${on ? ' is-on' : ''}" data-mon="${esc(c.id)}" data-mode="${m}"${off ? ' disabled' : ''} title="${esc(off ? why : { listen: 'Hear the call. Nobody hears you.', whisper: 'Only your rep hears you.', barge: 'Everyone hears you.' }[m])}">${m[0].toUpperCase() + m.slice(1)}</button>`;
+  }).join('');
+  return `<div class="row" style="gap:6px;flex-wrap:wrap">${btns}${c.leadId ? `<a class="btn btn-ghost btn-sm" href="#/pipeline/${esc(c.leadId)}">Lead</a>` : ''}</div>
+    ${why ? `<p class="small muted" style="margin:0">${esc(why)}</p>` : here ? '<p class="small muted" style="margin:0">You are on this call. Switch with the buttons or the call bar.</p>' : ''}`;
 }
 
 // ---------- analytics ----------

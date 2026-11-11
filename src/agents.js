@@ -69,6 +69,19 @@ async function callRows(env, from, to, rep) {
   return rows.filter((r) => !(r.status === 'ready' && !r.outcome)).map((r) => ({ ...r, hour: hourIn(r.at) }));
 }
 
+// Can this viewer listen, whisper or barge on this call? Always answers, with a plain reason when not, so the buttons never just vanish.
+export function joinState(viewer, call, target) {
+  if (!viewer || viewer.role !== 'admin') return { ok: false, why: '' };
+  if (call.by === viewer.id) return { ok: false, why: 'This is your own call.' };
+  if (target?.role === 'admin') return { ok: false, why: 'Owners cannot listen to each other.' };
+  if (call.status === 'ringing_you') return { ok: false, why: 'This call is still ringing them.', wait: true };
+  if (!call.conf_sid) {
+    if (call.status === 'in-progress') return { ok: false, why: 'This call came in through the phone number, so it is not on a line you can join. Calls placed from the Hub can be joined.' };
+    return { ok: false, why: 'Starting up. The buttons turn on as soon as the line is open.', wait: true };
+  }
+  return { ok: true, why: '' };
+}
+
 route('GET', '/api/agents', async ({ env, user }) => {
   requireStaff(user);
   const t = now();
@@ -89,7 +102,7 @@ route('GET', '/api/agents', async ({ env, user }) => {
     return {
       id: u.id, name: u.name || u.email, email: u.email, role: u.role, avatar: u.avatar_at || null, online: Boolean(online),
       status: call ? 'on_call' : online ? u.status : 'offline', picked: u.status || 'offline', since: call ? call.answered_at || call.at : u.status_at, lastSeen: u.last_seen,
-      call: call ? { id: call.id, business: call.business, leadId: call.lead_id, number: call.to_num, status: call.status, answeredAt: call.answered_at, at: call.at, canJoin: Boolean(call.conf_sid) && call.by !== user.id && u.role !== 'admin', monitoredBy: call.mon_by, mode: call.mon_mode, mine: call.mon_by === user.id } : null,
+      call: call ? { id: call.id, business: call.business, leadId: call.lead_id, number: call.to_num, status: call.status, answeredAt: call.answered_at, at: call.at, join: joinState(user, call, u), canJoin: joinState(user, call, u).ok, monitoredBy: call.mon_by, mode: call.mon_mode, mine: call.mon_by === user.id } : null,
       today: { login: st.login, per: st.per, dials: s?.dials || 0, connects: s?.connects || 0, booked: s?.booked || 0, talk: s?.talk || 0, avgHandle: s?.avgHandle || 0, avgTalk: s?.avgTalk || 0 },
     };
   });

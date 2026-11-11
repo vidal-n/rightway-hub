@@ -1,7 +1,7 @@
 // CRM screens: pipeline board, lead details, CSV import, power dialer, settings.
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, PLAN_NAMES, PLAN_PRICE } from './core.js';
 import { staffShell, settingsTabs } from './staff.js';
-import { prepPanel, gradeBadge, bookModal, clearScriptCache } from './prep.js';
+import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
 import { textModal } from './texts.js';
 import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
 import { loadDispos, keyed, dispositionModal } from './dispo.js';
@@ -383,11 +383,12 @@ export async function leadModal(id, onChange) {
   const Q = quoteFor(l, data.intel, l.quote);
   const REC = recommendPlan(l, data.intel).plan;
   const closer = can(window.__rwUser, 'close'); // quotes, work orders, payment links and the presentation
+  const soon = l.stage === 'audit_booked' || Boolean(l.meet_at && l.meet_at > Date.now() - 3 * 3600e3 && l.meet_at < Date.now() + 3 * 3600e3);
   m.el.innerHTML = `
-    <div class="card-head"><div><p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · ${l.attempts} attempts` : ''}</p><h2>${esc(l.business)}</h2>
+    <div class="lm-top"><div class="card-head"><div><p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · ${l.attempts} attempts` : ''}</p><h2>${esc(l.business)}</h2>
       <div class="small">${esc([l.contact_name, l.city, l.state].filter(Boolean).join(' · '))}${l.tz_known ? ` · their time ${esc(l.local_time)}` : ''}</div></div>
       <button class="btn btn-ghost btn-sm" data-close>Close</button></div>
-    <div class="row" style="margin-bottom:14px">
+    <div class="row lm-actions">
       ${l.phone ? `<a class="btn btn-mint" href="${telHref(l.phone)}">${icon.phone}${esc(l.phone)}</a>` : ''}
       ${l.email ? `<button class="btn btn-ghost" id="lmailbtn">${icon.mail}Email</button>` : ''}
       <button class="btn btn-ghost" id="lmeetbtn">Add appointment</button>
@@ -397,20 +398,21 @@ export async function leadModal(id, onChange) {
       <a class="btn btn-ghost" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''} ${l.state || ''}`)}" target="_blank" rel="noopener">Google Maps</a>
       ${l.phone ? '<button class="btn btn-ghost" id="ltexts">Texts</button>' : ''}
       <button class="btn btn-ghost" id="ledit">Edit</button>
-    </div>
+    </div></div>
     ${l.dnc ? '<p class="badge bad" style="margin-bottom:12px">Do not call</p>' : ''}
     ${l.meet_at && l.meet_at > Date.now() - 2 * 3600e3 ? `<div class="card meet-card"><b>Audit meeting ${esc(new Date(l.meet_at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b>
       ${l.meet_link ? `<a class="btn btn-mint btn-sm" href="${esc(l.meet_link)}" target="_blank" rel="noopener">Join Google Meet</a>` : ''}${closer ? `<a class="btn btn-primary btn-sm" href="/present.html#${esc(l.id)}" target="_blank" rel="noopener">Open presentation</a>` : ''}</div>` : ''}
     <div class="card" id="lprep" style="box-shadow:none;margin-bottom:16px"></div>
     <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
       <div>
-        <h3>Log a call</h3>
+        ${fold('lm-log', 'Log a call', `
         <div class="outcomes">${DISP.map((d) => `<button class="btn btn-ghost btn-sm" data-out="${esc(d.id)}">${esc(d.label)}</button>`).join('')}</div>
         <label class="field" style="margin-top:10px"><span>Callback or audit time (for Callback and Booked)</span><input type="datetime-local" id="lwhen"></label>
         <label class="field" style="margin-top:10px"><span>Note</span><textarea id="lnote" rows="3" placeholder="What happened on the call"></textarea></label>
         <div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="lnotebtn">Save note only</button>
           <label class="field" style="flex:1 1 160px"><select id="lstage">${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}"${k === l.stage ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div>
-        ${closer ? `        <h3 style="margin-top:22px">Close the deal</h3>
+        `, true)}
+        ${closer ? fold('lm-close', 'Close the deal', `
         <p class="small muted" style="margin:0 0 8px">Pick what they need and set the price from discovery. The client sees the services and the price, never the plan name.</p>
         <div class="field"><span>Services they need</span><div class="svc-pick">${SERVICE_LIST.map((s) => `<label class="row small" style="gap:6px;align-items:flex-start"><input type="checkbox" value="${esc(s.id)}"${Q.services.some((x) => x.id === s.id) ? ' checked' : ''}> <span>${esc(s.name)}</span></label>`).join('')}</div></div>
         <div class="row" style="margin-top:8px;gap:8px">
@@ -430,24 +432,23 @@ export async function leadModal(id, onChange) {
             <label class="field" style="flex:1 1 120px"><span>Build fee $</span><input id="wsetup" inputmode="decimal" placeholder="1500"></label>
             <label class="field" style="flex:1 1 120px"><span>Monthly care $ (optional)</span><input id="wmonthly" inputmode="decimal" placeholder="0"></label></div>
           <label class="field" style="margin-top:8px"><span>What the website includes (one per line)</span><textarea id="wscope" rows="4" placeholder="5 page website: home, about, services, service area, contact&#10;Mobile friendly design&#10;Contact form and tap to call&#10;Basic on-page setup for Google"></textarea></label>
-          <button class="btn btn-primary btn-sm" id="lwweb" style="margin-top:8px">Send website work order</button></details>` : '<p class="small muted" style="margin-top:22px">The closer who runs the audit handles the quote, work order and payment.</p>'}
-        ${data.orders.length ? `<h3 style="margin-top:22px">Work orders</h3><ul class="list">${data.orders.map((o) => `<li class="item"><span class="badge ${o.status === 'paid' ? '' : o.status === 'signed' ? 'warn' : 'gray'}">${esc(o.status)}</span>
+          <button class="btn btn-primary btn-sm" id="lwweb" style="margin-top:8px">Send website work order</button></details>`, soon) : '<p class="small muted" style="margin-top:22px">The closer who runs the audit handles the quote, work order and payment.</p>'}
+        ${data.orders.length ? fold('lm-wo', 'Work orders', `<ul class="list">${data.orders.map((o) => `<li class="item"><span class="badge ${o.status === 'paid' ? '' : o.status === 'signed' ? 'warn' : 'gray'}">${esc(o.status)}</span>
           <div><div class="item-title">${o.kind === 'website' ? 'Website' : 'Local marketing'} · ${esc(fmt.money((o.setup_cents || 0) / 100))} + ${esc(fmt.money((o.monthly_cents || 0) / 100))}/mo${o.kind === 'website' ? '' : ` <span class="badge gray">${esc(PLAN_NAMES[o.plan] || o.plan)}</span>`}</div><div class="item-sub">${o.signed_name ? `Signed by ${esc(o.signed_name)} ${esc(fmt.ago(o.signed_at))}` : `Sent ${esc(fmt.ago(o.created_at))}`}</div></div>
-          <button class="btn btn-ghost btn-sm" data-wo="${esc(o.token)}">Copy link</button></li>`).join('')}</ul>` : ''}
+          <button class="btn btn-ghost btn-sm" data-wo="${esc(o.token)}">Copy link</button></li>`).join('')}</ul>`, false, data.orders.length) : ''}
       </div>
       <div>
-        <div id="ldata" style="margin-bottom:16px"></div>
-        <h3>Next step</h3>
-        <p>${l.next_action ? `${esc(l.next_action)} <span class="badge gray">${esc(dueText(l.next_action_at))}</span>` : '<span class="muted">None set</span>'}</p>
-        ${l.notes ? `<h3>Notes</h3><div class="caption">${esc(l.notes)}</div>` : ''}
-        <div class="card" id="lmail" style="box-shadow:none;padding:0;margin-top:18px"></div>
-        <h3 style="margin-top:18px">History</h3>
-        <ul class="feed">${data.activities.map((a) => `<li><span class="dot">${a.type === 'call' ? icon.msg : a.type === 'payment' ? icon.star : icon.note}</span>
-          <div><div>${esc(activityText(a))}</div>${a.body && a.type !== 'stage' ? `<div class="small">${esc(a.body)}</div>` : ''}</div><span class="small">${esc(fmt.ago(a.at))}</span></li>`).join('') || '<li class="muted">Nothing yet.</li>'}</ul>
+        ${fold('lm-next', 'Next step and notes', `<p style="margin-top:0">${l.next_action ? `${esc(l.next_action)} <span class="badge gray">${esc(dueText(l.next_action_at))}</span>` : '<span class="muted">None set</span>'}</p>
+        ${l.notes ? `<div class="caption">${esc(l.notes)}</div>` : ''}`, true)}
+        ${fold('lm-data', 'Lead data', '<div id="ldata"></div>', false)}
+        ${fold('lm-mail', 'Recent email', '<div class="card" id="lmail" style="box-shadow:none;padding:0"></div>', false)}
+        ${fold('lm-hist', 'History', `<ul class="feed">${data.activities.map((a) => `<li><span class="dot">${a.type === 'call' ? icon.msg : a.type === 'payment' ? icon.star : icon.note}</span>
+          <div><div>${esc(activityText(a))}</div>${a.body && a.type !== 'stage' ? `<div class="small">${esc(a.body)}</div>` : ''}</div><span class="small">${esc(fmt.ago(a.at))}</span></li>`).join('') || '<li class="muted">Nothing yet.</li>'}</ul>`, false, data.activities.length)}
         <button class="btn btn-danger btn-sm" id="ldel" style="margin-top:16px">Delete lead</button>
       </div>
     </div>`;
   const done = () => { m.close(); onChange?.(); };
+  wireFolds(m.el);
   prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, voice: VOICE, onResearched: () => { changed = true; } });
   $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
   // Google: write to them, see what you have already sent, and put a meeting on your own calendar.
@@ -726,6 +727,8 @@ export async function dialerPage(app, user) {
   // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.
   setTimeout(() => api('/api/balances/status').then((b) => { const el = document.getElementById('lowbal'); if (el && b.low?.length) el.innerHTML = `<div class="card" style="border-color:#E8A33D;margin-bottom:12px"><b>${b.low.map((x) => esc(x.name)).join(' and ')} balance ${b.low.some((x) => x.empty) ? 'is empty' : 'is low'}.</b> <span class="small">${b.low.some((x) => x.key === 'twilio') ? 'Calls and texts stop when Twilio runs out. ' : ''}${b.low.some((x) => x.key === 'dataforseo') ? 'Research and scans stop when DataForSEO runs out. ' : ''}An owner can add funds from the Dashboard.</span></div>`; }).catch(() => {}), 50);
   const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier').map(([k, v]) => `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`).join(' · ');
+  let lay = { queue: true, prep: true, compact: false };
+  try { lay = { ...lay, ...JSON.parse(localStorage.getItem('rw-dial-layout') || '{}') }; } catch { /* ignore */ }
   const render = () => {
     const l = q.queue[idx];
     view.innerHTML = `
@@ -736,20 +739,18 @@ export async function dialerPage(app, user) {
       ${dialTabs('queue', user)}
       <div class="tiers">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
         .map(([k, n, t]) => `<button type="button" data-tier="${k}" title="${esc(t)}" class="${(flt.tier || '') === k ? 'is-on' : ''}">${n}<b>${k ? (q.tiers?.[k] ?? 0) : Object.values(q.tiers || {}).reduce((a, b) => a + b, 0)}</b></button>`).join('')}</div>
-      <div class="row small" style="margin:-4px 0 10px;gap:8px">Data: <div class="seg">${[['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Has an email']].map(([k, n]) => `<button type="button" data-dq="${k}" class="${(flt.data || '') === k ? 'is-on' : ''}">${n}</button>`).join('')}</div></div>
-      <div id="rsx" class="small muted" style="margin:-6px 0 12px"></div>
-      ${filterText ? `<div class="row small" style="margin:-6px 0 14px">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}
-      <div class="stats">
-        <div class="stat hero"><div class="stat-num">${q.stats.dials}</div><div class="stat-label">dials today (target 60)</div></div>
-        <div class="stat"><div class="stat-num">${q.stats.talks}</div><div class="stat-label">owner conversations</div></div>
-        <div class="stat"><div class="stat-num">${q.stats.booked}</div><div class="stat-label">audits booked</div></div>
-        <div class="stat"><div class="stat-num">${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</div><div class="stat-label">contact rate</div></div>
-      </div>
+      ${fold('dfilters', 'More filters and research status', `<div class="row small" style="margin:-4px 0 10px;gap:8px">Data: <div class="seg">${[['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Has an email']].map(([k, n]) => `<button type="button" data-dq="${k}" class="${(flt.data || '') === k ? 'is-on' : ''}">${n}</button>`).join('')}</div></div>
+      <div id="rsx" class="small muted" style="margin:6px 0 0"></div>
+      ${filterText ? `<div class="row small" style="margin:6px 0 0">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}`, Boolean(filterText))}
+      <div class="dstrip" aria-label="Today"><span><b>${q.stats.dials}</b> dials <i>of 60</i></span><span><b>${q.stats.talks}</b> owner talks</span><span><b>${q.stats.booked}</b> booked</span><span><b>${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</b> contact rate</span>
+        <details class="dlayout"><summary>Layout</summary><div class="dlayout-body"><label><input type="checkbox" id="lay-q"${lay.queue ? ' checked' : ''}> Up next list</label><label><input type="checkbox" id="lay-p"${lay.prep ? ' checked' : ''}> Script and research</label><label><input type="checkbox" id="lay-c"${lay.compact ? ' checked' : ''}> Tighter spacing</label></div></details></div>
       <div id="lowbal"></div>
       ${upcoming.length ? `<div class="card upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(new Date(m.meet_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }))} ${esc(m.business)}</span>
         ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}${can(window.__rwUser, 'close') ? `<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>` : ''}`).join('')}</div>` : ''}
       ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
-      <div class="dial-grid">
+      <div class="dial-grid${lay.queue ? '' : ' no-queue'}${lay.prep ? '' : ' no-prep'}${lay.compact ? ' tight' : ''}">
+        <aside class="dial-queue card" aria-label="Up next"><div class="card-head"><h3>Up next</h3><span class="small muted">${Math.max(0, q.queue.length - idx - 1)} after this</span></div>
+          <ol>${q.queue.slice(idx, idx + 12).map((x, i) => `<li><button type="button" data-jump="${idx + i}" class="${i === 0 ? 'is-on' : ''}">${gradeBadge(x.grade, x.score)}<span class="dq-t"><b>${esc(x.business)}</b><small>${esc([x.city, x.state].filter(Boolean).join(', '))}${x.local_time ? ` · ${esc(x.local_time)}` : ''}</small></span></button></li>`).join('')}</ol></aside>
         <div class="dial-left">
           <div class="card dial-card">
             <p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · attempt ${l.attempts + 1}` : ''}${l.next_action ? ` · ${esc(l.next_action)}` : ''}</p>
@@ -773,14 +774,17 @@ export async function dialerPage(app, user) {
           <div class="card">
             <h3>How did it go?</h3>
             <div class="outcomes big">${DISP.map((d) => `<button class="btn btn-ghost" data-out="${esc(d.id)}">${d.key ? `<span class="kbd">${d.key}</span>` : ''}${esc(d.label)}</button>`).join('')}</div>
-            <label class="field" style="margin-top:12px"><span>Callback or audit time</span><input type="datetime-local" id="dwhen"></label>
-            <label class="field" style="margin-top:10px"><span>Note</span><textarea id="dnote" rows="3" placeholder="Job value, capacity, who handles marketing, what they said"></textarea></label>
+            ${fold('dnotes', 'Note and callback time', `<label class="field"><span>Callback or audit time</span><input type="datetime-local" id="dwhen"></label>
+            <label class="field" style="margin-top:10px"><span>Note</span><textarea id="dnote" rows="3" placeholder="Job value, capacity, who handles marketing, what they said"></textarea></label>`, true)}
             <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" id="dskip">Skip for now</button><button class="btn btn-ghost btn-sm" id="dbook">Booked: send Meet invite</button><span class="small">Keys 1 to 9 log an outcome.</span></div>
-            ${l.notes ? `<h3 style="margin-top:18px">Notes</h3><div class="caption">${esc(l.notes)}</div>` : ''}
+            ${l.notes ? fold('dold', 'Earlier notes', `<div class="caption">${esc(l.notes)}</div>`, false) : ''}
           </div>
         </div>
         <div class="card dial-prep" id="dprep"></div>
       </div>`}`;
+    wireFolds(view);
+    $$('[data-jump]', view).forEach((b) => b.addEventListener('click', () => { idx = Number(b.dataset.jump); render(); }));
+    [['lay-q', 'queue'], ['lay-p', 'prep'], ['lay-c', 'compact']].forEach(([id, k]) => $(`#${id}`, view)?.addEventListener('change', (e) => { lay[k] = e.target.checked; try { localStorage.setItem('rw-dial-layout', JSON.stringify(lay)); } catch { /* ignore */ } render(); }));
     $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
     $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
     $$('[data-dq]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, data: b.dataset.dq }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));

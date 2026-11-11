@@ -356,3 +356,49 @@ test('agents: status, presence, login time, live call, analytics with handle tim
   assert.ok(Array.isArray(r.data.inventory));
   await t.call('POST', '/api/auth/logout');
 });
+
+test('listen, whisper and barge: always explained, never silently missing', async () => {
+  const { joinState } = await import('../src/agents.js');
+  const boss = { id: 'u1', role: 'admin' }, rep = { id: 'u2', role: 'team' }, other = { id: 'u3', role: 'admin' };
+  assert.deepEqual(joinState(boss, { by: 'u2', status: 'in-progress', conf_sid: 'CF1' }, rep), { ok: true, why: '' });
+  assert.equal(joinState(boss, { by: 'u2', status: 'ringing', conf_sid: 'CF1' }, rep).ok, true, 'can listen while it rings');
+  assert.match(joinState(boss, { by: 'u1', status: 'in-progress', conf_sid: 'CF1' }, boss).why, /your own/);
+  assert.match(joinState(boss, { by: 'u3', status: 'in-progress', conf_sid: 'CF1' }, other).why, /Owners cannot/);
+  const early = joinState(boss, { by: 'u2', status: 'connecting', conf_sid: null }, rep);
+  assert.equal(early.ok, false); assert.equal(early.wait, true); assert.match(early.why, /Starting up/);
+  assert.match(joinState(boss, { by: 'u2', status: 'in-progress', conf_sid: null }, rep).why, /phone number/);
+  assert.equal(joinState(rep, { by: 'u3', status: 'in-progress', conf_sid: 'CF1' }, other).ok, false, 'teammates never monitor');
+});
+
+test('recordings play whole, seek with ranges, and download', async () => {
+  const { serveRecording } = await import('../src/audio.js');
+  const store = new Map();
+  const env = { MEDIA: {
+    async head(k) { const v = store.get(k); return v ? { size: v.length } : null; },
+    async put(k, v) { store.set(k, new Uint8Array(v)); },
+    async get(k, o) { const v = store.get(k); if (!v) return null; const r = o?.range; return { body: r ? v.slice(r.offset, r.offset + r.length) : v }; },
+    async delete(k) { store.delete(k); },
+  } };
+  const mp3 = Uint8Array.from({ length: 1000 }, (_, i) => i % 251);
+  const realFetch = globalThis.fetch;
+  let hits = 0;
+  globalThis.fetch = async () => { hits++; return new Response(mp3, { status: 200 }); };
+  try {
+    const ask = (range, download) => serveRecording(env, new Request('https://x.test/a', { headers: range ? { range } : {} }), { sid: 'RE1', twilioUrl: 'https://api.twilio.com/x.mp3', twilioAuth: 'Basic x', filename: 'call-1.mp3', download });
+    let r = await ask();
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get('content-length'), '1000');
+    assert.equal(r.headers.get('accept-ranges'), 'bytes');
+    assert.equal((await r.arrayBuffer()).byteLength, 1000);
+    r = await ask('bytes=500-');
+    assert.equal(r.status, 206);
+    assert.equal(r.headers.get('content-range'), 'bytes 500-999/1000');
+    assert.equal((await r.arrayBuffer()).byteLength, 500);
+    r = await ask('bytes=0-99');
+    assert.equal(r.headers.get('content-length'), '100');
+    assert.equal((await ask('bytes=2000-')).status, 416);
+    r = await ask(null, true);
+    assert.match(r.headers.get('content-disposition'), /attachment; filename="call-1.mp3"/);
+    assert.equal(hits, 1, 'Twilio is asked once, then the kept copy answers every seek');
+  } finally { globalThis.fetch = realFetch; }
+});

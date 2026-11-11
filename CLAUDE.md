@@ -484,6 +484,31 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   Profile API access yet (new projects get 0 per minute). `g()` in `src/gbp.js` retries twice, then says how to check the Quotas page and where to apply
   (support.google.com/business/contact/api_default); `/api/gbp/locations` is cached 10 min per person (`gbp_locs:<userId>`, `?fresh=1` skips it).
   Until approval, fulfill Google profile work by hand in business.google.com with the manager access.
+- Dialer, audio, recordings, speed test, schedule (Nov 2026, V's troubleshooting list):
+  Speed test (`src/pagespeed.js`): keyless Google PageSpeed shares one project quota, so "Queries per day" errors are normal without `PAGESPEED_KEY`. `pageSpeed(env, url, fetch, { fallback })`
+  tries Google twice, then `quickCheck` (own page fetch: TTFB, size, scripts, blocking, images; `basic: true`, `score: null` so scripts never claim a Google score). `/api/pagespeed` uses the fallback.
+  Tell V to set PAGESPEED_KEY (free, Google Cloud: enable PageSpeed Insights API, make an API key) in the Cloudflare variables.
+  Recordings (`src/audio.js`): Twilio's mp3 has no length or range support, so `serveRecording` copies it once into R2 `rec/<sid>.mp3` and serves 200/206/416 with Content-Length, so players play
+  the whole call and scrub; `?download=1` sends it as a file. Used by voice, voicemail and tracked-call audio routes; `forgetRecording` on delete. Players have preload and a Download link.
+  Listen/Whisper/Barge: `joinState(viewer, call, target)` in `src/agents.js` always answers with a reason (own call, other owner, line still starting, call that came in through the phone number).
+  Agent cards always draw the three buttons for owners (greyed with the reason); the Dashboard Team floor has a Listen button; the monitor leg reports `leave` so a stale "you are listening" clears
+  and re-joining works (`phoneState().monitoring`); `POST /api/voice/monitor/:id` clears and says "You have left that call" when Twilio no longer has you. Whisper still needs Agent Conference in Twilio.
+  Phone audio (`public/js/audiocfg.js` pure + tested, `public/hub/audioset.js`, "Audio" pill in the Phone tab bar and on the call bar): settings in localStorage `rw-audio` per device: mic and speaker
+  picker (speaker not on iPhone/iPad, Safari cannot), mic volume 20 to 300%, noise Off/Light/Standard/Strong (browser suppression plus an own high pass and quiet-room gate through a Twilio
+  `AudioProcessor`, only added when needed so the default path is untouched; falls back to the plain mic if the AudioContext will not start), echo and auto level toggles, live level meter,
+  4 second record and play back test, mic permission status with per-device "always allow" steps (web pages cannot force it), Bluetooth plug/unplug toasts (`watchDevices`), Wake Lock during calls,
+  and call mode "Use my phone" (`callMode()`): `placeCall` for a lead rings the saved mobile through the old bridge (`/api/dialer/call`, `bridgeCall` in `public/hub/phone.js`), which keeps working
+  with the screen locked on an iPhone. `prepareAudio` runs right before connect (inside the tap) and `releaseAudio` after the call so the mic is not held open.
+  Dialer layout (`public/hub/crm.js` render, CSS "GHL style dialer" at the end of `hub.css`): compact stats strip, tier chips, "More filters" fold, three panes (Up next | lead + outcomes | script and
+  research) that scroll on their own, "Layout" switch (Up next, Script and research, tighter spacing; localStorage `rw-dial-layout`), one column under 1100px. `fold()` and `wireFolds()` in
+  `public/hub/prep.js` make collapsible sections that remember open or closed in localStorage `rw-fold-<key>`: used by call prep (Script, Their numbers, Problems, Listings, Objections) and the
+  lead popup (Log a call, Close the deal, Work orders, Next step and notes, Lead data, Recent email, History), which also has a sticky header with the action buttons.
+  Schedule (`src/schedule.js`, `public/js/schedule.js` pure + tested, `public/hub/schedule.js`, My work tab "Schedule" `#/work/schedule[/<userId>]`): table `schedule_blocks` (user_id, dow 1 to 7
+  Monday first, start_min, end_min, title, kind, goal, note). Everyone has their own week; `PUT /api/schedule/:userId` replaces it (overlaps refused), `POST /api/schedule/:userId/starter`
+  loads `owner`, `setter` or `blank`. V's week (`ownerWeek()`) is written once on his first open (`settings sched_seeded:<id>`): start 8:45, three power dial blocks of 75, 60 and 65 (200 dials),
+  clarity calls and closing, client work or coaching, wrap up at 6, build block 6:15 to 7:45 (Fri weekly review), Saturday deep build, Sunday planning. Teammates start blank (optional dial day
+  starter). Owners open anyone's week from the picker and edit it. Setters and schedulers (no `deliver`) get a "My schedule" menu item instead of My work (`'!deliver'` in `NAV`).
+  The page shows Right now / Next up with the day's dial goal against today's dials, a week grid on computers, one day at a time on phones, a week summary by kind, and Print.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

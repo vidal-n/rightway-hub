@@ -20,8 +20,8 @@ function callList(calls, empty) {
     <span class="badge ${cls}">${label}${c.status === 'answered' ? ` ${mmss(c.duration)}` : c.status === 'voicemail' ? ` ${mmss(c.vmSecs)}` : ''}</span>
     <div><div class="item-title">${esc(c.fromPretty || 'Unknown caller')}${c.firstTime ? ' <span class="badge">New caller</span>' : ''}</div>
       <div class="item-sub">${esc(when(c.at))}${c.city ? `, ${esc(c.city)}` : ''}${c.source ? `. From ${esc(c.source)}` : ''}</div>
-      ${c.voicemail ? `<audio controls preload="none" src="/api/tracked-calls/${esc(c.id)}/audio?k=vm"></audio>` : ''}
-      ${c.recording ? `<audio controls preload="none" src="/api/tracked-calls/${esc(c.id)}/audio"></audio>` : ''}</div>
+      ${c.voicemail ? `<audio controls preload="metadata" src="/api/tracked-calls/${esc(c.id)}/audio?k=vm"></audio> <a class="small" href="/api/tracked-calls/${esc(c.id)}/audio?k=vm&download=1" download>Download</a>` : ''}
+      ${c.recording ? `<audio controls preload="metadata" src="/api/tracked-calls/${esc(c.id)}/audio"></audio> <a class="small" href="/api/tracked-calls/${esc(c.id)}/audio?download=1" download>Download</a>` : ''}</div>
     ${c.from ? `<a class="btn btn-ghost btn-sm" href="tel:${esc(c.from)}">Call back</a>` : '<span></span>'}</li>`; }).join('')}</ul>`;
 }
 

@@ -157,7 +157,7 @@ async function handleApi(request, env, url, runtimeKeys = []) {
     }
     case '/api/pagespeed': {
       const target = validateUrl(body.url);
-      return json({ demo, ...(demo ? mockPageSpeed(target) : await pageSpeed(env, target)) });
+      return json({ demo, ...(demo ? mockPageSpeed(target) : await pageSpeed(env, target, fetch, { fallback: true })) });
     }
     default:
       throw new HttpError('Not found.', 404);

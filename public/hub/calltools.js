@@ -39,7 +39,7 @@ export async function recordingsPage(app, user) {
     $$('.rec-row', view).forEach((row) => {
       $('[data-play]', row).addEventListener('click', (e) => {
         const box = $('.rec-audio', row);
-        if (!box.firstChild) box.innerHTML = `<audio controls autoplay preload="none" src="/api/recordings/${encodeURIComponent(row.dataset.id)}/audio"></audio>`;
+        if (!box.firstChild) box.innerHTML = `<audio controls autoplay preload="auto" src="/api/recordings/${encodeURIComponent(row.dataset.id)}/audio"></audio><a class="btn btn-ghost btn-sm" href="/api/recordings/${encodeURIComponent(row.dataset.id)}/audio?download=1" download>Download</a>`;
         e.currentTarget.remove();
       });
       $('[data-del]', row)?.addEventListener('click', async () => {

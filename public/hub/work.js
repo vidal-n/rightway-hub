@@ -2,6 +2,7 @@
 // tools for that kind of task), hours per client and person, and the editable guides. Also the client Access checklist tab.
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, resizeImage, KIND_LABEL, PLAN_NAMES } from './core.js';
 import { staffShell } from './staff.js';
+import { can } from '/js/jobs.js';
 
 const PROOF_TXT = { link: 'Live link', screenshot: 'Screenshot', either: 'Live link or screenshot', note: 'Written note', none: 'No proof needed' };
 export const mins = (m) => { m = Math.round(m || 0); if (m < 60) return `${m} min`; const h = Math.floor(m / 60), r = m % 60; return `${h} h${r ? ` ${r} min` : ''}`; };
@@ -13,10 +14,18 @@ const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = 
 let ticker = null;
 
 function tabsHtml(active) {
-  return `<nav class="tabs">${[['', 'My work'], ['hours', 'Hours'], ['guides', 'Guides']].map(([k, n]) => `<a href="#/work${k ? `/${k}` : ''}" class="${active === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>`;
+  // Setters and schedulers only see their schedule here; client work tabs are for closers and owners.
+  const all = [['', 'My work'], ['hours', 'Hours'], ['guides', 'Guides'], ['schedule', 'Schedule']];
+  const list = can(window.__rwUser, 'deliver') ? all : all.filter(([k]) => k === 'schedule');
+  return `<nav class="tabs">${list.map(([k, n]) => `<a href="#/work${k ? `/${k}` : ''}" class="${active === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>`;
 }
 
 export async function workPage(app, user, sub = '', param = '') {
+  if (sub === 'schedule') {
+    const view = staffShell(app, user, can(user, 'deliver') ? 'work' : 'schedule');
+    const m = await import('./schedule.js');
+    return m.scheduleView(view, user, param, tabsHtml('schedule'));
+  }
   const view = staffShell(app, user, 'work');
   if (sub === 'hours') return hoursView(view, user);
   if (sub === 'guides') return guidesView(view, user, param);

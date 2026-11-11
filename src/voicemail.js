@@ -3,6 +3,7 @@
 import { HttpError, json } from './util.js';
 import { all, first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
+import { serveRecording } from './audio.js';
 import { route } from './router.js';
 import { verifiedParams, twiml, xml } from './calls.js';
 import { e164, digits, insertLead, logActivity } from './crm.js';
@@ -95,20 +96,14 @@ route('POST', '/api/calls/inbound/seen-all', async ({ env, user }) => {
   return json({ ok: true });
 });
 
-route('GET', '/api/voicemail/:id/audio', async ({ env, user, params, request }) => {
+route('GET', '/api/voicemail/:id/audio', async ({ env, user, params, request, url }) => {
   requireStaff(user);
   const a = await first(env, 'SELECT id, vm_sid, to_num FROM activities WHERE id = ?', params.id);
   if (!a?.vm_sid) throw new HttpError('No voicemail on this call.', 404);
   if ((await import('./lines.js').then((m) => m.hiddenLines(env, user))).has(a.to_num)) throw new HttpError('No voicemail on this call.', 404);
-  const headers = { Authorization: twAuth(env) };
-  const range = request.headers.get('range');
-  if (range) headers.Range = range;
-  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Recordings/${a.vm_sid}.mp3`, { headers });
-  if (!res.ok && res.status !== 206) throw new HttpError('Twilio did not return the voicemail. It may have been deleted.', 502);
-  const out = new Headers({ 'content-type': 'audio/mpeg', 'cache-control': 'private, max-age=3600', 'accept-ranges': 'bytes' });
-  for (const h of ['content-length', 'content-range']) { const v = res.headers.get(h); if (v) out.set(h, v); }
-  if (!range) await run(env, 'UPDATE activities SET seen_at = COALESCE(seen_at, ?) WHERE id = ?', now(), a.id);
-  return new Response(res.body, { status: res.status, headers: out });
+  const res = await serveRecording(env, request, { sid: a.vm_sid, twilioUrl: `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Recordings/${a.vm_sid}.mp3`, twilioAuth: twAuth(env), filename: `voicemail-${a.id}.mp3`, download: Boolean(url.searchParams.get('download')), gone: 'Twilio did not return the voicemail. It may have been deleted.' });
+  if (!request.headers.get('range')) await run(env, 'UPDATE activities SET seen_at = COALESCE(seen_at, ?) WHERE id = ?', now(), a.id);
+  return res;
 });
 
 // Unknown caller: add them as a lead so the callback, texts and notes live somewhere.

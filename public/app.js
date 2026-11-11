@@ -753,7 +753,7 @@ function renderSpeed(scan) {
   box.innerHTML = `
     <h2>Website on a phone</h2>
     ${!t.url ? '<p>No website on the Google profile.</p>' : `
-      <p class="muted">Google's mobile speed test for ${esc(t.domain || t.url)}.</p>
+      <p class="muted">Mobile speed test for ${esc(t.domain || t.url)}.</p>
       ${ps ? speedHtml(ps) : '<button class="btn btn-ghost btn-sm no-print" type="button" id="r-speed-btn">Run mobile speed test</button><div class="speed-out" id="r-speed-out"></div>'}`}`;
   const btn = $('#r-speed-btn');
   if (btn) {
@@ -774,6 +774,14 @@ function renderSpeed(scan) {
 }
 
 function speedHtml(ps) {
+  if (ps.basic) {
+    const tone = { high: 'var(--none)', medium: 'var(--top20)', low: 'var(--muted)', good: 'var(--top3)' };
+    return `<div class="speed-out speed-basic">
+      <div><b>${esc(ps.verdict)}</b> <span class="muted small">Our own page check (Google's speed test was not available${ps.googleError ? `: ${esc(ps.googleError)}` : ''}).</span>
+      <p class="small" style="margin:6px 0">Server answered in ${(ps.ttfb / 1000).toFixed(1)} s. Page code ${ps.htmlKb} KB, ${ps.scripts} scripts, ${ps.styles} stylesheets, ${ps.images} images.</p>
+      <ul class="facts">${ps.notes.map((n) => `<li style="--dot:${tone[n.level] || tone.low}">${esc(n.text)}</li>`).join('')}</ul></div>
+    </div>`;
+  }
   const verdict = ps.score >= 90 ? 'Good' : ps.score >= 50 ? 'Needs work' : 'Poor';
   const color = ps.score >= 90 ? 'var(--top3)' : ps.score >= 50 ? 'var(--top20)' : 'var(--none)';
   return `<div class="speed-out">

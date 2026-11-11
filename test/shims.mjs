@@ -41,10 +41,13 @@ export function r2() {
       const bytes = value instanceof Uint8Array ? value : new Uint8Array(await new Response(value).arrayBuffer());
       store.set(key, { bytes, httpMetadata: opts.httpMetadata || {} });
     },
-    async get(key) {
+    async head(key) { const o = store.get(key); return o ? { size: o.bytes.length, httpMetadata: o.httpMetadata } : null; },
+    async get(key, opts = {}) {
       const o = store.get(key);
       if (!o) return null;
-      return { body: new Blob([o.bytes]).stream(), httpMetadata: o.httpMetadata, arrayBuffer: async () => o.bytes.buffer.slice(o.bytes.byteOffset, o.bytes.byteOffset + o.bytes.byteLength) };
+      const r = opts.range;
+      const bytes = r ? o.bytes.slice(r.offset, r.offset + r.length) : o.bytes;
+      return { body: new Blob([bytes]).stream(), httpMetadata: o.httpMetadata, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
     },
     async delete(key) { store.delete(key); },
     _store: store,

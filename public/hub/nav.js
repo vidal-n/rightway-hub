@@ -7,13 +7,13 @@ import { can } from '/js/jobs.js';
 export const NAV = [
   ['home', '#/', 'dash', 'Dashboard'], ['phone', '#/phone', 'phone', 'Phone'], ['pipeline', '#/pipeline', 'chart', 'Pipeline'], ['calendar', '#/calendar', 'cal', 'Calendar'],
   ['agents', '#/agents', 'headset', 'Agents'], ['automations', '#/automations', 'send', 'Automations', 'admin'],
-  ['work', '#/work', 'check', 'My work', 'deliver'], ['clients', '#/clients', 'users', 'Clients', 'deliver'], ['scan', '/scan.html', 'grid', 'Scan tool', 'close'],
+  ['work', '#/work', 'check', 'My work', 'deliver'], ['schedule', '#/work/schedule', 'clock', 'My schedule', '!deliver'], ['clients', '#/clients', 'users', 'Clients', 'deliver'], ['scan', '/scan.html', 'grid', 'Scan tool', 'close'],
   ['training', '#/training', 'book', 'Training'], ['vault', '#/vault', 'key', 'Vault', 'admin'], ['slack', '#/slack', 'slack', 'Slack'], ['google', '#/google', 'apps', 'Google'],
   ['payments', '#/payments', 'money', 'Payments', 'admin'], ['alerts', '#/notifications', 'bell', 'Notifications'], ['settings', '#/settings', 'cog', 'Settings'],
 ];
 // The rail groups the menu by the job: selling, delivering, the team, and running the business.
 export const GROUPS = [['sell', 'Sell'], ['deliver', 'Deliver'], ['team', 'Team'], ['run', 'Run']];
-const GROUP_OF = { home: 'sell', phone: 'sell', pipeline: 'sell', calendar: 'sell', agents: 'sell', automations: 'sell', vault: 'team', work: 'deliver', clients: 'deliver', scan: 'deliver', training: 'team', slack: 'team', google: 'team', payments: 'run', alerts: 'run', settings: 'run' };
+const GROUP_OF = { home: 'sell', phone: 'sell', pipeline: 'sell', calendar: 'sell', agents: 'sell', automations: 'sell', vault: 'team', work: 'deliver', schedule: 'deliver', clients: 'deliver', scan: 'deliver', training: 'team', slack: 'team', google: 'team', payments: 'run', alerts: 'run', settings: 'run' };
 export const groupOf = (k) => GROUP_OF[k] || 'run';
 // Which dot belongs to which menu item.
 const BADGE_KEY = { work: 'work', slack: 'slack', phone: 'phone', pipeline: 'pipeline', alerts: 'alerts' };
@@ -32,7 +32,7 @@ async function loadPrefs() {
 
 export function navItems(user) {
   // The fifth field: 'admin' = owners only, otherwise a job ability (public/js/jobs.js) the person needs.
-  const allowed = NAV.filter((n) => !n[4] || (n[4] === 'admin' ? user.role === 'admin' : can(user, n[4])));
+  const allowed = NAV.filter((n) => !n[4] || (n[4] === 'admin' ? user.role === 'admin' : n[4][0] === '!' ? !can(user, n[4].slice(1)) : can(user, n[4])));
   const order = prefs?.order || [];
   const hidden = new Set(prefs?.hidden || []);
   const sorted = [...allowed].sort((a, b) => {
