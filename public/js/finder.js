@@ -31,10 +31,14 @@ export const parseKeywords = (text, max = MAX_KEYWORDS) => uniq(Array.isArray(te
 // Areas: one per line (or separated by semicolons), because a place like "Miami, FL" has a comma in it.
 export const parseAreas = (text, max = MAX_AREAS) => uniq(Array.isArray(text) ? text : String(text || '').split(/[\n;]/), max);
 
-export const requestCount = (areaCount, size, keywordCount) => Math.max(0, areaCount) * size * size * Math.max(0, keywordCount);
+export const requestCount = (areaCount, size, keywordCount, views) => Math.max(0, areaCount) * (views ?? size * size) * Math.max(0, keywordCount);
+// Most map views one place can get (a 9 x 9 grid). A custom count takes the nearest spots to the middle first.
+export const MAX_VIEWS = 81;
+// Smallest grid (3, 5, 7 or 9 per side) that holds this many views.
+export const customSize = (views) => [3, 5, 7, 9].find((s) => s * s >= views) || 9;
 export const costOf = (requests) => Math.round(requests * COST_PER_REQUEST * 1000) / 1000;
-export function estimate({ areas, size, keywords, source = 'google' }) {
-  const requests = requestCount(areas, size, keywords);
+export function estimate({ areas, size, keywords, source = 'google', views }) {
+  const requests = requestCount(areas, size, keywords, views);
   if (source === 'osm') return { requests, cost: 0, tooBig: requests > MAX_OSM_REQUESTS };
   return { requests, cost: costOf(requests), tooBig: requests > MAX_REQUESTS };
 }
@@ -67,7 +71,9 @@ export function taskList(areas, keywords) {
     const size = a.size, half = (size - 1) / 2;
     const step = half ? a.radius / half : a.radius;
     const zoom = zoomFor(step, a.lat);
-    const pts = size === 1 ? [{ lat: a.lat, lng: a.lng }] : gridPoints(a.lat, a.lng, size, a.radius);
+    const grid = size === 1 ? [{ lat: a.lat, lng: a.lng }] : gridPoints(a.lat, a.lng, size, a.radius);
+    const near = (p) => Math.hypot(p.lat - a.lat, (p.lng - a.lng) * Math.cos((a.lat * Math.PI) / 180));
+    const pts = a.views && a.views < grid.length ? [...grid].sort((p, q) => near(p) - near(q)).slice(0, a.views) : grid;
     for (const p of pts) for (const keyword of keywords) out.push({ keyword, lat: p.lat, lng: p.lng, zoom, label: a.label, radius: size === 1 ? a.radius : Math.round(step * 1.1 * 10) / 10 });
   }
   return out;

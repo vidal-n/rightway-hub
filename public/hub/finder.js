@@ -3,7 +3,8 @@
 // background scrub fills in emails, owner names and socials. The server does the searching, so this works the same on an iPad.
 import { $, $$, esc, api, toast, busy } from './core.js';
 import { staffShell } from './shell.js';
-import { COVERAGE, estimate, MAX_KEYWORDS, MAX_REQUESTS, MAX_OSM_REQUESTS, MAX_AREAS, SOURCES, cleanFilters, csvText, passes } from '/js/finder.js';
+import { COVERAGE, estimate, MAX_KEYWORDS, MAX_REQUESTS, MAX_OSM_REQUESTS, MAX_AREAS, MAX_VIEWS, customSize, SOURCES, cleanFilters, csvText, passes } from '/js/finder.js';
+const DIALS_PER_DAY = 200; // how many businesses the team can call in a day, for the "days of calls" estimate
 import { multiSelect } from './multiselect.js';
 import { CITIES, DEFAULT_TOP, chunkAreas } from '/js/cities.js';
 import { STATES, NEW_FILING_STATES } from '/js/registries.js';
@@ -57,6 +58,7 @@ async function homePage(view) {
   let size = source === 'osm' ? 3 : 5;
   const OSM_COVERAGE = [{ size: 1, label: 'One spot', what: 'One search around the middle of each area. Fastest.' }, { size: 3, label: '3 x 3 spots', what: 'Nine searches per area, so you get past the busiest streets.' }, { size: 5, label: '5 x 5 spots', what: 'Twenty five searches per area. Best for a big city.' }];
   const covers = () => (source === 'osm' ? OSM_COVERAGE : COVERAGE);
+  let custom = null; // views per place when Custom is chosen, otherwise null
   const topN = () => Number($('#ftop', view).value) || DEFAULT_TOP;
 
   view.innerHTML = `<div class="page-head"><div><p class="eyebrow">Sell</p><h1>Lead finder</h1></div></div>
@@ -81,6 +83,7 @@ async function homePage(view) {
       <p class="small muted" id="fsrcx" style="margin:6px 0 10px"></p>
       <div class="seg" id="fcov"></div>
       <p class="small muted" id="fcovx" style="margin:6px 0 0"></p>
+      <div id="fcustom" class="row" style="gap:12px;align-items:flex-end;margin-top:10px" hidden><label class="field" style="flex:0 0 220px"><span>Map views per place (1 to ${MAX_VIEWS})</span><input id="fviews" type="number" min="1" max="${MAX_VIEWS}" value="4" inputmode="numeric"></label><p class="small muted" style="margin:0;flex:1 1 300px">One view is one map search at the middle of the place. More views add the spots around it, nearest first. Each view costs about $0.002 per industry.</p></div>
 
       <details class="fold" style="margin-top:14px" id="fadv"><summary><span>Advanced settings</span></summary><div class="fold-body">
         <div class="row" style="gap:14px;flex-wrap:wrap">
@@ -125,7 +128,7 @@ async function homePage(view) {
     const jobs = [];
     if (all.length) {
       for (const group of chunkList(kws, MAX_KEYWORDS)) {
-        const perArea = estimate({ areas: 1, size, keywords: group.length, source }).requests || 1;
+        const perArea = estimate({ areas: 1, size, keywords: group.length, source, views: custom }).requests || 1;
         const perJob = Math.max(1, Math.min(MAX_AREAS, Math.floor(cap / perArea)));
         for (const chunk of chunkAreas(all, perJob)) jobs.push({ keywords: group, areas: chunk });
       }
@@ -143,7 +146,7 @@ async function homePage(view) {
   };
   const est = () => {
     const pl = plan();
-    const parts = pl.jobs.map((j) => estimate({ areas: j.areas.length, size, keywords: j.keywords.length, source }));
+    const parts = pl.jobs.map((j) => estimate({ areas: j.areas.length, size, keywords: j.keywords.length, source, views: custom }));
     const requests = parts.reduce((s, e) => s + (e.requests || 0), 0);
     const cost = parts.reduce((s, e) => s + (e.cost || 0), 0);
     const tooBig = parts.some((e) => e.tooBig);
@@ -155,11 +158,12 @@ async function homePage(view) {
       $('#fgo', view).disabled = true;
     } else {
       const hist = leadsPerView();
+      const days = hist ? Math.max(1, Math.round((requests * hist.per) / DIALS_PER_DAY)) : 0;
       const leads = hist
-        ? `about <b>${num(Math.round(requests * hist.per))}</b> businesses, from your last ${hist.n} finished search${hist.n === 1 ? '' : 'es'} (an upper estimate, repeats not removed)`
+        ? `about <b>${num(Math.round(requests * hist.per))}</b> businesses, about <b>${days}</b> day${days === 1 ? '' : 's'} of calls at ${DIALS_PER_DAY} a day (from your last ${hist.n} finished search${hist.n === 1 ? '' : 'es'}; an upper estimate, repeats not removed)`
         : 'not known yet. Your first finished search shows how many it finds.';
       $('#fsum', view).innerHTML = `
-        <p class="small" style="margin:0 0 6px"><b>${pl.kws.length}</b> keyword${s(pl.kws.length)} × <b>${pl.all.length}</b> area${s(pl.all.length)} × <b>${viewsOf(size)}</b> map view${viewsOf(size) === 1 ? '' : 's'} = <b>${num(requests)}</b> searches${pl.jobs.length > 1 ? `, started as ${pl.jobs.length} jobs` : ''}</p>
+        <p class="small" style="margin:0 0 6px"><b>${pl.kws.length}</b> keyword${s(pl.kws.length)} × <b>${pl.all.length}</b> area${s(pl.all.length)} × <b>${custom ?? viewsOf(size)}</b> map view${(custom ?? viewsOf(size)) === 1 ? '' : 's'} = <b>${num(requests)}</b> searches${pl.jobs.length > 1 ? `, started as ${pl.jobs.length} jobs` : ''}</p>
         <p class="small" style="margin:0 0 6px">${source === 'osm' ? '<b>Cost: free</b>' : `${COST_IC('Costs money')} Cost: about <b>${money(cost)}</b>`}</p>
         <p class="small" style="margin:0">Leads: ${leads}</p>
         ${over ? `<p class="err-text small" style="margin:8px 0 0">This would cost about ${money(cost)}, over your ${money(cap)} limit. Use fewer places or a smaller coverage, or change the limit in Advanced settings.</p>` : ''}
@@ -178,21 +182,32 @@ async function homePage(view) {
       const per = estimate({ areas: 1, size: c.size, keywords: 1, source }).cost;
       const tag = source === 'osm' ? FREE_IC : COST_IC(`About ${money(per)} for each place, each industry`);
       return `<button type="button" data-size="${c.size}" class="${c.size === size ? 'is-on' : ''}" title="${esc(c.what)}">${esc(c.label)} <small class="muted">${views} views</small> ${tag}</button>`;
-    }).join('');
+    }).join('') + (source === 'osm' ? '' : `<button type="button" data-size="custom" class="${custom != null ? 'is-on' : ''}" title="Choose how many map views each place gets">Custom</button>`);
     $$('#fsrc button', view).forEach((x) => x.classList.toggle('is-on', x.dataset.src === source));
     $('#fsrcx', view).textContent = SOURCES.find((x) => x[0] === source)?.[2] || '';
+    $('#fcustom', view).hidden = custom == null;
+    if (custom != null) $('#fviews', view).value = custom;
   };
   drawCov(); est();
   $('#fzip', view).addEventListener('input', est);
   $('#fextra', view).addEventListener('input', est);
   $('#fcap', view).addEventListener('change', est);
+  $('#fviews', view).addEventListener('input', () => {
+    if (custom == null) return;
+    custom = Math.min(MAX_VIEWS, Math.max(1, Math.round(Number($('#fviews', view).value)) || 1));
+    size = customSize(custom); drawCov(); est();
+  });
   $('#fsrc', view).addEventListener('click', (e) => {
     const b = e.target.closest('[data-src]'); if (!b || b.disabled) return;
     source = b.dataset.src; size = source === 'osm' ? 3 : 5; drawCov(); est();
   });
   $('#fcov', view).addEventListener('click', (e) => {
     const b = e.target.closest('[data-size]'); if (!b) return;
-    size = Number(b.dataset.size); drawCov(); est();
+    if (b.dataset.size === 'custom') {
+      custom = Math.min(MAX_VIEWS, Math.max(1, Math.round(Number($('#fviews', view).value)) || 4));
+      size = customSize(custom);
+    } else { custom = null; size = Number(b.dataset.size); }
+    drawCov(); est();
   });
 
   $('#fgo', view).addEventListener('click', async (e) => {
@@ -204,7 +219,7 @@ async function homePage(view) {
       // Each job is its own search, run in turn, so no single search goes over the cap.
       const started = [];
       for (const job of pl.jobs) {
-        const r = await api('/api/finder/jobs', { method: 'POST', body: { source, keywords: job.keywords.join('\n'), areas: job.areas.join('\n'), size, radius: $('#frad', view).value || 'auto', tag: $('#ftag', view).value, autoAdd: $('#fauto', view).checked, filters: readFilters($('#fnew', view)) } });
+        const r = await api('/api/finder/jobs', { method: 'POST', body: { source, keywords: job.keywords.join('\n'), areas: job.areas.join('\n'), size, views: custom || undefined, radius: $('#frad', view).value || 'auto', tag: $('#ftag', view).value, autoAdd: $('#fauto', view).checked, filters: readFilters($('#fnew', view)) } });
         started.push(r.job.id);
       }
       toast(started.length > 1 ? `${started.length} searches started` : 'Search started');

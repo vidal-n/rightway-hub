@@ -14,7 +14,7 @@ import { importLeads, existingKeys } from './crm.js';
 import { dupKeys } from '../public/js/leadintel.js';
 import { notify } from './notify.js';
 import {
-  parseKeywords, parseAreas, MAX_KEYWORDS, MAX_AREAS, MAX_REQUESTS, MAX_OSM_REQUESTS, OSM_SIZES, SIZES, estimate, taskList, keyOf, cleanFilters, passes, leadRow, radiusFromBox,
+  parseKeywords, parseAreas, MAX_KEYWORDS, MAX_AREAS, MAX_REQUESTS, MAX_OSM_REQUESTS, MAX_VIEWS, OSM_SIZES, SIZES, customSize, estimate, taskList, keyOf, cleanFilters, passes, leadRow, radiusFromBox,
 } from '../public/js/finder.js';
 
 const isDemo = (env) => !env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD;
@@ -30,7 +30,7 @@ const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h
 export function jobView(j) {
   const areas = parse(j.areas, []);
   return {
-    id: j.id, name: j.name, keywords: parse(j.keywords, []), areas: areas.map((a) => ({ label: a.label, radius: a.radius, size: a.size, lat: a.lat, lng: a.lng })),
+    id: j.id, name: j.name, keywords: parse(j.keywords, []), areas: areas.map((a) => ({ label: a.label, radius: a.radius, size: a.size, views: a.views ?? null, lat: a.lat, lng: a.lng })),
     status: j.status, total: j.total, done: j.done, errors: j.errors, found: j.found, added: j.added, cost: Math.round((j.cost || 0) * 1000) / 1000, error: j.error || null,
     source: j.source === 'osm' ? 'osm' : 'google', demo: Boolean(j.demo), autoAdd: Boolean(j.auto_add), tag: j.tag || '', filters: cleanFilters(parse(j.filters, {})), createdAt: j.created_at, finishedAt: j.finished_at || null,
     pct: j.total ? Math.min(100, Math.round((j.done / j.total) * 100)) : 0,
@@ -85,8 +85,10 @@ route('POST', '/api/finder/jobs', async ({ env, user, body }) => {
   if (names.length > MAX_AREAS) throw new HttpError(`Use up to ${MAX_AREAS} areas per search.`);
   const source = b.source === 'osm' ? 'osm' : 'google';
   if (source === 'google' && await isFreeMode(env)) throw new HttpError('Free lead data mode is on, so Google Maps searches (which cost money) are off. Pick OpenStreetMap, or switch the mode in Settings.');
-  const size = source === 'osm' ? (OSM_SIZES.includes(Number(b.size)) ? Number(b.size) : 3) : SIZES.includes(Number(b.size)) ? Number(b.size) : 5;
-  const est = estimate({ areas: names.length, size, keywords: keywords.length, source });
+  // Custom views (Google only): a number of map views per place, 1 to 81. Otherwise the coverage grid size.
+  const views = source === 'google' && Number(b.views) >= 1 ? Math.min(MAX_VIEWS, Math.round(Number(b.views))) : null;
+  const size = views ? customSize(views) : source === 'osm' ? (OSM_SIZES.includes(Number(b.size)) ? Number(b.size) : 3) : SIZES.includes(Number(b.size)) ? Number(b.size) : 5;
+  const est = estimate({ areas: names.length, size, keywords: keywords.length, source, views });
   if (est.tooBig) throw new HttpError(source === 'osm'
     ? `That is ${est.requests} free searches. One free job can run up to ${MAX_OSM_REQUESTS} so OpenStreetMap's shared servers stay happy. Use fewer areas or keywords, or a smaller coverage.`
     : `That is ${est.requests.toLocaleString('en-US')} searches (about $${est.cost.toFixed(2)}). One job can run up to ${MAX_REQUESTS.toLocaleString('en-US')}. Use fewer areas or keywords, or a smaller coverage.`);
@@ -99,7 +101,7 @@ route('POST', '/api/finder/jobs', async ({ env, user, body }) => {
     // "Miami, FL" that the map puts in another state is a bad match, so it is skipped rather than searched.
     const want = /,\s*([A-Za-z]{2})$/.exec(n)?.[1]?.toUpperCase();
     if (want && p.state && p.state.toUpperCase() !== want) { skippedAreas.push(n); continue; }
-    areas.push({ label: p.label, lat: p.lat, lng: p.lng, radius: fixed ?? clampRadius(p.radius), size, state: p.state });
+    areas.push({ label: p.label, lat: p.lat, lng: p.lng, radius: fixed ?? clampRadius(p.radius), size, views, state: p.state });
   }
   if (!areas.length) throw new HttpError(`None of those places could be found in the state named: ${skippedAreas.join(', ')}.`);
   const name = text(b.name, 80) || `${keywords[0]} in ${areas[0].label}${areas.length > 1 ? ` and ${areas.length - 1} more` : ''}`;
