@@ -161,3 +161,17 @@ export function toneWav(sampleRate = 22050, notes = [[660, 0.35], [880, 0.45]], 
   });
   return new Uint8Array(buf);
 }
+
+// Settings that belong to the person and follow them to any computer. mic and out are device ids, so they stay on each computer.
+export const PERSONAL_KEYS = ['gain', 'noise', 'ai', 'ns', 'lock', 'level', 'strict', 'headset', 'gate', 'echo', 'auto', 'wake', 'mode'];
+export function personalPart(raw) {
+  const c = normalize(raw);
+  const out = {};
+  for (const k of PERSONAL_KEYS) out[k] = c[k];
+  return out;
+}
+// Server settings for the person, with this computer's own mic and speaker kept.
+export function mergeDevice(personal, local) {
+  const p = personal && typeof personal === 'object' ? personal : {};
+  return normalize({ ...p, mic: local?.mic, out: local?.out });
+}

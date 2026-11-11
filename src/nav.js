@@ -4,6 +4,7 @@ import { HttpError, json } from './util.js';
 import { first, run, now } from './db.js';
 import { requireStaff } from './auth.js';
 import { route } from './router.js';
+import { personalPart } from '../public/js/audiocfg.js';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -48,4 +49,21 @@ route('PUT', '/api/me/nav', async ({ env, user, body }) => {
   if (!prefs.order.length) throw new HttpError('Nothing to save.');
   await run(env, 'UPDATE users SET nav_prefs = ? WHERE id = ?', JSON.stringify(prefs), user.id);
   return json({ prefs });
+});
+
+// Mic and audio settings that follow the person (not the device's mic or speaker ids).
+route('GET', '/api/me/audio', async ({ env, user }) => {
+  requireStaff(user);
+  const r = await first(env, 'SELECT audio_cfg FROM users WHERE id = ?', user.id);
+  let cfg = null;
+  try { cfg = r?.audio_cfg ? JSON.parse(r.audio_cfg) : null; } catch { cfg = null; }
+  return json({ cfg });
+});
+
+route('PUT', '/api/me/audio', async ({ env, user, body }) => {
+  requireStaff(user);
+  const b = await body();
+  const cfg = personalPart(b?.cfg);
+  await run(env, 'UPDATE users SET audio_cfg = ? WHERE id = ?', JSON.stringify(cfg), user.id);
+  return json({ cfg });
 });

@@ -1,8 +1,9 @@
 // Audio settings for the browser phone: pick the mic and speaker, mic volume, how much background noise to cut,
 // Bluetooth plug and unplug, microphone permission help, keep the screen awake on a call, and "use my phone" mode.
-// Settings are saved on this device (localStorage) and applied right before every call, so nothing holds the mic open between calls.
+// Settings follow the person: they are saved on the server and loaded when the Hub opens (syncAudio), with a copy in this browser.
+// The mic and speaker are this computer's own, so they stay local. Applied right before every call, so nothing holds the mic open between calls.
 import { $, $$, esc, api, toast, modal } from './core.js';
-import { NOISE, normalize, plan, constraintsFor, constraintsAnyMic, gateThreshold, gateStep, pickInput, deviceLabel, permissionHelp, meterPct, isIOS, advice, toneWav, learnLevel } from '/js/audiocfg.js';
+import { NOISE, normalize, personalPart, mergeDevice, plan, constraintsFor, constraintsAnyMic, gateThreshold, gateStep, pickInput, deviceLabel, permissionHelp, meterPct, isIOS, advice, toneWav, learnLevel } from '/js/audiocfg.js';
 
 const KEY = 'rw-audio';
 const listeners = new Set();
@@ -12,12 +13,36 @@ export function loadAudio() {
 }
 export function saveAudio(patch) {
   const next = normalize({ ...loadAudio(), ...patch });
-  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* private window: settings last until reload */ memory = next; }
-  listeners.forEach((fn) => { try { fn(next); } catch { /* ignore */ } });
-  for (const p of active) { try { p.update(next); } catch { /* ignore */ } }
+  writeLocal(next);
+  queuePush();
   return next;
 }
 let memory = null;
+function writeLocal(next) {
+  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* private window: settings last until reload */ memory = next; }
+  listeners.forEach((fn) => { try { fn(next); } catch { /* ignore */ } });
+  for (const p of active) { try { p.update(next); } catch { /* ignore */ } }
+}
+// Save the person's settings to the server a moment after the last change (one request for a burst of slider moves).
+let pushTimer = null;
+function queuePush() {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => { api('/api/me/audio', { method: 'PUT', body: { cfg: personalPart(loadAudio()) } }).catch(() => {}); }, 800);
+}
+let synced = false;
+// Once per page load, when the Hub opens: take the person's saved settings (this computer keeps its own mic and speaker).
+// A computer with settings but no server copy yet sends them up, so nobody has to set things again.
+export async function syncAudio() {
+  if (synced) return;
+  synced = true;
+  try {
+    const hadLocal = localStorage.getItem(KEY) != null;
+    const local = loadAudio();
+    const { cfg } = await api('/api/me/audio');
+    if (cfg) writeLocal(mergeDevice(cfg, local));
+    else if (hadLocal) queuePush();
+  } catch { synced = false; }
+}
 export const callMode = () => loadAudio().mode;
 export function onAudioChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 

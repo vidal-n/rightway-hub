@@ -5,6 +5,7 @@ import { navItems, wireNav, activeKey, customizeMenu, NAV, GROUPS, groupOf } fro
 import { can, jobLabel } from '/js/jobs.js';
 import { STATUSES, statusLabel, statusTone, statusesFor } from '/js/callstats.js';
 import { avatarHtml, wireAvatars, pickAvatar, removeAvatar } from './avatar.js';
+import { syncAudio } from './audioset.js';
 
 export const initials = (u) => String(u.name || u.email || '?').trim().split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 
@@ -85,6 +86,7 @@ async function paintWallet(root) {
 
 // ---------- the shell ----------
 export function staffShell(app, user, active, inner) {
+  syncAudio();
   window.__rwUser = user; // the pop-up email composer reads who is sending
   active = activeKey(active);
   startPresence(user);

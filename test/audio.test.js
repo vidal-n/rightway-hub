@@ -1,6 +1,6 @@
 import test from 'node:test';
+import { DEFAULTS, NOISE, normalize, personalPart, mergeDevice, plan, constraintsFor, gateThreshold, gateStep, pickInput, permissionHelp, deviceLabel, lockThreshold, learnLevel, meterPct, isIOS, looksBluetooth, advice, toneWav, constraintsAnyMic } from '../public/js/audiocfg.js';
 import assert from 'node:assert/strict';
-import { DEFAULTS, NOISE, normalize, plan, constraintsFor, gateThreshold, gateStep, pickInput, permissionHelp, deviceLabel, lockThreshold, learnLevel, meterPct, isIOS, looksBluetooth, advice, toneWav, constraintsAnyMic } from '../public/js/audiocfg.js';
 
 test('audio settings stay inside safe limits', () => {
   assert.deepEqual(normalize(undefined), DEFAULTS);
@@ -132,4 +132,26 @@ test('no em or en dashes in audio copy', async () => {
     const t = fs.readFileSync(new URL(`../${f}`, import.meta.url), 'utf8');
     assert.ok(!/[\u2013\u2014]/.test(t), f);
   }
+});
+
+test('mic settings follow the person, but each computer keeps its own mic and speaker', () => {
+  const laptop = { mic: 'usb-mic-1', out: 'speakers-a', gain: 150, noise: 'strong', lock: true, level: 0.02, mode: 'phone' };
+  const shared = personalPart(laptop);
+  assert.equal(shared.mic, undefined);
+  assert.equal(shared.out, undefined);
+  assert.equal(shared.gain, 150);
+  assert.equal(shared.noise, 'strong');
+  assert.equal(shared.level, 0.02);
+  // a teammate's computer gets the same voice and levels, with its own devices
+  const desk = mergeDevice(shared, { mic: 'desk-mic', out: 'desk-out' });
+  assert.equal(desk.mic, 'desk-mic');
+  assert.equal(desk.out, 'desk-out');
+  assert.equal(desk.gain, 150);
+  assert.equal(desk.lock, true);
+  assert.equal(desk.mode, 'phone');
+  // nothing saved on the server yet: this computer's own values stay
+  assert.equal(mergeDevice(null, { mic: 'x', out: '', gain: 90 }).mic, 'x');
+  // the server copy is cleaned on the way in
+  assert.equal(personalPart({ gain: 9999, noise: 'junk', mic: 'x' }).gain, 300);
+  assert.equal(personalPart({ noise: 'junk' }).noise, 'light');
 });

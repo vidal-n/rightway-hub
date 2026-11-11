@@ -608,6 +608,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
 - Cloudflare in the budget (Nov 2026): until an owner saves the subscriptions list, `costSettings` (`src/costs.js`) counts "Cloudflare Workers Paid" at $5 a month. Saving an empty list removes it for good (`settings.costs_fixed` is then set). The Monthly subscriptions card carries a usage note: $5 is the base, use above the included allowance is billed on top, and normal use stays well inside it. Test `test/budget.test.js`.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
+- Mic settings per person (Nov 2026): audio settings (gain, cleanup, gate, "My voice only" level, phone mode, etc.) are saved on the user (`users.audio_cfg`, `GET`/`PUT /api/me/audio` in `src/nav.js`) and loaded once per page load by `syncAudio()` (called from `staffShell`), so nobody sets them again. `mic` and `out` device ids stay in each computer's localStorage (`rw-audio`). `personalPart`/`mergeDevice` in `public/js/audiocfg.js` are the pure split; a computer with local settings and no server copy yet sends them up once.
 
 ## Stack
 - Cloudflare Worker (`src/worker.js`) serves `/api/*` and `/r/*`; static app in `public/` (plain ES modules, no build step, no deps).
