@@ -65,7 +65,9 @@ const addDays = (day, n) => { const d = new Date(`${day}T12:00:00Z`); d.setUTCDa
 export async function costSettings(env) {
   const s = await getSettings(env);
   const b = parse(s.costs_budget, {}) || {};
-  const fixed = (parse(s.costs_fixed, []) || []).filter((f) => f && f.name).map((f) => ({ name: String(f.name).slice(0, 60), monthly: Math.max(0, Number(f.monthly) || 0) }));
+  // Until the owner saves a list, Cloudflare Workers Paid ($5 base) is counted. Saving an empty list removes it for good.
+  const saved = s.costs_fixed != null;
+  const fixed = (saved ? parse(s.costs_fixed, []) || [] : [{ name: 'Cloudflare Workers Paid', monthly: 5 }]).filter((f) => f && f.name).map((f) => ({ name: String(f.name).slice(0, 60), monthly: Math.max(0, Number(f.monthly) || 0) }));
   return { budget: { monthly: Math.max(0, Number(b.monthly) || 0), vendors: Object.fromEntries(VENDORS.map(([k]) => [k, Math.max(0, Number(b.vendors?.[k]) || 0)])) }, fixed };
 }
 

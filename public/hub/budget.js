@@ -72,6 +72,7 @@ export async function budgetPage(app, user) {
             <button class="btn btn-primary" type="submit">Save budget</button></form></div>
         <div class="card"><div class="card-head"><h2>Monthly subscriptions</h2><span class="badge gray mono">${usd(m.fixed)}</span></div>
           <p class="small muted" style="margin:0 0 10px">The flat bills that are not tied to usage: Cloudflare, Resend, Google Workspace, Slack, domains, and any lead list you pay for every month. They count toward the budget.</p>
+          <p class="small muted" style="margin:0 0 10px"><b>Cloudflare Workers Paid is $5 a month.</b> That covers the Hub's requests and database reads and writes. Use beyond the included allowance is billed monthly on top, but normal use stays well inside it: about 5,000 requests a day, and roughly 300,000 database writes a month even at 1,000 new leads a day. Keep it here so the budget shows the real total.</p>
           <form id="fx-form"><div id="fx-rows" class="fx-rows"></div>
             <div class="row" style="margin-top:10px"><button type="button" class="btn btn-ghost btn-sm" id="fx-add">${'+'} Add a subscription</button><button class="btn btn-primary btn-sm" type="submit">Save subscriptions</button></div></form></div>
         <div class="card"><div class="card-head"><h2>Add a lead expense</h2><span class="badge gray mono">${usd(m.by.leads || 0)} this month</span></div>
@@ -101,7 +102,7 @@ export async function budgetPage(app, user) {
         toast('Budget saved'); load();
       } catch (err) { toast(err.message, true); busy(btn, false); }
     });
-    let fixed = d.fixedList.length ? d.fixedList.map((x) => ({ ...x })) : [{ name: 'Cloudflare Workers', monthly: '' }];
+    let fixed = d.fixedList.length ? d.fixedList.map((x) => ({ ...x })) : [{ name: 'Cloudflare Workers Paid', monthly: 5 }];
     const rows = () => {
       $('#fx-rows', view).innerHTML = fixed.map((x, i) => `<div class="fx-row"><input data-i="${i}" data-k="name" placeholder="Name" maxlength="60" value="${esc(x.name)}" aria-label="Name"><input data-i="${i}" data-k="monthly" type="number" min="0" step="0.01" inputmode="decimal" placeholder="$ per month" value="${esc(x.monthly)}" aria-label="Dollars per month"><button type="button" class="btn btn-ghost btn-sm" data-rm="${i}" aria-label="Remove">&times;</button></div>`).join('');
       $$('#fx-rows input', view).forEach((inp) => inp.addEventListener('input', () => { fixed[Number(inp.dataset.i)][inp.dataset.k] = inp.value; }));

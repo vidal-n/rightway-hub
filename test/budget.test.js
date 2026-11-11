@@ -40,7 +40,8 @@ test('cost ledger, budget, notifications and profile photo', async () => {
   let r = await t.call('GET', '/api/costs?days=14');
   assert.equal(r.status, 200);
   assert.equal(r.data.series.length, 14);
-  assert.equal(r.data.month.total, 0);
+  assert.equal(r.data.month.fixed, 5); // Cloudflare Workers Paid counts until the owner saves a list
+  assert.equal(r.data.month.total, 5);
   assert.equal(r.data.budget.pct, null);
 
   // The DataForSEO call site writes the ledger: cost comes from the task, one line per search.
