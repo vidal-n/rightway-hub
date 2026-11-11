@@ -16,7 +16,7 @@ import { can, canRunCalls } from '/js/jobs.js';
 import { PHONE_TYPE_LABEL } from '/js/scrub.js';
 import { licenseSearchUrl, sunbizSearchUrl } from '/js/freedata.js';
 import { registryFor } from '/js/registries.js';
-import { RESEARCH_DEPTHS, adsLine, adLibraryLinks } from '/js/freedata.js';
+import { RESEARCH_DEPTHS, adsLine, adLibraryLinks, directoryLinks } from '/js/freedata.js';
 
 export const STAGE_LABEL = {
   new: 'New lead', attempting: 'Attempting', callback: 'Callback set', audit_requested: 'Audit requested', audit_booked: 'Audit booked',
@@ -412,6 +412,33 @@ function leadDataCard(box, l, scrub, onChange) {
       ${sunbizRows(l, scrub)}${profileRows(scrub?.profile)}${adsRows(l, scrub?.profile?.ads)}
       ${scrub?.site && !scrub.site.ok ? `<dt>Website</dt><dd class="err-text">${esc(scrub.site.error || 'Did not load')}</dd>` : ''}
       ${scrub?.missing?.length ? `<dt>Missing</dt><dd class="small muted">${esc(scrub.missing.join(', '))}</dd>` : ''}</dl>`}</div>`;
+  // Free lookups: the rep opens these during the call and types what the public listing shows.
+  const byHand = (() => { try { return l.manual_listing ? JSON.parse(l.manual_listing) : {}; } catch { return {}; } })();
+  const links = directoryLinks({ business: l.business, city: l.city, state: l.state, website: l.website });
+  const hand = document.createElement('div');
+  hand.className = 'ldata-hand';
+  hand.innerHTML = `<div class="small" style="margin:12px 0 6px"><b>Look up (free)</b></div>
+    <div class="row small" style="gap:10px;flex-wrap:wrap">${links.map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.label)}</a>`).join('')}</div>
+    <details class="fold" style="margin-top:10px"><summary><span>Type in what the listing shows</span></summary><div class="fold-body">
+      <form class="form-grid" id="lhand" style="grid-template-columns:repeat(2,1fr);gap:8px">
+        <label class="field"><span>Rating (1 to 5)</span><input name="rating" inputmode="decimal" value="${esc(byHand.rating ?? l.rating ?? '')}"></label>
+        <label class="field"><span>Reviews</span><input name="reviews" inputmode="numeric" value="${esc(byHand.reviews ?? l.reviews ?? '')}"></label>
+        <label class="field"><span>Phone on listing</span><input name="phone" value="${esc(byHand.phone || '')}"></label>
+        <label class="field"><span>Owner name</span><input name="owner_name" value="${esc(byHand.owner_name || l.owner_name || '')}"></label>
+        <label class="field" style="grid-column:1/-1"><span>Hours</span><input name="hours" value="${esc(byHand.hours || '')}" placeholder="Mon to Fri 8am to 5pm"></label>
+        <label class="field" style="grid-column:1/-1"><span>Listing link (paste the Google Maps address)</span><input name="google_url" value="${esc(byHand.google_url || '')}" placeholder="https://www.google.com/maps/..."></label>
+        <div style="grid-column:1/-1"><button class="btn btn-primary btn-sm" type="submit">Save what I read</button></div>
+      </form></div></details>`;
+  box.querySelector('.card')?.appendChild(hand);
+  hand.querySelector('#lhand').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(e.target).entries());
+    try {
+      const r = await api(`/api/leads/${l.id}/listing-by-hand`, { method: 'PUT', body });
+      Object.assign(l, { rating: r.manual.rating, reviews: r.manual.reviews, owner_name: r.manual.owner_name || l.owner_name, manual_listing: JSON.stringify(r.manual) });
+      toast('Saved'); onChange?.();
+    } catch (err) { toast(err.message, true); }
+  });
   $('#lscrub', box).addEventListener('click', async (e) => {
     busy(e.target, true, 'Scrubbing...');
     try { const r = await api(`/api/leads/${l.id}/scrub`, { method: 'POST' }); Object.assign(l, r.lead, { scrubbed_at: Date.now() }); leadDataCard(box, l, r.scrub, onChange); onChange?.(); toast(r.scrub.name?.changed ? `Name cleaned: ${r.lead.business}` : 'Scrubbed'); }

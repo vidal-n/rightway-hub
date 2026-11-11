@@ -51,7 +51,7 @@ test('industry, dedupe keys, and name cleanup', () => {
   assert.equal(normDomain('https://facebook.com/summit'), null);
   assert.equal(normName('The Summit Roofing, LLC'), 'summit roofing');
   assert.deepEqual(dupKeys({ phone: '+1 (954) 555-0101', website: 'summit-roofing.com', business: 'Summit Roofing Inc', city: 'Hollywood' }),
-    ['p:9545550101', 'd:summit-roofing.com', 'n:summit roofing|hollywood']);
+    ['p:9545550101', 'd:summit-roofing.com', 'n:summit roofing|hollywood', 'm:summit roofing|hollywood']);
 });
 
 test('problems, score, plan, and script come from the research', () => {

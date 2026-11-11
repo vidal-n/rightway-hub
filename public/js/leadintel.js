@@ -111,6 +111,9 @@ export function dupKeys(l) {
   const n = normName(l.business);
   const where = String(l.zip || l.city || '').toLowerCase().trim();
   if (n && where) keys.push(`n:${n}|${where}`);
+  // Same business written two ways: "Bayside Roofing LLC" and "Bayside Roofing | Miami Roofer" are one lead in the same place.
+  const core = normName(String(l.business || '').split(/\s[|:\u2013\u2014-]\s|\s[|]\s|\s-\s/)[0].replace(/\b(llc|l l c|inc|incorporated|corp|corporation|co|company|ltd|pllc|pa|lp|llp)\b/gi, ' '));
+  if (core && where) keys.push(`m:${core}|${where}`);
   return keys;
 }
 

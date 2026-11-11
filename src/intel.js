@@ -8,7 +8,7 @@ import { searchBusinesses, rankAtPoint, businessDetails } from './dataforseo.js'
 import { pageSpeed } from './pagespeed.js';
 import { mockSearch, mockRank, mockPageSpeed } from './mock.js';
 import { gridPoints } from '../public/js/grid.js';
-import { adSignals, cleanDepth } from '../public/js/freedata.js';
+import { adSignals, cleanDepth, cleanManual } from '../public/js/freedata.js';
 import { keywordFor, normName, scoreLead, findProblems, recommendPlan } from '../public/js/leadintel.js';
 
 const isDemo = (env) => !env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD;
@@ -104,9 +104,14 @@ export async function researchLead(env, lead, { gridSize = 3, radiusMiles = 2, f
     const d = await businessDetails(env, { title: lead.business, cid: lead.cid, place_id: lead.place_id || '', lat: lead.lat, lng: lead.lng }, fetchImpl, 'lead research (maps)').catch(() => null);
     if (d) { cost += d.cost || 0; listing = d.business; }
   }
+  // Free depth: no paid search. It uses the Google details the rep typed in (or the Lead finder saved), and says "check by hand" for the rest.
+  const byHand = depth === 'free' ? parseManual(lead) : null;
+  if (!listing && byHand && (byHand.rating != null || byHand.reviews != null || byHand.phone)) {
+    listing = { title: lead.business, cid: lead.cid || '', place_id: lead.place_id || '', lat: lead.lat ?? null, lng: lead.lng ?? null, rating: byHand.rating, reviews: byHand.reviews,
+      category: lead.category || '', url: lead.website || '', address: lead.address || '', phone: byHand.phone || lead.phone || '', by_hand: true };
+  }
   if (!listing && depth === 'free') {
-    // Without a paid search the Hub cannot tell "not on Google" from "not looked up", so it says so instead of guessing.
-    throw new HttpError('Free research needs the Google details a Lead finder search saves. This lead has none, so it needs Lite research (about $0.004).');
+    // No paid lookup: the Hub does not guess whether they are on Google. The website and ad read still run.
   } else if (!listing) {
     if (!lead.business || !location) throw new HttpError('Add the city and state so the Hub can find this business on Google.');
     const s = demo ? mockSearch({ name: lead.business, location }) : await searchBusinesses(env, { name: lead.business, location }, fetchImpl, 'lead research (maps)');
@@ -114,7 +119,8 @@ export async function researchLead(env, lead, { gridSize = 3, radiusMiles = 2, f
     listing = matchListing(s.results, lead);
   }
 
-  const intel = { at: now(), demo, depth, found: Boolean(listing), keyword: null, listing: null, rank: null, grid: null, competitors: [], website: null, speed: null, cost: 0 };
+  const intel = { at: now(), demo, depth, found: Boolean(listing), keyword: null, listing: null, rank: null, grid: null, competitors: [], website: null, speed: null, cost: 0,
+    free: depth === 'free', rank_checked: false, by_hand: Boolean(byHand), hours: byHand?.hours || '' };
   if (listing) {
     intel.listing = { ...listing, city: lead.city || null };
     intel.keyword = keywordFor(lead, { listing });
@@ -183,6 +189,11 @@ export async function researchLead(env, lead, { gridSize = 3, radiusMiles = 2, f
   return intel;
 }
 
+// The Google details a rep typed in from the public listing (saved on the lead by the route below).
+export function parseManual(lead) {
+  try { return lead?.manual_listing ? JSON.parse(lead.manual_listing) : null; } catch { return null; }
+}
+
 // Fields copied from the research onto the lead so the pipeline can filter and sort on them.
 export function leadFieldsFromIntel(lead, intel) {
   const L = intel.listing || {};
@@ -198,6 +209,19 @@ export function leadFieldsFromIntel(lead, intel) {
     updated_at: now(),
   };
 }
+
+// Save what the rep read on the public Google listing (free). Blank fields are cleared; the owner name also goes on the lead.
+route('PUT', '/api/leads/:id/listing-by-hand', async ({ env, user, params, body }) => {
+  requireStaff(user);
+  const lead = await first(env, 'SELECT id FROM leads WHERE id = ?', params.id);
+  if (!lead) throw new HttpError('Lead not found.', 404);
+  const m = cleanManual(await body());
+  const set = { manual_listing: JSON.stringify(m), rating: m.rating, reviews: m.reviews, updated_at: now() };
+  if (m.owner_name) set.owner_name = m.owner_name;
+  const cols = Object.keys(set);
+  await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), lead.id);
+  return json({ manual: m });
+});
 
 route('POST', '/api/leads/:id/research', async ({ env, user, params, body }) => {
   requireStaff(user);

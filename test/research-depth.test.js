@@ -4,6 +4,7 @@ import worker from '../src/worker.js';
 import { resetSchemaCache, all, run } from '../src/db.js';
 import { researchLead } from '../src/intel.js';
 import { researchTick } from '../src/autoresearch.js';
+import { resetSchemaCache as _rsc } from '../src/db.js';
 import { adSignals, adsLine, adLibraryLinks, mergeAds, RESEARCH_DEPTHS, cleanDepth, extractProfile } from '../public/js/freedata.js';
 import { d1, r2 } from './shims.mjs';
 
@@ -54,7 +55,8 @@ test('free depth: no paid search at all, and it refuses to guess when Google fac
   assert.equal(d.calls.filter((c) => c.url.includes('dataforseo')).length, 0);
   assert.equal(intel.rank, null); assert.equal(intel.grid, null); assert.equal(intel.found, true);
   assert.ok(intel.website.ok);
-  await assert.rejects(() => researchLead(env(), { id: 'L2', business: 'No Facts Inc', city: 'Miami', state: 'FL' }, { depth: 'free', fetchImpl: siteFetch(d.fetchImpl) }), /Lite research/);
+  const nofacts = await researchLead(env(), { id: 'L2', business: 'No Facts Inc', city: 'Miami', state: 'FL' }, { depth: 'free', fetchImpl: siteFetch(d.fetchImpl) });
+  assert.equal(nofacts.found, false); assert.equal(nofacts.rank_checked, false); assert.equal(nofacts.free, true);
   assert.equal(d.calls.filter((c) => c.url.includes('dataforseo')).length, 0);
 });
 
@@ -71,7 +73,7 @@ test('automatic research uses the owner depth, and free depth only touches finde
   assert.equal(st.depth, 'free'); assert.equal(st.callDepth, 'lite'); assert.equal(st.depths.lite.cost, 0.002);
   await call('POST', '/api/leads/import', { rows: [{ business: 'Plain Plumbing', phone: '305-555-0111', city: 'Miami', state: 'FL' }] });
   const real = globalThis.fetch; let net = 0; globalThis.fetch = async () => { net++; return Response.json({}); };
-  try { assert.equal(await researchTick(e, 3), 0, 'a lead with no Google facts is left alone in free depth'); } finally { globalThis.fetch = real; }
+  try { assert.equal(await researchTick(e, 3), 1, 'free depth researches it with no paid call'); } finally { globalThis.fetch = real; }
   assert.equal(net, 0);
 });
 
@@ -99,4 +101,35 @@ test('research depth table is consistent and has no dashes', () => {
   assert.deepEqual(Object.keys(RESEARCH_DEPTHS), ['free', 'lite', 'standard', 'full']);
   assert.equal(cleanDepth('x'), 'lite'); assert.equal(cleanDepth('x', 'full'), 'full'); assert.equal(cleanDepth('free'), 'free');
   for (const d of Object.values(RESEARCH_DEPTHS)) assert.doesNotMatch(`${d.label}${d.what}`, /[–—]/);
+});
+
+import { directoryLinks, cleanManual, MANUAL_FIELDS } from '../public/js/freedata.js';
+
+test('free lookup links and typed-in listing details', async () => {
+  const links = directoryLinks({ business: "Bob's Roofing", city: 'Miami', state: 'FL', website: 'https://bobsroofing.test' });
+  assert.deepEqual(links.map((l) => l.key), ['google', 'maps', 'yelp', 'bbb', 'owner', 'site']);
+  assert.match(links[0].url, /google\.com\/search\?q=Bob's%20Roofing%20Miami%20FL/);
+  assert.deepEqual(directoryLinks({}), []);
+  const m = cleanManual({ rating: '4.8', reviews: '112', phone: ' 305 555 0111 ', owner_name: 'Maria Lopez', google_url: 'javascript:alert(1)' });
+  assert.equal(m.rating, 4.8); assert.equal(m.reviews, 112); assert.equal(m.phone, '305 555 0111'); assert.equal(m.google_url, '');
+  assert.equal(cleanManual({ rating: '9' }).rating, null, 'ratings above 5 are rejected');
+  assert.deepEqual(MANUAL_FIELDS.length, 6);
+});
+
+test('typed-in details let free research show a listing, and the route saves them', async () => {
+  resetSchemaCache();
+  const e = env({ DATAFORSEO_LOGIN: '', DATAFORSEO_PASSWORD: '' });
+  let cookie = '';
+  const call = async (m, p, b) => { const h = { 'x-rw': '1' }; if (cookie) h.cookie = cookie; if (b) h['content-type'] = 'application/json'; const r = await worker.fetch(new Request(`https://hub.test${p}`, { method: m, headers: h, body: b ? JSON.stringify(b) : undefined }), e); const s = r.headers.get('set-cookie'); if (s) cookie = s.split(';')[0]; return { status: r.status, data: await r.json().catch(() => ({})) }; };
+  await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  await call('POST', '/api/leads/import', { rows: [{ business: 'Hand Typed Roofing', phone: '305-555-0150', city: 'Miami', state: 'FL' }] });
+  const id = (await call('GET', '/api/leads')).data.leads.find((l) => l.business === 'Hand Typed Roofing').id;
+  const saved = await call('PUT', `/api/leads/${id}/listing-by-hand`, { rating: '4.6', reviews: '38', owner_name: 'Ana Ruiz', hours: 'Mon to Fri 8am to 5pm' });
+  assert.equal(saved.status, 200); assert.equal(saved.data.manual.reviews, 38);
+  const lead = (await call('GET', `/api/leads/${id}`)).data.lead;
+  assert.equal(lead.owner_name, 'Ana Ruiz'); assert.equal(lead.rating, 4.6);
+  assert.equal((await call('PUT', `/api/leads/nope/listing-by-hand`, {})).status, 404);
+  const intel = await researchLead(e, lead, { depth: 'free', fetchImpl: async () => { throw new Error('no network in this test'); } });
+  assert.equal(intel.found, true); assert.equal(intel.by_hand, true); assert.equal(intel.rank_checked, false); assert.equal(intel.listing.reviews, 38);
+  assert.equal(intel.free, true);
 });

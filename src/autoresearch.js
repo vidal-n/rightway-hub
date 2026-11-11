@@ -28,15 +28,15 @@ export async function researchSettings(env) {
 
 export async function researchTick(env, max = 1) {
   const cfg = await researchSettings(env);
-  if (!cfg.on || !env.DATAFORSEO_LOGIN) return 0;
-  if (await isFreeMode(env)) return 0;   // free lead data mode: nothing that costs money runs by itself
+  // Free lead data mode runs the free research only (website, ads, anything typed in by hand); it never makes a paid call.
+  if (!cfg.on) return 0;
+  if (!env.DATAFORSEO_LOGIN) return 0;
+  if (await isFreeMode(env)) cfg.depth = 'free';
   const today = new Date().toISOString().slice(0, 10);
   let done = cfg.day === today ? cfg.done : 0;
   let n = 0;
   while (n < max && done < cfg.cap) {
-    // Free depth only touches leads that already carry Google facts from the Lead finder, so nothing is ever searched.
-    const freeOnly = cfg.depth === 'free' ? ' AND cid IS NOT NULL AND rating IS NOT NULL AND lat IS NOT NULL' : '';
-    const lead = await first(env, `SELECT * FROM leads WHERE intel IS NULL AND dnc = 0 AND phone_digits IS NOT NULL AND stage IN (${STAGES.map(() => '?').join(',')})${freeOnly}
+    const lead = await first(env, `SELECT * FROM leads WHERE intel IS NULL AND dnc = 0 AND phone_digits IS NOT NULL AND stage IN (${STAGES.map(() => '?').join(',')})
       AND (research_tried IS NULL OR research_tried < ?) ORDER BY created_at DESC LIMIT 1`, ...STAGES, now() - 6 * 3600e3);
     if (!lead) break;
     await run(env, 'UPDATE leads SET research_tried = ? WHERE id = ?', now(), lead.id);

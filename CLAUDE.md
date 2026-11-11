@@ -560,6 +560,13 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   googleadservices), Meta pixel ids, TikTok, Microsoft, LinkedIn and call tracking vendors from the site (in `parseSite` as `intel.website.ads` and in `extractProfile` as `profile.ads`); it means "pays or paid for
   ads", never "running ads now". Lead data card shows it with free links to Google Ads Transparency (by domain) and the Meta Ad Library (by name) via `adLibraryLinks`. Client scans still use Local Finder
   (matches BrightLocal); Maps costs half, if V wants cheaper scans change `source` in `src/autoscan.js`.
+- Complete free research (Nov 2026, V: no paid calls): research depth `free` (`researchLead`) runs the website read, ad tracking and any Google details typed in by hand (`PUT /api/leads/:id/listing-by-hand`,
+  saved in `leads.manual_listing` JSON plus rating, reviews and owner_name columns; `parseManual`), and never makes a paid call. `intel.free`, `intel.rank_checked: false`, `intel.by_hand`. Background research in
+  free lead data mode runs at depth free (`researchTick`). Lead data card: "Look up (free)" links (`directoryLinks` in `public/js/freedata.js`: Google, Google Maps, Yelp, BBB, owner search, their website) and a
+  "Type in what the listing shows" form. Nothing is fetched automatically from Google or directories (their terms forbid it); the rep opens the links.
+- CSV import dedupe (Nov 2026): `dupKeys` adds `m:` (name without legal suffix or SEO tail, plus city or zip). `importLeads` skips a row that matches an existing lead (reason `name` for `m`), and
+  `autoMergeAfterImport` merges any groups that now contain new rows (keeps the lead with a client link, then with history, then the higher score; never deletes a client lead). Result has `merged`.
+  `mergeLeads(env, user, keep, remove)` is the shared merge used by `POST /api/leads/merge`.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

@@ -244,7 +244,7 @@ export async function importLeads(env, user, rows, { source, tags } = {}) {
   const items = [];
   const out = new Array(rows.length);
   const skipped = { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0 };
-  const reason = { p: 'phone', d: 'website', n: 'name' };
+  const reason = { p: 'phone', d: 'website', n: 'name', m: 'name' };
   const tagText = text(tags, 200);
   for (const [n, r] of rows.entries()) {
     let d;
@@ -271,10 +271,13 @@ export async function importLeads(env, user, rows, { source, tags } = {}) {
     if (why) { scrubbed++; const set = { scrub: why, stage: 'lost', next_action: `Scrubbed: ${why}` }; for (const [k, v] of Object.entries(set)) { const i = cols.indexOf(k); if (i >= 0) it[i + 1] = v; else { cols.push(k); it.push(v); } } it[0] = `INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`; }
   }
   for (let i = 0; i < items.length; i += 100) await batch(env, items.slice(i, i + 100));
+  // Duplicates with the leads already in the Hub (including name variants) are merged now, so the call list is clean from the start.
+  const newIds = out.filter((x) => x?.id).map((x) => x.id);
+  const merged = await autoMergeAfterImport(env, user, newIds).catch((e) => { console.error('auto merge', e.message); return 0; });
   // The full scrub (website emails, owner name, email check) runs in the background for everything that is still open.
   await queueScrub(env, items.filter((it) => !it[0].includes(' scrub,') && !it[0].includes(', scrub)')).map((it) => it[1 + it[0].match(/\(([^)]*)\)/)[1].split(', ').indexOf('id')]));
   const total = Object.values(skipped).reduce((a, b) => a + b, 0);
-  return { imported: items.length, skipped: total, skippedBy: skipped, scrubbed, rows: out };
+  return { imported: items.length, skipped: total, skippedBy: skipped, scrubbed, merged, rows: out };
 }
 
 route('POST', '/api/leads/import', async ({ env, user, body }) => {
@@ -305,6 +308,13 @@ route('POST', '/api/leads/merge', async ({ env, user, body }) => {
   const { keep, remove } = await body();
   if (!keep || !Array.isArray(remove) || !remove.length) throw new HttpError('Pick the lead to keep and the ones to merge.');
   const k = await leadOr404(env, keep);
+  const merged = await mergeLeads(env, user, k, remove);
+  return json({ ok: true, merged });
+});
+
+// Keep one lead, fill its blanks from the others, move their calls, notes and orders, then delete them.
+export async function mergeLeads(env, user, k, remove) {
+  const keep = k.id;
   const others = (await Promise.all(remove.filter((id) => id !== keep).map((id) => first(env, 'SELECT * FROM leads WHERE id = ?', id)))).filter(Boolean);
   const set = {};
   for (const o of others) {
@@ -321,8 +331,37 @@ route('POST', '/api/leads/merge', async ({ env, user, body }) => {
   }
   await refreshScore(env, k.id);
   await logActivity(env, { lead_id: k.id, type: 'stage', body: `Merged ${ids.length} duplicate${ids.length === 1 ? '' : 's'}`, by: user.id });
-  return json({ ok: true, merged: ids.length });
-});
+  return ids.length;
+}
+
+// After a CSV import: any lead that now matches another (same phone, website, or name in the same place, with the legal name or SEO
+// tail ignored) is merged into one. The copy that has history or a client link is kept as the main lead. Never removes a client.
+export async function autoMergeAfterImport(env, user, newIds) {
+  if (!newIds.length) return 0;
+  const rows = await all(env, 'SELECT id, business, phone, phone_digits, website, city, zip, stage, score, client_id, created_at FROM leads');
+  const parent = new Map(rows.map((r) => [r.id, r.id]));
+  const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const seen = new Map();
+  for (const r of rows) for (const key of dupKeys(r)) { if (seen.has(key)) parent.set(find(r.id), find(seen.get(key))); else seen.set(key, r.id); }
+  const groups = new Map();
+  for (const r of rows) { const g = find(r.id); if (!groups.has(g)) groups.set(g, []); groups.get(g).push(r); }
+  const fresh = new Set(newIds);
+  let removed = 0;
+  for (const g of groups.values()) {
+    if (g.length < 2 || !g.some((r) => fresh.has(r.id))) continue;
+    const ids = g.map((r) => r.id);
+    const ph = ids.map(() => '?').join(',');
+    const acts = await all(env, `SELECT lead_id, COUNT(*) AS n FROM activities WHERE lead_id IN (${ph}) GROUP BY lead_id`, ...ids);
+    const n = new Map(acts.map((a) => [a.lead_id, a.n]));
+    const ranked = [...g].sort((a, b) => (Boolean(b.client_id) - Boolean(a.client_id)) || ((n.get(b.id) || 0) > 0) - ((n.get(a.id) || 0) > 0) || (b.stage !== 'new') - (a.stage !== 'new') || (b.score || 0) - (a.score || 0) || a.created_at - b.created_at);
+    const keep = ranked[0];
+    const drop = ranked.slice(1).filter((r) => !r.client_id).map((r) => r.id);
+    if (!drop.length) continue;
+    const keepLead = await first(env, 'SELECT * FROM leads WHERE id = ?', keep.id);
+    removed += await mergeLeads(env, user, keepLead, drop);
+  }
+  return removed;
+}
 
 // Bulk actions from the list view.
 route('POST', '/api/leads/bulk', async ({ env, user, body }) => {

@@ -100,7 +100,7 @@ test('free mode: Google Maps searches and automatic research stay off, the switc
   let called = 0;
   const spy = async () => { called++; return Response.json({}); };
   const realFetch = globalThis.fetch; globalThis.fetch = spy;
-  try { assert.equal(await researchTick(t.env, 3), 0); } finally { globalThis.fetch = realFetch; }
+  try { assert.equal(await researchTick(t.env, 3), 1, 'free research runs on the lead without any paid call'); } finally { globalThis.fetch = realFetch; }
   assert.equal(called, 0, 'no paid research call went out');
   assert.equal((await t.call('GET', '/api/research/status')).data.free, true);
   await t.call('PUT', '/api/lead-mode', { mode: 'paid' });

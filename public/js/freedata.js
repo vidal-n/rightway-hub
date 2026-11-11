@@ -293,9 +293,45 @@ export function adLibraryLinks({ website, business } = {}) {
 // ---------- research depth (what one lead's research costs) ----------
 // DataForSEO bills about $0.002 per Maps search and $0.004 per Local Finder search. Website, speed (own check), registry and ad signals are free.
 export const RESEARCH_DEPTHS = {
-  free: { label: 'Free', searches: 0, cost: 0, what: 'No paid searches. Website, ads, registry and speed only. No map rank.' },
+  free: { label: 'Free', searches: 0, cost: 0, what: 'No paid searches. Website, ads, speed and any Google details typed in by hand. No map rank.' },
   lite: { label: 'Lite', searches: 1, cost: 0.002, what: 'One map check at the business. Gives the rank and top competitors. About $0.002 to $0.004.' },
   standard: { label: 'Standard', searches: 9, cost: 0.018, what: '3 x 3 map grid from Maps. About $0.02 a lead.' },
   full: { label: 'Full', searches: 9, cost: 0.036, what: '3 x 3 grid from Local Finder, the most exact. About $0.04 a lead.' },
 };
 export const cleanDepth = (d, fallback = 'lite') => (RESEARCH_DEPTHS[d] ? d : fallback);
+
+// ---------- free lookup links and the Google details typed in by hand ----------
+// Search pages a rep opens during a call. Nothing is fetched by the Hub: these are plain links, the same as typing the name in a browser.
+export function directoryLinks({ business, city, state, website } = {}) {
+  const name = String(business || '').trim();
+  if (!name) return [];
+  const place = [city, state].filter(Boolean).join(' ');
+  const q = encodeURIComponent(`${name} ${place}`.trim());
+  const out = [
+    { key: 'google', label: 'Google', url: `https://www.google.com/search?q=${q}` },
+    { key: 'maps', label: 'Google Maps', url: `https://www.google.com/maps/search/${q}` },
+    { key: 'yelp', label: 'Yelp', url: `https://www.yelp.com/search?find_desc=${encodeURIComponent(name)}&find_loc=${encodeURIComponent(place)}` },
+    { key: 'bbb', label: 'BBB', url: `https://www.bbb.org/search?find_country=USA&find_text=${encodeURIComponent(name)}&find_loc=${encodeURIComponent(place)}` },
+    { key: 'owner', label: 'Owner search', url: `https://www.google.com/search?q=${encodeURIComponent(`"${name}" owner ${place}`.trim())}` },
+  ];
+  const host = hostOf(website);
+  if (host) out.push({ key: 'site', label: 'Their website', url: /^https?:/i.test(website) ? website : `https://${host}` });
+  return out;
+}
+
+// What the rep can type in from the public listing. Only these fields are saved; anything blank stays blank.
+export const MANUAL_FIELDS = ['rating', 'reviews', 'phone', 'hours', 'owner_name', 'google_url'];
+export function cleanManual(input = {}) {
+  const num = (v, max) => { if (v === '' || v == null) return null; const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= max ? n : null; };
+  const txt = (v, n) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+  const url = txt(input.google_url, 500);
+  return {
+    rating: num(input.rating, 5),
+    reviews: num(input.reviews, 1e6),
+    phone: txt(input.phone, 40),
+    hours: txt(input.hours, 200),
+    owner_name: txt(input.owner_name, 120),
+    google_url: /^https?:\/\//i.test(url) ? url : '',
+    at: Date.now(),
+  };
+}
