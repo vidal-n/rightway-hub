@@ -86,7 +86,7 @@ route('POST', '/api/dialer/call', async ({ env, user, url, body }) => {
   if (!lead) throw new HttpError('Lead not found.', 404);
   if (lead.dnc) throw new HttpError('This lead is on Do Not Call.', 409);
   if (!e164(lead.phone)) throw new HttpError('This lead has no valid phone number.');
-  if (!inCallingHours(lead.timezone)) throw new HttpError("It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
+  if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt)) throw new HttpError("It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
   const activityId = await logActivity(env, { lead_id: lead.id, type: 'call', status: 'ringing_you', by: user.id });
   const params = new URLSearchParams({
     To: me.phone, From: env.TWILIO_FROM,

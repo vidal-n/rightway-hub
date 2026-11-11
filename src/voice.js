@@ -125,7 +125,7 @@ route('POST', '/api/voice/prepare', async ({ env, user, body }) => {
     if (lead.dnc) throw new HttpError('This lead is on Do Not Call.', 409);
     const to = e164(lead.phone);
     if (!to) throw new HttpError('This lead has no valid phone number.');
-    if (!inCallingHours(lead.timezone)) throw new HttpError("It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
+    if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt)) throw new HttpError("It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
     const activityId = await logActivity(env, { lead_id: lead.id, type: 'call', status: 'ready', by: user.id });
     await run(env, 'UPDATE activities SET to_num = ?, from_num = ? WHERE id = ?', to, from, activityId);
     await run(env, 'UPDATE leads SET last_call_at = ?, updated_at = ? WHERE id = ?', now(), now(), lead.id);

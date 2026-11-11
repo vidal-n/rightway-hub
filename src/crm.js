@@ -1,7 +1,7 @@
 // CRM: leads, pipeline stages, call outcomes with the playbook follow-up cadence, call queue, website form, convert to client.
 import { HttpError, json } from './util.js';
 import { all, first, run, batch, newId, now } from './db.js';
-import { requireStaff } from './auth.js';
+import { requireStaff, requireAdmin } from './auth.js';
 import { PLANS, tasksForMonth, monthKey } from './plans.js';
 import { scopeFromLead } from './scopeof.js';
 import { tierOf as scopeTier } from '../public/js/scope.js';
@@ -12,32 +12,22 @@ import { notifyLater } from './notify.js';
 import { autoChatFor } from './chat.js';
 import { can } from '../public/js/jobs.js';
 import { cleanNewLead, queueScrub } from './scrub.js';
+import { resolveZone, canCallNow, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
 
 export const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won', 'not_now', 'lost', 'dnc'];
 const CALLABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
 const DAY = 864e5;
 
-const TZ_BY_STATE = {
-  ET: ['CT', 'DE', 'DC', 'FL', 'GA', 'IN', 'KY', 'ME', 'MD', 'MA', 'MI', 'NH', 'NJ', 'NY', 'NC', 'OH', 'PA', 'RI', 'SC', 'VT', 'VA', 'WV'],
-  CT: ['AL', 'AR', 'IL', 'IA', 'KS', 'LA', 'MN', 'MS', 'MO', 'NE', 'ND', 'OK', 'SD', 'TN', 'TX', 'WI'],
-  MT: ['CO', 'MT', 'NM', 'UT', 'WY', 'ID'],
-  AZ: ['AZ'],
-  PT: ['CA', 'NV', 'OR', 'WA'],
-  AK: ['AK'],
-  HI: ['HI'],
-};
-const ZONE = { ET: 'America/New_York', CT: 'America/Chicago', MT: 'America/Denver', AZ: 'America/Phoenix', PT: 'America/Los_Angeles', AK: 'America/Anchorage', HI: 'Pacific/Honolulu' };
-const STATE_NAMES = { florida: 'FL', texas: 'TX', california: 'CA', 'new york': 'NY', georgia: 'GA', arizona: 'AZ', illinois: 'IL', ohio: 'OH', 'north carolina': 'NC', colorado: 'CO', washington: 'WA', nevada: 'NV', tennessee: 'TN', pennsylvania: 'PA', michigan: 'MI', virginia: 'VA', 'new jersey': 'NJ', massachusetts: 'MA', oregon: 'OR', utah: 'UT' };
+const TZ_SHORT = ZONE_SHORT;
 
+// Accepts a 2 letter code or a full state name (all 50 states and DC). A 2 letter code is kept even when it is not a state.
 export function stateCode(s) {
   const v = String(s || '').trim();
   if (/^[A-Za-z]{2}$/.test(v)) return v.toUpperCase();
-  return STATE_NAMES[v.toLowerCase()] || null;
+  return stateFromName(v) || null;
 }
 export function timezoneFor(state) {
-  const code = stateCode(state);
-  for (const [k, list] of Object.entries(TZ_BY_STATE)) if (code && list.includes(code)) return ZONE[k];
-  return null;
+  return resolveZone({ state: stateCode(state) }).tz;
 }
 export function localHour(tz, at = Date.now()) {
   try {
@@ -47,10 +37,15 @@ export function localHour(tz, at = Date.now()) {
 export function localTime(tz, at = Date.now()) {
   try { return new Intl.DateTimeFormat('en-US', { timeZone: tz || 'America/New_York', hour: 'numeric', minute: '2-digit' }).format(at); } catch { return ''; }
 }
-// Calls are allowed 8am to 8pm in the lead's time zone (TCPA hours).
-export function inCallingHours(tz, at = Date.now()) {
-  const h = localHour(tz, at);
-  return h != null && h >= 8 && h < 20;
+// Calls are allowed 8am to 8pm in the lead's time zone (TCPA hours). `alt` is a second possible zone (both must be inside).
+// No zone at all means only the window that is safe from Miami to Seattle (11am to 8pm Eastern).
+export function inCallingHours(tz, at = Date.now(), alt = null) {
+  return canCallNow(tz, alt, at);
+}
+// Where a lead is, from whatever fields it has. Returns the columns to save: timezone, tz_alt, tz_how (and state when it was empty).
+export function zoneFields(l) {
+  const z = resolveZone(l);
+  return { timezone: z.tz, tz_alt: z.alt, tz_how: z.how || null, state: z.state || null };
 }
 
 export function digits(phone) {
@@ -126,7 +121,13 @@ export function cleanLead(b, partial = false) {
   if ('plan' in out && out.plan && !PLANS[out.plan]) out.plan = null;
   if (!partial && !out.business) throw new HttpError('Business name is required.');
   if ('phone' in out) out.phone_digits = digits(out.phone) || null;
-  if ('state' in out) { out.state = stateCode(out.state) || out.state; out.timezone = timezoneFor(out.state); }
+  if ('state' in out) out.state = stateCode(out.state) || out.state;
+  if (['state', 'zip', 'address', 'city', 'lat', 'lng'].some((f) => f in out)) {
+    const z = resolveZone(out);
+    // A change that gives no place at all clears the zone only when the state itself was cleared; otherwise keep what we had.
+    if (z.tz || 'state' in out) { out.timezone = z.tz; out.tz_alt = z.alt; out.tz_how = z.how || null; }
+    if ('state' in out && !out.state && z.state) out.state = z.state;
+  }
   if ('zip' in out && out.zip) out.zip = String(out.zip).replace(/[^\d-]/g, '').slice(0, 10) || null;
   if ('reviews' in out && out.reviews != null) out.reviews = Math.round(out.reviews);
   if ('rating' in out && out.rating != null && (out.rating < 0 || out.rating > 5)) out.rating = null;
@@ -163,7 +164,6 @@ export async function logActivity(env, a) {
   return id;
 }
 
-const TZ_SHORT = { 'America/New_York': 'ET', 'America/Chicago': 'CT', 'America/Denver': 'MT', 'America/Phoenix': 'AZ', 'America/Los_Angeles': 'PT', 'America/Anchorage': 'AK', 'Pacific/Honolulu': 'HI' };
 // Booked appointments: owners see every one; teammates only see the ones they booked (or, for older rows, on their own leads).
 export function canSeeAppt(user, l) {
   if (!user || can(user, 'schedule')) return true; // owners, schedulers and closers see every appointment
@@ -182,9 +182,9 @@ function seeAppt(l, user) {
 function decorate(l) {
   const tz = l.timezone || null;
   const { intel, scrub_data, ...rest } = l;
-  return { ...rest, scrubbed: Boolean(l.scrubbed_at), researched: Boolean(l.intel_at), tz_short: TZ_SHORT[tz] || null, local_time: localTime(tz), callable_now: !l.dnc && inCallingHours(tz), tz_known: Boolean(tz) };
+  return { ...rest, scrubbed: Boolean(l.scrubbed_at), researched: Boolean(l.intel_at), tz_short: TZ_SHORT[tz] || null, tz_alt_short: TZ_SHORT[l.tz_alt] || null, local_time: tz ? localTime(tz) : '', callable_now: !l.dnc && inCallingHours(tz, Date.now(), l.tz_alt), tz_known: Boolean(tz) };
 }
-const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, website, city, state, zip, timezone, industry, category, tags, source, stage, plan,
+const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, website, city, state, zip, timezone, tz_alt, tz_how, industry, category, tags, source, stage, plan,
   next_action_at, next_action, owner_id, attempts, last_call_at, dnc, sms_consent, client_id, score, grade, rating, reviews, map_rank, problems,
   intel_at, meet_at, meet_link, meet_by, closer_id, created_at, updated_at, business_raw, phone_type, email_status, owner_name, data_score, scrubbed_at, scrub`;
 
@@ -319,7 +319,7 @@ export async function mergeLeads(env, user, k, remove) {
   const others = (await Promise.all(remove.filter((id) => id !== keep).map((id) => first(env, 'SELECT * FROM leads WHERE id = ?', id)))).filter(Boolean);
   const set = {};
   for (const o of others) {
-    for (const f of [...LEAD_FIELDS, 'phone_digits', 'timezone', 'rating', 'reviews', 'intel', 'intel_at', 'lat', 'lng']) if ((k[f] == null || k[f] === '') && o[f] != null && o[f] !== '' && set[f] == null) set[f] = o[f];
+    for (const f of [...LEAD_FIELDS, 'phone_digits', 'timezone', 'tz_alt', 'tz_how', 'rating', 'reviews', 'intel', 'intel_at', 'lat', 'lng']) if ((k[f] == null || k[f] === '') && o[f] != null && o[f] !== '' && set[f] == null) set[f] = o[f];
     if (o.notes && o.notes !== k.notes) set.notes = [set.notes || k.notes, o.notes].filter(Boolean).join('\n');
     if (o.dnc) { set.dnc = 1; set.stage = 'dnc'; }
   }
@@ -599,4 +599,29 @@ route('POST', '/api/leads/:id/deep-scan', async ({ env, user, params, body }) =>
   await run(env, 'UPDATE leads SET deep_scan = ?, updated_at = ? WHERE id = ?', JSON.stringify({ at, by: user.id, scans }), at, l.id);
   await logActivity(env, { lead_id: l.id, type: 'note', body: `Deep scan saved: ${scans.map((x) => `"${x.keyword}" first page in ${x.top10} of ${x.points}`).join(', ')}`, by: user.id });
   return json({ ok: true, at, scans: scans.length });
+});
+
+// Free time zone repair: works out each lead's zone from its state, address, ZIP, city and map spot, 200 leads a request.
+// Leads booked through the booking page keep the zone the visitor's browser reported. Anything already right is left alone.
+export const FIX_STEP = 200;
+route('POST', '/api/leads/fix-timezones', async ({ env, user, body }) => {
+  requireAdmin(user);
+  const b = await body();
+  const after = String(b.after || '');
+  const rows = await all(env, `SELECT id, state, zip, address, city, lat, lng, timezone, tz_alt, tz_how FROM leads
+    WHERE (timezone IS NULL OR tz_how IS NULL) AND COALESCE(tz_how, '') != 'booking' AND id > ? ORDER BY id LIMIT ?`, after, FIX_STEP + 1);
+  const more = rows.length > FIX_STEP;
+  const part = more ? rows.slice(0, FIX_STEP) : rows;
+  let fixed = 0, unknown = 0;
+  const ops = [];
+  for (const l of part) {
+    const z = resolveZone(l);
+    if (!z.tz) { unknown++; continue; }
+    const state = z.state && (!l.state || stateFromName(l.state) === z.state) ? z.state : l.state;
+    if (z.tz === l.timezone && (z.alt || null) === (l.tz_alt || null) && z.how === l.tz_how && state === l.state) continue;
+    if (z.tz !== l.timezone) fixed++;
+    ops.push(['UPDATE leads SET timezone = ?, tz_alt = ?, tz_how = ?, state = ? WHERE id = ?', z.tz, z.alt, z.how, state || null, l.id]);
+  }
+  for (let i = 0; i < ops.length; i += 100) await batch(env, ops.slice(i, i + 100));
+  return json({ checked: part.length, fixed, unknown, next: more ? part[part.length - 1].id : null });
 });

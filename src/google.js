@@ -420,7 +420,7 @@ route('POST', '/api/public/book', async ({ env, request, defer }) => {
   const set = { stage: 'audit_booked', meet_at: start, meet_by: full.meet_by || null, closer_id: closer || full.closer_id || null, next_action_at: start, next_action: 'Audit call (Call 2): open Present', updated_at: now() };
   if (closer && !full.owner_id) set.owner_id = closer;
   for (const k of ['contact_name', 'email', 'phone', 'phone_digits', 'website', 'city', 'state', 'industry']) if (data[k] && !full[k]) set[k] = data[k];
-  if (tz) set.timezone = tz;
+  if (tz) { set.timezone = tz; set.tz_alt = null; set.tz_how = 'booking'; }
   if (b.sms_consent && !full.sms_stop) set.sms_consent = 1;
   Object.assign(set, rescore({ ...full, ...set, source: full.source || 'booking' }));
   const cols = Object.keys(set);

@@ -580,6 +580,15 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   the last N days with the industry words in the name. `GET /api/finder/new-filings?states=&days=&industries=a|b` (owners, `src/freedata.js`, up to 5 states, per-state errors reported) feeds the "New businesses
   (state filings, free)" card on the Finder page with CSV download. Filings have no phone, so these are research and call-by-hand lists, not pipeline imports. Not built: checking whether a business has a Google listing
   (Google's results can't be read for free without breaking its terms; the card links the Google search instead).
+- Time zones (Nov 2026, V: 378 of 888 pipeline leads were Unknown): `public/js/timezone.js` (pure, shared, tests `test/timezone.test.js`). The Lead finder sends full state names ("Alabama")
+  and the old table knew only 20, so the rest got no zone, and `inCallingHours(null)` treated them as Eastern (unsafe for CT, MT, PT). Now `resolveZone({state, zip, address, city, lat, lng})`
+  returns `{tz, alt, state, how}`: all 50 states and DC by name, state from the address text or ZIP when the state is empty, split states (FL panhandle, TN, KY, IN, MI, TX El Paso, KS, NE, SD, ND, ID, OR)
+  by ZIP3 then city list, else a second possible zone `alt`; map spot (`zoneFromLatLng`, longitude bands) only when nothing else is known; a ZIP from a different state keeps both zones.
+  `canCallNow(tz, alt)` (via `inCallingHours(tz, at, alt)` in `src/crm.js`): both zones must be inside 8am to 8pm, and a lead with NO zone is callable only 11am to 8pm Eastern (safe from Miami to Seattle).
+  Columns `leads.tz_alt`, `leads.tz_how` (state, address, zip, map, booking). `cleanLead` sets them whenever a place field is saved (a change that finds nothing leaves the saved zone alone). Booking page zones
+  are the visitor's own (`tz_how` booking) and are never recomputed. Owners: Pipeline link "Find the time zone for the N unknown (free)" calls `POST /api/leads/fix-timezones {after}` (200 leads a request,
+  no outside calls, also fixes old rows with no `tz_how`, fills an empty state from the address or ZIP, turns "Alabama" into AL). Lists show ET/CT style badges for two-zone leads. ZIP ranges and city lists are typed
+  from memory, so results near zone lines are approximate (that is what `alt` is for). No area code table on purpose (cell numbers move).
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

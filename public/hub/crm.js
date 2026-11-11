@@ -134,7 +134,7 @@ export async function pipelinePage(app, user, openId) {
           <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop10"${f.notTop10 ? ' checked' : ''}> Not on the first page</label>
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
       </div>
-      <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)</button>${rows.some((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)) ? ` · <button class="linkbtn" id="scruball">Scrub the ${rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length} not scrubbed yet (free)</button>` : ''}</div>
+      <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)</button>${rows.some((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)) ? ` · <button class="linkbtn" id="scruball">Scrub the ${rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length} not scrubbed yet (free)</button>` : ''}${user.role === 'admin' && all.some((l) => !l.tz_known || !l.tz_how) ? ` · <button class="linkbtn" id="fixtz">${all.some((l) => !l.tz_known) ? `Find the time zone for the ${all.filter((l) => !l.tz_known).length} unknown (free)` : 'Re-check time zones (free)'}</button>` : ''}</div>
       <div id="pbody"></div>`;
     const body = $('#pbody', view);
     if (p.view === 'list') renderList(body, rows); else renderBoard(body, by);
@@ -177,7 +177,7 @@ export async function pipelinePage(app, user, openId) {
     const row = (l) => `<tr data-id="${esc(l.id)}"><td><input type="checkbox" class="sel" data-id="${esc(l.id)}"${selected.has(l.id) ? ' checked' : ''}></td>
       <td>${gradeBadge(l.grade, l.score)}</td><td><b>${esc(l.business)}</b><div class="small">${esc([l.contact_name || l.owner_name, l.phone, PHONE_TYPE_LABEL[l.phone_type]].filter(Boolean).join(' · '))}</div></td>
       <td>${esc([l.city, l.state].filter(Boolean).join(', '))}${l.zip ? ` <span class="small">${esc(l.zip)}</span>` : ''}</td>
-      <td>${l.tz_short ? `<span class="badge ${l.callable_now ? '' : 'gray'}">${esc(l.tz_short)} ${esc(l.local_time)}</span>` : '<span class="small">?</span>'}</td>
+      <td>${l.tz_short ? `<span class="badge ${l.callable_now ? '' : 'gray'}" title="${l.tz_alt_short ? 'On the line between two zones. Call only when both are inside 8am to 8pm.' : ''}">${esc(l.tz_short)}${l.tz_alt_short ? `/${esc(l.tz_alt_short)}` : ''} ${esc(l.local_time)}</span>` : `<span class="small" title="Time zone unknown. Callable 11am to 8pm Eastern only.">?${l.callable_now ? '' : ' wait'}</span>`}</td>
       <td>${esc(l.industry || l.category || '')}</td><td>${l.reviews ?? ''}</td><td>${l.rating ?? ''}</td><td>${l.map_rank == null ? '' : l.map_rank > 20 ? '20+' : `#${l.map_rank}`}</td>
       <td>${l.data_score == null ? '<span class="small muted">not yet</span>' : `<span class="dscore d${l.data_score >= 80 ? 'a' : l.data_score >= 60 ? 'b' : l.data_score >= 40 ? 'c' : 'd'}">${l.data_score}</span>`}</td>
       <td><span class="badge gray">${esc(STAGE_LABEL[l.stage])}</span></td><td class="small">${esc(dueText(l.next_action_at))}</td></tr>`;
@@ -231,6 +231,21 @@ export async function pipelinePage(app, user, openId) {
       render();
     }));
     $('#scruball', view)?.addEventListener('click', () => scrubMany(filterLeads(all, p).filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)), reload));
+    $('#fixtz', view)?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget; btn.disabled = true;
+      let after = '', checked = 0, fixed = 0, unknown = 0;
+      try {
+        for (;;) {
+          const r = await api('/api/leads/fix-timezones', { method: 'POST', body: { after } });
+          checked += r.checked; fixed += r.fixed; unknown += r.unknown;
+          btn.textContent = `Checking time zones: ${checked} done`;
+          if (!r.next) break;
+          after = r.next;
+        }
+        toast(unknown ? `${fixed} time zones set. ${unknown} still have no state, ZIP or address, so they stay in the 11am to 8pm Eastern window.` : `${fixed} time zones set.`);
+      } catch (err) { toast(err.message, true); }
+      reload();
+    });
     $('#resall', view).addEventListener('click', () => researchMany(filterLeads(all, p).filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).slice(0, 50), reload));
   };
   render();
@@ -299,7 +314,7 @@ function card(l) {
     <div class="item-sub ellip">${esc([l.industry || l.category, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div></div></div>
     <div class="row small" style="margin-top:6px;gap:6px">${l.next_action_at ? `<span class="badge ${l.next_action_at <= Date.now() ? 'warn' : 'gray'}">${esc(dueText(l.next_action_at))}</span>` : ''}
       ${l.meet_at && l.meet_at > Date.now() - 3600e3 ? `<span class="badge">Meet ${esc(new Date(l.meet_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</span>` : ''}
-      ${l.reviews != null ? `<span>${l.reviews} rev</span>` : ''}${l.map_rank ? `<span>${l.map_rank > 20 ? '20+' : `#${l.map_rank}`}</span>` : ''}${l.tz_known ? `<span class="${l.callable_now ? 'ok-dot' : ''}">${esc(l.tz_short)} ${esc(l.local_time)}</span>` : ''}</div></article>`;
+      ${l.reviews != null ? `<span>${l.reviews} rev</span>` : ''}${l.map_rank ? `<span>${l.map_rank > 20 ? '20+' : `#${l.map_rank}`}</span>` : ''}${l.tz_known ? `<span class="${l.callable_now ? 'ok-dot' : ''}">${esc(l.tz_short)}${l.tz_alt_short ? `/${esc(l.tz_alt_short)}` : ''} ${esc(l.local_time)}</span>` : ''}</div></article>`;
 }
 
 // ---------- lead form ----------
@@ -869,7 +884,7 @@ export async function dialerPage(app, user) {
             <div class="dial-who" id="dwho"><span class="small muted">Speaking with</span>${whoHtml(whoIs(l))}</div>
             <div class="muted" style="margin-top:6px">${esc([l.industry || l.category, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div>
             ${(() => { const c = callCategory(l); return `<div class="dial-cat">${catChip(c)}<span>${esc(c.lead)}</span>${c.facts.length || c.tags.length ? `<small class="muted">${esc([...c.facts, ...c.tags.map((t) => t.label)].join(' · '))}</small>` : ''}</div>`; })()}
-            <div class="row" style="margin:12px 0"><span class="badge">${l.tz_known ? `Their time: ${esc(l.local_time)}` : 'Time zone unknown: add the state'}</span>${l.sms_consent ? '<span class="badge">Agreed to texts</span>' : ''}${l.reviews != null ? `<span class="badge gray">${l.reviews} reviews${l.rating ? ` · ${l.rating}★` : ''}</span>` : ''}</div>
+            <div class="row" style="margin:12px 0"><span class="badge">${l.tz_known ? `Their time: ${esc(l.local_time)}` : 'Time zone unknown: callable 11am to 8pm Eastern only'}</span>${l.sms_consent ? '<span class="badge">Agreed to texts</span>' : ''}${l.reviews != null ? `<span class="badge gray">${l.reviews} reviews${l.rating ? ` · ${l.rating}★` : ''}</span>` : ''}</div>
             <div class="dial-phone">${esc(l.phone || '')}</div>
             <div class="row" style="margin-top:14px">
               ${me.twilio ? `<button class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" id="dhub">${icon.phone}Call</button>` : ''}
