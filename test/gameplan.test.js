@@ -23,3 +23,27 @@ test('phone menu outcome takes the lead off the list and tags it', () => {
   assert.equal(set.next_action_at, null);
   assert.equal(applyOutcome({ stage: 'new', tags: 'phone menu' }, 'phone_menu').tags, 'phone menu');
 });
+
+import worker from '../src/worker.js';
+import { resetSchemaCache, setSetting } from '../src/db.js';
+import { d1, r2 } from './shims.mjs';
+test('an older saved disposition list gets Phone menu added once', async () => {
+  resetSchemaCache();
+  const env = { DB: d1(), MEDIA: r2(), ACCESS_KEY: 'owner-key-123' };
+  let cookie = '';
+  const call = async (method, path, body) => {
+    const h = { 'x-rw': '1', ...(cookie ? { cookie } : {}), ...(body ? { 'content-type': 'application/json' } : {}) };
+    const res = await worker.fetch(new Request(`https://hub.test${path}`, { method, headers: h, body: body ? JSON.stringify(body) : undefined }), env);
+    const c = res.headers.get('set-cookie'); if (c) cookie = c.split(';')[0];
+    return res.json();
+  };
+  await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  await setSetting(env, 'dispositions', JSON.stringify([{ id: 'no_answer', label: 'No answer', acts: 'no_answer' }]));
+  await setSetting(env, 'dispo_pm', '');
+  let r = await call('GET', '/api/dispositions');
+  assert.ok(r.dispositions.some((d) => d.acts === 'phone_menu'));
+  // Remove it: it stays removed.
+  await call('PUT', '/api/dispositions', { dispositions: [{ id: 'no_answer', label: 'No answer', acts: 'no_answer' }] });
+  r = await call('GET', '/api/dispositions');
+  assert.equal(r.dispositions.some((d) => d.acts === 'phone_menu'), false);
+});

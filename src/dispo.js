@@ -20,7 +20,24 @@ export const BASE_DISPOS = [
 
 export async function getDispos(env) {
   const raw = (await getSettings(env).catch(() => ({}))).dispositions;
-  if (raw) { try { const l = JSON.parse(raw); if (Array.isArray(l) && l.length) return l; } catch { /* fall back */ } }
+  if (raw) {
+    try {
+      const l = JSON.parse(raw);
+      if (Array.isArray(l) && l.length) {
+        // A list saved before "Phone menu" existed gets it added once. Removing it later sticks (the stamp stays).
+        const st = await getSettings(env).catch(() => ({}));
+        if (st.dispo_pm !== '1') {
+          await setSetting(env, 'dispo_pm', '1');
+          if (!l.some((d) => d.acts === 'phone_menu') && l.length < 20) {
+            const add = [...l, { id: 'phone_menu', label: 'Phone menu (press a number)', acts: 'phone_menu' }];
+            await setSetting(env, 'dispositions', JSON.stringify(add));
+            return add;
+          }
+        }
+        return l;
+      }
+    } catch { /* fall back */ }
+  }
   return BASE_DISPOS;
 }
 
