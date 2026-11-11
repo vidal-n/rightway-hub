@@ -33,6 +33,11 @@ test('big selections stay under the D1 limit of 100 bound values', async () => {
   assert.ok(ids.every(Boolean));
   const q = await t.call('POST', '/api/scrub/queue', { ids, lookup: true });
   assert.equal(q.status, 200);
+  const st = await t.call('GET', '/api/scrub/status');
+  assert.ok(st.data.queued >= 200);
+  const c = await t.call('POST', '/api/scrub/cancel');
+  assert.equal(c.status, 200);
+  assert.equal((await t.call('GET', '/api/scrub/status')).data.queued, 0);
   const b = await t.call('POST', '/api/leads/bulk', { ids, action: 'tag', value: 'big' });
   assert.equal(b.status, 200);
   const d = await t.call('POST', '/api/leads/bulk', { ids, action: 'stage', value: 'attempting' });

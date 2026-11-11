@@ -135,10 +135,12 @@ export async function pipelinePage(app, user, openId) {
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
       </div>
       <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)<span class="cost-hint" data-cost="research_call" data-n="${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)}"></span></button>${rows.some((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)) ? ` · <button class="linkbtn" id="scruball">Scrub the ${rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length} not scrubbed yet (free)</button>` : ''}${` · <button class="linkbtn" id="fillin">Fill in missing info...</button>`}${user.role === 'admin' && all.some((l) => !l.tz_known || !l.tz_how) ? ` · <button class="linkbtn" id="fixtz">${all.some((l) => !l.tz_known) ? `Find the time zone for the ${all.filter((l) => !l.tz_known).length} unknown (free)` : 'Re-check time zones (free)'}</button>` : ''}</div>
+      <div id="scstrip"></div>
       <div id="pbody"></div>`;
     const body = $('#pbody', view);
     if (p.view === 'list') renderList(body, rows); else renderBoard(body, by);
     wire();
+    resumeScrub(reload);
   };
 
   const renderBoard = (el, by) => {
@@ -343,32 +345,73 @@ const CALL_LIST_F = { best: { minData: 60 }, mobile: { phoneType: 'mobile' }, ow
 const CALL_LIST_SORT = { few: 'reviews', page2: '-score' };
 const LIST_KEYS = ['minData', 'phoneType', 'owner', 'email', 'site', 'maxReviews', 'notTop10'];
 
-// Scrub from the browser: three at a time with a progress bar. Free (website reads and an email check); line type only when an owner turned it on.
-export function scrubMany(leads, onDone, opts = {}) {
-  if (!leads.length) return toast('Nothing to scrub in this view.');
-  if (leads.length > 400) {
-    api('/api/scrub/queue', { method: 'POST', body: { ids: leads.map((l) => l.id), lookup: Boolean(opts.lookup) } }).then((r) => toast(`${r.queued} leads queued. They scrub in the background, a few a minute.`)).catch((e) => toast(e.message, true));
-    return;
-  }
-  let stop = false, done = 0, found = 0;
-  const m = modal(`<div class="card-head"><h2>Scrubbing ${leads.length} leads</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
-    <p class="muted">Cleans the business names, checks the numbers, reads each website for emails, social pages and the owner's name, and checks the emails take mail.</p>
-    <div class="progress"><span id="scbar" style="width:0%"></span></div><p class="small" id="sctxt">Starting...</p>
-    <div class="row end"><button class="btn btn-ghost btn-sm" id="scstop">Stop</button></div>`, { onClose: () => { stop = true; onDone?.(); } });
-  $('#scstop', m.el).addEventListener('click', () => { stop = true; });
-  const queue = leads.slice();
-  const worker = async () => {
-    while (queue.length && !stop) {
-      const l = queue.shift();
-      let note = '';
-      try { const r = await api(`/api/leads/${l.id}/scrub`, { method: 'POST', body: { lookup: Boolean(opts.lookup) } }); const s = r.scrub; if (s.owner || s.emails?.some((x) => x.ok)) found++; note = s.name?.changed ? `${s.name.raw} is now ${s.name.clean}` : r.lead.business; }
-      catch (e) { note = `${l.business}: ${e.message}`; }
-      done++;
-      $('#scbar', m.el).style.width = `${Math.round((done / leads.length) * 100)}%`;
-      $('#sctxt', m.el).textContent = `${done} of ${leads.length} done. Found an owner or email on ${found}. Last: ${note}`;
-    }
+// Scrub: queue the leads on the server, then a progress strip on the Pipeline watches the queue and keeps it moving
+// (two leads per call, two calls at a time). It also finishes on its own in the background if the page is closed.
+let scrubTimer = null, scrubBusy = false, scrubDoneCb = null;
+const scrubKey = 'rw-scrub-total';
+const stripHtml = (queued, total, scrubbed) => {
+  const done = Math.max(0, total - queued);
+  const pct = total ? Math.min(100, Math.round((done / total) * 100)) : 100;
+  return queued
+    ? `<div class="card scstrip"><div class="row"><strong>Scrubbing</strong><span class="small">${done} of ${total} done · ${queued} left</span><span class="spacer"></span><button class="btn btn-ghost btn-sm" id="scpause">Stop</button></div><div class="progress" style="margin-top:8px"><span style="width:${pct}%"></span></div><p class="small muted" style="margin:6px 0 0">Reading websites, checking emails, cleaning names. Keep this page open to go faster. It also runs in the background.</p></div>`
+    : `<div class="card scstrip"><div class="row"><strong>Scrub finished</strong><span class="small">${total} lead${total === 1 ? '' : 's'} done. ${scrubbed} scrubbed in total.</span><span class="spacer"></span><button class="btn btn-ghost btn-sm" id="scclose">Dismiss</button></div><div class="progress" style="margin-top:8px"><span style="width:100%"></span></div></div>`;
+};
+function paintStrip(queued, total, scrubbed) {
+  const el = document.getElementById('scstrip');
+  if (!el) return false;
+  el.innerHTML = total || queued ? stripHtml(queued, total, scrubbed) : '';
+  document.getElementById('scpause')?.addEventListener('click', async () => {
+    clearInterval(scrubTimer); scrubTimer = null;
+    try { await api('/api/scrub/cancel', { method: 'POST' }); } catch (e) { toast(e.message, true); }
+    try { sessionStorage.removeItem(scrubKey); } catch {}
+    el.innerHTML = '';
+    scrubDoneCb?.();
+  });
+  document.getElementById('scclose')?.addEventListener('click', () => { try { sessionStorage.removeItem(scrubKey); } catch {} el.innerHTML = ''; });
+  return true;
+}
+export function watchScrub(added = 0, onDone) {
+  if (onDone) scrubDoneCb = onDone;
+  let total = 0;
+  try { total = Number(sessionStorage.getItem(scrubKey)) || 0; } catch {}
+  total += added;
+  try { sessionStorage.setItem(scrubKey, String(total)); } catch {}
+  if (scrubTimer) { return; }
+  const step = async () => {
+    if (scrubBusy) return;
+    if (!document.getElementById('scstrip')) { clearInterval(scrubTimer); scrubTimer = null; return; }   // left the Pipeline
+    scrubBusy = true;
+    try {
+      const rs = await Promise.all([api('/api/scrub/tick', { method: 'POST' }), api('/api/scrub/tick', { method: 'POST' })]);
+      const st = rs[rs.length - 1];
+      try { total = Math.max(Number(sessionStorage.getItem(scrubKey)) || 0, st.queued); sessionStorage.setItem(scrubKey, String(total)); } catch { total = Math.max(total, st.queued); }
+      paintStrip(st.queued, total, st.scrubbed);
+      if (!st.queued) { clearInterval(scrubTimer); scrubTimer = null; scrubDoneCb?.(); }
+    } catch (e) { clearInterval(scrubTimer); scrubTimer = null; toast(e.message, true); }
+    scrubBusy = false;
   };
-  Promise.all([worker(), worker(), worker()]).then(() => { if (!stop) $('#sctxt', m.el).textContent += ' All done.'; });
+  scrubTimer = setInterval(step, 1500);
+  step();
+}
+// Pick the strip up again after a refresh or coming back to the Pipeline.
+export async function resumeScrub(onDone) {
+  try {
+    const st = await api('/api/scrub/status');
+    let total = 0;
+    try { total = Number(sessionStorage.getItem(scrubKey)) || 0; } catch {}
+    if (st.queued) { total = Math.max(total, st.queued); try { sessionStorage.setItem(scrubKey, String(total)); } catch {} paintStrip(st.queued, total, st.scrubbed); watchScrub(0, onDone); }
+    else if (total) paintStrip(0, total, st.scrubbed);
+  } catch {}
+}
+export async function scrubMany(leads, onDone, opts = {}) {
+  if (!leads.length) return toast('Nothing to scrub in this view.');
+  try {
+    const r = await api('/api/scrub/queue', { method: 'POST', body: { ids: leads.map((l) => l.id), lookup: Boolean(opts.lookup) } });
+    toast(`${r.queued} lead${r.queued === 1 ? '' : 's'} queued.`);
+    try { sessionStorage.removeItem(scrubKey); } catch {}
+    paintStrip(r.queued, r.queued, 0);
+    watchScrub(r.queued, onDone);
+  } catch (e) { toast(e.message, true); }
 }
 
 // Florida registry facts and what the business says about itself on its own site. All free, all optional.

@@ -1875,3 +1875,7 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .cost-ic.free { background: #23B07E; }
 #fcov button { display: inline-flex; align-items: center; gap: 4px; }
 #fcov button small { font-size: 12px; }
+
+/* Scrub progress strip on the Pipeline */
+.scstrip { margin: 0 0 14px; padding: 14px 16px; }
+.scstrip .row { gap: 12px; align-items: center; }

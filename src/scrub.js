@@ -187,6 +187,12 @@ route('POST', '/api/scrub/queue', async ({ env, user, body }) => {
   return json({ ok: true, queued: n });
 });
 
+route('POST', '/api/scrub/cancel', async ({ env, user }) => {
+  requireStaff(user);
+  await run(env, 'UPDATE leads SET scrub_queued = 0, scrub_lookup = 0 WHERE scrub_queued = 1');
+  return json({ ok: true });
+});
+
 route('POST', '/api/scrub/tick', async ({ env, user }) => {
   requireStaff(user);
   const done = await scrubTick(env, 2);
