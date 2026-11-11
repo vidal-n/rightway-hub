@@ -36,3 +36,17 @@ test('plan joins ticked website items once and prices phone checks', () => {
   assert.equal(fillPlan(it, new Set(['tz'])).leads.length, 0);
   assert.equal(fillPlan(it, new Set(['owner'])).usd, 0);
 });
+
+test('a scrubbed lead is not counted again for what the scrub already checked', () => {
+  const leads = [
+    { id: 'a', stage: 'new', website: 'https://a.test', phone: '3055550100', owner_name: null, email: null, has_socials: 0, phone_type: null, scrubbed_at: 1700000000000, scrub_lookup: 0 },
+    { id: 'b', stage: 'new', website: 'https://b.test', phone: '3055550101', owner_name: null, email: null, has_socials: 0, phone_type: null, scrubbed_at: null, scrub_lookup: 0 },
+    { id: 'c', stage: 'new', website: 'https://c.test', phone: '3055550102', owner_name: null, email: null, has_socials: 0, phone_type: null, scrubbed_at: 1700000000000, scrub_lookup: 1 },
+  ];
+  const items = fillItems(leads, { cleanName, twilio: true, owner: false });
+  const ids = (id) => items.find((i) => i.id === id).leads.map((l) => l.id);
+  assert.deepEqual(ids('owner'), ['b']);
+  assert.deepEqual(ids('email'), ['b']);
+  assert.deepEqual(ids('social'), ['b']);
+  assert.deepEqual(ids('phone'), ['b', 'c']);
+});
