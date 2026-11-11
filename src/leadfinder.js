@@ -44,7 +44,7 @@ export async function geocode(env, query, fetchImpl = fetch) {
   if (!q) throw new HttpError('Type a city or ZIP code.');
   const pair = /^(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)$/.exec(q);
   if (pair) return { label: `${Number(pair[1]).toFixed(3)}, ${Number(pair[2]).toFixed(3)}`, lat: Number(pair[1]), lng: Number(pair[2]), radius: 5, state: '' };
-  if (isDemo(env)) { const h = hash(q); return { label: q, lat: 25.7617 + ((h % 100) - 50) / 1000, lng: -80.1918 + (((h >>> 8) % 100) - 50) / 1000, radius: 4, state: 'FL' }; }
+  if (isDemo(env)) { const h = hash(q); return { label: q, lat: 25.7617 + ((h % 100) - 50) / 1000, lng: -80.1918 + (((h >>> 8) % 100) - 50) / 1000, radius: 4, state: (/,\s*([A-Za-z]{2})$/.exec(q)?.[1] || 'FL').toUpperCase() }; }
   let res;
   try {
     res = await fetchImpl(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&countrycodes=us&q=${encodeURIComponent(q)}`,
@@ -92,11 +92,16 @@ route('POST', '/api/finder/jobs', async ({ env, user, body }) => {
     : `That is ${est.requests.toLocaleString('en-US')} searches (about $${est.cost.toFixed(2)}). One job can run up to ${MAX_REQUESTS.toLocaleString('en-US')}. Use fewer areas or keywords, or a smaller coverage.`);
   const fixed = Number(b.radius) > 0 ? clampRadius(Number(b.radius)) : null;
   const areas = [];
+  const skippedAreas = [];
   for (const [i, n] of names.entries()) {
     if (i && !isDemo(env) && env.FINDER_GEOCODE_GAP !== '0') await sleep(1100); // the geocoder allows one request a second
     const p = await geocode(env, n);
+    // "Miami, FL" that the map puts in another state is a bad match, so it is skipped rather than searched.
+    const want = /,\s*([A-Za-z]{2})$/.exec(n)?.[1]?.toUpperCase();
+    if (want && p.state && p.state.toUpperCase() !== want) { skippedAreas.push(n); continue; }
     areas.push({ label: p.label, lat: p.lat, lng: p.lng, radius: fixed ?? clampRadius(p.radius), size, state: p.state });
   }
+  if (!areas.length) throw new HttpError(`None of those places could be found in the state named: ${skippedAreas.join(', ')}.`);
   const name = text(b.name, 80) || `${keywords[0]} in ${areas[0].label}${areas.length > 1 ? ` and ${areas.length - 1} more` : ''}`;
   const id = newId('fj_');
   const total = taskList(areas, keywords).length;

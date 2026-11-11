@@ -567,6 +567,10 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
 - CSV import dedupe (Nov 2026): `dupKeys` adds `m:` (name without legal suffix or SEO tail, plus city or zip). `importLeads` skips a row that matches an existing lead (reason `name` for `m`), and
   `autoMergeAfterImport` merges any groups that now contain new rows (keeps the lead with a client link, then with history, then the higher score; never deletes a client lead). Result has `merged`.
   `mergeLeads(env, user, keep, remove)` is the shared merge used by `POST /api/leads/merge`.
+- Lead finder cities (Nov 2026): `public/js/cities.js` (pure): `CITIES` (about 10 largest cities per state and DC, typed from memory, not census data), `citiesFor(state, n)`, `expandAreas(text, n)` (a line that is only a
+  state, code or name, becomes its top N cities as "City, ST"; duplicates dropped), `chunkAreas(list, perJob)`. The Finder page expands areas on Find and on the cost line, and "Pick cities by state" adds ticked cities.
+  Each job takes up to `MAX_AREAS` (12) areas and stays under the search cap, so a long list runs as several jobs started in turn (the page opens the first). `geocode` results in a different state than the
+  ", XX" on the line are skipped (`skippedAreas`), so a wrong city from the list is never searched.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

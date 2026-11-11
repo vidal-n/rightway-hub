@@ -3,7 +3,9 @@
 // background scrub fills in emails, owner names and socials. The server does the searching, so this works the same on an iPad.
 import { $, $$, esc, api, toast, busy } from './core.js';
 import { staffShell } from './shell.js';
-import { COVERAGE, estimate, parseKeywords, parseAreas, MAX_REQUESTS, MAX_OSM_REQUESTS, OSM_SIZES, SOURCES, passes, cleanFilters, csvText } from '/js/finder.js';
+import { COVERAGE, estimate, parseKeywords, parseAreas, MAX_REQUESTS, MAX_OSM_REQUESTS, MAX_AREAS, OSM_SIZES, SOURCES, passes, cleanFilters, csvText } from '/js/finder.js';
+import { CITIES, DEFAULT_TOP, expandAreas, chunkAreas } from '/js/cities.js';
+import { STATES } from '/js/registries.js';
 
 const num = (n) => Number(n || 0).toLocaleString('en-US');
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
@@ -49,6 +51,16 @@ async function homePage(view) {
         <label class="field"><span>Keywords, one per line</span><textarea id="fkw" rows="3" placeholder="roofing contractor&#10;roofer"></textarea></label>
         <label class="field"><span>Areas, one per line (city, state or ZIP)</span><textarea id="far" rows="3" placeholder="Miami, FL&#10;Fort Lauderdale, FL&#10;33139"></textarea></label>
       </div>
+      <p class="small muted" style="margin:6px 0 0">Type a state (FL or Florida) to search its top cities, or pick cities below. Any number of areas works: they run as several searches of up to ${MAX_AREAS} areas each.</p>
+      <details class="fold" style="margin-top:10px"><summary><span>Pick cities by state</span></summary><div class="fold-body">
+        <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <label class="field" style="flex:1 1 200px"><span>State</span><select id="fstate"><option value="">Choose a state</option>${STATES.map((x) => `<option value="${x[0]}">${esc(x[1])}</option>`).join('')}</select></label>
+          <label class="field" style="flex:0 0 130px"><span>Top cities</span><input id="ftop" type="number" min="1" max="50" value="${DEFAULT_TOP}"></label>
+          <button class="btn btn-ghost btn-sm" id="fadd_top" type="button">Add top cities for this state</button>
+        </div>
+        <div id="fcities" class="row" style="flex-wrap:wrap;gap:8px 16px;margin-top:12px"></div>
+        <div class="row" style="margin-top:10px;gap:8px"><button class="btn btn-ghost btn-sm" id="fall" type="button">Tick all</button><button class="btn btn-ghost btn-sm" id="fnone" type="button">Clear</button><button class="btn btn-primary btn-sm" id="fadd_pick" type="button">Add ticked cities</button></div>
+      </div></details>
       <p class="small muted" style="margin:10px 0 6px"><b>Where from</b></p>
       <div class="seg" id="fsrc">${SOURCES.map(([k, l]) => `<button type="button" data-src="${k}" class="${k === source ? 'is-on' : ''}"${k === 'google' && d.free ? ' disabled title="Free lead data mode is on"' : ''}>${esc(l)}</button>`).join('')}</div>
       <p class="small muted" id="fsrcx" style="margin:6px 0 0"></p>
@@ -74,10 +86,22 @@ async function homePage(view) {
     $('#fsrcx', view).textContent = SOURCES.find((x) => x[0] === source)?.[2] || '';
     $('#fgo', view).textContent = source === 'osm' ? 'Find leads (free)' : 'Find leads';
   };
-  const est = () => {
-    const e = estimate({ areas: parseAreas($('#far', view).value, 99).length, size, keywords: parseKeywords($('#fkw', view).value, 99).length, source });
+  // The areas to run: state lines become their top cities, then the list is split into jobs that each fit one search.
+  const plan = () => {
+    const kw = parseKeywords($('#fkw', view).value, 99).length;
+    const all = expandAreas($('#far', view).value, Number($('#ftop', view).value) || DEFAULT_TOP);
     const cap = source === 'osm' ? MAX_OSM_REQUESTS : MAX_REQUESTS;
-    $('#fest', view).innerHTML = e.requests ? `${num(e.requests)} searches, ${source === 'osm' ? '<b>free</b>' : `about <b>${money(e.cost)}</b>`}${e.tooBig ? ` <span class="err-text">One search can run up to ${num(cap)}. Use fewer areas or keywords, or a smaller coverage.</span>` : ''}` : (source === 'osm' ? 'Type keywords and areas. Free searches cost nothing.' : 'Type keywords and areas to see the cost.');
+    const perArea = estimate({ areas: 1, size, keywords: kw, source }).requests || 1;
+    const perJob = Math.max(1, Math.min(MAX_AREAS, Math.floor(cap / perArea)));
+    const jobs = all.length ? chunkAreas(all, perJob) : [];
+    return { all, jobs, kw, cap, perArea };
+  };
+  const est = () => {
+    const pl = plan();
+    const e = estimate({ areas: pl.all.length, size, keywords: pl.kw, source });
+    const cap = pl.cap;
+    const split = pl.jobs.length > 1 ? ` in ${pl.jobs.length} searches` : '';
+    $('#fest', view).innerHTML = e.requests ? `${num(e.requests)} map searches${split}, ${source === 'osm' ? '<b>free</b>' : `about <b>${money(e.cost)}</b>`}${pl.jobs.some((j) => estimate({ areas: j.length, size, keywords: pl.kw, source }).tooBig) ? ` <span class="err-text">One search can run up to ${num(cap)}. Use a smaller coverage.</span>` : ''}` : (source === 'osm' ? 'Type keywords and areas. Free searches cost nothing.' : 'Type keywords and areas to see the cost.');
     $('#fcovx', view).textContent = covers().find((c) => c.size === size)?.what || '';
   };
   drawCov(); est();
@@ -92,13 +116,43 @@ async function homePage(view) {
     $$('#fcov button', view).forEach((x) => x.classList.toggle('is-on', x === b));
     est();
   });
+  // City picker: tick cities for a state, then add them as area lines.
+  const addLines = (lines) => {
+    const box = $('#far', view);
+    const have = new Set(parseAreas(box.value, 999).map((x) => x.toLowerCase()));
+    const add = lines.filter((x) => !have.has(x.toLowerCase()));
+    box.value = [box.value.trim(), ...add].filter(Boolean).join('\n');
+    est();
+    toast(add.length ? `${add.length} added` : 'Those are already in the list');
+  };
+  const drawCities = () => {
+    const code = $('#fstate', view).value;
+    const list = CITIES[code] || [];
+    const top = Math.max(1, Number($('#ftop', view).value) || DEFAULT_TOP);
+    $('#fcities', view).innerHTML = list.length ? list.map((c, i) => `<label class="row small" style="gap:6px"><input type="checkbox" data-city="${esc(c)}, ${code}"${i < top ? ' checked' : ''}> ${esc(c)}</label>`).join('') : '<span class="small muted">Choose a state to see its cities.</span>';
+  };
+  $('#fstate', view).addEventListener('change', drawCities);
+  $('#ftop', view).addEventListener('change', drawCities);
+  $('#fadd_top', view).addEventListener('click', () => { const code = $('#fstate', view).value; if (!code) return toast('Choose a state first', true); addLines(expandAreas([code], Number($('#ftop', view).value) || DEFAULT_TOP)); });
+  $('#fall', view).addEventListener('click', () => $$('#fcities [data-city]', view).forEach((x) => { x.checked = true; }));
+  $('#fnone', view).addEventListener('click', () => $$('#fcities [data-city]', view).forEach((x) => { x.checked = false; }));
+  $('#fadd_pick', view).addEventListener('click', () => { const picked = $$('#fcities [data-city]:checked', view).map((x) => x.dataset.city); if (!picked.length) return toast('Tick some cities first', true); addLines(picked); });
+  $('#far', view).addEventListener('input', est);
+
   $('#fgo', view).addEventListener('click', async (e) => {
     const err = $('#ferr', view); err.hidden = true;
+    const pl = plan();
+    if (!pl.jobs.length) { err.textContent = 'Add at least one area.'; err.hidden = false; return; }
     busy(e.currentTarget, true, 'Starting');
     try {
-      const r = await api('/api/finder/jobs', { method: 'POST', body: { source, keywords: $('#fkw', view).value, areas: $('#far', view).value, size, radius: $('#frad', view).value || 'auto', tag: $('#ftag', view).value, autoAdd: $('#fauto', view).checked, filters: readFilters($('#fnew', view)) } });
-      toast('Search started');
-      location.hash = `#/finder/${r.job.id}`;
+      // Each chunk is its own search, run in turn, so no single search goes over the cap.
+      const started = [];
+      for (const chunk of pl.jobs) {
+        const r = await api('/api/finder/jobs', { method: 'POST', body: { source, keywords: $('#fkw', view).value, areas: chunk.join('\n'), size, radius: $('#frad', view).value || 'auto', tag: $('#ftag', view).value, autoAdd: $('#fauto', view).checked, filters: readFilters($('#fnew', view)) } });
+        started.push(r.job.id);
+      }
+      toast(started.length > 1 ? `${started.length} searches started` : 'Search started');
+      location.hash = `#/finder/${started[0]}`;
     } catch (x) { err.textContent = x.message; err.hidden = false; busy(e.currentTarget, false); }
   });
 
