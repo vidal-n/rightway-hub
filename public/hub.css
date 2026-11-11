@@ -1845,3 +1845,27 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 @media (max-width: 520px) { .aud-diag { grid-template-columns: 1fr; } .aud-diag dd { margin-bottom: 4px; } }
 .aud-checks label, .aud-lock > label { align-items: flex-start !important; flex-wrap: nowrap !important; }
 .aud-checks input[type="checkbox"], .aud-lock input[type="checkbox"] { flex: none; margin-top: 3px; }
+
+/* Multi select dropdown with tick boxes (Lead finder) */
+.ms { position: relative; min-width: 0; }
+.ms-btn { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: 500 15px var(--body); cursor: pointer; }
+.ms-sum { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ms-n { flex: 0 0 auto; background: var(--ink); color: #fff; border-radius: 999px; font: 600 12px var(--body); padding: 2px 8px; }
+.ms-n:empty { display: none; }
+.ms-pop { position: absolute; z-index: 60; left: 0; right: 0; top: calc(100% + 6px); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 8px; }
+.ms-pop[hidden] { display: none; }
+.ms-tools { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.ms-q { flex: 1 1 auto; min-width: 0; }
+.ms-list { max-height: 300px; overflow: auto; overscroll-behavior: contain; }
+.ms-opt { display: flex; align-items: center; gap: 10px; padding: 9px 8px; border-radius: 8px; cursor: pointer; font-size: 15px; }
+.ms-opt:hover { background: var(--surface-2); }
+.ms-opt input { width: 18px; height: 18px; flex: 0 0 auto; }
+.ms-hint { margin-left: auto; color: var(--muted); font-size: 12px; }
+
+/* Numbered steps in the Lead finder form */
+.fstep { display: flex; gap: 12px; align-items: flex-start; margin: 22px 0 10px; }
+.fstep:first-child { margin-top: 0; }
+.fstep-n { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: var(--ink); color: #fff; display: grid; place-items: center; font: 700 14px var(--display); }
+.fstep h3 { margin: 3px 0 0; }
+.fstep p { margin: 2px 0 0; }
+.fsum { margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; background: var(--surface-2); font-size: 15px; }

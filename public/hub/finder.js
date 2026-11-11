@@ -3,8 +3,9 @@
 // background scrub fills in emails, owner names and socials. The server does the searching, so this works the same on an iPad.
 import { $, $$, esc, api, toast, busy } from './core.js';
 import { staffShell } from './shell.js';
-import { COVERAGE, estimate, parseKeywords, parseAreas, MAX_REQUESTS, MAX_OSM_REQUESTS, MAX_AREAS, OSM_SIZES, SOURCES, passes, cleanFilters, csvText } from '/js/finder.js';
-import { CITIES, DEFAULT_TOP, expandAreas, chunkAreas } from '/js/cities.js';
+import { COVERAGE, estimate, MAX_KEYWORDS, MAX_REQUESTS, MAX_OSM_REQUESTS, MAX_AREAS, SOURCES, cleanFilters, csvText, passes } from '/js/finder.js';
+import { multiSelect } from './multiselect.js';
+import { CITIES, DEFAULT_TOP, chunkAreas } from '/js/cities.js';
 import { STATES, NEW_FILING_STATES } from '/js/registries.js';
 import { TARGET_INDUSTRIES } from '/js/leadintel.js';
 import { directoryLinks } from '/js/freedata.js';
@@ -38,7 +39,14 @@ export async function finderPage(app, user, jobId = '') {
   return jobId ? jobPage(view, jobId) : homePage(view);
 }
 
-// ---------- the list of searches and the new search form ----------
+// The step-by-step search form (dropdowns only, nothing to type but an optional keyword or ZIP), the list of searches, and the new businesses card.
+const STEP = (n, title, sub = '') => `<div class="fstep"><span class="fstep-n">${n}</span><div><h3>${title}</h3>${sub ? `<p class="small muted">${sub}</p>` : ''}</div></div>`;
+const stateNameOf = (c) => STATES.find((x) => x[0] === c)?.[1] || c;
+const chunkList = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
+const cityLabel = (c, code) => `${c}, ${code}`;
+const citiesOf = (codes) => codes.flatMap((code) => (CITIES[code] || []).map((c) => ({ value: cityLabel(c, code), label: cityLabel(c, code) })));
+const topCities = (codes, n) => codes.flatMap((code) => (CITIES[code] || []).slice(0, n).map((c) => cityLabel(c, code)));
+
 async function homePage(view) {
   view.innerHTML = '<div class="skeleton"></div>';
   let d;
@@ -47,118 +55,121 @@ async function homePage(view) {
   let size = source === 'osm' ? 3 : 5;
   const OSM_COVERAGE = [{ size: 1, label: 'One spot', what: 'One search around the middle of each area. Fastest.' }, { size: 3, label: '3 x 3 spots', what: 'Nine searches per area, so you get past the busiest streets.' }, { size: 5, label: '5 x 5 spots', what: 'Twenty five searches per area. Best for a big city.' }];
   const covers = () => (source === 'osm' ? OSM_COVERAGE : COVERAGE);
+  const topN = () => Number($('#ftop', view).value) || DEFAULT_TOP;
+
   view.innerHTML = `<div class="page-head"><div><p class="eyebrow">Sell</p><h1>Lead finder</h1></div></div>
-    <p class="small muted" style="margin:-8px 0 16px">Finds every business for a keyword in an area. Google Maps gives the most (ratings, reviews, claimed profiles) at about $0.002 a search. OpenStreetMap is free but thinner. Big areas are split into map views, repeats are removed, and nothing is added to the Pipeline until you say so (or turn on auto add).</p>
+    <p class="small muted" style="margin:-8px 0 16px">Pick industries, states and cities from the lists, then start. Google Maps gives the most (ratings, reviews, claimed profiles) at about $0.002 a search. OpenStreetMap is free but thinner. Nothing is added to the Pipeline until you say so (or turn on auto add).</p>
     ${d.free ? '<div class="card" style="border-color:#23B07E;margin-bottom:14px"><b>Free lead data mode is on.</b> Only OpenStreetMap searches run, nothing is spent. Turn it off in Settings, Lead data mode, to use Google Maps again.</div>' : ''}
     ${d.demo ? '<div class="card" style="border-color:#E8A33D;margin-bottom:14px">Demo mode: DataForSEO is not connected, so these are made up businesses. Add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Cloudflare for real ones.</div>' : ''}
-    <div class="card" id="fnew"><div class="card-head"><h3>New search</h3></div>
-      <div class="fform">
-        <label class="field"><span>Keywords, one per line</span><textarea id="fkw" rows="3" placeholder="roofing contractor&#10;roofer"></textarea></label>
-        <label class="field"><span>Areas, one per line (city, state or ZIP)</span><textarea id="far" rows="3" placeholder="Miami, FL&#10;Fort Lauderdale, FL&#10;33139"></textarea></label>
+    <div class="card" id="fnew">
+      ${STEP(1, 'Industries', 'Pick the industries you work with. Choose as many as you like. They run in groups of 10 per search.')}
+      <div id="findbox"></div>
+      <label class="field" style="margin-top:10px"><span>Other keyword (optional)</span><input id="fextra" placeholder="e.g. pool cleaning"></label>
+
+      ${STEP(2, 'Where', 'Pick states, then the cities in them. Each state brings its biggest cities, already ticked.')}
+      <div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div id="fstatebox" style="flex:1 1 260px;min-width:0"></div>
+        <label class="field" style="flex:0 0 160px"><span>Cities per state</span><select id="ftop">${[3, 5, 10, 20, 50].map((n) => `<option value="${n}"${n === DEFAULT_TOP ? ' selected' : ''}>${n === 50 ? 'All' : `Top ${n}`}</option>`).join('')}</select></label>
       </div>
-      <p class="small muted" style="margin:6px 0 0">Type a state (FL or Florida) to search its top cities, or pick cities below. Any number of areas works: they run as several searches of up to ${MAX_AREAS} areas each.</p>
-      <details class="fold" style="margin-top:10px"><summary><span>Pick cities by state</span></summary><div class="fold-body">
-        <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
-          <label class="field" style="flex:1 1 200px"><span>State</span><select id="fstate"><option value="">Choose a state</option>${STATES.map((x) => `<option value="${x[0]}">${esc(x[1])}</option>`).join('')}</select></label>
-          <label class="field" style="flex:0 0 130px"><span>Top cities</span><input id="ftop" type="number" min="1" max="50" value="${DEFAULT_TOP}"></label>
-          <button class="btn btn-ghost btn-sm" id="fadd_top" type="button">Add top cities for this state</button>
-        </div>
-        <div id="fcities" class="row" style="flex-wrap:wrap;gap:8px 16px;margin-top:12px"></div>
-        <div class="row" style="margin-top:10px;gap:8px"><button class="btn btn-ghost btn-sm" id="fall" type="button">Tick all</button><button class="btn btn-ghost btn-sm" id="fnone" type="button">Clear</button><button class="btn btn-primary btn-sm" id="fadd_pick" type="button">Add ticked cities</button></div>
-      </div></details>
-      <details class="fold" style="margin-top:10px" id="find"><summary><span>Pick industries instead of typing keywords</span></summary><div class="fold-body">
-        <p class="small muted" style="margin-top:0">Tick the industries you work with. Each one fills in its search keyword above. Your picks are remembered on this device.</p>
-        <div class="row" style="flex-wrap:wrap;gap:6px 16px" id="findlist">${TARGET_INDUSTRIES.map((x, i) => `<label class="row small" style="gap:6px"><input type="checkbox" data-ind="${i}"> ${esc(x.label)}</label>`).join('')}</div>
-        <div class="row" style="margin-top:10px;gap:8px"><button class="btn btn-ghost btn-sm" type="button" id="findadd">Add ticked to keywords</button><button class="btn btn-ghost btn-sm" type="button" id="findclr">Clear ticks</button></div>
-      </div></details>
-      <p class="small muted" style="margin:10px 0 6px"><b>Where from</b></p>
+      <div id="fcitybox" style="margin-top:12px"></div>
+      <label class="field" style="margin-top:12px"><span>ZIP codes (optional, comma separated)</span><input id="fzip" placeholder="33139, 33301"></label>
+
+      ${STEP(3, 'How to search', '')}
       <div class="seg" id="fsrc">${SOURCES.map(([k, l]) => `<button type="button" data-src="${k}" class="${k === source ? 'is-on' : ''}"${k === 'google' && d.free ? ' disabled title="Free lead data mode is on"' : ''}>${esc(l)}</button>`).join('')}</div>
-      <p class="small muted" id="fsrcx" style="margin:6px 0 0"></p>
-      <p class="small muted" style="margin:10px 0 6px"><b>How thorough</b></p>
+      <p class="small muted" id="fsrcx" style="margin:6px 0 10px"></p>
       <div class="seg" id="fcov"></div>
       <p class="small muted" id="fcovx" style="margin:6px 0 0"></p>
       <div class="row" style="margin-top:12px;gap:14px">
         <label class="field" style="flex:0 0 170px"><span>Reach from the middle</span><select id="frad"><option value="">Fit each place</option>${[2, 3, 5, 8, 12, 20].map((m) => `<option value="${m}">${m} miles</option>`).join('')}</select></label>
         <label class="field" style="flex:1 1 220px"><span>Tag for the leads</span><input id="ftag" placeholder="e.g. Miami roofers Nov"></label>
       </div>
-      <details class="fold" style="margin-top:12px"><summary><span>Filters</span></summary><div class="fold-body"><p class="small muted" style="margin-top:0">Used by auto add, and as the starting point when you look at the results. You can change them there.</p>${filterHtml()}</div></details>
+      <details class="fold" style="margin-top:12px"><summary><span>Filters (optional)</span></summary><div class="fold-body"><p class="small muted" style="margin-top:0">Used by auto add, and as the starting point when you look at the results. You can change them there.</p>${filterHtml()}</div></details>
       <label class="row small" style="gap:8px;margin-top:12px"><input type="checkbox" id="fauto"> Add everything that matches the filters to the Pipeline when the search finishes</label>
-      <div class="row" style="margin-top:14px;justify-content:space-between;align-items:center"><span class="small" id="fest"></span><button class="btn btn-primary" id="fgo">Find leads</button></div>
+
+      <div class="fsum" id="fsum"></div>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn btn-primary" id="fgo">Start search</button></div>
       <p class="err-text small" id="ferr" hidden></p>
     </div>
     <h3 style="margin:22px 0 10px">Searches</h3><div id="fjobs"></div>
 `;
   setFilters($('#fnew', view), {});
+
+  // Dropdowns: industries (remembered on this device), states, cities.
+  const mine = mineRead();
+  const indOpts = TARGET_INDUSTRIES.map((x) => ({ value: x.keyword, label: x.label }));
+  const ind = multiSelect($('#findbox', view), { options: indOpts, selected: mine.filter((k) => indOpts.some((o) => o.value === k)), label: 'Choose industries', onChange: (v) => { mineSave(v); est(); } });
+  let prevStates = ['FL'];
+  const stateSel = multiSelect($('#fstatebox', view), { options: STATES.map(([c, n]) => ({ value: c, label: n })), selected: prevStates, label: 'Choose states', onChange: () => {
+    const now = stateSel.get();
+    const added = now.filter((c) => !prevStates.includes(c));
+    prevStates = now;
+    cities.setOptions(citiesOf(now), topCities(added, topN()));
+    est();
+  } });
+  const cities = multiSelect($('#fcitybox', view), { options: citiesOf(prevStates), selected: topCities(prevStates, topN()), label: 'Choose cities', onChange: () => est() });
+  $('#ftop', view).addEventListener('change', () => { cities.set(topCities(stateSel.get(), topN())); est(); });
+
+  // What we search: industries and an optional keyword, in groups of 10. Areas: picked cities plus ZIPs.
+  const kwAll = () => [...new Set([...ind.get(), ...$('#fextra', view).value.split(',').map((x) => x.trim()).filter(Boolean)])];
+  const areasAll = () => [...cities.get(), ...$('#fzip', view).value.split(',').map((x) => x.trim()).filter(Boolean)];
+  const plan = () => {
+    const kws = kwAll();
+    const all = areasAll();
+    const cap = source === 'osm' ? MAX_OSM_REQUESTS : MAX_REQUESTS;
+    const jobs = [];
+    if (all.length) {
+      for (const group of chunkList(kws, MAX_KEYWORDS)) {
+        const perArea = estimate({ areas: 1, size, keywords: group.length, source }).requests || 1;
+        const perJob = Math.max(1, Math.min(MAX_AREAS, Math.floor(cap / perArea)));
+        for (const chunk of chunkAreas(all, perJob)) jobs.push({ keywords: group, areas: chunk });
+      }
+    }
+    return { kws, all, jobs };
+  };
+  const est = () => {
+    const pl = plan();
+    const parts = pl.jobs.map((j) => estimate({ areas: j.areas.length, size, keywords: j.keywords.length, source }));
+    const requests = parts.reduce((s, e) => s + (e.requests || 0), 0);
+    const cost = parts.reduce((s, e) => s + (e.cost || 0), 0);
+    const tooBig = parts.some((e) => e.tooBig);
+    const s = (n) => (n === 1 ? '' : 's');
+    $('#fsum', view).innerHTML = pl.jobs.length
+      ? `<b>${pl.kws.length}</b> keyword${s(pl.kws.length)} in <b>${pl.all.length}</b> area${s(pl.all.length)} = <b>${num(requests)}</b> map searches${pl.jobs.length > 1 ? `, started as ${pl.jobs.length} searches` : ''}. ${source === 'osm' ? '<b>Free.</b>' : `About <b>${money(cost)}</b>.`}${tooBig ? ' <span class="err-text">Too many for one search. Use a smaller coverage.</span>' : ''}`
+      : (!pl.kws.length ? 'Pick at least one industry (or type a keyword).' : 'Pick at least one state and city, or add a ZIP code.');
+    $('#fgo', view).disabled = !pl.jobs.length;
+    $('#fgo', view).textContent = source === 'osm' ? 'Start search (free)' : 'Start search';
+    $('#fcovx', view).textContent = covers().find((c) => c.size === size)?.what || '';
+    nfIndLine();
+  };
+
   const drawCov = () => {
     if (!covers().some((c) => c.size === size)) size = source === 'osm' ? 3 : 5;
     $('#fcov', view).innerHTML = covers().map((c) => `<button type="button" data-size="${c.size}" class="${c.size === size ? 'is-on' : ''}">${esc(c.label)}</button>`).join('');
     $$('#fsrc button', view).forEach((x) => x.classList.toggle('is-on', x.dataset.src === source));
     $('#fsrcx', view).textContent = SOURCES.find((x) => x[0] === source)?.[2] || '';
-    $('#fgo', view).textContent = source === 'osm' ? 'Find leads (free)' : 'Find leads';
-  };
-  // The areas to run: state lines become their top cities, then the list is split into jobs that each fit one search.
-  const plan = () => {
-    const kw = parseKeywords($('#fkw', view).value, 99).length;
-    const all = expandAreas($('#far', view).value, Number($('#ftop', view).value) || DEFAULT_TOP);
-    const cap = source === 'osm' ? MAX_OSM_REQUESTS : MAX_REQUESTS;
-    const perArea = estimate({ areas: 1, size, keywords: kw, source }).requests || 1;
-    const perJob = Math.max(1, Math.min(MAX_AREAS, Math.floor(cap / perArea)));
-    const jobs = all.length ? chunkAreas(all, perJob) : [];
-    return { all, jobs, kw, cap, perArea };
-  };
-  const est = () => {
-    const pl = plan();
-    const e = estimate({ areas: pl.all.length, size, keywords: pl.kw, source });
-    const cap = pl.cap;
-    const split = pl.jobs.length > 1 ? ` in ${pl.jobs.length} searches` : '';
-    $('#fest', view).innerHTML = e.requests ? `${num(e.requests)} map searches${split}, ${source === 'osm' ? '<b>free</b>' : `about <b>${money(e.cost)}</b>`}${pl.jobs.some((j) => estimate({ areas: j.length, size, keywords: pl.kw, source }).tooBig) ? ` <span class="err-text">One search can run up to ${num(cap)}. Use a smaller coverage.</span>` : ''}` : (source === 'osm' ? 'Type keywords and areas. Free searches cost nothing.' : 'Type keywords and areas to see the cost.');
-    $('#fcovx', view).textContent = covers().find((c) => c.size === size)?.what || '';
   };
   drawCov(); est();
-  $('#fnew', view).addEventListener('input', est);
+  $('#fzip', view).addEventListener('input', est);
+  $('#fextra', view).addEventListener('input', est);
   $('#fsrc', view).addEventListener('click', (e) => {
     const b = e.target.closest('[data-src]'); if (!b || b.disabled) return;
     source = b.dataset.src; size = source === 'osm' ? 3 : 5; drawCov(); est();
   });
   $('#fcov', view).addEventListener('click', (e) => {
     const b = e.target.closest('[data-size]'); if (!b) return;
-    size = Number(b.dataset.size);
-    $$('#fcov button', view).forEach((x) => x.classList.toggle('is-on', x === b));
-    est();
+    size = Number(b.dataset.size); drawCov(); est();
   });
-  // City picker: tick cities for a state, then add them as area lines.
-  const addLines = (lines) => {
-    const box = $('#far', view);
-    const have = new Set(parseAreas(box.value, 999).map((x) => x.toLowerCase()));
-    const add = lines.filter((x) => !have.has(x.toLowerCase()));
-    box.value = [box.value.trim(), ...add].filter(Boolean).join('\n');
-    est();
-    toast(add.length ? `${add.length} added` : 'Those are already in the list');
-  };
-  const drawCities = () => {
-    const code = $('#fstate', view).value;
-    const list = CITIES[code] || [];
-    const top = Math.max(1, Number($('#ftop', view).value) || DEFAULT_TOP);
-    $('#fcities', view).innerHTML = list.length ? list.map((c, i) => `<label class="row small" style="gap:6px"><input type="checkbox" data-city="${esc(c)}, ${code}"${i < top ? ' checked' : ''}> ${esc(c)}</label>`).join('') : '<span class="small muted">Choose a state to see its cities.</span>';
-  };
-  $('#fstate', view).addEventListener('change', drawCities);
-  $('#ftop', view).addEventListener('change', drawCities);
-  $('#fadd_top', view).addEventListener('click', () => { const code = $('#fstate', view).value; if (!code) return toast('Choose a state first', true); addLines(expandAreas([code], Number($('#ftop', view).value) || DEFAULT_TOP)); });
-  $('#fall', view).addEventListener('click', () => $$('#fcities [data-city]', view).forEach((x) => { x.checked = true; }));
-  $('#fnone', view).addEventListener('click', () => $$('#fcities [data-city]', view).forEach((x) => { x.checked = false; }));
-  $('#fadd_pick', view).addEventListener('click', () => { const picked = $$('#fcities [data-city]:checked', view).map((x) => x.dataset.city); if (!picked.length) return toast('Tick some cities first', true); addLines(picked); });
-  $('#far', view).addEventListener('input', est);
 
   $('#fgo', view).addEventListener('click', async (e) => {
     const err = $('#ferr', view); err.hidden = true;
     const pl = plan();
-    if (!pl.jobs.length) { err.textContent = 'Add at least one area.'; err.hidden = false; return; }
+    if (!pl.jobs.length) { err.textContent = 'Pick at least one industry, state and city.'; err.hidden = false; return; }
     busy(e.currentTarget, true, 'Starting');
     try {
-      // Each chunk is its own search, run in turn, so no single search goes over the cap.
+      // Each job is its own search, run in turn, so no single search goes over the cap.
       const started = [];
-      for (const chunk of pl.jobs) {
-        const r = await api('/api/finder/jobs', { method: 'POST', body: { source, keywords: $('#fkw', view).value, areas: chunk.join('\n'), size, radius: $('#frad', view).value || 'auto', tag: $('#ftag', view).value, autoAdd: $('#fauto', view).checked, filters: readFilters($('#fnew', view)) } });
+      for (const job of pl.jobs) {
+        const r = await api('/api/finder/jobs', { method: 'POST', body: { source, keywords: job.keywords.join('\n'), areas: job.areas.join('\n'), size, radius: $('#frad', view).value || 'auto', tag: $('#ftag', view).value, autoAdd: $('#fauto', view).checked, filters: readFilters($('#fnew', view)) } });
         started.push(r.job.id);
       }
       toast(started.length > 1 ? `${started.length} searches started` : 'Search started');
@@ -166,42 +177,32 @@ async function homePage(view) {
     } catch (x) { err.textContent = x.message; err.hidden = false; busy(e.currentTarget, false); }
   });
 
-  // Industries: remembered picks, and a button that writes their keywords into the keyword box.
-  const mine = new Set(mineRead());
-  $$('#findlist [data-ind]', view).forEach((x) => { x.checked = mine.has(TARGET_INDUSTRIES[Number(x.dataset.ind)].keyword); });
-  $('#findlist', view).addEventListener('change', (e) => {
-    const x = e.target.closest('[data-ind]'); if (!x) return;
-    const k = TARGET_INDUSTRIES[Number(x.dataset.ind)].keyword;
-    if (x.checked) mine.add(k); else mine.delete(k);
-    mineSave([...mine]);
-  });
-  $('#findadd', view).addEventListener('click', () => {
-    const have = parseKeywords($('#fkw', view).value, 99).map((k) => k.toLowerCase());
-    const add = [...mine].filter((k) => !have.includes(k.toLowerCase()));
-    $('#fkw', view).value = [$('#fkw', view).value.trim(), ...add].filter(Boolean).join('\n');
-    est(); toast(add.length ? `${add.length} keyword${add.length === 1 ? '' : 's'} added` : 'Those are already in the keywords');
-  });
-  $('#findclr', view).addEventListener('click', () => { mine.clear(); mineSave([]); $$('#findlist [data-ind]', view).forEach((x) => { x.checked = false; }); });
-
   // New businesses: filings in the last few months from the states that publish them (free). These have no phone, so research and call by hand.
   const newBox = document.createElement('div');
   newBox.className = 'card'; newBox.style.marginTop = '22px';
   newBox.innerHTML = `<div class="card-head"><h3>New businesses (state filings, free)</h3></div>
-    <p class="small muted" style="margin:0 0 10px">Companies that just filed with the state, so they often need a website, a Google profile and marketing. Only ${NEW_FILING_STATES.join(', ')} publish this for free. The filing does not show phone numbers or whether they have a Google listing, so check Google by hand (the links open the search).</p>
+    <p class="small muted" style="margin:0 0 10px">Companies that just filed with the state, so they often need a website, a Google profile and marketing. Only ${NEW_FILING_STATES.map((c) => stateNameOf(c)).join(', ')} publish this for free. The filing does not show phone numbers or whether they have a Google listing, so check Google by hand (the links open the search).</p>
     <div class="row" style="gap:10px;align-items:flex-end;flex-wrap:wrap">
-      <label class="field" style="flex:1 1 200px"><span>States (up to 5)</span><select id="nfstate" multiple size="4">${NEW_FILING_STATES.map((c) => `<option value="${c}"${c === 'CO' ? ' selected' : ''}>${esc(STATES.find((x) => x[0] === c)?.[1] || c)}</option>`).join('')}</select></label>
-      <label class="field" style="flex:0 0 130px"><span>Filed in the last</span><select id="nfdays"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="180">6 months</option><option value="365">1 year</option></select></label>
+      <div id="nfstate" style="flex:1 1 240px;min-width:0"></div>
+      <label class="field" style="flex:0 0 160px"><span>Filed in the last</span><select id="nfdays"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="180">6 months</option><option value="365">1 year</option></select></label>
       <button class="btn btn-primary btn-sm" id="nfgo" type="button">Find new businesses</button>
     </div>
-    <p class="small muted" style="margin:8px 0 0">Industries: ${mine.size ? esc([...mine].join(', ')) : 'none picked (all businesses). Pick industries above to narrow it.'}</p>
+    <p class="small muted" id="nfind" style="margin:8px 0 0"></p>
     <div id="nfout" style="margin-top:12px"></div>`;
   $('#fjobs', view).parentElement.appendChild(newBox);
+  const nfSel = multiSelect($('#nfstate', view), { options: NEW_FILING_STATES.map((c) => ({ value: c, label: stateNameOf(c) })), selected: ['CO'], label: 'Choose states' });
+  function nfIndLine() {
+    const el = $('#nfind', view); if (!el) return;
+    const k = ind.get();
+    el.textContent = `Industries: ${k.length ? k.join(', ') : 'none picked (all businesses). Pick industries above to narrow it.'}`;
+  }
+  nfIndLine();
   $('#nfgo', view).addEventListener('click', async (e) => {
-    const states = [...$('#nfstate', view).selectedOptions].map((o) => o.value);
+    const states = nfSel.get();
     if (!states.length) return toast('Choose a state', true);
     busy(e.currentTarget, true, 'Searching');
     try {
-      const q = new URLSearchParams({ states: states.join(','), days: $('#nfdays', view).value, industries: [...mine].join('|') });
+      const q = new URLSearchParams({ states: states.join(','), days: $('#nfdays', view).value, industries: ind.get().join('|') });
       const r = await api(`/api/finder/new-filings?${q}`);
       const rows = r.filings;
       const link = (x) => directoryLinks({ business: x.name, city: x.city, state: x.state }).filter((l) => ['google', 'yelp'].includes(l.key)).map((l) => `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>`).join(' · ');
