@@ -1,5 +1,7 @@
 // Team views: all clients, one client (overview, tasks, reviews, posts, rankings, profile, access), team.
-import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, animateNumbers, monthKey, shiftMonth, PLAN_NAMES, PLAN_PRICE, KIND_LABEL } from './core.js';
+import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, animateNumbers, monthKey, shiftMonth, KIND_LABEL } from './core.js';
+import { scopeRows, scopeEditor } from './scope.js';
+import { hoursOf } from '/js/scope.js';
 import { JOBS, jobOf, jobLabel } from '/js/jobs.js';
 import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.js';
 import { billingTab } from './crm.js';
@@ -24,8 +26,8 @@ export async function dashboard(app, user) {
   const active = data.clients.filter((c) => c.status === 'active' && !c.sample && !c.parent_id);
   const mains = data.clients.filter((c) => !c.parent_id);
   data.clients = mains.flatMap((m) => [m, ...data.clients.filter((c) => c.parent_id === m.id)]).concat(data.clients.filter((c) => c.parent_id && !mains.some((m) => m.id === c.parent_id)));
-  // Real Stripe amounts when billing is linked, plan price otherwise.
-  const mrr = active.reduce((s, c) => s + (c.mrr_cents != null && c.billing_status ? c.mrr_cents / 100 : (PLAN_PRICE[c.plan] || 0)), 0);
+  // What each client pays a month: read from Stripe when billing is linked, otherwise the monthly typed on the deal or the client.
+  const mrr = active.reduce((s, c) => s + (c.mrr_cents || 0) / 100, 0);
   const tot = data.clients.filter((c) => !c.sample).reduce((a, c) => ({ done: a.done + c.overview.tasks.done, total: a.total + c.overview.tasks.total, rr: a.rr + c.overview.reviews.sent, pend: a.pend + c.overview.posts.pending }), { done: 0, total: 0, rr: 0, pend: 0 });
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow">${esc(fmt.month(month))}</p><h1>Clients</h1></div>
@@ -48,7 +50,7 @@ function clientCard(c, i) {
   const o = c.overview;
   const pct = o.tasks.total ? Math.round((100 * o.tasks.done) / o.tasks.total) : 0;
   return `<a class="client-card" href="#/client/${esc(c.id)}/overview" style="animation-delay:${i * 40}ms">
-    <div class="row"><h3>${esc(c.name)}</h3><span class="spacer"></span>${c.billing_status === 'past_due' ? '<span class="badge bad">Past due</span>' : ''}${c.sample ? '<span class="badge warn">Sample</span>' : ''}${c.parent_id ? '<span class="badge gray">Location</span>' : ''}<span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(PLAN_NAMES[c.plan] || c.plan)}</span></div>
+    <div class="row"><h3>${esc(c.name)}</h3><span class="spacer"></span>${c.billing_status === 'past_due' ? '<span class="badge bad">Past due</span>' : ''}${c.sample ? '<span class="badge warn">Sample</span>' : ''}${c.parent_id ? '<span class="badge gray">Location</span>' : ''}<span class="badge ${c.status === 'active' ? '' : 'gray'}">${c.mrr_cents ? `${esc(fmt.money(c.mrr_cents / 100))}/mo` : esc(c.status)}</span></div>
     <div><div class="row small"><span>This month's work</span><span class="spacer"></span><b>${o.tasks.done} of ${o.tasks.total}</b></div>
       <div class="progress" style="margin-top:6px"><span data-w="${pct}"></span></div></div>
     <div class="mini">
@@ -60,7 +62,7 @@ function clientCard(c, i) {
 
 // ---------- client form (add and edit) ----------
 const FIELDS = [
-  ['name', 'Business name', 'text', true], ['plan', 'Plan', 'plan'], ['status', 'Status', 'status'], ['start_date', 'Start date', 'date'],
+  ['name', 'Business name', 'text', true], ['monthly', 'Monthly fee ($ they pay)', 'money'], ['status', 'Status', 'status'], ['start_date', 'Start date', 'date'],
   ['contact_name', 'Contact name', 'text'], ['contact_email', 'Contact email', 'email'], ['phone', 'Phone', 'tel'], ['website', 'Website', 'url'],
   ['address', 'Address', 'text', false, true], ['category', 'Primary Google category', 'text'], ['place_id', 'Google place ID', 'text'],
   ['cid', 'Google CID', 'text'], ['lat', 'Latitude', 'number'], ['lng', 'Longitude', 'number'],
@@ -71,7 +73,7 @@ const FIELDS = [
 function fieldHtml([k, label, type, req, wide], c) {
   const v = c?.[k] ?? '';
   const span = type === 'area' || wide ? ' span-all' : '';
-  if (type === 'plan') return `<label class="field"><span>${label}</span><select name="plan">${Object.entries(PLAN_NAMES).map(([id, n]) => `<option value="${id}"${(v || 'growth') === id ? ' selected' : ''}>${n} (${fmt.money(PLAN_PRICE[id])}/mo)</option>`).join('')}</select></label>`;
+  if (type === 'money') return window.__rwUser?.role === 'admin' ? `<label class="field"><span>${label}</span><input name="monthly" inputmode="decimal" value="${esc(c?.mrr_cents ? c.mrr_cents / 100 : '')}" placeholder="You set it"></label>` : '';
   if (type === 'status') return `<label class="field"><span>${label}</span><select name="status">${['active', 'paused', 'prospect', 'cancelled'].map((s) => `<option${(v || 'active') === s ? ' selected' : ''}>${s}</option>`).join('')}</select></label>`;
   if (type === 'area') return `<label class="field${span}"><span>${label}</span><textarea name="${k}" rows="3">${esc(v)}</textarea></label>`;
   return `<label class="field${span}"><span>${label}</span><input name="${k}" type="${type === 'number' ? 'text' : type}" inputmode="${type === 'number' ? 'decimal' : 'text'}" value="${esc(v)}"${req ? ' required' : ''}></label>`;
@@ -119,8 +121,8 @@ export function clientForm(client, onSaved) {
 }
 
 // ---------- one client ----------
-// Market Leader tabs show only where they apply: locations on main businesses (Market Leader or with locations), reputation on
-// Authority and Market Leader, the quarterly plan on Market Leader main businesses.
+// Extra tabs show only where they apply: locations on main businesses (scope has Locations, or locations exist), reputation when the scope has it,
+// the quarterly plan on main businesses with Locations. (The internal workload tier decides; it is never shown.)
 const tabsFor = (c) => TABS.filter(([k]) => (k === 'locations' ? !c.parent_id && (c.plan === 'leader' || c.locations > 0)
   : k === 'reputation' ? ['authority', 'leader'].includes(c.plan) : k === 'plan' ? c.plan === 'leader' && !c.parent_id : true));
 const TABS = [['overview', 'Overview'], ['locations', 'Locations'], ['onboarding', 'Onboarding'], ['tasks', 'Tasks'], ['chat', 'Messages'], ['accesslist', 'Access'], ['meetings', 'Meetings'], ['gbp', 'Google profile'], ['reviews', 'Reviews'], ['reputation', 'Reputation'], ['posts', 'Posts'], ['photos', 'Photos'], ['rankings', 'Rankings'], ['reports', 'Reports'], ['plan', 'Quarterly plan'], ['content', 'Content'], ['site', 'Site audit'], ['calls', 'Calls'], ['citations', 'Citations'], ['website', 'Website'], ['files', 'Files'], ['billing', 'Billing'], ['profile', 'Profile'], ['access', 'Client logins']];
@@ -131,7 +133,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   try { data = await api(`/api/clients/${id}`); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const c = data.client;
   view.innerHTML = `
-    <div class="page-head"><div><p class="eyebrow"><a href="#/clients">Clients</a> / ${c.parent ? `Location of <a href="#/client/${esc(c.parent.id)}/locations">${esc(c.parent.name)}</a>` : esc(PLAN_NAMES[c.plan])}</p><h1>${esc(c.name)}</h1>
+    <div class="page-head"><div><p class="eyebrow"><a href="#/clients">Clients</a> / ${c.parent ? `Location of <a href="#/client/${esc(c.parent.id)}/locations">${esc(c.parent.name)}</a>` : 'Client'}</p><h1>${esc(c.name)}</h1>
       <div class="small">${esc(c.address || '')}</div></div>
       <div class="row"><label class="small row" style="gap:6px">Account manager <select id="cowner" aria-label="Account manager"><option value="">Nobody</option></select></label><span class="badge ${c.status === 'active' ? '' : 'gray'}">${esc(c.status)}</span><a class="btn btn-ghost btn-sm" href="/scan.html?client=${esc(c.id)}">${icon.scan}Scan</a><button class="btn btn-ghost btn-sm" id="cslack">${icon.slack}Slack</button>${c.contact_email ? `<button class="btn btn-ghost btn-sm" id="cmail">${icon.mail}Email</button>` : ''}<button class="btn btn-ghost btn-sm" id="ccal">Meeting</button><button class="btn btn-mint btn-sm" id="cclaude">Ask Claude</button></div></div>
     <nav class="tabs">${tabsFor(c).filter(([k]) => k !== 'billing' || user.role === 'admin').map(([k, n]) => `<a href="#/client/${esc(id)}/${k}" class="${tab === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>
@@ -192,12 +194,14 @@ function overviewTab(el, { client: c, overview: o, activity }) {
         ${feedHtml(activity)}
       </div>
       <div class="card">
-        <div class="card-head"><h2>Plan</h2><span class="badge">${esc(PLAN_NAMES[c.plan])} · ${fmt.money(PLAN_PRICE[c.plan])}/mo</span></div>
-        <ul class="list">${(c.plan_info?.monthly || []).map(([kind, title, n]) => `<li class="item"><span class="badge gray">${n}x</span><div class="item-title">${esc(title)}</div><span></span></li>`).join('')}</ul>
-        <p class="small" style="margin-top:12px">Tracking ${c.plan_info?.keywords || '-'} keywords. ${c.plan_info?.meetingMinutes || '-'} minute monthly meeting.</p>
+        <div class="card-head"><h2>Scope of work</h2><button class="btn btn-ghost btn-sm" id="editscope">Edit scope</button></div>
+        <ul class="list">${scopeRows(c.plan_info?.scope)}</ul>
+        <p class="small" style="margin-top:12px">About ${hoursOf(c.plan_info?.effort?.monthly || 0)} h a month to deliver. Tracking ${c.plan_info?.keywords || '-'} keywords. ${c.plan_info?.meetingMinutes || '-'} minute monthly meeting.</p>
+        ${c.plan_info?.custom ? '' : '<p class="small muted">Signed before scopes existed, so this client runs on the older fixed task list. Saving a scope here moves them to the new one.</p>'}
       </div>
     </div>`;
   animateNumbers(el);
+  $('#editscope', el)?.addEventListener('click', () => scopeEditor(c, c.plan_info?.scope, () => location.reload()));
   $('#lf', el).addEventListener('submit', async (e) => {
     e.preventDefault();
     const t = e.target.text.value.trim();
@@ -237,7 +241,7 @@ async function tasksTab(el, c, month, user) {
         <div class="row">${tasks.length ? `<span class="small" id="tcount"><b>${done}</b> of ${tasks.length} done</span>` : ''}<button class="btn btn-ghost btn-sm" id="tadd">${icon.plus}Add task</button></div>
       </div>
       ${tasks.length ? `<div class="progress"><span data-w="${pct}"></span></div><p class="small muted" style="margin:8px 0 0">Tap a task for its guide, timer and proof. Most tasks need a live link or a screenshot to close.</p>` : `
-        <div class="empty"><h3>No tasks for this month yet</h3><p>${c.parent_id ? 'Locations do not get plan tasks. The work lives on the main business.' : `They are made on their own for active clients at the start of each month. You can also make them now from the ${esc(PLAN_NAMES[c.plan])} plan.`}</p>
+        <div class="empty"><h3>No tasks for this month yet</h3><p>${c.parent_id ? 'Locations do not get their own tasks. The work lives on the main business.' : `They are made on their own for active clients at the start of each month. You can also make them now from their scope of work.`}</p>
         ${c.parent_id ? '' : `<button class="btn btn-primary" id="tgen">Create ${esc(fmt.month(month))} tasks</button>`}</div>`}
       ${Object.entries(groups).map(([kind, list]) => `<div class="group-title">${esc(KIND_LABEL[kind] || kind)} · ${list.filter((t) => t.status === 'done').length}/${list.length}</div>
         <ul class="list">${list.map((t) => taskRow(t, who)).join('')}</ul>`).join('')}

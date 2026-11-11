@@ -89,7 +89,7 @@ test('problems, score, plan, and script come from the research', () => {
   assert.match(step(s, 'k_after'), /typical job worth/);
   const spoken = s.steps.filter((x) => x.group === 'cold').flatMap((x) => x.lines).filter((l) => !/^\(/.test(l)).join(' ');
   assert.doesNotMatch(spoken, /consultant|analyst|Do you have 30 seconds|how are you/i);
-  assert.ok(!s.steps.some((x) => x.lines.some((l) => /\[[a-z ]+\]/.test(l) && !/\[(day and time|my number)\]/.test(l))), 'no unfilled blanks');
+  assert.ok(!s.steps.some((x) => x.lines.some((l) => /\[[a-z ]+\]/.test(l) && !/\[(day and time|my number|your [a-z ]+|buildout \+ first month)\]/.test(l))), 'no unfilled blanks');
   assert.ok(s.steps.filter((x) => x.group === 'clarity').some((x) => x.lines.some((l) => /^\(SCREEN:/.test(l))), 'clarity call has screen cues');
   // A business with a website never hears the website opener; one without does. Hours missing on Google: the opener says so, truthfully.
   assert.equal(step(s, 'k_site'), '');
@@ -111,26 +111,34 @@ test('problems, score, plan, and script come from the research', () => {
   assert.match(step(withL, 'c_discovery'), /Scan tool tab/);
   assert.match(step(s, 'c_scan'), /from \d+ spots around Summit Roofing/);
   assert.match(step(s, 'c_scan'), /Same search/);
-  // Drop close: Market Leader first, then the recommended plan with setup + first month today.
-  // Drop close without plan names: anchor at everything, then the services they need at the quoted price.
-  assert.match(step(s, 'c_price'), /everything we offer.*\$599 to build out and \$599 a month/);
-  assert.match(step(s, 'c_price'), /buildout is \$499 and the monthly is \$499\. Total today is \$998/);
-  assert.match(step(s, 'c_price'), /Service and city pages/);
-  assert.ok(!/Starter|Growth plan|Authority|Market Leader/.test(step(s, 'c_price')), 'no plan names to the client');
-  assert.match(s.objections.find((o) => o.q === "I can't afford it (drop)").a, /\$449 to build out/);
+  // No price typed yet: the script never makes one up, it shows what to type.
+  const price0 = step(s, 'c_price');
+  assert.match(price0, /everything we offer.*\[your top buildout\] to build out and \[your top monthly\] a month/);
+  assert.match(price0, /buildout is \[your buildout\] and the monthly is \[your monthly\]\. Total today is \[buildout \+ first month\]/);
+  assert.match(price0, /Service and city pages/);
+  assert.ok(!/\$\d/.test(price0.replace(/\$8,000/g, '')), 'no dollar amount appears until one is typed');
+  assert.ok(!/Starter|Growth plan|Authority|Market Leader/.test(price0), 'no plan names to the client');
+  // The rep types the price from discovery (and optionally the anchor and the lower number): the script reads them back.
+  const priced = buildScript({ ...lead, quote: JSON.stringify({ plan: 'growth', setup: 499, monthly: 499, anchor: { setup: 599, monthly: 599 }, drop: { setup: 449, monthly: 449 }, services: ['profile', 'pages', 'report'] }) }, INTEL, { rep: 'Vidal' });
+  assert.match(step(priced, 'c_price'), /everything we offer.*\$599 to build out and \$599 a month/);
+  assert.match(step(priced, 'c_price'), /buildout is \$499 and the monthly is \$499\. Total today is \$998/);
+  assert.ok(!/Starter|Growth plan|Authority|Market Leader/.test(step(priced, 'c_price')), 'typed prices never bring plan names back');
+  assert.match(priced.objections.find((o) => o.q === "I can't afford it (drop)").a, /\$449 to build out/);
+  assert.ok(!/\[\w/.test(JSON.stringify(priced.objections)), 'every objection placeholder fills in once the price is typed');
   const custom = buildScript({ ...lead, quote: JSON.stringify({ plan: 'growth', setup: 500, monthly: 425, services: ['profile', 'pages'] }) }, INTEL, { rep: 'Vidal' });
   assert.match(step(custom, 'c_price'), /buildout is \$500 and the monthly is \$425\. Total today is \$925/);
   assert.match(step(custom, 'c_price'), /Google Business Profile buildout, Service and city pages/);
-  assert.ok(s.objections.find((o) => o.q === "It's too expensive").a.includes('extra job'));
+  assert.ok(priced.objections.find((o) => o.q === "It's too expensive").a.includes('extra job'), 'with a typed price the break even is counted in jobs');
+  assert.ok(s.objections.find((o) => o.q === "It's too expensive").a.includes('a job or two'), 'without one it stays vague');
   assert.ok(s.playbook.length >= 10);
   // Without research the script never claims a scan was run.
   const cold = buildScript(lead, null, { rep: 'Vidal' });
   for (const id of ['c_open', 'c_frame', 'c_scan', 'voicemail', 'gatekeeper']) assert.ok(!/\bran\b|scan I|scanner/i.test(step(cold, id)), id);
-  const lean = buildScript({ ...lead, quote: JSON.stringify({ plan: 'starter', setup: 399, monthly: 399 }) }, INTEL, { rep: 'Vidal' });
+  const lean = buildScript({ ...lead, quote: JSON.stringify({ plan: 'starter', setup: 399, monthly: 399, drop: { setup: 399, monthly: 399 } }) }, INTEL, { rep: 'Vidal' });
   assert.match(lean.objections.find((o) => /drop/.test(o.q)).a, /as lean as we go/);
-  assert.ok(!/\[\w/.test(JSON.stringify(s.objections)), 'every objection placeholder fills in');
   assert.equal(fill('Hi {first} {missing}', { first: 'Ana' }), 'Hi Ana [missing]');
-  assert.equal(roi({ ticket: 200, jobs: 4, plan: 'growth' }).breakeven, 3);
+  assert.equal(roi({ ticket: 200, jobs: 4, price: 449 }).breakeven, 3);
+  assert.equal(roi({ ticket: 200, jobs: 4 }).breakeven, 1, 'no price typed: no made up breakeven');
   // No dashes that read as em or en dashes in generated copy.
   assert.ok(!/[–—]/.test(JSON.stringify(s) + JSON.stringify(probs)));
 });

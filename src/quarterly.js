@@ -5,7 +5,7 @@ import { HttpError, json } from './util.js';
 import { all, first, run, newId, token, now } from './db.js';
 import { requireStaff, requireClientAccess } from './auth.js';
 import { route } from './router.js';
-import { PLANS, monthKey } from './plans.js';
+import { monthKey, workloadOf } from './plans.js';
 import { keywordTrend } from './leader.js';
 import { reputationFor } from './reputation.js';
 import { callStats } from './calltrack.js';
@@ -86,7 +86,7 @@ async function facts(env, c, q) {
     leader: lead, calls: tracked?.n ? await callStats(env, c.id, lastA, lastB) : null,
     site: site ? { score: site.score, issues: site.issues || [] } : null,
     citations: parse(cit?.counts), ideas: suggestTopics(c, existing, scanInfo),
-    plan: PLANS[c.plan] || PLANS.leader, months: quarterMonths(q),
+    plan: { monthly: workloadOf(c).monthly }, months: quarterMonths(q),
   };
 }
 
@@ -155,6 +155,6 @@ route('DELETE', '/api/quarterly/:id', async ({ env, user, params }) => {
 route('GET', '/api/public/plan/:token', async ({ env, params }) => {
   const p = await first(env, 'SELECT * FROM quarterly_plans WHERE token = ?', params.token);
   if (!p) throw new HttpError('This plan link is not valid.', 404);
-  const c = await first(env, 'SELECT name, plan FROM clients WHERE id = ?', p.client_id);
-  return json({ quarter: p.quarter, data: parse(p.data), client: { name: c?.name || '', plan: PLANS[c?.plan]?.name || '' }, shared: p.status === 'shared', updated_at: p.updated_at });
+  const c = await first(env, 'SELECT name FROM clients WHERE id = ?', p.client_id);
+  return json({ quarter: p.quarter, data: parse(p.data), client: { name: c?.name || '' }, shared: p.status === 'shared', updated_at: p.updated_at });
 }, { public: true });

@@ -1,9 +1,12 @@
-// Package definitions: what each plan includes every month, and the one-time setup checklist.
-// Monthly items become tasks for that client each month (the task engine).
+// Workload templates. These are NOT packages and are never priced or shown to a client: a client signed before scopes existed still
+// runs on one, and a scope (public/js/scope.js) maps to the nearest one only to pick tabs (locations, reputation, quarterly) and guide steps.
+// Monthly items become tasks for that client each month (the task engine). New clients get their tasks from their scope instead.
+
+import { cleanScope, tierOf, monthlyTasks, setupTasks, quarterlyTasks, effortOf, scopeFromPlan } from '../public/js/scope.js';
 
 export const PLANS = {
   starter: {
-    name: 'Starter', price: 399, setup: 399, meetingMinutes: 30, keywords: 10,
+    name: 'Starter', meetingMinutes: 30, keywords: 10,
     monthly: [
       ['post', 'Google profile post', 4],
       ['onpage', 'On-page fix on the website', 1],
@@ -13,7 +16,7 @@ export const PLANS = {
     ],
   },
   growth: {
-    name: 'Growth', price: 449, setup: 449, meetingMinutes: 45, keywords: 20,
+    name: 'Growth', meetingMinutes: 45, keywords: 20,
     monthly: [
       ['post', 'Google profile post', 4],
       ['photos', 'Upload new photos to the Google profile', 1],
@@ -28,7 +31,7 @@ export const PLANS = {
     ],
   },
   authority: {
-    name: 'Authority', price: 499, setup: 499, meetingMinutes: 60, keywords: 30,
+    name: 'Authority', meetingMinutes: 60, keywords: 30,
     monthly: [
       ['post', 'Google profile post', 4],
       ['photos', 'Upload new photos to the Google profile', 1],
@@ -46,7 +49,7 @@ export const PLANS = {
     ],
   },
   leader: {
-    name: 'Market Leader', price: 599, setup: 599, meetingMinutes: 60, keywords: 50,
+    name: 'Market Leader', meetingMinutes: 60, keywords: 50,
     monthly: [
       ['post', 'Google profile post (each location)', 4],
       ['photos', 'Upload new photos to each Google profile', 1],
@@ -100,12 +103,41 @@ function monthsBetween(startIso, month) {
   return (y - sy) * 12 + (m - sm);
 }
 
+// A client's scope of work, or null for a client that still runs on a workload template.
+export function scopeOf(client) {
+  const sc = cleanScope(client?.scope);
+  return sc.length ? sc : null;
+}
+
+// What a client's month looks like: the tasks per month, the keyword count, the meeting length and the delivery time. Scope first, template otherwise.
+export function workloadOf(client, saved = {}) {
+  const scope = scopeOf(client);
+  const tier = scope ? tierOf(scope) : PLANS[client?.plan] ? client.plan : 'growth';
+  const p = planOf(tier);
+  const monthly = scope ? monthlyTasks(scope) : p.monthly;
+  const items = scope || scopeFromPlan(tier, p.monthly);
+  const setupCount = (scope ? setupTasks(scope) : [...SETUP_COMMON, ...(SETUP_EXTRA[tier] || [])]).length;
+  return { custom: Boolean(scope), scope: items, monthly, keywords: p.keywords, meetingMinutes: p.meetingMinutes, effort: effortOf(monthly, setupCount, { saved, meetingMinutes: p.meetingMinutes }) };
+}
+
 // Tasks for one client for one month. Setup tasks are added in the client's first month.
 export function tasksForMonth(client, month) {
-  const plan = planOf(client.plan);
+  const scope = scopeOf(client);
   const out = [];
   const since = monthsBetween(client.start_date, month);
-  if (since === 0 || (since == null && !client.has_setup)) {
+  const first = since === 0 || (since == null && !client.has_setup);
+  if (scope) {
+    const mins = planOf(tierOf(scope)).meetingMinutes;
+    if (first) for (const title of setupTasks(scope)) out.push({ kind: 'setup', title });
+    for (const [kind, title, n] of monthlyTasks(scope)) {
+      const t = kind === 'meeting' ? `${title} (${mins} min)` : title;
+      for (let i = 1; i <= n; i++) out.push({ kind, title: n > 1 ? `${t} (${i} of ${n})` : t });
+    }
+    if (since != null && since % 3 === 0) for (const [kind, title] of quarterlyTasks(scope)) out.push({ kind, title });
+    return out;
+  }
+  const plan = planOf(client.plan);
+  if (first) {
     for (const [kind, title] of [...SETUP_COMMON, ...(SETUP_EXTRA[client.plan] || [])]) out.push({ kind, title });
   }
   for (const [kind, title, n] of plan.monthly) {
@@ -122,13 +154,9 @@ export function monthKey(d = new Date()) {
 }
 
 // Plan copy lives in public/js/plancopy.js so the presentation can show the same words.
-export { INCLUDES, STANDARD_TERMS } from '../public/js/plancopy.js';
 
-// Setup equals the monthly fee on every plan (priced for a drop close: start at Market Leader, drop to what the client needs).
-export const MONTHLY_CENTS = { starter: 39900, growth: 44900, authority: 49900, leader: 59900 };
-export const SETUP_CENTS = { starter: 39900, growth: 44900, authority: 49900, leader: 59900 };
-// First checkout totals (setup + first month) in cents, used to recognize the plan from a Stripe payment.
-// The older amounts stay so payments from links made before the price change are still recognized.
+// Payments made from links created before pricing became custom are still recognized by their first charge (setup + first month).
+// Nothing new is priced here: the owner types the buildout and monthly for every client.
 export const FIRST_CHARGE_CENTS = {
   79800: 'starter', 89800: 'growth', 99800: 'authority', 119800: 'leader',
   99400: 'starter', 89400: 'starter', 199400: 'growth', 249400: 'authority', 399400: 'leader',

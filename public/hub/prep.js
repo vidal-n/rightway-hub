@@ -1,9 +1,10 @@
 // Call prep: research snapshot, problems with talk tracks, the adaptive script, objections, booking, and presenting.
-import { $, $$, esc, api, toast, busy, modal, fmt, PLAN_NAMES, PLAN_PRICE } from './core.js';
+import { $, $$, esc, api, toast, busy, modal, fmt } from './core.js';
 import { parseListings, listingsLine, listingsTable } from '/js/listings.js';
 import { markCues } from '/js/scriptprint.js';
 import { canRunCalls, can } from '/js/jobs.js';
-import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of } from '/js/leadintel.js';
+import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of, quoteFor, scopeOfQuote } from '/js/leadintel.js';
+import { effort, hoursOf } from '/js/scope.js';
 
 let customCache = null;
 export async function scriptSettings() {
@@ -61,8 +62,9 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
   const sc = scoreLead(lead, intel);
   const rec = recommendPlan(lead, intel);
   const info = industryInfo(lead.industry, intel?.listing?.category || lead.category);
-  const plan = lead.plan || rec.plan;
-  const s = buildScript(lead, intel, { rep, plan, voice }, custom);
+  const Q = quoteFor(lead, intel, lead.quote);
+  const E = effort(scopeOfQuote(Q));
+  const s = buildScript(lead, intel, { rep, voice }, custom);
   const age = intel?.at ? fmt.ago(intel.at) : null;
   // The dialer opens on the cold call; a booked lead (or the lead page with a meeting) opens on the clarity call.
   const startGroup = lead.stage === 'audit_booked' || (lead.meet_at && lead.meet_at > Date.now() - 3 * 3600e3) ? 'clarity' : 'cold';
@@ -71,7 +73,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
     <div class="prep">
       <div class="prep-head">
         ${gradeBadge(sc.grade, sc.score)}
-        <div style="min-width:0"><div class="item-title">Suggested internal plan: ${esc(PLAN_NAMES[plan])} <span class="small">(usually ${esc(fmt.money(PLAN_PRICE[plan]))} + ${esc(fmt.money(PLAN_PRICE[plan]))}/mo, never said to the client)</span></div>
+        <div style="min-width:0"><div class="item-title">${intel ? `Scope from the research: ${Q.services.length} services` : 'Scope: research first'} <span class="small">(about ${esc(hoursOf(E.monthly))} h a month to deliver. You set the price.)</span></div>
           <div class="small">${esc(rec.why.join(' · '))}</div></div>
         <div class="row" style="margin-left:auto">
           <button class="btn btn-ghost btn-sm" data-act="research">${intel ? 'Refresh research' : 'Research now'}</button>

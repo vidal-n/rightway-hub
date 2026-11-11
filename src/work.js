@@ -5,7 +5,7 @@ import { HttpError, json } from './util.js';
 import { all, first, run, batch, newId, now } from './db.js';
 import { requireStaff, requireAdmin, requireClientAccess, isStaff } from './auth.js';
 import { route } from './router.js';
-import { tasksForMonth, monthKey, planOf, MONTHLY_CENTS } from './plans.js';
+import { tasksForMonth, monthKey, workloadOf } from './plans.js';
 import { guideFor, cleanGuide, dueDate, accessState, accessGaps, blockedBy, ACCESS_ITEMS, ACCESS_STATUS, DEFAULT_GUIDES } from '../public/js/guides.js';
 import { notifyLater } from './notify.js';
 import { inviteToChat } from './chat.js';
@@ -338,19 +338,19 @@ route('DELETE', '/api/time/:id', async ({ env, user, params }) => {
 // Hours per client, per person and per kind of task for a month. Owners also see revenue per hour.
 export async function hoursReport(env, month, { money = false } = {}) {
   const [a, b] = monthRange(month);
-  const rows = await all(env, `SELECT e.client_id, e.user_id, e.kind, e.task_id, e.minutes, c.name AS client_name, c.plan, c.mrr_cents, c.billing_status, c.parent_id, u.name AS user_name
+  const rows = await all(env, `SELECT e.client_id, e.user_id, e.kind, e.task_id, e.minutes, c.name AS client_name, c.plan, c.scope, c.mrr_cents, c.billing_status, c.parent_id, u.name AS user_name
     FROM time_entries e JOIN clients c ON c.id = e.client_id LEFT JOIN users u ON u.id = e.user_id WHERE e.ended_at IS NOT NULL AND e.started_at >= ? AND e.started_at < ?`, a, b);
   const sum = (list) => list.reduce((s, r) => s + (r.minutes || 0), 0);
   const group = (key) => { const m = new Map(); for (const r of rows) { const k = r[key] || 'none'; if (!m.has(k)) m.set(k, []); m.get(k).push(r); } return m; };
-  const clients = await all(env, "SELECT id, name, plan, mrr_cents, billing_status FROM clients WHERE status = 'active' AND sample = 0 AND parent_id IS NULL ORDER BY name");
+  const clients = await all(env, "SELECT id, name, plan, scope, mrr_cents, billing_status FROM clients WHERE status = 'active' AND sample = 0 AND parent_id IS NULL ORDER BY name");
   const byClient = group('client_id');
   const saved = await savedGuides(env);
   const perClient = clients.map((c) => {
     const list = byClient.get(c.id) || [];
     const minutes = sum(list);
-    const revenue = c.mrr_cents != null && c.billing_status ? c.mrr_cents / 100 : (MONTHLY_CENTS[c.plan] || 0) / 100;
-    const planned = planOf(c.plan).monthly.reduce((s, [kind, , n]) => s + guideFor(kind, saved).minutes * n, 0);
-    return { id: c.id, name: c.name, plan: c.plan, minutes, planned, revenue: money ? revenue : undefined, perHour: money && minutes ? Math.round(revenue / (minutes / 60)) : undefined };
+    const revenue = (c.mrr_cents || 0) / 100; // what they pay each month, typed by the owner or read from Stripe
+    const planned = workloadOf(c, saved).monthly.reduce((s, [kind, , n]) => s + guideFor(kind, saved).minutes * n, 0);
+    return { id: c.id, name: c.name, services: workloadOf(c, saved).scope.length, minutes, planned, revenue: money ? revenue : undefined, perHour: money && minutes ? Math.round(revenue / (minutes / 60)) : undefined };
   }).sort((x, y) => y.minutes - x.minutes);
   const perUser = [...group('user_id').entries()].map(([id, list]) => ({ id, name: list[0].user_name || 'Someone', minutes: sum(list), tasks: new Set(list.map((r) => r.task_id)).size })).sort((x, y) => y.minutes - x.minutes);
   const perKind = [...group('kind').entries()].map(([kind, list]) => {

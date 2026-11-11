@@ -31,7 +31,7 @@ function setup(extra = {}) {
 }
 async function start(t, extra = {}) {
   await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
-  return (await t.call('POST', '/api/clients', { name: 'Sunrise Roofing', plan: 'growth', status: 'active', phone: '(954) 555-0142', contact_email: 'owner@sunrise.test', start_date: '2026-10-05', ...extra })).data.client;
+  return (await t.call('POST', '/api/clients', { name: 'Sunrise Roofing', plan: 'growth', monthly: '449', status: 'active', phone: '(954) 555-0142', contact_email: 'owner@sunrise.test', start_date: '2026-10-05', ...extra })).data.client;
 }
 const thisMonth = () => { const d = new Date(); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; };
 

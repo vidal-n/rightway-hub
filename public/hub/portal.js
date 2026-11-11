@@ -1,5 +1,5 @@
 // The client app: home, reviews, post a photo, results. Built phone-first and installable.
-import { $, esc, api, fmt, icon, animateNumbers, PLAN_NAMES } from './core.js';
+import { $, esc, api, fmt, icon, animateNumbers } from './core.js';
 import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.js';
 import { clientStart } from './onboarding.js';
 

@@ -3,6 +3,8 @@ import { HttpError, json } from './util.js';
 import { all, first, run, batch, newId, now } from './db.js';
 import { requireStaff } from './auth.js';
 import { PLANS, tasksForMonth, monthKey } from './plans.js';
+import { scopeFromLead } from './scopeof.js';
+import { tierOf as scopeTier } from '../public/js/scope.js';
 import { route } from './router.js';
 import { scoreLead, dupKeys } from '../public/js/leadintel.js';
 import { resolveDispo } from './dispo.js';
@@ -414,9 +416,16 @@ export async function convertLead(env, lead, plan, by) {
   if (lead.client_id) return lead.client_id;
   const id = newId('c_');
   const address = [lead.city, lead.state].filter(Boolean).join(', ');
-  await run(env, `INSERT INTO clients (id, name, plan, status, start_date, contact_name, contact_email, phone, website, address, place_id, cid, lat, lng, category, lead_id, created_at)
-    VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  id, lead.business, PLANS[plan] ? plan : (lead.plan || 'growth'), new Date().toISOString().slice(0, 10), lead.contact_name, lead.email, lead.phone,
+  // The client's scope is what was quoted (or what the research recommends). A workload named by hand (API only) uses that template instead.
+  let quote = {};
+  try { quote = JSON.parse(lead.quote || '{}') || {}; } catch { quote = {}; }
+  const named = !(Array.isArray(quote.services) && quote.services.length) && PLANS[plan];
+  const scope = named ? null : scopeFromLead(lead);
+  const tier = named ? plan : scopeTier(scope);
+  const monthlyCents = Number(quote.monthly) > 0 ? Math.round(Number(quote.monthly) * 100) : null;
+  await run(env, `INSERT INTO clients (id, name, plan, scope, mrr_cents, status, start_date, contact_name, contact_email, phone, website, address, place_id, cid, lat, lng, category, lead_id, created_at)
+    VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  id, lead.business, tier, scope ? JSON.stringify(scope) : null, monthlyCents, new Date().toISOString().slice(0, 10), lead.contact_name, lead.email, lead.phone,
   lead.website, address || null, lead.place_id, lead.cid, lead.lat, lead.lng, lead.industry, lead.id, now());
   // Carry the sales research over as the client's baseline (the "before" for every report).
   let intel = null;

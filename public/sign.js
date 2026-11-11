@@ -38,7 +38,7 @@ function render(o) {
     <div class="card">
       <p class="eyebrow">Work order</p>
       <h1 style="font-size:32px">${esc(o.business)}</h1>
-      <p class="muted">${esc(o.plan)} plan${o.contact_name ? ` for ${esc(o.contact_name)}` : ''}</p>
+      <p class="muted">${o.contact_name ? `Prepared for ${esc(o.contact_name)}` : 'Local marketing work order'}</p>
       <div class="price">
         <div><b>${money(o.monthly_cents)}</b><span class="small">per month</span></div>
         <div><b>${money(o.setup_cents)}</b><span class="small">one-time setup</span></div>

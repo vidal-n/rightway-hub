@@ -1,6 +1,6 @@
 // My work: every open task across all clients (owner, due date, client), the task panel (guide steps, proof, timer and the
 // tools for that kind of task), hours per client and person, and the editable guides. Also the client Access checklist tab.
-import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, resizeImage, KIND_LABEL, PLAN_NAMES } from './core.js';
+import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, resizeImage, KIND_LABEL } from './core.js';
 import { staffShell } from './staff.js';
 import { can } from '/js/jobs.js';
 
@@ -297,9 +297,9 @@ async function hoursView(view, user, month) {
       ${money ? `<div class="stat"><div class="stat-num">${d.perHour != null ? fmt.money(d.perHour) : '-'}</div><div class="stat-label">revenue per hour worked</div></div><div class="stat"><div class="stat-num">${fmt.money(d.revenue)}</div><div class="stat-label">monthly revenue from active clients</div></div>` : ''}
       <div class="stat"><div class="stat-num">${d.perUser.length}</div><div class="stat-label">people logged time</div></div>
     </div>
-    <div class="card"><div class="card-head"><h2>Per client</h2><span class="small muted">Planned = the plan's monthly tasks times each guide's time</span></div>
-      <div class="table-wrap"><table><thead><tr><th>Client</th><th>Plan</th><th>Logged</th><th>Planned</th>${money ? '<th>Monthly</th><th>Per hour</th>' : ''}</tr></thead><tbody>
-      ${d.perClient.map((c) => `<tr><td><a href="#/client/${esc(c.id)}/tasks">${esc(c.name)}</a></td><td>${esc(PLAN_NAMES[c.plan] || c.plan)}</td><td><b>${mins(c.minutes)}</b></td><td>${mins(c.planned)}</td>${money ? `<td>${fmt.money(c.revenue)}</td><td class="${c.perHour != null && c.perHour < 50 ? 'bad-text' : ''}">${c.perHour != null ? fmt.money(c.perHour) : '-'}</td>` : ''}</tr>`).join('') || '<tr><td colspan="6" class="muted">No active clients.</td></tr>'}</tbody></table></div></div>
+    <div class="card"><div class="card-head"><h2>Per client</h2><span class="small muted">Planned = the scope's monthly tasks times each guide's time</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Client</th><th>Scope</th><th>Logged</th><th>Planned</th>${money ? '<th>Monthly</th><th>Per hour</th>' : ''}</tr></thead><tbody>
+      ${d.perClient.map((c) => `<tr><td><a href="#/client/${esc(c.id)}/tasks">${esc(c.name)}</a></td><td>${esc(c.services)} services</td><td><b>${mins(c.minutes)}</b></td><td>${mins(c.planned)}</td>${money ? `<td>${fmt.money(c.revenue)}</td><td class="${c.perHour != null && c.perHour < 50 ? 'bad-text' : ''}">${c.perHour != null ? fmt.money(c.perHour) : '-'}</td>` : ''}</tr>`).join('') || '<tr><td colspan="6" class="muted">No active clients.</td></tr>'}</tbody></table></div></div>
     <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
       <div class="card"><h2>Per person</h2><ul class="list">${d.perUser.map((u) => `<li class="item"><span class="avatar">${esc(initials(u.name))}</span><div class="item-title">${esc(u.name)}</div><span class="small"><b>${mins(u.minutes)}</b> on ${u.tasks} task${u.tasks === 1 ? '' : 's'}</span></li>`).join('') || '<li class="muted small">No time logged yet. Start a timer on any task.</li>'}</ul></div>
       <div class="card"><h2>Per kind of task</h2><div class="table-wrap"><table><thead><tr><th>Kind</th><th>Average</th><th>Guide says</th></tr></thead><tbody>

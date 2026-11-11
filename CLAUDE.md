@@ -17,8 +17,8 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   queue limited to 8am to 8pm in the lead's time zone, keys 1 to 9 log outcomes, "Call from my phone" tel: links, optional
   Twilio bridge in `src/calls.js` that rings the rep then the lead, recording off), website form endpoint `/api/public/lead`
   (CORS for rightwaygrowth.com, honeypot), e-signed work orders (`src/workorders.js`, public `/sign.html#<token>`), Stripe
-  (`src/billing.js`: signed webhook auto-wins the lead, creates the client, sets billing status and MRR; payment links per plan
-  in Settings tagged with client_reference_id; client Billing tab; Stripe customer portal from the client app).
+  (`src/billing.js`: signed webhook auto-wins the lead, creates the client, sets billing status and MRR; a payment link is made per quote
+  from the amounts typed, tagged with client_reference_id; client Billing tab; Stripe customer portal from the client app).
 - Sales intelligence (built): lead research (`src/intel.js`: Google profile match, 3x3 Local Finder grid, website parse, PageSpeed, about $0.04),
   scoring, problems, plan pick, and the adaptive call script in `public/js/leadintel.js` (pure, shared by Worker, app, tests). Dedupe on import by
   phone, website domain, and name plus city or zip (DNC stays out). Pipeline time zone tabs, filters, board or grouped list, bulk actions, merge.
@@ -63,10 +63,9 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   read is separate so a restricted key missing one permission blanks one section. 60s cache. Snapshot card on the Dashboard for owners.
 - Stripe setup (built, owners only, `src/stripesetup.js`, `src/stripekeys.js`, `public/hub/stripesetup.js`, top of Settings): one click "Set up Stripe" makes the webhook
   (signing secret returned once, stored sealed in settings `stripe_webhook_secret`, AES-GCM keyed on STRIPE_SECRET_KEY; `STRIPE_WEBHOOK_SECRET` in Cloudflare still wins),
-  five payment links (product per plan, monthly price plus one time setup price, first charge = setup + month so `FIRST_CHARGE_CENTS` recognizes the plan), and the client
-  billing portal (invoices, card and contact updates, no cancelling; its id is stored and passed when opening a portal session). Ids kept in settings `stripe_setup`,
-  Stripe idempotency keys, per step error isolation, existing links left alone unless "replace" is ticked. Needs a restricted key with Write on Products, Prices,
-  Payment Links, Webhook Endpoints, Customer portal. `POST /api/stripe/setup` `{steps?, replace?, webhookSecret?}`, `GET /api/stripe/setup` (status, no Stripe calls).
+  and the client billing portal (invoices, card and contact updates, no cancelling; its id is stored and passed when opening a portal session). Ids kept in settings `stripe_setup`,
+  Stripe idempotency keys, per step error isolation. There are no plan payment links any more (Nov 2026): each deal's link is made from the typed amounts by `quoteLink`.
+  Needs a restricted key with Write on Products, Prices, Payment Links (for those quote links), Webhook Endpoints, Customer portal. `POST /api/stripe/setup` `{steps?, replace?, webhookSecret?}`, `GET /api/stripe/setup` (status, no Stripe calls).
 - Automatic scans (built, Phase 4 part 1, `src/autoscan.js`, `public/hub/scans.js`): queue table `scan_jobs`; cron trigger every minute (`triggers.crons`
   in wrangler.jsonc, `scheduled()` in `src/worker.js`) works up to 40 grid points per run (Worker subrequest limit), saving partial progress in the job.
   Finished jobs become normal `scans` rows (`auto: true`, Local Finder, desktop) plus a log line; under 75% of spots back = job failed, nothing saved.
@@ -188,15 +187,26 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   today. The amounts start blank every meeting; the rep types them, and moving to the next slide saves them to the lead's quote, which the
   work order fills in (sending without typed amounts asks to confirm the saved quote).
   Printable reading copy of the script is a Claude Doc (V prints it for calls).
-- Pricing is per client (Nov 2026): plans are internal only (they set the monthly task load) and the client never sees a plan name. The rep picks
-  the services the client needs and sets the buildout and monthly from discovery. `SERVICE_LIST` in `public/js/plancopy.js` (client words, `min`
-  internal plan, `core`, `fixes` = problem keys); `servicesFor` and `quoteFor` in `public/js/leadintel.js`. Quote saved on `leads.quote` (JSON:
-  plan, setup, monthly in dollars, services) by `PUT /api/leads/:id/quote` (lead panel "Close the deal", and live from the presentation).
-  Usual internal prices: Starter $399 + $399, Growth $449 + $449, Authority $499 + $499, Market Leader $599 + $599 (`MONTHLY_CENTS`, `SETUP_CENTS`,
-  `PLAN_INFO`, `PLAN_PRICE`, leadintel `PRICES`); used as defaults and as the drop close anchor. `quoteLink` in `src/billing.js`: plan link when the
-  amounts match a plan's saved link, else makes a Stripe payment link for those amounts (cached in settings `stripe_quote_links`, metadata
-  `rw_plan`/`rw_kind`). Webhook takes the plan from metadata or the work order and MRR from the work order's monthly. Plan names were removed from
-  the client app, report and quarterly plan pages. Stripe setup still makes four plan links (price keys include the amount).
+- No packages, price per client (Nov 2026): Starter, Growth, Authority and Market Leader are gone from everything a client, lead or the website sees. Every client is tailored.
+  The research (scan, listings, site, reviews, problems) picks a scope of work; the owner or closer types the buildout and the monthly after discovery. Nothing has a default
+  price: the work order, payment link and convert refuse to run without typed amounts (400 "Type the buildout and the monthly"), scripts show `[your monthly]` style blanks
+  until a number is typed, and MRR is only ever `clients.mrr_cents` (typed, or from Stripe, or the quote monthly at convert).
+  Scope: `public/js/scope.js` (pure, shared). A scope is a list of `{id, qty}` over `SERVICE_LIST` ids in `public/js/plancopy.js` (profile, cleanup, posts, reviews, onpage, pages,
+  links, competitors, content, tracking, reputation, locations, report). `SCOPE[id]` has unit, def, min, max, `monthly(n)` task rows and `setup(n)` one time items; `monthlyTasks`,
+  `setupTasks`, `quarterlyTasks` turn a scope into work; `effort`/`effortOf` estimate delivery minutes from the task guides (`hoursOf` for hours) so the owner can price against time;
+  `tierOf(scope)` is the internal workload tier (`starter` to `leader`, max of each service's `min`, locations = leader) that only picks tabs, guide steps, keyword count and
+  meeting minutes and is never shown or priced; `cleanScope`, `clampQty`, `scopeLine`, `dollars`, `scopeFromPlan` (old plan to scope).
+  Research to scope: `describeServices`, `servicesFor`, `allServicesFor`, `quoteFor`, `scopeOfQuote` in `public/js/leadintel.js` (pages and links scale with weak spots,
+  content, tracking and reputation switch on for high value industries and serious problems). `leads.quote` JSON: `{plan (tier), setup, monthly (dollars or null), anchor:{setup,monthly}|null,
+  drop:{setup,monthly}|null, services:[ids], qty:{id:n}, at}` saved by `PUT /api/leads/:id/quote` (`cleanQuote` in `src/workorders.js`, strict dollars). The price talk (`price_anchor`
+  top number, `drop_offer` lower number) reads `anchor` and `drop`, typed in the lead panel "Scope and price" fold (or live from the presentation), otherwise shows blanks.
+  Clients: `clients.scope` JSON (NULL = an older client who keeps the fixed template tasks in `PLANS`, so nothing already sold changes until someone saves a scope). `scopeOf(client)` and
+  `workloadOf(client, saved)` in `src/plans.js` give `{custom, scope, monthly, keywords, meetingMinutes, effort}` (returned as `client.plan_info`). `convertLead` copies the quote
+  scope and monthly onto the client; a new client without one gets `defaultScope` (`src/scopeof.js`). `src/scope.js`: `GET`/`PUT /api/clients/:id/scope` (client page "Scope of work"
+  card, `public/hub/scope.js`), and `syncScopeTasks` keeps this month's tasks in line (adds missing, retitles open ones, deletes only untouched `todo` tasks with no time logged).
+  `quoteLink` in `src/billing.js` always makes a Stripe payment link for the typed amounts (cached in settings `stripe_quote_links`, metadata `rw_plan` (tier) and `rw_kind`).
+  The webhook takes MRR from the work order's monthly; `FIRST_CHARGE_CENTS` in `src/plans.js` only recognizes first charges from payment links made before this change.
+  Website (rightwaygrowth.com, not in this repo): packages and prices come off, every call to action goes to `/book.html`.
 - Work orders v2 (built, `public/js/agreement.js`, pure, `AGREEMENT_VERSION` 2): two kinds. `seo`: the one local marketing agreement for every client
   (one column, one Letter page, services list says "Website recommendations", 3 month minimum then month to month, early termination owes the rest
   of the first 3 months, buildout + first month due at signing). `website`: websites are a separate service with their own agreement (build fee due at

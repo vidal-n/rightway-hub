@@ -7,12 +7,6 @@ import { createMap } from './js/map.js';
 const KEY_STORE = 'rw-hub-key';
 const LAST_SCAN = 'rw-hub-last-scan';
 const CONCURRENCY = 5;
-const PLANS = [
-  { name: 'Starter', price: 597 },
-  { name: 'Growth', price: 997 },
-  { name: 'Authority', price: 1497 },
-  { name: 'Market Leader', price: 2497 },
-];
 const SOURCE_LABEL = { local: 'Google local results', maps: 'Google Maps' };
 const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -227,7 +221,7 @@ function newScan(keyword, cost = 0) {
     details: {},
     cost,
     pagespeed: null,
-    math: { jobValue: '', closeRatePct: 40, extraCalls: 10, plan: 'Growth' },
+    math: { jobValue: '', closeRatePct: 40, extraCalls: 10, price: '' },
   };
 }
 
@@ -800,17 +794,17 @@ function renderMath(scan) {
       <label class="field"><span>Average job value ($)</span><input name="jobValue" type="number" min="0" step="50" value="${esc(m.jobValue)}"></label>
       <label class="field"><span>Close rate (%)</span><input name="closeRatePct" type="number" min="0" max="100" value="${esc(m.closeRatePct)}"></label>
       <label class="field"><span>Extra calls a month</span><input name="extraCalls" type="number" min="0" value="${esc(m.extraCalls)}"></label>
-      <label class="field"><span>Plan</span><select name="plan">${PLANS.map((p) => `<option${p.name === m.plan ? ' selected' : ''}>${p.name}</option>`).join('')}</select></label>
+      <label class="field"><span>Your monthly price ($)</span><input name="price" type="number" min="0" step="25" value="${esc(m.price ?? '')}" placeholder="What you would charge"></label>
     </form>
     <div class="math-out" id="math-out"></div>`;
   const form = $('#math-form');
   const calc = () => {
     const fd = new FormData(form);
     Object.assign(m, Object.fromEntries(fd.entries()));
-    const plan = PLANS.find((p) => p.name === m.plan) || PLANS[1];
-    const out = planMath({ ...m, planPrice: plan.price });
+    const price = Number(m.price) || 0;
+    const out = planMath({ ...m, planPrice: price });
     $('#math-out').innerHTML = Number(m.jobValue) > 0
-      ? `${m.extraCalls} extra calls at ${m.closeRatePct}% is about <b>${out.jobs} jobs</b>, or <b>${money(out.revenue)}</b> a month.<br>${plan.name} is ${money(plan.price)} a month. <b>${out.jobsToCover} job${out.jobsToCover === 1 ? '' : 's'}</b> a month covers it.`
+      ? `${m.extraCalls} extra calls at ${m.closeRatePct}% is about <b>${out.jobs} jobs</b>, or <b>${money(out.revenue)}</b> a month.${price ? `<br>At ${money(price)} a month, <b>${out.jobsToCover} job${out.jobsToCover === 1 ? '' : 's'}</b> a month covers it.` : ''}`
       : 'Enter their average job value.';
     saveLast(scan);
   };
@@ -831,7 +825,7 @@ function downloadScan(scan) {
 }
 
 function openScan(scan, keepScroll = false) {
-  scan.math ||= { jobValue: '', closeRatePct: 40, extraCalls: 10, plan: 'Growth' };
+  scan.math ||= { jobValue: '', closeRatePct: 40, extraCalls: 10, price: '' };
   scan.details ||= {};
   feed.stop();
   state.runToken++;

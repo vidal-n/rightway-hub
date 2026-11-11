@@ -1,8 +1,8 @@
 // Presentation mode: a tailored deck for one lead, built from the research, with a presenter view in a second window.
 // Open /present.html#<leadId>. Presenter view: /present.html?presenter=1#<leadId>. Keys: arrows or space, F fullscreen, P presenter view.
-import { findProblems, recommendPlan, industryInfo, rankText, buildScript, roi, top10Of, quoteFor } from './leadintel.js';
+import { findProblems, industryInfo, rankText, buildScript, roi, top10Of, quoteFor, allServicesFor } from './leadintel.js';
 import { ninetyDayPlan, reviewTarget } from './fulfill.js';
-import { PLAN_INFO, SERVICE_LIST } from './plancopy.js';
+import { SERVICE_LIST } from './plancopy.js';
 import { qrSvg } from './qr.js';
 import { parseListings, listingsLine, listingsTable } from './listings.js';
 import { can } from './jobs.js';
@@ -48,12 +48,11 @@ function slides() {
   const city = lead.city || '';
   const kw = intel?.keyword || info.keyword || 'your service';
   const plan = state.plan;
-  const P = PLAN_INFO[plan];
   const Q = state.quote;
   const script = buildScript(lead, intel, { rep: D.rep, voice: D.voice, plan, ticket: state.ticket, quote: Q }, D.custom);
   const v = script.vars;
   const first = (lead.contact_name || '').split(' ')[0];
-  const r = roi({ ticket: state.ticket, jobs: state.jobs, plan, price: Q.monthly });
+  const r = roi({ ticket: state.ticket, jobs: state.jobs, price: Q.monthly });
   const rt = reviewTarget(intel);
   const nd = ninetyDayPlan(plan, intel, lead);
   const out = [];
@@ -153,7 +152,7 @@ function slides() {
   const t10 = intel?.grid ? top10Of(intel.grid) : null;
   add('plan', 'What gets you results', `<p class="kicker">What gets you results</p><h2>What ${esc(lead.business)} needs to reach the first page</h2>
     ${intel?.grid ? `<p class="lead" style="margin:-6px 0 22px">Today: first page (top 10) in ${t10} of ${intel.grid.points} spots around you. Goal: the first page across ${esc(city || 'your area')}, then climb.</p>` : ''}
-    <div class="svcs anim${Q.services.length > 6 ? ' many' : ''}">${Q.services.map((x) => `<div class="svc" data-svc="${esc(x.id)}"><button class="svc-x" data-drop="${esc(x.id)}" title="Remove" aria-label="Remove ${esc(x.name)}">×</button><b>${esc(x.name)}</b><span>${esc(x.why || x.what)}</span></div>`).join('')}</div>
+    <div class="svcs anim${Q.services.length > 6 ? ' many' : ''}">${Q.services.map((x) => `<div class="svc" data-svc="${esc(x.id)}"><button class="svc-x" data-drop="${esc(x.id)}" title="Remove" aria-label="Remove ${esc(x.name)}">×</button><b>${esc(x.name)}</b><span>${x.unit ? `<strong>${x.qty} ${esc(x.unit)}.</strong> ` : ''}${esc(x.why || x.what)}</span></div>`).join('')}</div>
     ${SERVICE_LIST.some((x) => !Q.services.find((y) => y.id === x.id)) ? `<div class="svc-add" style="position:absolute;bottom:96px;right:116px"><select id="svc-add"><option value="">Add a service</option>${SERVICE_LIST.filter((x) => !Q.services.find((y) => y.id === x.id)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div>` : ''}`,
   `Only what they need. Walk each one: what it is, and why it gets them onto the first page (top 10) in more of their area. Rank also depends on distance and relevance, so never promise a spot.\n\n${say('c_story')}\n\n(Hover a service and press × to drop it, or add one from the list. The price slide and the work order use this list.)`);
 
@@ -282,7 +281,7 @@ function go(n, broadcast = true) {
 }
 
 function updateCalc() {
-  const r = roi({ ticket: state.ticket, jobs: state.jobs, plan: state.plan, price: state.quote.monthly });
+  const r = roi({ ticket: state.ticket, jobs: state.jobs, price: state.quote.monthly });
   const set = (sel, t) => { const el = document.getElementById(sel); if (el) el.textContent = t; };
   set('out-month', money(r.monthly)); set('out-year', money(r.yearly));
   set('out-mult', r.multiple >= 1 ? `${r.multiple.toFixed(1)}x your monthly investment` : `Pays for itself at ${r.breakeven} jobs a month`);
@@ -317,11 +316,11 @@ function dueToday() {
 // The quote lives on the lead, so changes made in the meeting carry into the work order and the Hub.
 function saveQuote() {
   const q = state.quote;
-  return api(`/api/leads/${encodeURIComponent(id)}/quote`, { method: 'PUT', body: { plan: q.plan, setup: q.setup, monthly: q.monthly, services: q.services.map((x) => x.id) } }).catch(() => null);
+  return api(`/api/leads/${encodeURIComponent(id)}/quote`, { method: 'PUT', body: { setup: q.setup, monthly: q.monthly, services: q.services.map((x) => ({ id: x.id, qty: x.qty })) } }).catch(() => null);
 }
 let saveTimer = 0;
 const saveSoon = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveQuote, 700); };
-const allServices = () => quoteFor(D.lead, D.intel, { plan: 'leader', services: SERVICE_LIST.map((x) => x.id) }).services;
+const allServices = () => allServicesFor(D.lead, D.intel);
 
 async function sendWorkOrder(btn) {
   if (state.entered.setup === '' || state.entered.monthly === '') {
@@ -330,7 +329,7 @@ async function sendWorkOrder(btn) {
   btn.disabled = true; btn.textContent = 'Creating...';
   try {
     await saveQuote();
-    const r = await api(`/api/leads/${encodeURIComponent(id)}/work-order`, { method: 'POST', body: { kind: 'seo', plan: state.plan, setup: state.quote.setup, monthly: state.quote.monthly } });
+    const r = await api(`/api/leads/${encodeURIComponent(id)}/work-order`, { method: 'POST', body: { kind: 'seo', setup: state.quote.setup, monthly: state.quote.monthly } });
     const box = document.getElementById('signbox');
     const first = (D.lead.contact_name || '').split(' ')[0];
     const msg = `Hi ${first}, here is your Rightway Growth agreement. Review it, sign, and you can pay right after: ${r.url}`;

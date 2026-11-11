@@ -4,8 +4,10 @@
 import { HttpError, json } from './util.js';
 import { first, run, newId, token, now } from './db.js';
 import { requireStaff } from './auth.js';
-import { PLANS, MONTHLY_CENTS, SETUP_CENTS } from './plans.js';
+import { PLANS } from './plans.js';
 import { SERVICE_LIST } from '../public/js/plancopy.js';
+import { clampQty, dollars, hasQty, tierOf, cleanScope } from '../public/js/scope.js';
+import { quoteFor, scopeOfQuote } from '../public/js/leadintel.js';
 import { agreementSnapshot, okFont, initialsOf, agreementEmailHtml, agreementEmailText, TITLES } from '../public/js/agreement.js';
 import { all as allRows } from './db.js';
 import { canEmail, sendEmail } from './email.js';
@@ -14,20 +16,39 @@ import { quoteLink } from './billing.js';
 import { logActivity } from './crm.js';
 import { route } from './router.js';
 
-// The deal's quote: the services picked, the buildout and monthly in dollars, and the internal plan (the monthly task load).
+// The deal's quote: the services picked with how much of each a month, the buildout and monthly in dollars (typed by the owner, never
+// defaulted), and two optional talking numbers for the price conversation (the top number said first, the lower number if they push back).
 const SERVICE_IDS = new Set(SERVICE_LIST.map((x) => x.id));
 function cleanQuote(b = {}, prev = {}) {
-  const num = (v, d) => (v === undefined ? d : v === '' || v === null ? null : Math.round(Number(String(v).replace(/[$,\s]/g, '')) * 100) / 100);
+  const num = (v, d) => (v === undefined ? d : v === '' || v === null ? null : dollars(v));
+  const pair = (v, d) => {
+    if (v === undefined) return d ?? null;
+    if (!v) return null;
+    const p = { setup: dollars(v.setup), monthly: dollars(v.monthly) };
+    return p.setup == null && p.monthly == null ? null : p;
+  };
+  let services = prev.services || [], qty = prev.qty || {};
+  if (Array.isArray(b.services)) {
+    services = [...new Set(b.services.map((x) => (typeof x === 'string' ? x : x?.id)).filter((id) => SERVICE_IDS.has(id)))].slice(0, 20);
+    qty = {};
+    for (const x of b.services) if (x && typeof x === 'object' && SERVICE_IDS.has(x.id) && hasQty(x.id) && x.qty != null && x.qty !== '') qty[x.id] = clampQty(x.id, x.qty);
+    if (b.qty && typeof b.qty === 'object') for (const id of services) if (hasQty(id) && b.qty[id] != null && b.qty[id] !== '') qty[id] = clampQty(id, b.qty[id]);
+  }
   const q = {
-    plan: PLANS[b.plan] ? b.plan : PLANS[prev.plan] ? prev.plan : null,
+    plan: services.length ? tierOf(services) : null, // internal workload tier, never shown
     setup: num(b.setup, prev.setup ?? null),
     monthly: num(b.monthly, prev.monthly ?? null),
-    services: Array.isArray(b.services) ? b.services.filter((x) => SERVICE_IDS.has(x)).slice(0, 20) : prev.services || [],
+    anchor: pair(b.anchor, prev.anchor),
+    drop: pair(b.drop, prev.drop),
+    services, qty,
     at: now(),
   };
   for (const k of ['setup', 'monthly']) if (q[k] != null && (!Number.isFinite(q[k]) || q[k] < 0 || q[k] > 100000)) throw new HttpError('Enter the buildout and monthly as dollar amounts.');
+  if (b.setup !== undefined && b.setup !== '' && b.setup !== null && dollars(b.setup) == null) throw new HttpError('Enter the buildout and monthly as dollar amounts.');
+  if (b.monthly !== undefined && b.monthly !== '' && b.monthly !== null && dollars(b.monthly) == null) throw new HttpError('Enter the buildout and monthly as dollar amounts.');
   return q;
 }
+export { cleanQuote };
 const parseQ = (s) => { try { return JSON.parse(s || '{}') || {}; } catch { return {}; } };
 
 route('PUT', '/api/leads/:id/quote', async ({ env, user, params, body }) => {
@@ -35,7 +56,7 @@ route('PUT', '/api/leads/:id/quote', async ({ env, user, params, body }) => {
   const lead = await first(env, 'SELECT id, quote, plan FROM leads WHERE id = ?', params.id);
   if (!lead) throw new HttpError('Lead not found.', 404);
   const q = cleanQuote(await body(), parseQ(lead.quote));
-  await run(env, 'UPDATE leads SET quote = ?, plan = COALESCE(?, plan), updated_at = ? WHERE id = ?', JSON.stringify(q), q.plan, now(), lead.id);
+  await run(env, 'UPDATE leads SET quote = ?, updated_at = ? WHERE id = ?', JSON.stringify(q), now(), lead.id);
   return json({ quote: q });
 });
 
@@ -56,12 +77,18 @@ route('POST', '/api/leads/:id/work-order', async ({ env, user, params, url, body
     if (!scope.length) throw new HttpError('List what the website includes, one item per line.');
     plan = 'website';
   } else {
-    plan = PLANS[b.plan] ? b.plan : PLANS[saved.plan] ? saved.plan : PLANS[lead.plan] ? lead.plan : null;
-    if (!plan) throw new HttpError('Pick the internal plan (it sets the monthly work).');
-    setup = cents(b.setup ?? saved.setup) ?? SETUP_CENTS[plan];
-    monthly = cents(b.monthly ?? saved.monthly) ?? MONTHLY_CENTS[plan];
-    if (!Number.isFinite(setup) || !Number.isFinite(monthly) || setup < 0 || monthly <= 0) throw new HttpError('Enter the buildout and the monthly amount.');
-    await run(env, 'UPDATE leads SET plan = ?, quote = ?, updated_at = ? WHERE id = ?', plan, JSON.stringify(cleanQuote({ plan, setup: setup / 100, monthly: monthly / 100 }, saved)), now(), lead.id);
+    // Every client is priced by the owner: the amounts are typed, never filled in from a package.
+    const pick = (typed, stored) => (typed !== undefined && typed !== null && typed !== '' ? typed : stored);
+    setup = cents(pick(b.setup, saved.setup));
+    monthly = cents(pick(b.monthly, saved.monthly));
+    if (setup == null || monthly == null || !Number.isFinite(setup) || !Number.isFinite(monthly) || setup < 0 || monthly <= 0) throw new HttpError('Type the buildout and the monthly first. You set the price for every client.');
+    // Save the scope with the quote so the client gets exactly this work when they sign and pay.
+    let intel = null;
+    try { intel = lead.intel ? JSON.parse(lead.intel) : null; } catch { intel = null; }
+    const Q = quoteFor(lead, intel, saved);
+    const q = cleanQuote({ setup: setup / 100, monthly: monthly / 100, services: scopeOfQuote(Q) }, saved);
+    plan = q.plan || tierOf(cleanScope(scopeOfQuote(Q)));
+    await run(env, 'UPDATE leads SET quote = ?, updated_at = ? WHERE id = ?', JSON.stringify(q), now(), lead.id);
   }
   const payUrl = await quoteLink(env, { plan: kind === 'website' ? null : plan, setupCents: setup, monthlyCents: monthly, kind, leadId: lead.id, email: lead.email }).catch(() => null);
   const terms = JSON.stringify(agreementSnapshot({ kind, setupCents: setup, monthlyCents: monthly, scope }));
@@ -77,7 +104,7 @@ route('POST', '/api/leads/:id/work-order', async ({ env, user, params, url, body
 function publicOrder(o) {
   const t = JSON.parse(o.terms || '{}');
   return {
-    business: o.business, contact_name: o.contact_name, plan: PLANS[o.plan]?.name || o.plan, monthly_cents: o.monthly_cents, setup_cents: o.setup_cents,
+    business: o.business, contact_name: o.contact_name, monthly_cents: o.monthly_cents, setup_cents: o.setup_cents,
     includes: t.includes || [], terms: t.terms || [], sections: t.sections || null, kind: t.kind || 'seo', title: t.title || null, status: o.status,
     doc_id: o.id, emailed: o.emailed || null, signed_font: o.signed_font || null, initials: o.initials || null, initials_font: o.initials_font || null, signed_name: o.signed_name, signed_at: o.signed_at, created_at: o.created_at,
     pay_url: o.status !== 'paid' ? o.pay_url : null,

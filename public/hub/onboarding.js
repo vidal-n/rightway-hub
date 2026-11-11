@@ -1,5 +1,5 @@
 // Onboarding and day-one fulfillment screens: the team's Onboarding tab and the client's "Get started" page.
-import { $, $$, esc, api, toast, busy, fmt, PLAN_NAMES } from './core.js';
+import { $, $$, esc, api, toast, busy, fmt } from './core.js';
 import { miniGrid } from './prep.js';
 import { rankText } from '/js/leadintel.js';
 
@@ -128,7 +128,7 @@ export async function clientStart(v, c) {
   try { d = await api(`/api/clients/${c.id}/onboarding`); } catch (e) { v.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const reload = () => clientStart(v, c);
   v.innerHTML = `
-    <div class="card"><h2>Welcome to Rightway Growth</h2><p>Three quick things and we can start on your ${esc(PLAN_NAMES[c.plan] || '')} plan. Your kickoff call covers anything you skip.</p>
+    <div class="card"><h2>Welcome to Rightway Growth</h2><p>Three quick things and we can start on your plan. Your kickoff call covers anything you skip.</p>
       <ol class="plain"><li>Tell us about your business below</li><li>Give us Manager access to your Google profile</li><li>Upload your logo and your best job photos</li></ol></div>
     <div class="card"><h2>Logo and photos</h2><p class="small">Real photos of your work, team, trucks, and storefront help you rank and get calls. Upload as many as you like.</p><div id="csup"></div><div style="margin-top:12px">${gallery(d.assets, false)}</div></div>
     <div class="card"><h2>About your business</h2><div id="csform"></div></div>`;

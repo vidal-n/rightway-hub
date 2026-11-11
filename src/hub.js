@@ -5,7 +5,10 @@ import {
   currentUser, createSession, endSession, login, userCount, createUser, issueInvite, acceptInvite, listUsers,
   requireUser, requireStaff, requireAdmin, requireClientAccess, isStaff, sha256, cleanEmail,
 } from './auth.js';
-import { PLANS, planOf, tasksForMonth, monthKey } from './plans.js';
+import { PLANS, tasksForMonth, monthKey, workloadOf } from './plans.js';
+import { defaultScope } from './scopeof.js';
+import { tierOf } from '../public/js/scope.js';
+import { dollars } from '../public/js/scope.js';
 import { generateCaptions } from './captions.js';
 import { canEmail, sendEmail } from './email.js';
 import { gridStats } from '../public/js/grid.js';
@@ -38,10 +41,9 @@ function cleanClient(body, partial) {
       out[f] = Number.isFinite(n) ? n : null;
     } else out[f] = text(body[f], f === 'notes' || f === 'brand_voice' ? 4000 : 1000);
   }
-  if ('plan' in out && !PLANS[out.plan]) throw new HttpError('Pick a plan.');
+  if ('plan' in out && out.plan && !PLANS[out.plan]) throw new HttpError('That workload is not available.');
   if ('status' in out && !['active', 'paused', 'cancelled', 'prospect'].includes(out.status)) throw new HttpError('Unknown status.');
   if (!partial && !out.name) throw new HttpError('Business name is required.');
-  if (!partial && !out.plan) out.plan = 'growth';
   return out;
 }
 
@@ -271,7 +273,6 @@ route('DELETE', '/api/users/:id', async ({ env, user, params }) => {
 });
 
 // ---------- clients ----------
-route('GET', '/api/plans', async () => json({ plans: PLANS }));
 
 route('GET', '/api/clients', async ({ env, user, url }) => {
   requireStaff(user);
@@ -285,7 +286,11 @@ route('GET', '/api/clients', async ({ env, user, url }) => {
 
 route('POST', '/api/clients', async ({ env, user, body }) => {
   requireStaff(user);
-  const c = cleanClient(await body(), false);
+  const b = await body();
+  const c = cleanClient(b, false);
+  // No packages: a client added by hand starts with the standard scope (editable on the client page). An explicit workload still works for the API.
+  if (!c.plan) { const sc = defaultScope({ business: c.name }, null); c.scope = JSON.stringify(sc); c.plan = tierOf(sc); }
+  if (b.monthly !== undefined && user.role === 'admin') { const m = dollars(b.monthly); c.mrr_cents = m == null ? null : Math.round(m * 100); }
   c.id = newId('c_');
   c.created_at = now();
   const cols = Object.keys(c);
@@ -305,7 +310,7 @@ route('GET', '/api/clients/:id', async ({ env, user, params, url }) => {
   const parent = c.parent_id ? await first(env, 'SELECT id, name FROM clients WHERE id = ?', c.parent_id) : null;
   const locations = (await first(env, 'SELECT COUNT(*) AS n FROM clients WHERE parent_id = ?', c.id))?.n || 0;
   return json({
-    client: { ...c, review_link: reviewUrlOf(c), kit_link: `${url.origin}/r/k/${c.id}`, plan_info: planOf(c.plan), parent, locations },
+    client: { ...c, review_link: reviewUrlOf(c), kit_link: `${url.origin}/r/k/${c.id}`, plan_info: staff ? workloadOf(c, await savedGuides(env)) : { custom: false, monthly: [], keywords: 0, meetingMinutes: 0, scope: [] }, parent, locations },
     overview: await overview(env, c, month, staff),
     activity: await activity(env, c.id, staff, 12),
   });
@@ -314,7 +319,10 @@ route('GET', '/api/clients/:id', async ({ env, user, params, url }) => {
 route('PATCH', '/api/clients/:id', async ({ env, user, params, body }) => {
   requireStaff(user);
   await clientOr404(env, params.id);
-  const c = cleanClient(await body(), true);
+  const b = await body();
+  const c = cleanClient(b, true);
+  if (c.plan) c.scope = null; // picking a workload by hand puts the client back on that template
+  if (b.monthly !== undefined && user.role === 'admin') { const m = dollars(b.monthly); c.mrr_cents = m == null ? null : Math.round(m * 100); }
   const cols = Object.keys(c);
   if (cols.length) await run(env, `UPDATE clients SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => c[k]), params.id);
   const { wp_pass, ...updated } = await clientOr404(env, params.id);
@@ -622,6 +630,7 @@ import './reputation.js';
 import './leader.js';
 import './quarterly.js';
 import './workorders.js';
+import './scope.js';
 import './calls.js';
 import './sms.js';
 import './voice.js';

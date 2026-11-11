@@ -14,7 +14,7 @@ import { seal, unseal } from './seal.js';
 import { KINDS } from './notify.js';
 import { startTimer } from './work.js';
 import { sendText } from './sms.js';
-import { PLANS, monthKey } from './plans.js';
+import { monthKey, workloadOf } from './plans.js';
 
 export const SCOPES = ['chat:write', 'chat:write.public', 'chat:write.customize', 'channels:read', 'channels:history', 'groups:read', 'groups:history', 'groups:write',
   'users:read', 'users:read.email', 'im:write', 'files:read', 'files:write', 'commands'];
@@ -206,7 +206,7 @@ export async function commandReply(env, u, text, origin) {
     ]);
     const s = parse(scan?.summary, null);
     const fields = [
-      `*Plan*\n${esc(PLANS[cl.plan]?.name || cl.plan)} · ${esc(cl.status)}`,
+      `*Services*\n${workloadOf(cl).scope.length} in scope · ${esc(cl.status)}`,
       `*Account manager*\n${esc(owner?.name || owner?.email || 'Nobody')}`,
       `*First page (top 10)*\n${s ? `${s.top10Pct ?? 0}% for "${esc(scan.keyword)}"` : 'No scan yet'}`,
       `*This month*\n${tasks?.done || 0} of ${tasks?.total || 0} tasks done${late?.n ? `, ${late.n} overdue` : ''}`,
@@ -240,7 +240,7 @@ export async function commandReply(env, u, text, origin) {
       first(env, 'SELECT COUNT(*) AS n FROM leads WHERE created_at > ?', now() - 7 * 864e5),
       first(env, "SELECT COUNT(*) AS n FROM meetings WHERE status = 'scheduled' AND start_at >= ? AND start_at < ?", now(), now() + 7 * 864e5).catch(() => null),
     ]);
-    const mrr = clients.reduce((s, x) => s + (x.mrr_cents != null && x.billing_status ? x.mrr_cents / 100 : PLANS[x.plan]?.price || 0), 0);
+    const mrr = clients.reduce((s, x) => s + ((x.mrr_cents || 0) / 100), 0);
     const fields = [`*Active clients*\n${clients.length}`, `*Monthly revenue*\n$${Math.round(mrr).toLocaleString('en-US')}`, `*Open tasks*\n${open?.n || 0}${open?.late ? ` (${open.late} overdue)` : ''}`,
       `*New leads, 7 days*\n${leads?.n || 0}`, `*Client meetings, 7 days*\n${meets?.n || 0}`].map((t) => ({ type: 'mrkdwn', text: t }));
     return ephemeral('Agency numbers', [section('*Rightway Growth today*'), { type: 'section', fields }]);

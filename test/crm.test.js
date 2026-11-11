@@ -125,40 +125,72 @@ test('website form posts a lead, honeypot drops bots, CORS only for the site', a
   assert.equal(r.data.leads[0].state, 'FL');
 });
 
-test('work order: create, public view, sign, then Stripe payment creates the client', async () => {
+test('work order: price is typed (no package), then public view, sign, and Stripe payment creates the client with the quoted scope', async () => {
   const t = setup();
+  t.env.STRIPE_SECRET_KEY = 'rk_test_abcdefgh';
   await owner(t);
-  await t.call('PUT', '/api/settings', { links: { growth: 'https://buy.stripe.com/test_growth' } });
-  let r = await t.call('PUT', '/api/settings', { links: { authority: 'https://evil.example/pay' } });
-  assert.equal(r.status, 400);
-  const lead = (await t.call('POST', '/api/leads', { business: 'Coastal Roof Pros', contact_name: 'Ana', email: 'ana@coastal.com', phone: '9545550111', state: 'FL' })).data.lead;
-  r = await t.call('POST', `/api/leads/${lead.id}/payment-link`, { plan: 'growth' });
-  assert.match(r.data.link, /client_reference_id=ld_/);
-  assert.match(r.data.link, /prefilled_email=ana%40coastal.com/);
-  r = await t.call('POST', `/api/leads/${lead.id}/work-order`, { plan: 'growth' });
-  assert.equal(r.data.hasPayLink, true);
-  const tok = r.data.url.split('#')[1];
-  t.clearCookie();
-  r = await t.call('GET', `/api/public/wo/${tok}`);
-  assert.equal(r.data.order.plan, 'Growth');
-  assert.equal(r.data.order.monthly_cents, 44900);
-  assert.equal(r.data.order.setup_cents, 44900);
-  // One agreement for every plan: same sections, only the amounts change.
-  assert.ok(r.data.order.sections.length >= 8);
-  const agreement = JSON.stringify(r.data.order.sections);
-  assert.match(agreement, /\$898\.00 \(due upon signing\)/);
-  assert.match(agreement, /\$449\.00 per month/);
-  assert.match(agreement, /three \(3\) months/);
-  assert.match(agreement, /Website design/);
-  assert.ok(!/[–—]/.test(agreement));
-  r = await t.call('POST', `/api/public/wo/${tok}/sign`, { name: 'Ana Ruiz', agree: false });
-  assert.equal(r.status, 400);
-  r = await t.call('POST', `/api/public/wo/${tok}/sign`, { name: 'Ana Ruiz', agree: true }, { 'cf-connecting-ip': '203.0.113.9' });
-  assert.equal(r.data.order.status, 'signed');
-  assert.match(r.data.order.pay_url, /buy\.stripe\.com/);
+  // A tiny Stripe: every product, price and payment link the Hub asks for is made and numbered.
+  const made = { links: [], prices: [] };
+  let r, lead;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (u, init = {}) => {
+    if (!String(u).startsWith('https://api.stripe.com/v1')) return realFetch(u, init);
+    const path = String(u).replace('https://api.stripe.com/v1', '').split('?')[0];
+    const params = init.body ? Object.fromEntries(new URLSearchParams(String(init.body))) : {};
+    if (path === '/products') return Response.json({ id: 'prod_1' });
+    if (path === '/prices') { made.prices.push(params); return Response.json({ id: `price_${made.prices.length}` }); }
+    if (path === '/payment_links') { made.links.push(params); return Response.json({ id: `plink_${made.links.length}`, url: `https://buy.stripe.com/test_${made.links.length}` }); }
+    return Response.json({ error: { message: `unexpected ${path}` } }, { status: 400 });
+  };
+  try {
+    r = await t.call('PUT', '/api/settings', { links: { growth: 'https://evil.example/pay' } });
+    assert.equal(r.status, 200, 'plan links are gone: the old field is ignored');
+    lead = (await t.call('POST', '/api/leads', { business: 'Coastal Roof Pros', contact_name: 'Ana', email: 'ana@coastal.com', phone: '9545550111', state: 'FL' })).data.lead;
+    // No price typed: nothing is made up for them.
+    r = await t.call('POST', `/api/leads/${lead.id}/payment-link`, {});
+    assert.equal(r.status, 400);
+    assert.match(r.data.error, /Type the buildout and the monthly/);
+    r = await t.call('POST', `/api/leads/${lead.id}/work-order`, { plan: 'growth' });
+    assert.equal(r.status, 400, 'an old caller naming a plan gets no default price');
+    // The owner types the price and picks the scope.
+    r = await t.call('PUT', `/api/leads/${lead.id}/quote`, { setup: '500', monthly: '425', services: [{ id: 'profile' }, { id: 'posts', qty: 6 }, { id: 'pages', qty: 3 }, { id: 'report' }] });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.data.quote.services, ['profile', 'posts', 'pages', 'report']);
+    assert.equal(r.data.quote.qty.posts, 6);
+    assert.equal(r.data.quote.setup, 500);
+    r = await t.call('POST', `/api/leads/${lead.id}/payment-link`, {});
+    assert.match(r.data.link, /client_reference_id=ld_/);
+    assert.match(r.data.link, /prefilled_email=ana%40coastal.com/);
+    assert.deepEqual(made.prices.map((p) => p.unit_amount), ['42500', '50000']);
+    r = await t.call('POST', `/api/leads/${lead.id}/work-order`, {});
+    assert.equal(r.data.hasPayLink, true);
+    assert.equal(made.links.length, 1, 'the same amounts reuse the same payment link');
+    const tok = r.data.url.split('#')[1];
+    t.clearCookie();
+    r = await t.call('GET', `/api/public/wo/${tok}`);
+    assert.equal(r.data.order.plan, undefined, 'the client never sees a plan name');
+    assert.equal(r.data.order.monthly_cents, 42500);
+    assert.equal(r.data.order.setup_cents, 50000);
+    // One agreement for every client: same sections, only the amounts change.
+    assert.ok(r.data.order.sections.length >= 8);
+    const agreement = JSON.stringify(r.data.order.sections);
+    assert.match(agreement, /\$925\.00 \(due upon signing\)/);
+    assert.match(agreement, /\$425\.00 per month/);
+    assert.match(agreement, /three \(3\) months/);
+    assert.match(agreement, /Website design/);
+    assert.ok(!/[–—]/.test(agreement));
+    r = await t.call('POST', `/api/public/wo/${tok}/sign`, { name: 'Ana Ruiz', agree: false });
+    assert.equal(r.status, 400);
+    r = await t.call('POST', `/api/public/wo/${tok}/sign`, { name: 'Ana Ruiz', agree: true }, { 'cf-connecting-ip': '203.0.113.9' });
+    assert.equal(r.data.order.status, 'signed');
+    assert.match(r.data.order.pay_url, /buy\.stripe\.com/);
+  } finally { globalThis.fetch = realFetch; }
+  // The signing page is public; the owner signs back in for the rest.
+  r = await t.call('POST', '/api/auth/login', { email: 'v@rightwaygrowth.com', password: 'correct horse battery' });
+  assert.equal(r.status, 200);
 
   // Stripe webhook: bad signature refused, good one links everything.
-  const event = { id: 'evt_1', type: 'checkout.session.completed', data: { object: { client_reference_id: lead.id, amount_total: 89800, customer: 'cus_1', subscription: 'sub_1', customer_details: { email: 'ana@coastal.com' } } } };
+  const event = { id: 'evt_1', type: 'checkout.session.completed', data: { object: { client_reference_id: lead.id, amount_total: 92500, customer: 'cus_1', subscription: 'sub_1', customer_details: { email: 'ana@coastal.com' } } } };
   const body = JSON.stringify(event);
   r = await t.call('POST', '/api/stripe/webhook', body, { 'stripe-signature': 't=1,v1=bad', 'content-type': 'application/json' });
   assert.equal(r.status, 400);
@@ -166,15 +198,20 @@ test('work order: create, public view, sign, then Stripe payment creates the cli
   assert.equal(r.data.result, 'linked');
   r = await t.call('POST', '/api/stripe/webhook', body, { 'stripe-signature': await stripeSig(body, 'whsec_test'), 'content-type': 'application/json' });
   assert.equal(r.data.result, 'duplicate');
-  await owner(t).catch(() => {});
-  await t.call('POST', '/api/auth/login', { email: 'v@rightwaygrowth.com', password: 'correct horse battery' });
   r = await t.call('GET', `/api/leads/${lead.id}`);
   assert.equal(r.data.lead.stage, 'won');
   assert.equal(r.data.orders[0].status, 'paid');
   r = await t.call('GET', `/api/clients/${r.data.lead.client_id}`);
-  assert.equal(r.data.client.plan, 'growth');
+  // The client gets exactly the quoted scope, and what they pay is what the owner typed.
   assert.equal(r.data.client.billing_status, 'active');
-  assert.equal(r.data.client.mrr_cents, 44900);
+  assert.equal(r.data.client.mrr_cents, 42500);
+  assert.deepEqual(r.data.client.plan_info.scope.map((x) => [x.id, x.qty]), [['profile', 1], ['posts', 6], ['pages', 3], ['report', 1]]);
+  assert.equal(r.data.client.plan_info.custom, true);
+  const month = await t.call('GET', `/api/clients/${r.data.client.id}/tasks?month=${new Date().toISOString().slice(0, 7)}`);
+  const titles = (month.data.tasks || []).map((x) => x.title);
+  assert.equal(titles.filter((x) => /^Google profile post/.test(x)).length, 6);
+  assert.equal(titles.filter((x) => /^New local service or city page/.test(x)).length, 3);
+  assert.ok(!titles.some((x) => /Local link|Content piece/.test(x)), 'services not in the scope make no tasks');
 
   // Subscription canceled later
   const cancel = { id: 'evt_2', type: 'customer.subscription.deleted', data: { object: { id: 'sub_1', customer: 'cus_1', status: 'canceled', items: { data: [] } } } };

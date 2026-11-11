@@ -5,7 +5,7 @@ import { HttpError, json } from './util.js';
 import { all, first, run, newId, token, now } from './db.js';
 import { requireStaff, requireClientAccess } from './auth.js';
 import { route } from './router.js';
-import { PLANS, monthKey } from './plans.js';
+import { monthKey, workloadOf } from './plans.js';
 import { canEmail, sendEmail } from './email.js';
 import { ladder, bands } from '../public/js/analysis.js';
 import { callStats } from './calltrack.js';
@@ -115,11 +115,9 @@ export async function buildReport(env, client, month) {
   const done = tasks.filter((t) => t.status === 'done');
   const byKind = new Map();
   for (const t of done) byKind.set(t.kind, (byKind.get(t.kind) || 0) + 1);
-  const plan = PLANS[client.plan] || null;
-
   return {
     v: 1, month, monthLabel: monthLabel(month), at: now(),
-    client: { name: client.name, plan: client.plan, planName: plan?.name || client.plan, city: (String(client.address || '').split(',').slice(-2, -1)[0] || '').trim() },
+    client: { name: client.name, city: (String(client.address || '').split(',').slice(-2, -1)[0] || '').trim() },
     keywords,
     reviews: {
       rating: leadData?.target?.rating ?? null, count: leadData?.target?.reviews ?? null,
@@ -142,7 +140,7 @@ export async function buildReport(env, client, month) {
     calls,
     links,
     reputation,
-    next: plan ? plan.monthly.map(([, title, n]) => (n > 1 ? `${n} x ${title}` : title)) : [],
+    next: workloadOf(client).monthly.map(([, title, n]) => (n > 1 ? `${n} x ${title}` : title)),
   };
 }
 

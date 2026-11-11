@@ -1786,3 +1786,11 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .sch-b.short { padding: 0 6px; align-content: center; }
 .sch-b.short b { font-size: 11px; }
 .sch-b small.g { font-weight: 700; color: var(--ink); opacity: 1; }
+
+/* Scope of work (no packages): service rows with an amount, and the delivery time line */
+.scope-pick { display: grid; gap: 4px; margin-top: 4px; }
+.scope-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 14px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card, #fff); }
+.scope-row input[type=checkbox] { width: auto; min-height: 0; margin-top: 3px; flex: none; }
+.scope-qty { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.scope-qty input { width: 64px; min-height: 0; padding: 4px 6px; }
+.scope-fx { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: var(--mint-soft, #EAF8F2); }

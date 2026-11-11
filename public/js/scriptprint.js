@@ -9,7 +9,7 @@ export const PRINT_VARS = {
   price: B('monthly'), setup: B('buildout'), today_total: B('buildout + monthly'), city_suffix: ` in ${B('city')}`, pain: B('their pain'),
   scan_spread: `${B('spread line from call prep')} Same search, a couple of blocks apart, and you go from the first page to nowhere.`,
   services_list: B('the services on their quote'),
-  price_anchor: "If we did everything we offer, every service and every area, it would be $599 to build out and $599 a month. (Pause.) But based on what you told me, you don't need all of that. I'm not going to sell you things you don't need. That's the whole reason I started this company.",
+  price_anchor: `If we did everything we offer, every service and every area, it would be ${B('your top buildout')} to build out and ${B('your top monthly')} a month. (Pause.) But based on what you told me, you don't need all of that. I'm not going to sell you things you don't need. That's the whole reason I started this company.`,
   frame_scan: `the clarity audit we ran on ${B('business')}`,
   scan_meaning: `And honestly, ${B('first name')}, this is ${B('lower than I expected / better than most, but there are still holes')}. Usually what this tells me is that people who already know your name can find you, but people searching for the service, the ones who have never heard of you, are finding someone else.`,
   drop_offer: `OK, then let's right size it. I'd rather start you on what fits than not start you at all. We start with the core: your Google profile buildout, the listing cleanup, weekly posts, reviews and the monthly map. That's ${B('next lower price')} to build out and ${B('next lower price')} a month. We add the rest when the calls start coming. Does that work better?`,

@@ -1,5 +1,5 @@
 // CRM screens: pipeline board, lead details, CSV import, power dialer, settings.
-import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, PLAN_NAMES, PLAN_PRICE } from './core.js';
+import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal } from './core.js';
 import { staffShell, settingsTabs } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
 import { textModal } from './texts.js';
@@ -9,8 +9,8 @@ import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { placeCall, startPhone, onPhoneState } from './phone.js';
 import { filterLeads } from '/js/leadfilter.js';
-import { quoteFor, recommendPlan } from '/js/leadintel.js';
-import { SERVICE_LIST } from '/js/plancopy.js';
+import { quoteFor } from '/js/leadintel.js';
+import { SCOPE, effort, hoursOf } from '/js/scope.js';
 import { can, canRunCalls } from '/js/jobs.js';
 import { PHONE_TYPE_LABEL } from '/js/scrub.js';
 
@@ -381,7 +381,6 @@ export async function leadModal(id, onChange) {
   try { [data] = await Promise.all([api(`/api/leads/${id}`), refreshDispos()]); } catch (e) { m.el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const l = data.lead;
   const Q = quoteFor(l, data.intel, l.quote);
-  const REC = recommendPlan(l, data.intel).plan;
   const closer = can(window.__rwUser, 'close'); // quotes, work orders, payment links and the presentation
   const soon = l.stage === 'audit_booked' || Boolean(l.meet_at && l.meet_at > Date.now() - 3 * 3600e3 && l.meet_at < Date.now() + 3 * 3600e3);
   m.el.innerHTML = `
@@ -412,14 +411,26 @@ export async function leadModal(id, onChange) {
         <div class="row" style="margin-top:10px"><button class="btn btn-ghost btn-sm" id="lnotebtn">Save note only</button>
           <label class="field" style="flex:1 1 160px"><select id="lstage">${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}"${k === l.stage ? ' selected' : ''}>${n}</option>`).join('')}</select></label></div>
         `, true)}
-        ${closer ? fold('lm-close', 'Close the deal', `
-        <p class="small muted" style="margin:0 0 8px">Pick what they need and set the price from discovery. The client sees the services and the price, never the plan name.</p>
-        <div class="field"><span>Services they need</span><div class="svc-pick">${SERVICE_LIST.map((s) => `<label class="row small" style="gap:6px;align-items:flex-start"><input type="checkbox" value="${esc(s.id)}"${Q.services.some((x) => x.id === s.id) ? ' checked' : ''}> <span>${esc(s.name)}</span></label>`).join('')}</div></div>
+        ${closer ? fold('lm-close', 'Scope and price', `
+        <p class="small muted" style="margin:0 0 8px">Built from the research. Switch services on or off, set how much of each a month, then type your price. The client sees the services and the price, never a package.</p>
+        <div class="field"><span>Scope of work</span><div class="scope-pick">${Q.all.map((s) => {
+          const picked = Q.services.find((x) => x.id === s.id);
+          const c = SCOPE[s.id] || {};
+          return `<div class="scope-row" data-id="${esc(s.id)}"><label class="row small" style="gap:6px;align-items:flex-start;flex:1 1 220px;flex-wrap:nowrap"><input type="checkbox" value="${esc(s.id)}"${picked ? ' checked' : ''}> <span><b>${esc(s.name)}</b>${s.why ? `<br><span class="muted">${esc(s.why)}</span>` : ''}</span></label>
+            ${c.unit ? `<label class="scope-qty small"><input type="number" data-qty="${esc(s.id)}" min="${c.min}" max="${c.max}" value="${picked?.qty ?? s.qty}" inputmode="numeric"> <span class="muted">${esc(c.unit)}</span></label>` : ''}</div>`;
+        }).join('')}</div></div>
+        <div class="scope-fx small" id="lfx"></div>
         <div class="row" style="margin-top:8px;gap:8px">
-          <label class="field" style="flex:1 1 110px"><span>Buildout $</span><input id="lsetup" inputmode="decimal" value="${esc(Q.setup)}"></label>
-          <label class="field" style="flex:1 1 110px"><span>Monthly $</span><input id="lmonthly" inputmode="decimal" value="${esc(Q.monthly)}"></label>
-          <label class="field" style="flex:1 1 170px"><span>Internal plan (monthly work)</span><select id="lplan">${Object.entries(PLAN_NAMES).map(([k, n]) => `<option value="${k}"${Q.plan === k ? ' selected' : ''}>${n}${REC === k ? ' (suggested)' : ''}</option>`).join('')}</select></label>
+          <label class="field" style="flex:1 1 110px"><span>Buildout $</span><input id="lsetup" inputmode="decimal" value="${esc(Q.setup ?? '')}" placeholder="You set it"></label>
+          <label class="field" style="flex:1 1 110px"><span>Monthly $</span><input id="lmonthly" inputmode="decimal" value="${esc(Q.monthly ?? '')}" placeholder="You set it"></label>
         </div>
+        <details style="margin-top:8px"><summary class="small" style="cursor:pointer;font-weight:600">Price talk numbers (optional, for the script)</summary>
+          <p class="small muted" style="margin:6px 0">The script says your top number first ("everything we offer"), then the lower one if they push back. Leave blank and it shows [brackets] for you to say live.</p>
+          <div class="row" style="gap:8px">
+            <label class="field" style="flex:1 1 90px"><span>Top buildout $</span><input id="lasetup" inputmode="decimal" value="${esc(Q.anchor?.setup ?? '')}"></label>
+            <label class="field" style="flex:1 1 90px"><span>Top monthly $</span><input id="lamonthly" inputmode="decimal" value="${esc(Q.anchor?.monthly ?? '')}"></label>
+            <label class="field" style="flex:1 1 90px"><span>Lower buildout $</span><input id="ldsetup" inputmode="decimal" value="${esc(Q.drop?.setup ?? '')}"></label>
+            <label class="field" style="flex:1 1 90px"><span>Lower monthly $</span><input id="ldmonthly" inputmode="decimal" value="${esc(Q.drop?.monthly ?? '')}"></label></div></details>
         <div class="row" style="margin-top:10px">
           <button class="btn btn-ghost btn-sm" id="lquote">Save quote</button>
           <button class="btn btn-primary btn-sm" id="lwo">Send work order</button>
@@ -434,7 +445,7 @@ export async function leadModal(id, onChange) {
           <label class="field" style="margin-top:8px"><span>What the website includes (one per line)</span><textarea id="wscope" rows="4" placeholder="5 page website: home, about, services, service area, contact&#10;Mobile friendly design&#10;Contact form and tap to call&#10;Basic on-page setup for Google"></textarea></label>
           <button class="btn btn-primary btn-sm" id="lwweb" style="margin-top:8px">Send website work order</button></details>`, soon) : '<p class="small muted" style="margin-top:22px">The closer who runs the audit handles the quote, work order and payment.</p>'}
         ${data.orders.length ? fold('lm-wo', 'Work orders', `<ul class="list">${data.orders.map((o) => `<li class="item"><span class="badge ${o.status === 'paid' ? '' : o.status === 'signed' ? 'warn' : 'gray'}">${esc(o.status)}</span>
-          <div><div class="item-title">${o.kind === 'website' ? 'Website' : 'Local marketing'} · ${esc(fmt.money((o.setup_cents || 0) / 100))} + ${esc(fmt.money((o.monthly_cents || 0) / 100))}/mo${o.kind === 'website' ? '' : ` <span class="badge gray">${esc(PLAN_NAMES[o.plan] || o.plan)}</span>`}</div><div class="item-sub">${o.signed_name ? `Signed by ${esc(o.signed_name)} ${esc(fmt.ago(o.signed_at))}` : `Sent ${esc(fmt.ago(o.created_at))}`}</div></div>
+          <div><div class="item-title">${o.kind === 'website' ? 'Website' : 'Local marketing'} · ${esc(fmt.money((o.setup_cents || 0) / 100))} + ${esc(fmt.money((o.monthly_cents || 0) / 100))}/mo</div><div class="item-sub">${o.signed_name ? `Signed by ${esc(o.signed_name)} ${esc(fmt.ago(o.signed_at))}` : `Sent ${esc(fmt.ago(o.created_at))}`}</div></div>
           <button class="btn btn-ghost btn-sm" data-wo="${esc(o.token)}">Copy link</button></li>`).join('')}</ul>`, false, data.orders.length) : ''}
       </div>
       <div>
@@ -512,9 +523,23 @@ export async function leadModal(id, onChange) {
     $('#cpl', out).addEventListener('click', () => copy(url, 'Link copied'));
   };
   // The quote: services picked, buildout, monthly, internal plan. Saved on the lead; the presentation and work order use it.
+  const readScope = () => $$('.scope-row', m.el).filter((r) => $('input[type=checkbox]', r).checked).map((r) => ({ id: r.dataset.id, qty: $('[data-qty]', r)?.value }));
+  const val = (id) => $(`#${id}`, m.el)?.value ?? '';
   const saveQuote = () => api(`/api/leads/${l.id}/quote`, { method: 'PUT', body: {
-    plan: $('#lplan', m.el).value, setup: $('#lsetup', m.el).value, monthly: $('#lmonthly', m.el).value,
-    services: $$('.svc-pick input:checked', m.el).map((x) => x.value) } });
+    setup: val('lsetup'), monthly: val('lmonthly'), services: readScope(),
+    anchor: { setup: val('lasetup'), monthly: val('lamonthly') }, drop: { setup: val('ldsetup'), monthly: val('ldmonthly') } } });
+  // Delivery time for what is switched on, from the task guides, and what the price works out to per hour of that work.
+  const fx = () => {
+    const box = $('#lfx', m.el);
+    if (!box) return;
+    const sc = readScope().map((x) => ({ id: x.id, qty: Number(x.qty) || undefined }));
+    const e = effort(sc);
+    const mo = Number(String(val('lmonthly')).replace(/[$,\s]/g, ''));
+    box.innerHTML = `Delivery time: about <b>${hoursOf(e.monthly)} h a month</b>, plus about ${hoursOf(e.setup)} h to set up.${mo > 0 && e.monthly ? ` At ${esc(fmt.money(mo))} a month that is <b>${esc(fmt.money(Math.round(mo / (e.monthly / 60))))} an hour</b> of delivery.` : ' Type your monthly to see what it pays per hour.'}`;
+  };
+  $('.scope-pick', m.el)?.addEventListener('input', fx);
+  $('#lmonthly', m.el)?.addEventListener('input', fx);
+  fx();
   $('#lquote', m.el)?.addEventListener('click', async (e) => { busy(e.target, true); try { await saveQuote(); toast('Quote saved'); changed = true; } catch (err) { toast(err.message, true); } finally { busy(e.target, false); } });
   $('#lwweb', m.el)?.addEventListener('click', async (e) => {
     busy(e.target, true);
@@ -528,23 +553,22 @@ export async function leadModal(id, onChange) {
     busy(e.target, true);
     try {
       await saveQuote();
-      const r = await api(`/api/leads/${l.id}/work-order`, { method: 'POST', body: { kind: 'seo', plan: $('#lplan', m.el).value, setup: $('#lsetup', m.el).value, monthly: $('#lmonthly', m.el).value } });
+      const r = await api(`/api/leads/${l.id}/work-order`, { method: 'POST', body: { kind: 'seo', setup: val('lsetup'), monthly: val('lmonthly') } });
       share(r.url, r.hasPayLink ? 'Work order link (sign, then pay)' : 'Work order link. No payment link yet: run Set up Stripe in Settings, then send a payment link.',
         `Hi ${l.contact_name ? l.contact_name.split(' ')[0] : ''}, here is your Rightway Growth work order. Review it, sign, and you can pay right after: ${r.url}`);
     } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
   });
   $('#lpay', m.el)?.addEventListener('click', async (e) => {
     busy(e.target, true);
-    const plan = $('#lplan', m.el).value;
     try {
       await saveQuote();
-      const r = await api(`/api/leads/${l.id}/payment-link`, { method: 'POST', body: { plan, setup: $('#lsetup', m.el).value, monthly: $('#lmonthly', m.el).value } });
-      share(r.link, 'Stripe payment link', `Here is the secure payment link to start your Rightway Growth plan: ${r.link}`);
+      const r = await api(`/api/leads/${l.id}/payment-link`, { method: 'POST', body: { setup: val('lsetup'), monthly: val('lmonthly') } });
+      share(r.link, 'Stripe payment link', `Here is the secure payment link to get started with Rightway Growth: ${r.link}`);
     } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
   });
   $('#lwon', m.el)?.addEventListener('click', async (e) => {
     busy(e.target, true);
-    try { const r = await api(`/api/leads/${l.id}/convert`, { method: 'POST', body: { plan: $('#lplan', m.el).value } }); m.close(); location.hash = `#/client/${r.clientId}/overview`; }
+    try { await saveQuote().catch(() => null); const r = await api(`/api/leads/${l.id}/convert`, { method: 'POST', body: {} }); m.close(); location.hash = `#/client/${r.clientId}/overview`; }
     catch (err) { toast(err.message, true); busy(e.target, false); }
   });
   $$('[data-wo]', m.el).forEach((b) => b.addEventListener('click', () => copy(`${location.origin}/sign.html#${b.dataset.wo}`, 'Work order link copied')));
@@ -898,13 +922,6 @@ export async function settingsPage(app, user) {
     <div class="page-head"><h1>Settings</h1></div>${settingsTabs('general', user)}
     ${isAdmin ? '<div class="card" id="setbal"></div><div class="card" id="setrs"></div>' : ''}
     <div id="stripesetup"></div>
-    <div class="card"><div class="card-head"><h2>Stripe payment links</h2>${pill(c.stripe)}</div>
-      <p class="muted">The Stripe setup above fills these in for you. You can also paste each plan's payment link from Stripe (Payment Links, Copy link) to use your own. Work orders and the "Payment link" button use these, tagged with the lead, so payment marks the deal won and creates the client automatically.</p>
-      <form id="plinks" class="form-grid">
-        ${[['leader', 'Market Leader ($1,198 first charge)'], ['authority', 'Authority ($998)'], ['growth', 'Growth ($898)'], ['starter', 'Starter ($798)']]
-          .map(([k, n]) => `<label class="field"><span>${n}</span><input name="${k}" value="${esc(s.links[k])}" placeholder="https://buy.stripe.com/..."${user.role === 'admin' ? '' : ' disabled'}></label>`).join('')}
-        ${user.role === 'admin' ? '<div class="span-all row end"><button class="btn btn-primary" type="submit">Save links</button></div>' : ''}
-      </form></div>
     <div class="card"><div class="card-head"><h2>Connections</h2></div>
       <ul class="list">
         ${[['DataForSEO (scans and lead research)', c.dataforseo, 'DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD'], ['Google Calendar and Meet', c.google, 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET'], ['Stripe (billing status)', c.stripe, 'STRIPE_SECRET_KEY (restricted key)'],
@@ -939,7 +956,7 @@ export async function settingsPage(app, user) {
     <div class="card" id="teamcal"></div>
     <div class="card"><div class="card-head"><h2>Call script</h2></div>
       <p class="muted">The dialer and the presentation fill these in for each lead. One line per thing to say. Start a line with "Or:" for an alternative, and wrap coaching notes in (parentheses).</p>
-      <p class="small mono">{first} {rep} {my_number} {business} {city} {industry} {keyword} {scan_line} {hook_impact} {opener_reason} {vm_scan} {rank} {top_name} {top_name_or_them} {top_reviews} {top3_of_points} {top10_of_points} {reviews} {rating} {plan} {plan_why} {price} {setup} {starter_price} {ticket} {breakeven} {breakeven_jobs} {problems} {slot1} {slot2} {email_or_phone} {email_or_ask}</p>
+      <p class="small mono">{first} {rep} {my_number} {business} {city} {industry} {keyword} {scan_line} {hook_impact} {opener_reason} {vm_scan} {rank} {top_name} {top_name_or_them} {top_reviews} {top3_of_points} {top10_of_points} {reviews} {rating} {price} {setup} {today_total} {services_list} {price_anchor} {drop_offer} {ticket} {breakeven} {breakeven_jobs} {problems} {slot1} {slot2} {email_or_phone} {email_or_ask}</p>
       <form id="scf" class="form-grid" style="grid-template-columns:1fr">
         ${SCRIPT_KEYS.map(([k, n]) => `<label class="field"><span>${n}</span><textarea name="${k}" rows="${Math.min(9, Math.max(3, String(sc[k] || '').split('\n').length + 1))}"${isAdmin ? '' : ' disabled'}>${esc(Array.isArray(sc[k]) ? sc[k].join('\n') : sc[k])}</textarea></label>`).join('')}
         <label class="field"><span>Objections (one per block: the objection on the first line, the answer below, blank line between)</span><textarea name="objections" rows="14"${isAdmin ? '' : ' disabled'}>${esc(obs.map(([q, a]) => `${q}\n${a}`).join('\n\n'))}</textarea></label>
@@ -1002,10 +1019,6 @@ export async function settingsPage(app, user) {
   $('#resf', view)?.addEventListener('submit', async (e) => {
     e.preventDefault();
     try { await api('/api/settings', { method: 'PUT', body: { research_radius: e.target.research_radius.value } }); toast('Saved'); } catch (err) { toast(err.message, true); }
-  });
-  $('#plinks', view).addEventListener('submit', async (e) => {
-    e.preventDefault();
-    try { await api('/api/settings', { method: 'PUT', body: { links: Object.fromEntries(new FormData(e.target).entries()) } }); toast('Links saved'); } catch (err) { toast(err.message, true); }
   });
   $('#myphone', view).addEventListener('submit', async (e) => {
     e.preventDefault();

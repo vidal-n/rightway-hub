@@ -6,8 +6,8 @@ import { HttpError, json } from './util.js';
 import { all, first } from './db.js';
 import { requireStaff } from './auth.js';
 import { route } from './router.js';
-import { planOf, monthKey } from './plans.js';
-import { INCLUDES } from '../public/js/plancopy.js';
+import { workloadOf, monthKey } from './plans.js';
+import { scopeLine } from '../public/js/scope.js';
 import { guideFor } from '../public/js/guides.js';
 import { savedGuides } from './work.js';
 import { logClaude } from './costs.js';
@@ -44,10 +44,9 @@ export async function clientBrief(env, clientId, taskId) {
     savedGuides(env).catch(() => ({})),
   ]);
   const intake = parse(c.intake, {}) || {};
-  const plan = planOf(c.plan);
   const lines = [
     `CLIENT: ${c.name}`,
-    `Plan: ${plan.name}. Includes: ${(INCLUDES[c.plan] || []).join('; ')}`,
+    `Scope of work (no packages, tailored to this client): ${workloadOf(c).scope.map(scopeLine).join('; ')}`,
     c.category && `Google category: ${c.category}`,
     c.services && `Services: ${cut(c.services, 500)}`,
     c.cities && `Cities served: ${cut(c.cities, 300)}`,
@@ -119,7 +118,7 @@ route('POST', '/api/assistant', async ({ env, user, body }) => {
       all(env, "SELECT name, plan, mrr_cents, billing_status FROM clients WHERE status = 'active' AND (sample IS NULL OR sample = 0) AND parent_id IS NULL LIMIT 40").catch(() => []),
       all(env, 'SELECT business, meet_at FROM leads WHERE meet_at > ? ORDER BY meet_at LIMIT 10', Date.now()).catch(() => []),
     ]);
-    system += `\n\nThe owner is asking from the Hub. Snapshot:\nPipeline by stage: ${stages.map((x) => `${x.stage} ${x.n}`).join(', ') || 'empty'}.\nLast 7 days of calls: ${calls?.dials || 0} dials, ${calls?.talks || 0} conversations, ${calls?.booked || 0} booked.\nActive clients (${clients.length}): ${clients.map((c) => `${c.name} (${c.plan}${c.mrr_cents ? `, $${Math.round(c.mrr_cents / 100)}/mo` : ''})`).join('; ') || 'none yet'}.\nUpcoming audits: ${booked.map((x) => `${x.business} ${new Date(x.meet_at).toISOString().slice(0, 16)}`).join('; ') || 'none'}.\nHelp with sales, scripts, objections, pricing decisions, fulfillment, hiring and running the agency. Be blunt and concise.`;
+    system += `\n\nThe owner is asking from the Hub. Snapshot:\nPipeline by stage: ${stages.map((x) => `${x.stage} ${x.n}`).join(', ') || 'empty'}.\nLast 7 days of calls: ${calls?.dials || 0} dials, ${calls?.talks || 0} conversations, ${calls?.booked || 0} booked.\nActive clients (${clients.length}): ${clients.map((c) => `${c.name}${c.mrr_cents ? ` ($${Math.round(c.mrr_cents / 100)}/mo)` : ''}`).join('; ') || 'none yet'}.\nUpcoming audits: ${booked.map((x) => `${x.business} ${new Date(x.meet_at).toISOString().slice(0, 16)}`).join('; ') || 'none'}.\nHelp with sales, scripts, objections, pricing decisions, fulfillment, hiring and running the agency. Be blunt and concise.`;
   } else {
     system += '\n\nNo client is selected. Answer for the agency in general.';
   }

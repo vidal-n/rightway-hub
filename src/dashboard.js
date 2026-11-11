@@ -2,7 +2,7 @@
 import { json } from './util.js';
 import { all, first } from './db.js';
 import { requireStaff } from './auth.js';
-import { MONTHLY_CENTS, monthKey } from './plans.js';
+import { monthKey } from './plans.js';
 import { inCallingHours, apptScope } from './crm.js';
 import { route } from './router.js';
 
@@ -36,7 +36,7 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
       WHERE a.at >= ? ORDER BY a.at DESC LIMIT 10`, week),
   ]);
   const real = clients.filter((c) => !c.sample && !c.parent_id); // locations bill through the main business
-  const mrr = real.reduce((s, c) => s + (c.billing_status && c.mrr_cents != null ? c.mrr_cents : MONTHLY_CENTS[c.plan] || 0), 0) / 100;
+  const mrr = real.reduce((s, c) => s + (c.mrr_cents || 0), 0) / 100;
   const byStage = Object.fromEntries(stages.map((r) => [r.stage, r.n]));
   return json({
     me: { dials: mine?.dials || 0, talks: mine?.talks || 0, booked: mine?.booked || 0 },

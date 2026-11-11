@@ -1,6 +1,7 @@
 import { parseListings } from './listings.js';
-import { SERVICE_LIST, PLAN_ORDER } from './plancopy.js';
-// Lead intelligence: scoring, problems found, plan recommendation, call script, dedupe keys.
+import { SERVICE_LIST } from './plancopy.js';
+import { SCOPE, unitOf, hasQty, clampQty, tierOf, dollars } from './scope.js';
+// Lead intelligence: scoring, problems found, the scope of work built from the research, call script, dedupe keys.
 // Pure functions with no DOM or network, shared by the Worker, the Hub screens, and the tests.
 
 // ---------- industries ----------
@@ -263,7 +264,8 @@ export function scoreLead(lead = {}, intel = null) {
   return { score, grade, reasons };
 }
 
-// ---------- plan ----------
+// ---------- workload tier ----------
+// Internal only (never shown, never priced): how heavy this lead's work looks, which sets the default tabs and guide steps.
 export function recommendPlan(lead = {}, intel = null) {
   const info = industryInfo(lead.industry, intel?.listing?.category || lead.category);
   const probs = findProblems(intel, lead);
@@ -284,45 +286,87 @@ export function recommendPlan(lead = {}, intel = null) {
 }
 
 // ---------- services they need ----------
-// What the client actually needs, from the research and the internal plan, in their words. Plans never reach the client.
-export function servicesFor(lead = {}, intel = null, plan = null) {
-  const p = plan || recommendPlan(lead, intel).plan;
-  const rank = PLAN_ORDER.indexOf(p);
+// No packages. The scope is built from the research: the core services always, the rest only where the research shows a gap,
+// and how much of each a month (pages, links, content, website fixes) from how far they are from the first page.
+// Everything is in the owner's hands: any service can be switched on or off and any amount changed. The price is typed, never defaulted.
+const SITE_KEYS = ['no_website', 'no_https', 'weak_title', 'no_schema', 'no_click_to_call', 'site_down', 'slow_site'];
+
+function describeServices(lead = {}, intel = null) {
+  const info = industryInfo(lead.industry, intel?.listing?.category || lead.category);
   const probs = findProblems(intel, lead);
+  const has = (...keys) => probs.some((p) => keys.includes(p.key));
+  const high = probs.filter((p) => p.severity === 'high').length;
   const g = intel?.grid;
   const t10 = g ? top10Of(g) : null;
-  return SERVICE_LIST
-    .filter((s) => s.core || PLAN_ORDER.indexOf(s.min) <= rank)
-    .filter((s) => s.id !== 'locations' || p === 'leader')
-    .map((s) => {
-      const hit = probs.find((x) => s.fixes.includes(x.key));
-      let why = hit ? hit.title : '';
-      if ((s.id === 'pages' || s.id === 'links' || s.id === 'cleanup') && g) {
-        why = t10 >= g.points * 0.8 ? `First page in ${t10} of ${g.points} spots today. This moves you up toward the top 3 and keeps you there.`
-          : `First page (top 10) in ${t10} of ${g.points} spots today. This is what pushes you onto the first page in more of your area.`;
-      }
-      if (s.id === 'report') why = g ? `Your starting point: first page in ${t10} of ${g.points} spots. You watch it climb.` : 'You see the climb month by month.';
-      return { id: s.id, name: s.name, what: s.what, why, problem: Boolean(hit) };
-    })
-    .sort((a, b) => Number(b.problem) - Number(a.problem));
+  const weak = g && g.points ? 1 - t10 / g.points : null; // share of nearby spots that are not on the first page
+  const topReviews = intel?.competitors?.[0]?.reviews || 0;
+  const strong = topReviews > 150;
+  const multi = /locations|multi/i.test(lead.notes || '') || (lead.locations || 0) > 1;
+  const bigJobs = info.tier === 'high' && (strong || high >= 3);
+  const siteIssues = probs.filter((p) => SITE_KEYS.includes(p.key)).length;
+  const researched = Boolean(intel);
+  const on = {
+    pages: !researched || weak == null || weak > 0.2 || has('not_top10', 'grid_weak', 'no_website'),
+    links: !researched || strong || (weak ?? 1) > 0.2 || has('not_top10', 'not_top3', 'grid_weak'),
+    competitors: !researched || strong || has('not_top3', 'not_top10', 'review_gap'),
+    content: researched && (bigJobs || has('not_top3')),
+    tracking: researched && bigJobs,
+    reputation: researched && (bigJobs || has('low_rating')),
+    locations: multi,
+  };
+  const qty = {
+    posts: 4,
+    pages: weak == null ? 2 : weak > 0.6 ? 4 : weak > 0.3 ? 3 : 2,
+    links: strong || (weak ?? 0) > 0.6 ? 6 : (weak ?? 0) > 0.3 || topReviews > 60 ? 4 : 3,
+    content: bigJobs && strong ? 4 : 2,
+    onpage: siteIssues >= 3 ? 3 : siteIssues === 2 ? 2 : 1,
+  };
+  return SERVICE_LIST.map((s) => {
+    const hit = probs.find((x) => s.fixes.includes(x.key));
+    let why = hit ? hit.title : '';
+    if ((s.id === 'pages' || s.id === 'links' || s.id === 'cleanup') && g) {
+      why = t10 >= g.points * 0.8 ? `First page in ${t10} of ${g.points} spots today. This moves you up toward the top 3 and keeps you there.`
+        : `First page (top 10) in ${t10} of ${g.points} spots today. This is what pushes you onto the first page in more of your area.`;
+    }
+    if (s.id === 'report') why = g ? `Your starting point: first page in ${t10} of ${g.points} spots. You watch it climb.` : 'You see the climb month by month.';
+    return {
+      id: s.id, name: s.name, what: s.what, why, problem: Boolean(hit),
+      rec: s.core || on[s.id] === true, qty: qty[s.id] || SCOPE[s.id]?.def || 1, unit: unitOf(s.id),
+    };
+  });
 }
 
-// A deal's quote: the services picked, the buildout and monthly, and the internal plan (task load). Defaults from research.
+// The services the research recommends, problems first. Used for the default scope.
+export function servicesFor(lead = {}, intel = null) {
+  return describeServices(lead, intel).filter((s) => s.rec).sort((a, b) => Number(b.problem) - Number(a.problem));
+}
+
+// Every service we offer with the research's suggested amount, for the pickers.
+export const allServicesFor = (lead = {}, intel = null) => describeServices(lead, intel);
+
+// A deal's quote: the services picked with amounts, and the buildout and monthly the owner typed. Prices stay blank until typed.
+// anchor = the top number said first, drop = the lower number if they push back (both optional, owner's own).
 export function quoteFor(lead = {}, intel = null, saved = null) {
   let q = saved;
   if (typeof q === 'string') { try { q = JSON.parse(q); } catch { q = null; } }
-  const plan = PLAN_ORDER.includes(q?.plan) ? q.plan : (PLAN_ORDER.includes(lead.plan) ? lead.plan : recommendPlan(lead, intel).plan);
-  const all = servicesFor(lead, intel, 'leader');
-  const ids = Array.isArray(q?.services) && q.services.length ? q.services : servicesFor(lead, intel, plan).map((s) => s.id);
-  const [price, setup] = PRICES[plan];
+  const all = describeServices(lead, intel);
+  const ids = Array.isArray(q?.services) && q.services.length ? q.services : all.filter((s) => s.rec).map((s) => s.id);
+  const services = all.filter((s) => ids.includes(s.id)).map((s) => ({ ...s, qty: hasQty(s.id) && q?.qty?.[s.id] != null ? clampQty(s.id, q.qty[s.id]) : s.qty }));
+  const pair = (o) => (o && (dollars(o.setup) != null || dollars(o.monthly) != null) ? { setup: dollars(o.setup), monthly: dollars(o.monthly) } : null);
   return {
-    plan,
-    setup: Number.isFinite(Number(q?.setup)) && q?.setup !== '' && q?.setup != null ? Number(q.setup) : setup,
-    monthly: Number.isFinite(Number(q?.monthly)) && q?.monthly !== '' && q?.monthly != null ? Number(q.monthly) : price,
-    services: all.filter((s) => ids.includes(s.id)),
+    plan: tierOf(services),
+    setup: dollars(q?.setup),
+    monthly: dollars(q?.monthly),
+    anchor: pair(q?.anchor),
+    drop: pair(q?.drop),
+    services,
+    all,
     saved: Boolean(q),
   };
 }
+
+// The scope as it would be saved: [{ id, qty }].
+export const scopeOfQuote = (Q) => (Q.services || []).map((s) => ({ id: s.id, qty: s.qty }));
 
 // ---------- call script ----------
 // One pitch, used on every call and in every meeting: the Google clarity call. Same frame cold or booked:
@@ -594,7 +638,7 @@ export const PLAYBOOK = [
   ['Slow down for the why', 'Classic tonality', 'When you explain why competitors are up there, slow down and lower your voice. It is the moment they stop thinking you are guessing.'],
   ['Tell them who you are', 'Rightway Growth', 'The story is true: you saw how agencies treat owners and built the opposite. Visible work, monthly map, month to month after three months. It answers "is this another scam?" before they ask.'],
   ['Trial close', 'Classic sales method', '"How do you feel about it? Do you think it would help you grow?" before any price. If they agree it helps, price is the only thing left.'],
-  ['No packages, drop close', 'Classic sales method', 'Plans are internal. Anchor at everything we offer ($599 + $599), then drop to only the services their discovery justifies, priced on the spot. It shows you are fitting the work to them. Drop again only with a reason, by trimming services.'],
+  ['No packages, drop close', 'Classic sales method', 'There are no packages. Every client gets a scope built from the research and a price you set. Anchor at everything we offer (your top number), then drop to only the services their discovery justifies, priced on the spot. It shows you are fitting the work to them. Drop again only with a reason, by trimming services.'],
   ['Make the price small', 'Zig Ziglar, Secrets of Closing the Sale', 'Compare the monthly to one job. "Two calls cover it" lands better than any discount.'],
   ['Fit, function, finance', 'Classic sales method', 'A no is almost always one of three. Rule out the first two out loud, and the real one is left.'],
   ['Listen, acknowledge, explore, respond', 'Jeb Blount, Objections', 'Never fight an objection. Agree it is fair, ask what is behind it, then answer the real one.'],
@@ -633,8 +677,6 @@ function nextSlots(at = Date.now()) {
 }
 
 const money = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
-const PRICES = { starter: [399, 399], growth: [449, 449], authority: [499, 499], leader: [599, 599] };
-const PLAN_LABEL = { starter: 'Starter', growth: 'Growth', authority: 'Authority', leader: 'Market Leader' };
 
 // The one sentence the whole pitch hangs on: what the scan found, in numbers.
 export function scanLine(lead = {}, intel = null) {
@@ -681,20 +723,19 @@ export function spreadLine(lead = {}, intel = null) {
 
 export function scriptVars(lead = {}, intel = null, ctx = {}) {
   const info = industryInfo(lead.industry, intel?.listing?.category || lead.category);
-  const rec = recommendPlan(lead, intel);
   const Q = ctx.quote || quoteFor(lead, intel, lead.quote);
-  const plan = ctx.plan || Q.plan || rec.plan;
-  const price = Number(Q.monthly) || PRICES[plan][0];
-  const setup = Number.isFinite(Number(Q.setup)) ? Number(Q.setup) : PRICES[plan][1];
+  // Prices are typed by the owner, never defaulted. Until they are, the script shows [brackets] to fill in out loud.
+  const price = Number(Q.monthly) > 0 ? Number(Q.monthly) : 0;
+  const setup = Q.setup != null && Number.isFinite(Number(Q.setup)) ? Number(Q.setup) : null;
   const top = intel?.competitors?.[0];
   const probs = findProblems(intel, lead);
   const slots = nextSlots(ctx.at);
   const ticket = ctx.ticket || info.ticket;
   const g = intel?.grid;
   const kw = keywordFor(lead, intel) || '';
-  const breakeven = Math.max(1, Math.ceil(price / Math.max(1, ticket)));
-  const tiers = [...new Set(PLAN_ORDER.map((k) => PRICES[k][0]))].sort((a, b) => b - a);
-  const dropPrice = tiers.find((x) => x < price) || null;
+  const breakeven = price ? Math.max(1, Math.ceil(price / Math.max(1, ticket))) : 1;
+  const anchor = Q.anchor || null;
+  const drop = Q.drop || null;
   const t10 = g ? top10Of(g) : 0;
   const first = (lead.contact_name || '').split(' ')[0] || '';
   const L = parseListings(lead.listings);
@@ -722,29 +763,24 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
     top10_of_points: g ? `${top10Of(g)} of ${g.points}` : 'only a few of the',
     reviews: intel?.listing?.reviews ?? lead.reviews ?? '',
     rating: intel?.listing?.rating ?? lead.rating ?? '',
-    plan: PLAN_LABEL[plan],
-    plan_why: rec.why.join(', ').toLowerCase(),
-    price: money(price),
-    setup: money(setup),
-    today_total: money(price + setup),
-    starter_price: money(PRICES.starter[0]),
-    growth_price: money(PRICES.growth[0]),
-    authority_price: money(PRICES.authority[0]),
-    leader_price: money(PRICES.leader[0]),
+    price: price ? money(price) : '[your monthly]',
+    setup: setup != null ? money(setup) : '[your buildout]',
+    today_total: price && setup != null ? money(price + setup) : '[buildout + first month]',
     city_suffix: lead.city ? ` in ${lead.city}` : '',
     pain: probs[0] ? probs[0].title.toLowerCase() : 'not showing up on Google',
     scan_spread: spreadLine(lead, intel),
     services_list: (Q.services || []).map((x) => x.name).join(', ') || 'your Google profile, your listings and steady monthly work',
-    price_anchor: price < PRICES.leader[0] ? `If we did everything we offer, every service and every area, it would be ${money(PRICES.leader[1])} to build out and ${money(PRICES.leader[0])} a month. (Pause.) But based on what you told me, you don't need all of that. I'm not going to sell you things you don't need. That's the whole reason I started this company.` : '',
+    price_anchor: anchor?.monthly && price && price >= anchor.monthly ? ''
+      : `If we did everything we offer, every service and every area, it would be ${anchor?.setup != null ? money(anchor.setup) : '[your top buildout]'} to build out and ${anchor?.monthly ? money(anchor.monthly) : '[your top monthly]'} a month. (Pause.) But based on what you told me, you don't need all of that. I'm not going to sell you things you don't need. That's the whole reason I started this company.`,
     frame_scan: intel?.found ? `the clarity scan we ran on ${lead.business || 'your business'}` : `what Google shows when customers look for ${lead.business || 'you'}`,
     scan_meaning: !g ? 'Most owners have never seen this. Let\'s find out together where you really land.'
       : `And honestly${first ? `, ${first}` : ''}, ${t10 === 0 ? 'this is a lot lower than I expected' : t10 < g.points / 2 ? 'this is lower than I expected' : 'this is better than most, but there are still holes'}. Usually what this tells me is that people who already know your name can find you, but people searching for the service, the ones who have never heard of you, are finding someone else.`,
-    drop_offer: !dropPrice
+    drop_offer: drop?.monthly && price && price <= drop.monthly
       ? `I hear you. This is already as lean as we go, and it's priced so about one job covers it. Let me ask you: what's one new customer worth to you over a whole year, with repeat work and referrals? (Let them answer.) So one customer pays for the whole year. Does it make sense to keep losing those to ${top?.title || 'the competition'}?`
-      : `OK, then let's right size it. I'd rather start you on what fits than not start you at all. We start with the core: your Google profile buildout, the listing cleanup, weekly posts, reviews and the monthly map. That's ${money(dropPrice)} to build out and ${money(dropPrice)} a month. We add the rest when the calls start coming. Does that work better?`,
+      : `OK, then let's right size it. I'd rather start you on what fits than not start you at all. We start with the core: your Google profile buildout, the listing cleanup, weekly posts, reviews and the monthly map. That's ${drop?.setup != null ? money(drop.setup) : '[your lower buildout]'} to build out and ${drop?.monthly ? money(drop.monthly) : '[your lower monthly]'} a month. We add the rest when the calls start coming. Does that work better?`,
     ticket: money(ticket),
     breakeven,
-    breakeven_jobs: `${breakeven} extra job${breakeven === 1 ? '' : 's'}`,
+    breakeven_jobs: price ? `${breakeven} extra job${breakeven === 1 ? '' : 's'}` : 'a job or two',
     scan_line: scanLine(lead, intel),
     scan_intro: intel?.found ? `Here's the clarity scan we ran on ${lead.business || 'your business'}.` : `Let me pull up Google and show you what a customer sees when they look for ${lead.business || 'you'}.`,
     // Only claim a scan when research actually ran.
@@ -806,8 +842,8 @@ export function buildScript(lead, intel, ctx = {}, custom = {}) {
 }
 
 // ---------- ROI ----------
-export function roi({ ticket, jobs, plan = 'growth', price: given }) {
-  const price = Number(given) > 0 ? Number(given) : (PRICES[plan] || PRICES.growth)[0];
+export function roi({ ticket, jobs, price: given }) {
+  const price = Number(given) > 0 ? Number(given) : 0;
   const monthly = Math.max(0, Number(ticket) || 0) * Math.max(0, Number(jobs) || 0);
-  return { monthly, yearly: monthly * 12, price, multiple: price ? monthly / price : 0, breakeven: Math.ceil(price / Math.max(1, Number(ticket) || 1)) };
+  return { monthly, yearly: monthly * 12, price, multiple: price ? monthly / price : 0, breakeven: price ? Math.ceil(price / Math.max(1, Number(ticket) || 1)) : 1 };
 }
