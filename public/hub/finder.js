@@ -40,6 +40,8 @@ export async function finderPage(app, user, jobId = '') {
 }
 
 // The step-by-step search form (dropdowns only, nothing to type but an optional keyword or ZIP), the list of searches, and the new businesses card.
+const COST_IC = (t) => `<span class="cost-ic" title="${esc(t)}" aria-label="${esc(t)}">$</span>`;
+const FREE_IC = '<span class="cost-ic free" title="No cost" aria-label="No cost">Free</span>';
 const STEP = (n, title, sub = '') => `<div class="fstep"><span class="fstep-n">${n}</span><div><h3>${title}</h3>${sub ? `<p class="small muted">${sub}</p>` : ''}</div></div>`;
 const stateNameOf = (c) => STATES.find((x) => x[0] === c)?.[1] || c;
 const chunkList = (arr, n) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
@@ -62,29 +64,33 @@ async function homePage(view) {
     ${d.free ? '<div class="card" style="border-color:#23B07E;margin-bottom:14px"><b>Free lead data mode is on.</b> Only OpenStreetMap searches run, nothing is spent. Turn it off in Settings, Lead data mode, to use Google Maps again.</div>' : ''}
     ${d.demo ? '<div class="card" style="border-color:#E8A33D;margin-bottom:14px">Demo mode: DataForSEO is not connected, so these are made up businesses. Add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Cloudflare for real ones.</div>' : ''}
     <div class="card" id="fnew">
-      ${STEP(1, 'Industries', 'Pick the industries you work with. Choose as many as you like. They run in groups of 10 per search.')}
+      ${STEP(1, `Industries ${COST_IC('Each industry is its own search in every place')}`, 'Pick the industries you work with. Choose as many as you like. They run in groups of 10 per search.')}
       <div id="findbox"></div>
       <label class="field" style="margin-top:10px"><span>Other keyword (optional)</span><input id="fextra" placeholder="e.g. pool cleaning"></label>
 
       ${STEP(2, 'Where', 'Pick states, then the cities in them. Each state brings its biggest cities, already ticked.')}
       <div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div id="fstatebox" style="flex:1 1 260px;min-width:0"></div>
-        <label class="field" style="flex:0 0 160px"><span>Cities per state</span><select id="ftop">${[3, 5, 10, 20, 50].map((n) => `<option value="${n}"${n === DEFAULT_TOP ? ' selected' : ''}>${n === 50 ? 'All' : `Top ${n}`}</option>`).join('')}</select></label>
+        <label class="field" style="flex:0 0 160px"><span>Cities per state ${COST_IC('Each city is searched for every industry, so more cities cost more')}</span><select id="ftop">${[3, 5, 10, 20, 50].map((n) => `<option value="${n}"${n === DEFAULT_TOP ? ' selected' : ''}>${n === 50 ? 'All' : `Top ${n}`}</option>`).join('')}</select></label>
       </div>
       <div id="fcitybox" style="margin-top:12px"></div>
       <label class="field" style="margin-top:12px"><span>ZIP codes (optional, comma separated)</span><input id="fzip" placeholder="33139, 33301"></label>
 
-      ${STEP(3, 'How to search', '')}
-      <div class="seg" id="fsrc">${SOURCES.map(([k, l]) => `<button type="button" data-src="${k}" class="${k === source ? 'is-on' : ''}"${k === 'google' && d.free ? ' disabled title="Free lead data mode is on"' : ''}>${esc(l)}</button>`).join('')}</div>
+      ${STEP(3, 'How to search', `Paid choices carry a ${COST_IC('Costs money')} mark. Amounts are estimates before you start.`)}
+      <div class="seg" id="fsrc">${SOURCES.map(([k, l]) => `<button type="button" data-src="${k}" class="${k === source ? 'is-on' : ''}"${k === 'google' && d.free ? ' disabled title="Free lead data mode is on"' : ''}>${esc(l)} ${k === 'google' ? COST_IC('Paid per search') : FREE_IC}</button>`).join('')}</div>
       <p class="small muted" id="fsrcx" style="margin:6px 0 10px"></p>
       <div class="seg" id="fcov"></div>
       <p class="small muted" id="fcovx" style="margin:6px 0 0"></p>
-      <div class="row" style="margin-top:12px;gap:14px">
-        <label class="field" style="flex:0 0 170px"><span>Reach from the middle</span><select id="frad"><option value="">Fit each place</option>${[2, 3, 5, 8, 12, 20].map((m) => `<option value="${m}">${m} miles</option>`).join('')}</select></label>
-        <label class="field" style="flex:1 1 220px"><span>Tag for the leads</span><input id="ftag" placeholder="e.g. Miami roofers Nov"></label>
-      </div>
-      <details class="fold" style="margin-top:12px"><summary><span>Filters (optional)</span></summary><div class="fold-body"><p class="small muted" style="margin-top:0">Used by auto add, and as the starting point when you look at the results. You can change them there.</p>${filterHtml()}</div></details>
-      <label class="row small" style="gap:8px;margin-top:12px"><input type="checkbox" id="fauto"> Add everything that matches the filters to the Pipeline when the search finishes</label>
+
+      <details class="fold" style="margin-top:14px" id="fadv"><summary><span>Advanced settings</span></summary><div class="fold-body">
+        <div class="row" style="gap:14px;flex-wrap:wrap">
+          <label class="field" style="flex:0 0 170px"><span>Reach from the middle</span><select id="frad"><option value="">Fit each place</option>${[2, 3, 5, 8, 12, 20].map((m) => `<option value="${m}">${m} miles</option>`).join('')}</select></label>
+          <label class="field" style="flex:0 0 200px"><span>Stop if it would cost more than</span><select id="fcap">${[[0, 'No limit'], [1, '$1'], [5, '$5'], [10, '$10'], [25, '$25'], [50, '$50']].map(([v, l]) => `<option value="${v}"${v === 10 ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label class="field" style="flex:1 1 220px"><span>Tag for the leads</span><input id="ftag" placeholder="e.g. Miami roofers Nov"></label>
+        </div>
+        <label class="row small" style="gap:8px;margin-top:12px"><input type="checkbox" id="fauto"> Add everything that matches the filters to the Pipeline when the search finishes</label>
+        <details class="fold" style="margin-top:12px"><summary><span>Filters</span></summary><div class="fold-body"><p class="small muted" style="margin-top:0">Used by auto add, and as the starting point when you look at the results. You can change them there.</p>${filterHtml()}</div></details>
+      </div></details>
 
       <div class="fsum" id="fsum"></div>
       <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn btn-primary" id="fgo">Start search</button></div>
@@ -126,6 +132,15 @@ async function homePage(view) {
     }
     return { kws, all, jobs };
   };
+  // Views per place and cost per place, shown on each coverage choice.
+  const viewsOf = (sz) => estimate({ areas: 1, size: sz, keywords: 1, source }).requests || 1;
+  // Leads per map view from this person's finished searches on the same source. Null until there is history.
+  const leadsPerView = () => {
+    const past = d.jobs.filter((j) => j.source === source && j.done > 0);
+    const views = past.reduce((s, j) => s + j.done, 0);
+    const found = past.reduce((s, j) => s + j.found, 0);
+    return views ? { per: found / views, n: past.length } : null;
+  };
   const est = () => {
     const pl = plan();
     const parts = pl.jobs.map((j) => estimate({ areas: j.areas.length, size, keywords: j.keywords.length, source }));
@@ -133,10 +148,24 @@ async function homePage(view) {
     const cost = parts.reduce((s, e) => s + (e.cost || 0), 0);
     const tooBig = parts.some((e) => e.tooBig);
     const s = (n) => (n === 1 ? '' : 's');
-    $('#fsum', view).innerHTML = pl.jobs.length
-      ? `<b>${pl.kws.length}</b> keyword${s(pl.kws.length)} in <b>${pl.all.length}</b> area${s(pl.all.length)} = <b>${num(requests)}</b> map searches${pl.jobs.length > 1 ? `, started as ${pl.jobs.length} searches` : ''}. ${source === 'osm' ? '<b>Free.</b>' : `About <b>${money(cost)}</b>.`}${tooBig ? ' <span class="err-text">Too many for one search. Use a smaller coverage.</span>' : ''}`
-      : (!pl.kws.length ? 'Pick at least one industry (or type a keyword).' : 'Pick at least one state and city, or add a ZIP code.');
-    $('#fgo', view).disabled = !pl.jobs.length;
+    const cap = Number($('#fcap', view).value) || 0;
+    const over = cap > 0 && source !== 'osm' && cost > cap;
+    if (!pl.jobs.length) {
+      $('#fsum', view).innerHTML = !pl.kws.length ? 'Pick at least one industry (or type a keyword).' : 'Pick at least one state and city, or add a ZIP code.';
+      $('#fgo', view).disabled = true;
+    } else {
+      const hist = leadsPerView();
+      const leads = hist
+        ? `about <b>${num(Math.round(requests * hist.per))}</b> businesses, from your last ${hist.n} finished search${hist.n === 1 ? '' : 'es'} (an upper estimate, repeats not removed)`
+        : 'not known yet. Your first finished search shows how many it finds.';
+      $('#fsum', view).innerHTML = `
+        <p class="small" style="margin:0 0 6px"><b>${pl.kws.length}</b> keyword${s(pl.kws.length)} × <b>${pl.all.length}</b> area${s(pl.all.length)} × <b>${viewsOf(size)}</b> map view${viewsOf(size) === 1 ? '' : 's'} = <b>${num(requests)}</b> searches${pl.jobs.length > 1 ? `, started as ${pl.jobs.length} jobs` : ''}</p>
+        <p class="small" style="margin:0 0 6px">${source === 'osm' ? '<b>Cost: free</b>' : `${COST_IC('Costs money')} Cost: about <b>${money(cost)}</b>`}</p>
+        <p class="small" style="margin:0">Leads: ${leads}</p>
+        ${over ? `<p class="err-text small" style="margin:8px 0 0">This would cost about ${money(cost)}, over your ${money(cap)} limit. Use fewer places or a smaller coverage, or change the limit in Advanced settings.</p>` : ''}
+        ${tooBig ? '<p class="err-text small" style="margin:8px 0 0">Too many searches for one job. Use a smaller coverage.</p>' : ''}`;
+      $('#fgo', view).disabled = over || tooBig;
+    }
     $('#fgo', view).textContent = source === 'osm' ? 'Start search (free)' : 'Start search';
     $('#fcovx', view).textContent = covers().find((c) => c.size === size)?.what || '';
     nfIndLine();
@@ -144,13 +173,19 @@ async function homePage(view) {
 
   const drawCov = () => {
     if (!covers().some((c) => c.size === size)) size = source === 'osm' ? 3 : 5;
-    $('#fcov', view).innerHTML = covers().map((c) => `<button type="button" data-size="${c.size}" class="${c.size === size ? 'is-on' : ''}">${esc(c.label)}</button>`).join('');
+    $('#fcov', view).innerHTML = covers().map((c) => {
+      const views = viewsOf(c.size);
+      const per = estimate({ areas: 1, size: c.size, keywords: 1, source }).cost;
+      const tag = source === 'osm' ? FREE_IC : COST_IC(`About ${money(per)} for each place, each industry`);
+      return `<button type="button" data-size="${c.size}" class="${c.size === size ? 'is-on' : ''}" title="${esc(c.what)}">${esc(c.label)} <small class="muted">${views} views</small> ${tag}</button>`;
+    }).join('');
     $$('#fsrc button', view).forEach((x) => x.classList.toggle('is-on', x.dataset.src === source));
     $('#fsrcx', view).textContent = SOURCES.find((x) => x[0] === source)?.[2] || '';
   };
   drawCov(); est();
   $('#fzip', view).addEventListener('input', est);
   $('#fextra', view).addEventListener('input', est);
+  $('#fcap', view).addEventListener('change', est);
   $('#fsrc', view).addEventListener('click', (e) => {
     const b = e.target.closest('[data-src]'); if (!b || b.disabled) return;
     source = b.dataset.src; size = source === 'osm' ? 3 : 5; drawCov(); est();

@@ -1869,3 +1869,9 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .fstep h3 { margin: 3px 0 0; }
 .fstep p { margin: 2px 0 0; }
 .fsum { margin-top: 16px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; background: var(--surface-2); font-size: 15px; }
+
+/* Cost markers in the Lead finder: $ = costs money per search, Free = no cost */
+.cost-ic { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: #E8A33D; color: #fff; font: 700 11px/1 var(--body); vertical-align: middle; cursor: help; }
+.cost-ic.free { background: #23B07E; }
+#fcov button { display: inline-flex; align-items: center; gap: 4px; }
+#fcov button small { font-size: 12px; }
