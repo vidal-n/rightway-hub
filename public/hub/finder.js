@@ -3,7 +3,7 @@
 // background scrub fills in emails, owner names and socials. The server does the searching, so this works the same on an iPad.
 import { $, $$, esc, api, toast, busy } from './core.js';
 import { staffShell } from './shell.js';
-import { COVERAGE, estimate, parseKeywords, parseAreas, MAX_REQUESTS, passes, cleanFilters, csvText } from '/js/finder.js';
+import { COVERAGE, estimate, parseKeywords, parseAreas, MAX_REQUESTS, MAX_OSM_REQUESTS, OSM_SIZES, SOURCES, passes, cleanFilters, csvText } from '/js/finder.js';
 
 const num = (n) => Number(n || 0).toLocaleString('en-US');
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
@@ -36,17 +36,24 @@ async function homePage(view) {
   view.innerHTML = '<div class="skeleton"></div>';
   let d;
   try { d = await api('/api/finder'); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
-  let size = 5;
+  let source = d.free ? 'osm' : 'google';
+  let size = source === 'osm' ? 3 : 5;
+  const OSM_COVERAGE = [{ size: 1, label: 'One spot', what: 'One search around the middle of each area. Fastest.' }, { size: 3, label: '3 x 3 spots', what: 'Nine searches per area, so you get past the busiest streets.' }, { size: 5, label: '5 x 5 spots', what: 'Twenty five searches per area. Best for a big city.' }];
+  const covers = () => (source === 'osm' ? OSM_COVERAGE : COVERAGE);
   view.innerHTML = `<div class="page-head"><div><p class="eyebrow">Sell</p><h1>Lead finder</h1></div></div>
-    <p class="small muted" style="margin:-8px 0 16px">Finds every business for a keyword in an area, straight from Google Maps. Big areas are split into map views so you get past Google's 100 result cap, repeats are removed, and nothing is added to the Pipeline until you say so (or turn on auto add). About $0.002 per search.</p>
+    <p class="small muted" style="margin:-8px 0 16px">Finds every business for a keyword in an area. Google Maps gives the most (ratings, reviews, claimed profiles) at about $0.002 a search. OpenStreetMap is free but thinner. Big areas are split into map views, repeats are removed, and nothing is added to the Pipeline until you say so (or turn on auto add).</p>
+    ${d.free ? '<div class="card" style="border-color:#23B07E;margin-bottom:14px"><b>Free lead data mode is on.</b> Only OpenStreetMap searches run, nothing is spent. Turn it off in Settings, Lead data mode, to use Google Maps again.</div>' : ''}
     ${d.demo ? '<div class="card" style="border-color:#E8A33D;margin-bottom:14px">Demo mode: DataForSEO is not connected, so these are made up businesses. Add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Cloudflare for real ones.</div>' : ''}
     <div class="card" id="fnew"><div class="card-head"><h3>New search</h3></div>
       <div class="fform">
         <label class="field"><span>Keywords, one per line</span><textarea id="fkw" rows="3" placeholder="roofing contractor&#10;roofer"></textarea></label>
         <label class="field"><span>Areas, one per line (city, state or ZIP)</span><textarea id="far" rows="3" placeholder="Miami, FL&#10;Fort Lauderdale, FL&#10;33139"></textarea></label>
       </div>
+      <p class="small muted" style="margin:10px 0 6px"><b>Where from</b></p>
+      <div class="seg" id="fsrc">${SOURCES.map(([k, l]) => `<button type="button" data-src="${k}" class="${k === source ? 'is-on' : ''}"${k === 'google' && d.free ? ' disabled title="Free lead data mode is on"' : ''}>${esc(l)}</button>`).join('')}</div>
+      <p class="small muted" id="fsrcx" style="margin:6px 0 0"></p>
       <p class="small muted" style="margin:10px 0 6px"><b>How thorough</b></p>
-      <div class="seg" id="fcov">${COVERAGE.map((c) => `<button type="button" data-size="${c.size}" class="${c.size === size ? 'is-on' : ''}">${esc(c.label)}</button>`).join('')}</div>
+      <div class="seg" id="fcov"></div>
       <p class="small muted" id="fcovx" style="margin:6px 0 0"></p>
       <div class="row" style="margin-top:12px;gap:14px">
         <label class="field" style="flex:0 0 170px"><span>Reach from the middle</span><select id="frad"><option value="">Fit each place</option>${[2, 3, 5, 8, 12, 20].map((m) => `<option value="${m}">${m} miles</option>`).join('')}</select></label>
@@ -60,13 +67,25 @@ async function homePage(view) {
     <h3 style="margin:22px 0 10px">Searches</h3><div id="fjobs"></div>
 `;
   setFilters($('#fnew', view), {});
-  const est = () => {
-    const e = estimate({ areas: parseAreas($('#far', view).value, 99).length, size, keywords: parseKeywords($('#fkw', view).value, 99).length });
-    $('#fest', view).innerHTML = e.requests ? `${num(e.requests)} searches, about <b>${money(e.cost)}</b>${e.tooBig ? ` <span class="err-text">One search can run up to ${num(MAX_REQUESTS)}. Use fewer areas or keywords, or a smaller coverage.</span>` : ''}` : 'Type keywords and areas to see the cost.';
-    $('#fcovx', view).textContent = COVERAGE.find((c) => c.size === size)?.what || '';
+  const drawCov = () => {
+    if (!covers().some((c) => c.size === size)) size = source === 'osm' ? 3 : 5;
+    $('#fcov', view).innerHTML = covers().map((c) => `<button type="button" data-size="${c.size}" class="${c.size === size ? 'is-on' : ''}">${esc(c.label)}</button>`).join('');
+    $$('#fsrc button', view).forEach((x) => x.classList.toggle('is-on', x.dataset.src === source));
+    $('#fsrcx', view).textContent = SOURCES.find((x) => x[0] === source)?.[2] || '';
+    $('#fgo', view).textContent = source === 'osm' ? 'Find leads (free)' : 'Find leads';
   };
-  est();
+  const est = () => {
+    const e = estimate({ areas: parseAreas($('#far', view).value, 99).length, size, keywords: parseKeywords($('#fkw', view).value, 99).length, source });
+    const cap = source === 'osm' ? MAX_OSM_REQUESTS : MAX_REQUESTS;
+    $('#fest', view).innerHTML = e.requests ? `${num(e.requests)} searches, ${source === 'osm' ? '<b>free</b>' : `about <b>${money(e.cost)}</b>`}${e.tooBig ? ` <span class="err-text">One search can run up to ${num(cap)}. Use fewer areas or keywords, or a smaller coverage.</span>` : ''}` : (source === 'osm' ? 'Type keywords and areas. Free searches cost nothing.' : 'Type keywords and areas to see the cost.');
+    $('#fcovx', view).textContent = covers().find((c) => c.size === size)?.what || '';
+  };
+  drawCov(); est();
   $('#fnew', view).addEventListener('input', est);
+  $('#fsrc', view).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-src]'); if (!b || b.disabled) return;
+    source = b.dataset.src; size = source === 'osm' ? 3 : 5; drawCov(); est();
+  });
   $('#fcov', view).addEventListener('click', (e) => {
     const b = e.target.closest('[data-size]'); if (!b) return;
     size = Number(b.dataset.size);
@@ -77,7 +96,7 @@ async function homePage(view) {
     const err = $('#ferr', view); err.hidden = true;
     busy(e.currentTarget, true, 'Starting');
     try {
-      const r = await api('/api/finder/jobs', { method: 'POST', body: { keywords: $('#fkw', view).value, areas: $('#far', view).value, size, radius: $('#frad', view).value || 'auto', tag: $('#ftag', view).value, autoAdd: $('#fauto', view).checked, filters: readFilters($('#fnew', view)) } });
+      const r = await api('/api/finder/jobs', { method: 'POST', body: { source, keywords: $('#fkw', view).value, areas: $('#far', view).value, size, radius: $('#frad', view).value || 'auto', tag: $('#ftag', view).value, autoAdd: $('#fauto', view).checked, filters: readFilters($('#fnew', view)) } });
       toast('Search started');
       location.hash = `#/finder/${r.job.id}`;
     } catch (x) { err.textContent = x.message; err.hidden = false; busy(e.currentTarget, false); }
@@ -89,7 +108,7 @@ async function homePage(view) {
     return `<div class="card fj" data-id="${esc(j.id)}"><div class="card-head"><div><h3 style="margin:0"><a href="#/finder/${esc(j.id)}">${esc(j.name)}</a></h3>
         <p class="small muted" style="margin:2px 0 0">${esc(j.keywords.join(', '))} · ${esc(j.areas.map((a) => a.label).join(' · '))} · ${ago(j.createdAt)}</p></div><span class="badge ${tone}">${label}</span></div>
       <div class="progress"><span style="width:${j.pct}%"></span></div>
-      <div class="row small" style="gap:16px;margin-top:8px"><span><b>${num(j.found)}</b> found</span><span><b>${num(j.added)}</b> in the Pipeline</span><span>${num(j.done)} of ${num(j.total)} searches</span><span>${money(j.cost)}</span></div>
+      <div class="row small" style="gap:16px;margin-top:8px"><span><b>${num(j.found)}</b> found</span><span><b>${num(j.added)}</b> in the Pipeline</span><span>${num(j.done)} of ${num(j.total)} searches</span><span>${j.source === 'osm' ? 'Free (OpenStreetMap)' : money(j.cost)}</span></div>
       ${j.error ? `<p class="err-text small" style="margin:8px 0 0">${esc(j.error)}</p>` : ''}
       <div class="row" style="margin-top:10px"><a class="btn btn-primary btn-sm" href="#/finder/${esc(j.id)}">Open</a>
         ${active(j) ? '<button class="btn btn-ghost btn-sm" data-act="stop">Pause</button>' : j.done < j.total ? '<button class="btn btn-ghost btn-sm" data-act="resume">Resume</button>' : ''}
@@ -151,12 +170,12 @@ async function jobPage(view, id) {
     $('#jt', view).innerHTML = `${esc(job.name)} <span class="badge ${tone}" style="vertical-align:middle;font-size:12px">${label}</span>`;
     $('#jact', view).innerHTML = `${active(job) ? '<button class="btn btn-ghost" data-a="stop">Pause</button>' : job.done < job.total ? '<button class="btn btn-ghost" data-a="resume">Resume</button>' : ''}<button class="btn btn-ghost" data-a="refresh">Refresh</button>`;
     $('#jprog', view).innerHTML = active(job) || job.status === 'failed' || job.status === 'stopped' ? `<div class="card" style="margin-bottom:14px"><div class="progress"><span style="width:${job.pct}%"></span></div>
-      <p class="small" style="margin:8px 0 0">${num(job.done)} of ${num(job.total)} searches · ${money(job.cost)} so far${job.errors ? ` · ${num(job.errors)} failed` : ''}${active(job) ? '. Keep this page open to finish faster. It also runs on its own in the background.' : ''}</p>${job.error ? `<p class="err-text small" style="margin:6px 0 0">${esc(job.error)}</p>` : ''}</div>` : (job.error ? `<p class="err-text">${esc(job.error)}</p>` : '');
+      <p class="small" style="margin:8px 0 0">${num(job.done)} of ${num(job.total)} searches${job.source === 'osm' ? '' : ` · ${money(job.cost)} so far`}${job.errors ? ` · ${num(job.errors)} failed` : ''}${active(job) ? '. Keep this page open to finish faster. It also runs on its own in the background.' : ''}</p>${job.error ? `<p class="err-text small" style="margin:6px 0 0">${esc(job.error)}</p>` : ''}</div>` : (job.error ? `<p class="err-text">${esc(job.error)}</p>` : '');
   };
   const drawStats = () => {
     const now = visible();
     const c = (st) => rows.filter((r) => r.st === st).length;
-    $('#jstats', view).innerHTML = [['Found', total], ['Match the filters', now.length], ['New', c('new')], ['In the Hub', c('inhub') + c('added') + c('dnc')], ['Cost', money(job.cost)]]
+    $('#jstats', view).innerHTML = [['Found', total], ['Match the filters', now.length], ['New', c('new')], ['In the Hub', c('inhub') + c('added') + c('dnc')], ['Cost', job.source === 'osm' ? 'Free' : money(job.cost)]]
       .map(([l, v]) => `<div class="stat"><div class="stat-num">${typeof v === 'number' ? num(v) : v}</div><div class="stat-label">${l}</div></div>`).join('');
     $('#jcount', view).textContent = `${num(now.length)} of ${num(rows.length)} shown`;
   };
@@ -168,13 +187,13 @@ async function jobPage(view, id) {
       return `<tr data-k="${esc(r.key)}"><td>${r.st === 'new' ? `<input type="checkbox" data-pick${picked.has(r.key) ? ' checked' : ''}>` : ''}</td>
         <td><b>${esc(r.title)}</b>${r.claimed === false ? ' <span class="small muted">· not claimed</span>' : ''}</td><td class="small">${esc(r.category)}</td><td>${esc(r.phone)}</td>
         <td>${dom ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">${esc(dom)}</a>` : '<span class="muted">none</span>'}</td>
-        <td class="n">${r.rating != null ? r.rating.toFixed(1) : ''}</td><td class="n">${num(r.reviews)}</td><td>${esc(r.city)}</td>
+        <td class="n">${r.rating != null ? r.rating.toFixed(1) : ''}</td><td class="n">${job.source === 'osm' ? '' : num(r.reviews)}</td><td>${esc(r.city)}</td>
         <td>${r.lead_id ? `<a class="badge ${st}" href="#/pipeline/${esc(r.lead_id)}">${sl}</a>` : `<span class="badge ${st}">${sl}</span>`}</td><td class="small">${esc(r.email || '')}</td><td class="small">${esc(r.owner_name || '')}</td></tr>`;
     }).join('') || '<tr><td colspan="11" class="muted" style="padding:18px">Nothing matches yet.</td></tr>';
     $('#jmore', view).hidden = list.length <= shown;
     $('#jmore', view).textContent = `Show more (${num(list.length - shown)} left)`;
     $('#jall', view).checked = false;
-    $('#jnote', view).textContent = `${capped ? `Showing the first ${num(rows.length)} of ${num(total)} found. ` : ''}After you add them, emails, owner names and social links fill in on their own in the Pipeline (Data column). Reload the list to see them here.`;
+    $('#jnote', view).textContent = `${job.source === 'osm' ? 'OpenStreetMap has no ratings or reviews. Research in the Pipeline fills those in only when Google research is on. ' : ''}${capped ? `Showing the first ${num(rows.length)} of ${num(total)} found. ` : ''}After you add them, emails, owner names and social links fill in on their own in the Pipeline (Data column). Reload the list to see them here.`;
   };
   const drawBar = () => {
     const list = visible(), canAdd = addable(list);

@@ -9,11 +9,12 @@ import { requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { mapsSearch } from './dataforseo.js';
 import { mockFinder } from './mock.js';
+import { osmSearch, isFreeMode } from './freedata.js';
 import { importLeads, existingKeys } from './crm.js';
 import { dupKeys } from '../public/js/leadintel.js';
 import { notify } from './notify.js';
 import {
-  parseKeywords, parseAreas, MAX_KEYWORDS, MAX_AREAS, MAX_REQUESTS, SIZES, estimate, taskList, keyOf, cleanFilters, passes, leadRow, radiusFromBox,
+  parseKeywords, parseAreas, MAX_KEYWORDS, MAX_AREAS, MAX_REQUESTS, MAX_OSM_REQUESTS, OSM_SIZES, SIZES, estimate, taskList, keyOf, cleanFilters, passes, leadRow, radiusFromBox,
 } from '../public/js/finder.js';
 
 const isDemo = (env) => !env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD;
@@ -31,7 +32,7 @@ export function jobView(j) {
   return {
     id: j.id, name: j.name, keywords: parse(j.keywords, []), areas: areas.map((a) => ({ label: a.label, radius: a.radius, size: a.size, lat: a.lat, lng: a.lng })),
     status: j.status, total: j.total, done: j.done, errors: j.errors, found: j.found, added: j.added, cost: Math.round((j.cost || 0) * 1000) / 1000, error: j.error || null,
-    demo: Boolean(j.demo), autoAdd: Boolean(j.auto_add), tag: j.tag || '', filters: cleanFilters(parse(j.filters, {})), createdAt: j.created_at, finishedAt: j.finished_at || null,
+    source: j.source === 'osm' ? 'osm' : 'google', demo: Boolean(j.demo), autoAdd: Boolean(j.auto_add), tag: j.tag || '', filters: cleanFilters(parse(j.filters, {})), createdAt: j.created_at, finishedAt: j.finished_at || null,
     pct: j.total ? Math.min(100, Math.round((j.done / j.total) * 100)) : 0,
   };
 }
@@ -70,7 +71,7 @@ const clampRadius = (v) => Math.round(Math.min(30, Math.max(0.5, v)) * 10) / 10;
 route('GET', '/api/finder', async ({ env, user }) => {
   requireAdmin(user);
   const jobs = await all(env, 'SELECT * FROM finder_jobs ORDER BY created_at DESC LIMIT 40');
-  return json({ jobs: jobs.map(jobView), demo: isDemo(env), limits: { maxRequests: MAX_REQUESTS, maxKeywords: MAX_KEYWORDS, maxAreas: MAX_AREAS } });
+  return json({ jobs: jobs.map(jobView), demo: isDemo(env), free: await isFreeMode(env), limits: { maxRequests: MAX_REQUESTS, maxOsmRequests: MAX_OSM_REQUESTS, maxKeywords: MAX_KEYWORDS, maxAreas: MAX_AREAS } });
 });
 
 route('POST', '/api/finder/jobs', async ({ env, user, body }) => {
@@ -82,9 +83,13 @@ route('POST', '/api/finder/jobs', async ({ env, user, body }) => {
   const names = parseAreas(b.areas, 99);
   if (!names.length) throw new HttpError('Type at least one city or ZIP code, one per line.');
   if (names.length > MAX_AREAS) throw new HttpError(`Use up to ${MAX_AREAS} areas per search.`);
-  const size = SIZES.includes(Number(b.size)) ? Number(b.size) : 5;
-  const est = estimate({ areas: names.length, size, keywords: keywords.length });
-  if (est.tooBig) throw new HttpError(`That is ${est.requests.toLocaleString('en-US')} searches (about $${est.cost.toFixed(2)}). One job can run up to ${MAX_REQUESTS.toLocaleString('en-US')}. Use fewer areas or keywords, or a smaller coverage.`);
+  const source = b.source === 'osm' ? 'osm' : 'google';
+  if (source === 'google' && await isFreeMode(env)) throw new HttpError('Free lead data mode is on, so Google Maps searches (which cost money) are off. Pick OpenStreetMap, or switch the mode in Settings.');
+  const size = source === 'osm' ? (OSM_SIZES.includes(Number(b.size)) ? Number(b.size) : 3) : SIZES.includes(Number(b.size)) ? Number(b.size) : 5;
+  const est = estimate({ areas: names.length, size, keywords: keywords.length, source });
+  if (est.tooBig) throw new HttpError(source === 'osm'
+    ? `That is ${est.requests} free searches. One free job can run up to ${MAX_OSM_REQUESTS} so OpenStreetMap's shared servers stay happy. Use fewer areas or keywords, or a smaller coverage.`
+    : `That is ${est.requests.toLocaleString('en-US')} searches (about $${est.cost.toFixed(2)}). One job can run up to ${MAX_REQUESTS.toLocaleString('en-US')}. Use fewer areas or keywords, or a smaller coverage.`);
   const fixed = Number(b.radius) > 0 ? clampRadius(Number(b.radius)) : null;
   const areas = [];
   for (const [i, n] of names.entries()) {
@@ -95,9 +100,9 @@ route('POST', '/api/finder/jobs', async ({ env, user, body }) => {
   const name = text(b.name, 80) || `${keywords[0]} in ${areas[0].label}${areas.length > 1 ? ` and ${areas.length - 1} more` : ''}`;
   const id = newId('fj_');
   const total = taskList(areas, keywords).length;
-  await run(env, `INSERT INTO finder_jobs (id, name, keywords, areas, filters, auto_add, tag, status, total, demo, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`, id, name, JSON.stringify(keywords), JSON.stringify(areas), JSON.stringify(cleanFilters(b.filters)), b.autoAdd ? 1 : 0,
-  text(b.tag, 60) || name.slice(0, 60), total, isDemo(env) ? 1 : 0, user.id, now(), now());
+  await run(env, `INSERT INTO finder_jobs (id, name, keywords, areas, filters, auto_add, tag, status, total, demo, created_by, created_at, updated_at, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)`, id, name, JSON.stringify(keywords), JSON.stringify(areas), JSON.stringify(cleanFilters(b.filters)), b.autoAdd ? 1 : 0,
+  text(b.tag, 60) || name.slice(0, 60), total, source === 'google' && isDemo(env) ? 1 : 0, user.id, now(), now(), source);
   return json({ job: jobView(await first(env, 'SELECT * FROM finder_jobs WHERE id = ?', id)) });
 });
 
@@ -207,12 +212,15 @@ export async function finderTick(env, budget = PER_TICK, { fetchImpl, at = now()
   if (!job) return 0;
   const claim = await run(env, "UPDATE finder_jobs SET locked_until = ?, status = 'running' WHERE id = ? AND (locked_until IS NULL OR locked_until < ?)", at + LOCK_MS, job.id, at);
   if ((claim?.meta?.changes ?? 1) < 1) return 0;
-  const demo = isDemo(env);
+  const osm = job.source === 'osm';
+  const demo = !osm && isDemo(env);
   const tasks = taskList(parse(job.areas, []), parse(job.keywords, []));
+  if (osm) budget = Math.min(budget, 3);              // OpenStreetMap's servers are shared and free: a few at a time, one by one
   let i = job.done, used = 0, cost = 0, errors = 0, fatal = null;
   while (i < tasks.length && used < budget && !fatal) {
-    const slice = tasks.slice(i, i + Math.min(PARALLEL, budget - used));
-    const out = await Promise.all(slice.map(async (t) => { try { return demo ? mockFinder(t) : await mapsSearch(env, t, fetchImpl); } catch (e) { return { error: e }; } }));
+    const slice = tasks.slice(i, i + Math.min(osm ? 1 : PARALLEL, budget - used));
+    if (osm && used) await sleep(env.FINDER_OSM_GAP === '0' ? 0 : 1200);
+    const out = await Promise.all(slice.map(async (t) => { try { return demo ? mockFinder(t) : osm ? await osmSearch(env, t, fetchImpl) : await mapsSearch(env, t, fetchImpl); } catch (e) { return { error: e }; } }));
     const ops = [];
     out.forEach((r, k) => {
       if (r.error) { errors++; if (/balance is empty|rejected the login/i.test(r.error.message || '')) fatal = r.error.message; return; }
@@ -228,7 +236,7 @@ export async function finderTick(env, budget = PER_TICK, { fetchImpl, at = now()
   const finished = i >= tasks.length;
   const allFailed = finished && found === 0 && job.errors + errors > 0;
   const status = fatal || allFailed ? 'failed' : finished ? 'done' : 'running';
-  const error = fatal || (allFailed ? 'Every search failed. Check the DataForSEO balance and login, then resume.' : job.error);
+  const error = fatal || (allFailed ? (osm ? 'Every search failed. OpenStreetMap\'s free servers may be busy. Try Resume in a few minutes.' : 'Every search failed. Check the DataForSEO balance and login, then resume.') : job.error);
   await run(env, 'UPDATE finder_jobs SET done = ?, errors = errors + ?, found = ?, cost = cost + ?, status = ?, error = ?, locked_until = NULL, updated_at = ?, finished_at = ? WHERE id = ?',
     i, errors, found, cost, status, error || null, now(), finished || fatal ? now() : null, job.id);
   if (status === 'done') {

@@ -5,6 +5,7 @@ import { first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { researchLead, leadFieldsFromIntel } from './intel.js';
+import { isFreeMode } from './freedata.js';
 
 const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
 const TOLL_FREE = /^(800|833|844|855|866|877|888)/;
@@ -27,6 +28,7 @@ export async function researchSettings(env) {
 export async function researchTick(env, max = 1) {
   const cfg = await researchSettings(env);
   if (!cfg.on || !env.DATAFORSEO_LOGIN) return 0;
+  if (await isFreeMode(env)) return 0;   // free lead data mode: nothing that costs money runs by itself
   const today = new Date().toISOString().slice(0, 10);
   let done = cfg.day === today ? cfg.done : 0;
   let n = 0;
@@ -65,7 +67,7 @@ route('GET', '/api/research/status', async ({ env, user }) => {
   const cfg = await researchSettings(env);
   const left = await first(env, `SELECT COUNT(*) AS n FROM leads WHERE intel IS NULL AND dnc = 0 AND phone_digits IS NOT NULL AND stage IN (${STAGES.map(() => '?').join(',')})`, ...STAGES);
   const scrubbed = await first(env, 'SELECT COUNT(*) AS n FROM leads WHERE scrub IS NOT NULL');
-  return json({ ...cfg, left: left?.n || 0, scrubbed: scrubbed?.n || 0, connected: Boolean(env.DATAFORSEO_LOGIN) });
+  return json({ ...cfg, left: left?.n || 0, scrubbed: scrubbed?.n || 0, connected: Boolean(env.DATAFORSEO_LOGIN), free: await isFreeMode(env) });
 });
 
 route('PUT', '/api/research/settings', async ({ env, user, body }) => {

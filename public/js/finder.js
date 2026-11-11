@@ -33,10 +33,15 @@ export const parseAreas = (text, max = MAX_AREAS) => uniq(Array.isArray(text) ? 
 
 export const requestCount = (areaCount, size, keywordCount) => Math.max(0, areaCount) * size * size * Math.max(0, keywordCount);
 export const costOf = (requests) => Math.round(requests * COST_PER_REQUEST * 1000) / 1000;
-export function estimate({ areas, size, keywords }) {
+export function estimate({ areas, size, keywords, source = 'google' }) {
   const requests = requestCount(areas, size, keywords);
+  if (source === 'osm') return { requests, cost: 0, tooBig: requests > MAX_OSM_REQUESTS };
   return { requests, cost: costOf(requests), tooBig: requests > MAX_REQUESTS };
 }
+// OpenStreetMap's free servers are shared, so a free search is kept smaller.
+export const MAX_OSM_REQUESTS = 150;
+export const OSM_SIZES = [1, 3, 5];
+export const SOURCES = [['google', 'Google Maps', 'Best data: ratings, reviews, claimed profiles. About $0.002 a map view.'], ['osm', 'OpenStreetMap (free)', 'Costs nothing. No ratings or reviews, and smaller businesses are often missing.']];
 
 // Radius that fits a place, from its bounding box [south, north, west, east]. Half the longer side, kept to a useful range.
 export function radiusFromBox(box, lat = 25) {
@@ -62,7 +67,8 @@ export function taskList(areas, keywords) {
     const size = a.size, half = (size - 1) / 2;
     const step = half ? a.radius / half : a.radius;
     const zoom = zoomFor(step, a.lat);
-    for (const p of gridPoints(a.lat, a.lng, size, a.radius)) for (const keyword of keywords) out.push({ keyword, lat: p.lat, lng: p.lng, zoom, label: a.label });
+    const pts = size === 1 ? [{ lat: a.lat, lng: a.lng }] : gridPoints(a.lat, a.lng, size, a.radius);
+    for (const p of pts) for (const keyword of keywords) out.push({ keyword, lat: p.lat, lng: p.lng, zoom, label: a.label, radius: size === 1 ? a.radius : Math.round(step * 1.1 * 10) / 10 });
   }
   return out;
 }
@@ -112,7 +118,7 @@ export function leadRow(r, { industry } = {}) {
   return {
     business: r.title, phone: r.phone, website: r.website, address: r.address, city: r.city, state: r.state, zip: r.zip,
     category: r.category, industry: industry || r.kw || r.category, rating: r.rating, reviews: r.reviews, lat: r.lat, lng: r.lng,
-    place_id: r.place_id, cid: r.cid, source: 'Lead finder',
+    place_id: r.place_id, cid: r.cid, source: 'Lead finder', email: r.email || '',
   };
 }
 
@@ -121,7 +127,7 @@ export const CSV_COLUMNS = [
   ['name', (r) => r.title], ['category', (r) => r.category], ['other_categories', (r) => (r.cats || []).join('; ')], ['phone', (r) => r.phone], ['website', (r) => r.website],
   ['email', (r) => r.email], ['email_status', (r) => r.email_status], ['owner_name', (r) => r.owner_name], ['phone_type', (r) => r.phone_type],
   ['facebook', (r) => r.socials?.facebook], ['instagram', (r) => r.socials?.instagram], ['linkedin', (r) => r.socials?.linkedin],
-  ['address', (r) => r.address], ['city', (r) => r.city], ['state', (r) => r.state], ['postal_code', (r) => r.zip],
+  ['hours', (r) => r.hours_text], ['address', (r) => r.address], ['city', (r) => r.city], ['state', (r) => r.state], ['postal_code', (r) => r.zip],
   ['rating', (r) => r.rating], ['reviews', (r) => r.reviews], ['claimed', (r) => (r.claimed == null ? '' : r.claimed ? 'yes' : 'no')], ['photos', (r) => r.photos],
   ['latitude', (r) => r.lat], ['longitude', (r) => r.lng], ['place_id', (r) => r.place_id], ['cid', (r) => r.cid],
   ['google_maps_url', (r) => (r.place_id ? `https://www.google.com/maps/place/?q=place_id:${r.place_id}` : '')], ['keyword', (r) => r.kw], ['search_area', (r) => r.area],

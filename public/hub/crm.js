@@ -14,6 +14,8 @@ import { quoteFor, callCategory, whoIs, CALL_CATS } from '/js/leadintel.js';
 import { SCOPE, effort, hoursOf } from '/js/scope.js';
 import { can, canRunCalls } from '/js/jobs.js';
 import { PHONE_TYPE_LABEL } from '/js/scrub.js';
+import { licenseSearchUrl, sunbizSearchUrl } from '/js/freedata.js';
+import { registryFor } from '/js/registries.js';
 
 export const STAGE_LABEL = {
   new: 'New lead', attempting: 'Attempting', callback: 'Callback set', audit_requested: 'Audit requested', audit_booked: 'Audit booked',
@@ -352,6 +354,41 @@ export function scrubMany(leads, onDone) {
   Promise.all([worker(), worker(), worker()]).then(() => { if (!stop) $('#sctxt', m.el).textContent += ' All done.'; });
 }
 
+// Florida registry facts and what the business says about itself on its own site. All free, all optional.
+function sunbizRows(l, scrub) {
+  const rg = scrub?.registry;
+  if (rg && rg.code !== 'FL' && !rg.skipped) {
+    if (rg.linkOnly) return `<dt>${esc(rg.state)} registry</dt><dd class="small muted">${esc(rg.state)} has no open data the Hub can read. <a href="${esc(rg.searchUrl)}" target="_blank" rel="noopener">Search ${esc(rg.registry)}</a> for "${esc(l.business)}"</dd>`;
+    if (!rg.found) return `<dt>${esc(rg.state)} registry</dt><dd class="small muted">${rg.error ? esc(rg.error) : 'No matching company found.'} <a href="${esc(rg.searchUrl)}" target="_blank" rel="noopener">Search by hand</a></dd>`;
+    return `<dt>${esc(rg.state)} registry</dt><dd><a href="${esc(rg.searchUrl)}" target="_blank" rel="noopener">${esc(rg.name)}</a>${rg.status ? ` <span class="badge ${rg.active === false ? 'bad' : ''}">${esc(rg.status)}</span>` : ''}</dd>
+      ${rg.kind ? `<dt>Type</dt><dd>${esc(rg.kind)}</dd>` : ''}${rg.filed ? `<dt>Filed</dt><dd>${esc(rg.filed)}${rg.years != null ? ` · ${rg.years} years ago` : ''}</dd>` : ''}
+      ${rg.agent ? `<dt>Registered agent</dt><dd>${esc(rg.agent)} <span class="small muted">(often a service, not the owner)</span></dd>` : ''}`;
+  }
+  const sb = scrub?.sunbiz;
+  if (!sb || sb.skipped) return '';
+  if (!sb.found) return `<dt>Florida registry</dt><dd class="small muted">${sb.error ? esc(sb.error) : 'No matching company found.'} <a href="${esc(sunbizSearchUrl(l.business))}" target="_blank" rel="noopener">Search by hand</a></dd>`;
+  const people = (sb.people || []).slice(0, 4).map((p) => `${esc(p.name)}${p.title ? ` (${esc(p.title)})` : ''}`).join(', ');
+  return `<dt>Florida registry</dt><dd><a href="${esc(sb.url)}" target="_blank" rel="noopener">${esc(sb.name)}</a> <span class="badge ${sb.active ? '' : 'bad'}">${esc(sb.status || (sb.active ? 'Active' : 'Not active'))}</span></dd>
+    ${sb.filed ? `<dt>Filed</dt><dd>${esc(sb.filed)}${sb.years != null ? ` · ${sb.years} years ago` : ''}</dd>` : ''}
+    ${people ? `<dt>Officers</dt><dd>${people}</dd>` : ''}${sb.agent ? `<dt>Registered agent</dt><dd>${esc(sb.agent)}</dd>` : ''}`;
+}
+function profileRows(p) {
+  if (!p) return '';
+  const flags = [['freeEstimate', 'free estimates'], ['emergency', '24/7 or same day'], ['financing', 'financing'], ['warranty', 'warranty'], ['family', 'family owned'], ['reviewsOnSite', 'testimonials'], ['hasChat', 'live chat'], ['hasBooking', 'online booking'], ['hasForm', 'contact form']].filter(([k]) => p[k]).map(([, t]) => t);
+  const rows = [
+    p.services?.length ? ['Services', p.services.join(', ')] : null,
+    p.areas?.length ? ['Areas served', p.areas.join(', ')] : null,
+    p.years || p.founded ? ['In business', [p.years ? `${p.years} years` : '', p.founded ? `since ${p.founded}` : ''].filter(Boolean).join(', ')] : null,
+    p.license ? ['License on site', p.license] : null,
+    p.hours ? ['Hours on site', p.hours] : null,
+    p.team?.length ? ['Team', p.team.join(', ')] : null,
+    flags.length ? ['They say', flags.join(', ')] : null,
+    p.cms ? ['Built on', p.cms] : null,
+    p.description ? ['About', p.description] : null,
+  ].filter(Boolean);
+  return rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('') + (p.license ? `<dt>License check</dt><dd><a href="${esc(licenseSearchUrl())}" target="_blank" rel="noopener">Look it up at Florida DBPR</a></dd>` : '');
+}
+
 // The scrubbed data on a lead: cleaned name, phone type, emails, owner, social pages, data score and what is missing.
 function leadDataCard(box, l, scrub, onChange) {
   let socials = {};
@@ -365,6 +402,7 @@ function leadDataCard(box, l, scrub, onChange) {
       <dt>Owner</dt><dd>${esc(l.owner_name || l.contact_name || 'Not found')}</dd>
       <dt>Email</dt><dd>${emails.length ? emails.slice(0, 4).map((x) => `${esc(x.email)} <span class="badge ${x.mx === false ? 'bad' : x.role ? 'warn' : ''}">${esc(x.mx === false ? 'no mail server' : x.role ? 'shared inbox' : x.mx ? 'valid' : 'not checked')}</span>`).join('<br>') : 'None found'}</dd>
       ${Object.keys(socials).length ? `<dt>Social</dt><dd>${Object.entries(socials).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(k === 'x' ? 'X' : k.charAt(0).toUpperCase() + k.slice(1))}</a>`).join(' · ')}</dd>` : ''}
+      ${sunbizRows(l, scrub)}${profileRows(scrub?.profile)}
       ${scrub?.site && !scrub.site.ok ? `<dt>Website</dt><dd class="err-text">${esc(scrub.site.error || 'Did not load')}</dd>` : ''}
       ${scrub?.missing?.length ? `<dt>Missing</dt><dd class="small muted">${esc(scrub.missing.join(', '))}</dd>` : ''}</dl>`}</div>`;
   $('#lscrub', box).addEventListener('click', async (e) => {
@@ -993,13 +1031,24 @@ export async function settingsPage(app, user) {
       <div class="copybox"><code>${esc(formUrl)}</code><button class="btn btn-ghost btn-sm" id="cpf">Copy</button></div></div>`;
   $('#cpf', view).addEventListener('click', () => copy(formUrl, 'Form address copied'));
   if (isAdmin) import('./balances.js').then((m) => m.balancesCard($('#setbal', view)));
-  if (isAdmin) api('/api/research/status').then((r) => {
+  if (isAdmin) Promise.all([api('/api/research/status'), api('/api/lead-mode').catch(() => ({ mode: 'paid', sunbiz: true }))]).then(([r, lm]) => {
     const box = $('#setrs', view); if (!box) return;
-    box.innerHTML = `<div class="card-head"><h2>Lead research and scrubbing</h2><span class="small muted">${r.left} waiting · ${r.scrubbed} scrubbed</span></div>
+    const free = lm.mode === 'free';
+    box.innerHTML = `<div class="card-head"><h2>Lead data mode</h2><span class="small muted">${free ? 'Free: costs nothing' : 'Paid: Google data'}</span></div>
+      <p class="small">Free mode turns off every paid lead call: Google Maps finder searches and automatic research (DataForSEO). You still get OpenStreetMap searches, the website read (services, areas, years, hours, team), emails, social pages and the state business registry: Florida owners and officers from Sunbiz, filing facts for CO, OR, CT, NY and PA, and a one click link to the official search for every other state. It has no Google ratings, reviews or map rank, so call categories that need them stay general.</p>
+      <div class="row"><label class="row" style="gap:8px"><input type="radio" name="lmode" value="paid"${free ? '' : ' checked'}> Paid (best data)</label>
+        <label class="row" style="gap:8px"><input type="radio" name="lmode" value="free"${free ? ' checked' : ''}> Free (no per lead cost)</label>
+        <label class="row" style="gap:8px"><input type="checkbox" id="lmsb"${lm.sunbiz === false ? '' : ' checked'}> Look up the state business registry (Florida owners, 4 other states by API, the rest by link)</label>
+        <button class="btn btn-ghost btn-sm" id="lmsave">Save</button></div>
+      <hr style="margin:16px 0;border:0;border-top:1px solid var(--line)">
+      <div class="card-head" style="padding:0"><h2>Lead research and scrubbing</h2><span class="small muted">${r.left} waiting · ${r.scrubbed} scrubbed</span></div>
       <p class="small">Every imported lead is researched in the background (about $0.04 each on DataForSEO), scored, graded and split into the dialer's quality queues. Bad and toll free numbers and businesses closed on Google are scrubbed out.</p>
       <div class="row"><label class="row" style="gap:8px"><input type="checkbox" id="rson"${r.on ? ' checked' : ''}> Research every new lead automatically</label>
         <label class="row small" style="gap:6px">Daily cap <input id="rscap" type="number" min="0" max="5000" value="${r.cap}" style="width:100px"> leads (about $${(r.cap * 0.04).toFixed(0)} a day at most)</label>
         <button class="btn btn-ghost btn-sm" id="rssave">Save</button></div>`;
+    $('#lmsave', box).addEventListener('click', async () => {
+      try { await api('/api/lead-mode', { method: 'PUT', body: { mode: box.querySelector('[name=lmode]:checked')?.value || 'paid', sunbiz: $('#lmsb', box).checked } }); toast('Saved'); settingsPage(app, user); } catch (e) { toast(e.message, true); }
+    });
     $('#rssave', box).addEventListener('click', async () => { try { await api('/api/research/settings', { method: 'PUT', body: { on: $('#rson', box).checked, cap: Number($('#rscap', box).value) } }); toast('Saved'); } catch (e) { toast(e.message, true); } });
     api('/api/scrub/status').then((sc) => {
       const d = document.createElement('div');

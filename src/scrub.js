@@ -6,6 +6,8 @@ import { HttpError, json } from './util.js';
 import { all, first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
+import { extractProfile, mergeProfiles } from '../public/js/freedata.js';
+import { registryLookup, leadMode } from './freedata.js';
 import { cleanName, phoneInfo, emailInfo, pickEmail, emailStatus, extractContacts, mergeContacts, contactLinks, dataScore } from '../public/js/scrub.js';
 
 const UA = 'Mozilla/5.0 (compatible; RightwayHub/1.0; +https://rightwaygrowth.com)';
@@ -54,7 +56,8 @@ async function lineType(env, e164, fetchImpl) {
   return type ? { type, carrier: String(d.line_type_intelligence?.carrier_name || '').slice(0, 80) || null } : null;
 }
 
-export async function scrubLead(env, lead, { fetchImpl = fetch, lookup = false } = {}) {
+export async function scrubLead(env, lead, opts = {}) {
+  const { fetchImpl = fetch, lookup = false } = opts;
   const set = {};
   const report = { at: now() };
   // 1. The name the rep says on the call.
@@ -66,14 +69,16 @@ export async function scrubLead(env, lead, { fetchImpl = fetch, lookup = false }
   report.phone = ph;
   // 3. The website: home page, then up to two contact or about pages.
   let c = { emails: [], socials: {}, phones: [], owner: null, host: '' };
+  let profile = null;
   if (lead.website) {
     const home = await fetchPage(lead.website, fetchImpl);
     report.site = { ok: home.ok, url: home.url || null, https: String(home.url || '').startsWith('https://'), error: home.error || null };
     if (home.ok) {
       c = extractContacts(home.html, home.url);
+      try { profile = extractProfile(home.html); } catch { profile = null; }
       for (const link of contactLinks(home.html, home.url).slice(0, 2)) {
         const pg = await fetchPage(link, fetchImpl);
-        if (pg.ok) c = mergeContacts(c, extractContacts(pg.html, pg.url));
+        if (pg.ok) { c = mergeContacts(c, extractContacts(pg.html, pg.url)); try { profile = mergeProfiles(profile, extractProfile(pg.html)); } catch { /* keep what we have */ } }
       }
     }
   }
@@ -86,6 +91,14 @@ export async function scrubLead(env, lead, { fetchImpl = fetch, lookup = false }
   report.socials = c.socials;
   report.owner = c.owner;
   report.sitePhones = c.phones;
+  report.profile = profile;
+  // Florida registry (free): who is on the company's paperwork, and how long it has existed.
+  let sb = null;
+  if (opts.sunbiz !== false && (await leadMode(env)).sunbiz) {
+    const reg = await registryLookup(lead, fetchImpl).catch(() => null);
+    report.registry = reg;
+    if (reg?.code === 'FL') { sb = reg; report.sunbiz = reg; }
+  }
   // 5. Line type (optional, paid).
   let lt = null;
   if (lookup && ph.valid && !ph.problem && env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && !lead.phone_type) lt = await lineType(env, ph.e164, fetchImpl).catch(() => null);
@@ -95,7 +108,8 @@ export async function scrubLead(env, lead, { fetchImpl = fetch, lookup = false }
   if (best && !lead.email) set.email = best.email;
   const chosen = lead.email ? emails.find((x) => x.email === String(lead.email).toLowerCase()) : best;
   set.email_status = emailStatus(chosen);
-  if (c.owner) { set.owner_name = c.owner; if (!lead.contact_name) set.contact_name = c.owner; }
+  const ownerFound = c.owner || (sb?.found && sb.owner) || null;   // the website's own word first, then the state registry
+  if (ownerFound) { set.owner_name = ownerFound; if (!lead.contact_name) set.contact_name = ownerFound; }
   if (Object.keys(c.socials).length) set.socials = JSON.stringify({ ...(safeJson(lead.socials) || {}), ...c.socials });
   if (report.site?.ok && report.site.url && lead.website && !/^https?:/i.test(lead.website)) set.website = report.site.url;
   const merged = { ...lead, ...set };

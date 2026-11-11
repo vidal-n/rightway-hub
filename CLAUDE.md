@@ -544,6 +544,14 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   `who` and `cat` so the floating call bar shows business, person (owner, else contact, else "Ask for the owner") and the category; long status text goes on its own line so the name is
   never squeezed out. The power dial popup class is `pd compact` (`.mini` is a generic stat grid, do not reuse it).
 - Lead data cost line (Nov 2026): `logCost` (`src/costs.js`) puts any spend whose kind starts with "lead " under vendor `leads` ("Lead data"): Lead finder searches (`lead finder (maps)`), lead research (`lead research (maps)`, `lead research (grid)`), and owner entries via `POST /api/costs/entry` ({name, dollars}, counted today, kind `bought: <name>`). Budget vendor caps include Lead data. Twilio Lookup phone type checks are not logged again, since they are already in Twilio's usage. Client scans and listing checks stay on DataForSEO.
+- Free lead data mode (Nov 2026, `src/freedata.js`, pure `public/js/freedata.js` and `public/js/registries.js`, tests `test/freedata.test.js`, `test/freefinder.test.js`, `test/registries.test.js`): settings `lead_mode`
+  ('paid' default | 'free'), `sunbiz_auto` (registry lookups, on by default), `GET/PUT /api/lead-mode` (owners). Free mode blocks Google Maps finder jobs and `researchTick` (no DataForSEO calls at all) and the Finder
+  page defaults to OpenStreetMap. Finder source `osm` (`finder_jobs.source`): Overpass API (`osmSearch`, three public endpoints tried in turn, keyword to OSM tags in `TAGS` plus a name stem), cost 0, max 150 searches
+  a job (`MAX_OSM_REQUESTS`), sizes 1, 3 or 5 (`OSM_SIZES`, size 1 is one search at the centre), 3 per tick, `FINDER_OSM_GAP` ms between searches. OSM has no ratings or reviews, and many small businesses are missing.
+  Lead scrub also reads up to two contact or about pages into `report.profile` (services, areas, years, founded, license, hours, team, flags, CMS) and runs `registryLookup` into `report.registry`.
+  Business registries for every state and DC (`STATES` in `registries.js`): Florida reads Sunbiz (officers, so it can set `owner_name`; stored in `report.sunbiz` too), CO, OR, CT, NY and PA read their Socrata open
+  data (`OPEN_DATA` column maps, `openDataUrl`, `normalizeRows`; registered agent shown but never used as the owner), the other 44 states return `linkOnly` with the official search page. Blank state counts as Florida.
+  Florida DBPR license data is only a link (`licenseSearchUrl`). None of the registry endpoints, Overpass or Nominatim has been run against the live services yet (the build sandbox cannot reach them): check the first real run.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 
