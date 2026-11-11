@@ -430,9 +430,16 @@ async function jobPage(view, id) {
         const el = document.createElement('a'); el.href = URL.createObjectURL(blob); el.download = `${job.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'leads'}.csv`; el.click(); setTimeout(() => URL.revokeObjectURL(el.href), 5000);
       } else if (a === 'add') {
         busy(b, true, 'Adding');
-        const body = picked.size ? { keys: [...picked] } : { filters: f };
-        const r = await api(`/api/finder/jobs/${id}/add`, { method: 'POST', body });
-        const why = Object.entries(r.skippedBy || {}).filter(([, v]) => v).map(([k, v]) => `${v} ${{ phone: 'same phone', website: 'same website', name: 'same name', invalid: 'no phone', dnc: 'do not call' }[k] || k}`).join(', ');
+        // Picked rows go in batches of 25 so one request never does too much work on the server.
+        const batches = picked.size ? chunkList([...picked], 25).map((keys) => ({ keys })) : [{ filters: f }];
+        const r = { imported: 0, skipped: 0, skippedBy: {} };
+        for (const [i, body] of batches.entries()) {
+          busy(b, true, `Adding ${i * 25 + 1}+`);
+          const part = await api(`/api/finder/jobs/${id}/add`, { method: 'POST', body });
+          r.imported += part.imported; r.skipped += part.skipped;
+          for (const [k, v] of Object.entries(part.skippedBy || {})) r.skippedBy[k] = (r.skippedBy[k] || 0) + v;
+        }
+        const why = Object.entries(r.skippedBy).filter(([, v]) => v).map(([k, v]) => `${v} ${{ phone: 'same phone', website: 'same website', name: 'same name', invalid: 'no phone', dnc: 'do not call' }[k] || k}`).join(', ');
         toast(`${num(r.imported)} added to the Pipeline${r.skipped ? `, ${num(r.skipped)} skipped (${why})` : ''}`);
         picked.clear(); await loadResults(); draw();
       }

@@ -175,9 +175,9 @@ route('GET', '/api/finder/jobs/:id/results', async ({ env, user, params }) => {
 });
 
 // Put businesses into the Pipeline. Either the keys the person ticked, or everything that passes the filters.
-export async function addToPipeline(env, job, rows, by, { tag } = {}) {
+export async function addToPipeline(env, job, rows, by, { tag, defer } = {}) {
   const recs = rows.map((r) => ({ key: r.rkey, rec: parse(r.data, {}) }));
-  const out = await importLeads(env, { id: by }, recs.map(({ rec }) => leadRow(rec)), { source: 'Lead finder', tags: tag || job.tag || job.name });
+  const out = await importLeads(env, { id: by }, recs.map(({ rec }) => leadRow(rec)), { source: 'Lead finder', tags: tag || job.tag || job.name, defer });
   const ops = out.rows.map((o, i) => (o.id
     ? ["UPDATE finder_results SET state = 'added', lead_id = ? WHERE job_id = ? AND rkey = ?", o.id, job.id, recs[i].key]
     : ['UPDATE finder_results SET state = ?, lead_id = ? WHERE job_id = ? AND rkey = ?', o.skipped === 'dnc' ? 'dnc' : o.skipped === 'invalid' ? 'nophone' : 'inhub', o.lead_id || null, job.id, recs[i].key]));
@@ -186,7 +186,7 @@ export async function addToPipeline(env, job, rows, by, { tag } = {}) {
   return out;
 }
 
-route('POST', '/api/finder/jobs/:id/add', async ({ env, user, params, body }) => {
+route('POST', '/api/finder/jobs/:id/add', async ({ env, user, params, body, defer }) => {
   requireAdmin(user);
   const job = await jobOr404(env, params.id);
   const b = await body();
@@ -196,8 +196,8 @@ route('POST', '/api/finder/jobs/:id/add', async ({ env, user, params, body }) =>
   if (!rows.length) throw new HttpError('Nothing to add. These are already in the Hub, or none match the filters.');
   let imported = 0, skipped = 0, scrubbed = 0;
   const skippedBy = { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0 };
-  for (let i = 0; i < rows.length; i += 1000) {
-    const r = await addToPipeline(env, job, rows.slice(i, i + 1000), user.id, { tag: text(b.tag, 60) });
+  for (let i = 0; i < rows.length; i += 25) {
+    const r = await addToPipeline(env, job, rows.slice(i, i + 25), user.id, { tag: text(b.tag, 60), defer });
     imported += r.imported; skipped += r.skipped; scrubbed += r.scrubbed;
     for (const k of Object.keys(skippedBy)) skippedBy[k] += r.skippedBy[k] || 0;
   }
