@@ -99,6 +99,7 @@ test('free mode: Google Maps searches and automatic research stay off, the switc
   await t.call('POST', '/api/leads/import', { rows: [{ business: 'Test Roofing', phone: '305-555-0188', city: 'Miami', state: 'FL' }] });
   let called = 0;
   const spy = async () => { called++; return Response.json({}); };
+  await t.call('PUT', '/api/research/settings', { on: true });
   const realFetch = globalThis.fetch; globalThis.fetch = spy;
   try { assert.equal(await researchTick(t.env, 3), 1, 'free research runs on the lead without any paid call'); } finally { globalThis.fetch = realFetch; }
   assert.equal(called, 0, 'no paid research call went out');

@@ -1,0 +1,4 @@
+
+/* Price next to a button that costs money */
+.cost-hint { margin-left: 6px; font-size: .8em; font-weight: 500; opacity: .75; }
+.cost-hint:empty { display: none; }

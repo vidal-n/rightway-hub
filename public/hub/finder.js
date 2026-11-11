@@ -123,6 +123,7 @@ async function homePage(view) {
       <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn btn-primary" id="fgo">Start search</button></div>
       <p class="err-text small" id="ferr" hidden></p>
     </div>
+    ${d.spendPaused ? `<p class="bad-text" style="margin:18px 0 0"><b>Google Maps searches are paused for today.</b> Spending reached the $${esc(String(d.spendPaused.cap))} daily limit. Raise it in Settings, Spending and background jobs, or wait until tomorrow. OpenStreetMap searches are not affected.</p>` : ''}
     <h3 style="margin:22px 0 10px">Searches</h3><div id="fjobs"></div>
 `;
   mountFilters($('#fnew', view));

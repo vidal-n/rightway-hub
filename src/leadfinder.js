@@ -3,6 +3,7 @@
 // results table. From there they go into the Pipeline through the same import the CSV uses (dedupe, DNC, free scrub, background
 // enrichment of emails, owner names and socials), or download as CSV. A cron tick works a few searches at a time so a job never
 // runs into Worker limits, and the open page nudges it every few seconds so it finishes quickly while someone watches.
+import { bgOk } from './spend.js';
 import { HttpError, json } from './util.js';
 import { all, first, run, batch, newId, now } from './db.js';
 import { requireAdmin } from './auth.js';
@@ -81,7 +82,8 @@ function listView(jobs) {
 route('GET', '/api/finder', async ({ env, user }) => {
   requireAdmin(user);
   const jobs = await all(env, 'SELECT * FROM finder_jobs ORDER BY created_at DESC LIMIT 40');
-  return json({ jobs: listView(jobs), demo: isDemo(env), free: await isFreeMode(env), limits: { maxRequests: MAX_REQUESTS, maxOsmRequests: MAX_OSM_REQUESTS, maxKeywords: MAX_KEYWORDS, maxAreas: MAX_AREAS } });
+  const sp = await bgOk(env);
+  return json({ spendPaused: sp.ok ? null : { spent: sp.spent, cap: sp.cap }, jobs: listView(jobs), demo: isDemo(env), free: await isFreeMode(env), limits: { maxRequests: MAX_REQUESTS, maxOsmRequests: MAX_OSM_REQUESTS, maxKeywords: MAX_KEYWORDS, maxAreas: MAX_AREAS } });
 });
 
 route('POST', '/api/finder/jobs', async ({ env, user, body }) => {
@@ -268,6 +270,8 @@ export async function finderTick(env, budget = PER_TICK, { fetchImpl, at = now()
   if ((claim?.meta?.changes ?? 1) < 1) return 0;
   const osm = job.source === 'osm';
   const demo = !osm && isDemo(env);
+  // Paid Google Maps searches stop for the day at the owner's spending limit (OpenStreetMap is free and keeps going).
+  if (!osm && !demo && !(await bgOk(env)).ok) { await run(env, 'UPDATE finder_jobs SET locked_until = NULL WHERE id = ?', job.id); return 0; }
   const tasks = taskList(parse(job.areas, []), parse(job.keywords, []));
   if (osm) budget = Math.min(budget, 3);              // OpenStreetMap's servers are shared and free: a few at a time, one by one
   let i = job.done, used = 0, cost = 0, errors = 0, fatal = null;

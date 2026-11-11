@@ -120,7 +120,7 @@ async function editor(el, c, id) {
           <div class="ct-body" id="ctbody" contenteditable="true" spellcheck="true">${it.html ? cleanHtml(it.html) : '<p></p>'}</div>
           <textarea id="ctsrc" class="ct-src" hidden spellcheck="false"></textarea>
           <div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap">
-            <button class="btn btn-ghost" id="ctai">${it.html ? 'Rewrite with AI' : 'Write the draft'}</button>
+            <button class="btn btn-ghost" id="ctai">${it.html ? 'Rewrite with AI' : 'Write the draft'}<span class="cost-hint" data-cost="claude_page"></span></button>
             <span class="spacer"></span><button class="btn btn-primary" id="ctsave">Save</button>
           </div>
         </div>

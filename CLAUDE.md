@@ -589,6 +589,14 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   are the visitor's own (`tz_how` booking) and are never recomputed. Owners: Pipeline link "Find the time zone for the N unknown (free)" calls `POST /api/leads/fix-timezones {after}` (200 leads a request,
   no outside calls, also fixes old rows with no `tz_how`, fills an empty state from the address or ZIP, turns "Alabama" into AL). Lists show ET/CT style badges for two-zone leads. ZIP ranges and city lists are typed
   from memory, so results near zone lines are approximate (that is what `alt` is for). No area code table on purpose (cell numbers move).
+- Spending controls (Nov 2026, V: "I don't want things running in the background without me knowing"): `src/spend.js`, `public/hub/spend.js` (top of owner Settings, "Spending and background jobs"), `public/js/pricing.js`
+  (pure `PRICES`, `money`, `priceText`), `public/hub/costhint.js`. Automatic lead research is OFF by default (`settings.auto_research === '1'` to run; a one time stamp `spend_v` switched every older install off, and
+  `PUT /api/research/settings` runs that first so an owner's choice is never undone). The dialer's "Auto research ahead" also starts off (localStorage `rw-dial-auto2`). Daily limit in dollars
+  (`settings.spend_cap_day`, default $5, 0 = none): `bgOk(env)` sums today's `cost_daily` for dataforseo, claude and leads (Twilio is read live, not included) and background jobs stop for the day at the limit:
+  `researchTick` (paid depths), `autoScanTick`, and paid Google Maps `finderTick` jobs (OpenStreetMap keeps going; `GET /api/finder` returns `spendPaused`, shown as a strip). Clicks by a person are never blocked.
+  The card has a switch with the price for each automatic job (research with depth, rep depth and leads a day, monthly scans, Twilio phone type check, scrub), today and month spend, and a "What things cost" table.
+  `GET/PUT /api/spend` (owners). Owners see a price next to paid buttons: an empty `<span class="cost-hint" data-cost="<PRICES id>" data-n="<count>">` is filled by `startCostHints()` (MutationObserver, started in
+  `shell.js`; `research_call` follows the rep depth setting). Keep new paid features on this: add the price to `PRICES`, put the span on the button, and gate any automatic run with `bgOk`.
 - Not built yet: publishing to Meta (needs Meta app review; posts are copied). Google Maps key not added yet (V will come back to it). Follow the Package build-out tab.
 - We do not build automated posting for backlinks (Google link-scheme policy).
 

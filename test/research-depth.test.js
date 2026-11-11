@@ -68,7 +68,7 @@ test('automatic research uses the owner depth, and free depth only touches finde
   await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
   assert.equal((await call('GET', '/api/research/status')).data.depth, 'lite', 'lite is the default');
   assert.equal((await call('PUT', '/api/research/settings', { depth: 'huge' })).status, 400);
-  await call('PUT', '/api/research/settings', { depth: 'free', callDepth: 'lite' });
+  await call('PUT', '/api/research/settings', { on: true, depth: 'free', callDepth: 'lite' });
   const st = (await call('GET', '/api/research/status')).data;
   assert.equal(st.depth, 'free'); assert.equal(st.callDepth, 'lite'); assert.equal(st.depths.lite.cost, 0.002);
   await call('POST', '/api/leads/import', { rows: [{ business: 'Plain Plumbing', phone: '305-555-0111', city: 'Miami', state: 'FL' }] });

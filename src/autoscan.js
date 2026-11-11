@@ -1,6 +1,7 @@
 // Automatic ranking scans: a queue of jobs that a cron tick (every minute) works through a few dozen grid points at a time,
 // so it stays inside Worker limits. Finished jobs are saved as normal scans on the client, so the Rankings tab, the client app and
 // reports all see them. Owners switch it on in Settings; nothing is scanned (or billed by DataForSEO) until they do.
+import { bgOk } from './spend.js';
 import { HttpError, json } from './util.js';
 import { all, first, run, newId, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
@@ -184,6 +185,7 @@ export async function runTick(env, { budget = POINTS_PER_TICK, fetchImpl, at = n
 // Called by the cron trigger every minute and by the "work on the queue" button.
 export async function autoScanTick(env, opts = {}) {
   const at = opts.at ?? now();
+  if (!(await bgOk(env)).ok) return 0;   // today's spending limit reached: scans wait until tomorrow or a higher limit
   const s = await getSettings(env).catch(() => ({}));
   if ((await getConfig(env)).enabled && at - Number(s.autoscan_checked || 0) > CHECK_EVERY_MS) {
     await setSetting(env, 'autoscan_checked', String(at));

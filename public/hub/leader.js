@@ -52,7 +52,7 @@ export async function reputationTab(el, c) {
   const maxM = a ? Math.max(1, ...a.months.map((m) => m.n)) : 1;
   const totalStars = a ? Object.values(a.stars).reduce((s, n) => s + n, 0) || 1 : 1;
   el.innerHTML = `
-    <div class="card"><div class="card-head"><h2>Reputation</h2><button class="btn ${a ? 'btn-ghost' : 'btn-primary'} btn-sm" id="reppull"${d.waiting ? ' disabled' : ''}>${d.waiting ? 'Getting reviews...' : a ? 'Get the latest reviews' : 'Get their Google reviews'}</button></div>
+    <div class="card"><div class="card-head"><h2>Reputation</h2><button class="btn ${a ? 'btn-ghost' : 'btn-primary'} btn-sm" id="reppull"${d.waiting ? ' disabled' : ''}>${d.waiting ? 'Getting reviews...' : a ? 'Get the latest reviews' : 'Get their Google reviews'}<span class="cost-hint" data-cost="reviews_pull"></span></button></div>
       ${d.waiting ? '<div class="sa-prog"><span class="spin"></span> Google reviews are on the way. Usually a few minutes. You can leave this page.</div>' : ''}
       <p class="small muted">Reads their newest 100 Google reviews: rating trend, how fast reviews come in compared with competitors, reply rate, and what customers talk about. A few cents each time.${d.demo ? ' DataForSEO is not connected, so this is demo data.' : ''}${d.pull ? ` Last read ${esc(fmt.date(d.pull.at))}.` : ''}</p>
       ${a ? `<div class="stats" style="grid-template-columns:repeat(4,minmax(0,1fr));margin:12px 0 0">

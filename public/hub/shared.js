@@ -217,12 +217,12 @@ export async function renderRankings(el, clientId, { staff = false } = {}) {
   const prog = staff ? '<div id="rk-prog"></div>' : await import('./reports.js').then((m) => m.clientReportsCard(clientId)).catch(() => '');
   if (!scans.length) {
     el.innerHTML = `${prog}<div class="card empty"><h3>No ranking scans yet</h3><p>${staff ? 'Run a scan now, or turn on monthly scans in Settings.' : 'Your first map scan shows up here.'}</p>
-      ${staff ? `<div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="rk-run">${icon.scan}Run scan now</button><a class="btn btn-ghost" href="/scan.html?client=${esc(clientId)}">Open the scan tool</a></div>` : ''}</div>`;
+      ${staff ? `<div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="rk-run">${icon.scan}Run scan now<span class="cost-hint" data-cost="scan_point" data-n="49"></span></button><a class="btn btn-ghost" href="/scan.html?client=${esc(clientId)}">Open the scan tool</a></div>` : ''}</div>`;
   } else {
     el.innerHTML = `${prog}${trendCard(scans)}
     <div class="card" id="rk-view"><div class="skeleton"></div></div>
     <div class="card">
-      <div class="card-head"><h2>All scans</h2>${staff ? `<div class="row" style="gap:8px"><button class="btn btn-ghost btn-sm" id="rk-run">${icon.scan}Run scan now</button><a class="btn btn-primary btn-sm" href="/scan.html?client=${esc(clientId)}">New scan</a></div>` : ''}</div>
+      <div class="card-head"><h2>All scans</h2>${staff ? `<div class="row" style="gap:8px"><button class="btn btn-ghost btn-sm" id="rk-run">${icon.scan}Run scan now<span class="cost-hint" data-cost="scan_point" data-n="49"></span></button><a class="btn btn-primary btn-sm" href="/scan.html?client=${esc(clientId)}">New scan</a></div>` : ''}</div>
       <div class="table-wrap"><table><thead><tr><th>Date</th><th>Keyword</th><th>First page (top 10)</th><th>Top 3</th><th>Avg rank</th><th>At address</th></tr></thead>
       <tbody>${scans.map((s, i) => `<tr data-scan="${esc(s.id)}" style="cursor:pointer"${i === 0 ? ' class="is-you"' : ''}>
         <td>${esc(fmt.date(s.created_at))}</td><td>${esc(s.keyword)}</td><td><b>${s.top10Pct ?? '-'}%</b></td><td>${s.top3Pct ?? '-'}%</td><td>${s.avgRank ?? '-'}</td><td>${s.centerRank ? `#${s.centerRank}` : '20+'}</td></tr>`).join('')}</tbody></table></div>

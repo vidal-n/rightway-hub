@@ -7,6 +7,7 @@ import { route } from './router.js';
 import { researchLead, leadFieldsFromIntel } from './intel.js';
 import { isFreeMode } from './freedata.js';
 import { cleanDepth, RESEARCH_DEPTHS } from '../public/js/freedata.js';
+import { bgOk } from './spend.js';
 
 const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
 const TOLL_FREE = /^(800|833|844|855|866|877|888)/;
@@ -22,8 +23,11 @@ export function scrubReason(lead, intel) {
 }
 
 export async function researchSettings(env) {
-  const s = await getSettings(env);
-  return { on: s.auto_research !== '0', cap: Number(s.auto_research_cap) || 300, day: s.auto_research_day || '', done: Number(s.auto_research_done) || 0, radius: Number(s.research_radius) || 2, depth: cleanDepth(s.research_depth, 'lite'), callDepth: cleanDepth(s.research_depth_call, 'standard') };
+  let s = await getSettings(env);
+  // Nov 2026: automatic research used to be on unless switched off, and it spends money. Once, everything is turned off,
+  // and from then on it is on only when an owner switches it on (the stamp keeps that choice).
+  if (s.spend_v !== '1') { await setSetting(env, 'auto_research', '0'); await setSetting(env, 'spend_v', '1'); s = { ...s, auto_research: '0', spend_v: '1' }; }
+  return { on: s.auto_research === '1', cap: Number(s.auto_research_cap) || 300, day: s.auto_research_day || '', done: Number(s.auto_research_done) || 0, radius: Number(s.research_radius) || 2, depth: cleanDepth(s.research_depth, 'lite'), callDepth: cleanDepth(s.research_depth_call, 'standard') };
 }
 
 export async function researchTick(env, max = 1) {
@@ -32,6 +36,7 @@ export async function researchTick(env, max = 1) {
   if (!cfg.on) return 0;
   if (!env.DATAFORSEO_LOGIN) return 0;
   if (await isFreeMode(env)) cfg.depth = 'free';
+  if (cfg.depth !== 'free' && !(await bgOk(env)).ok) return 0;   // today's spending limit reached
   const today = new Date().toISOString().slice(0, 10);
   let done = cfg.day === today ? cfg.done : 0;
   let n = 0;
@@ -76,6 +81,7 @@ route('GET', '/api/research/status', async ({ env, user }) => {
 route('PUT', '/api/research/settings', async ({ env, user, body }) => {
   requireAdmin(user);
   const b = await body();
+  await researchSettings(env);   // runs the one time switch off first, so an owner's choice below is never undone by it
   if ('on' in b) await setSetting(env, 'auto_research', b.on ? '1' : '0');
   if ('depth' in b) { if (!RESEARCH_DEPTHS[b.depth]) throw new HttpError('Depth must be free, lite, standard or full.'); await setSetting(env, 'research_depth', b.depth); }
   if ('callDepth' in b) { if (!RESEARCH_DEPTHS[b.callDepth]) throw new HttpError('Depth must be free, lite, standard or full.'); await setSetting(env, 'research_depth_call', b.callDepth); }

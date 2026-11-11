@@ -30,7 +30,7 @@ export async function citationsTab(el, c) {
   const pros = d.log.filter((x) => x.status === 'prospect' || (x.status === 'planned' && x.type === 'link'));
   const logged = d.log.filter((x) => !pros.includes(x));
   el.innerHTML = `
-    <div class="card"><div class="card-head"><h2>Directory check</h2><button class="btn ${d.lastAudit ? 'btn-ghost' : 'btn-primary'} btn-sm" id="ciaudit">${d.lastAudit ? 'Check again' : 'Check directories'}</button></div>
+    <div class="card"><div class="card-head"><h2>Directory check</h2><button class="btn ${d.lastAudit ? 'btn-ghost' : 'btn-primary'} btn-sm" id="ciaudit">${d.lastAudit ? 'Check again' : 'Check directories'}<span class="cost-hint" data-cost="directory_check"></span></button></div>
       <p class="small muted">Searches Google for their listing on each directory and compares the name, address and phone it shows. About 5 cents a check.${d.demo ? ' DataForSEO is not connected, so results are demo data.' : ''}</p>
       ${d.lastAudit ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0 4px">${['mismatch', 'missing', 'found', 'match'].map((k) => (counts[k] ? `<span class="badge ${AUDIT[k][0]}">${counts[k]} ${AUDIT[k][1].toLowerCase()}</span>` : '')).join('')}<span class="small muted">Checked ${esc(fmt.date(d.lastAudit.at))}</span></div>` : ''}
       <ul class="list" style="margin-top:10px">${dirs.map((x, i) => (x.site ? dirRow(x, i) : '')).join('')}</ul>
@@ -48,7 +48,7 @@ export async function citationsTab(el, c) {
           <td><button class="btn btn-ghost btn-sm" data-del="${esc(x.id)}" aria-label="Remove">Remove</button></td></tr>`).join('')}</tbody></table></div>`
         : '<p class="muted">Log each listing you build or fix and each link you earn. BrightLocal Citation Builder orders go here too, with the cost.</p>'}</div>
 
-    <div class="card"><div class="card-head"><h2>Link prospects</h2><button class="btn btn-ghost btn-sm" id="cipros">Find prospects</button></div>
+    <div class="card"><div class="card-head"><h2>Link prospects</h2><button class="btn btn-ghost btn-sm" id="cipros">Find prospects<span class="cost-hint" data-cost="link_prospects"></span></button></div>
       <p class="small muted">Local sites that link to businesses: chambers, associations, "best of" lists, sponsorships. About 1 cent a search. Earn these by hand: never pay for links or use automated link building (Google penalizes it).</p>
       ${pros.length ? `<ul class="list" style="margin-top:10px">${pros.map((x) => `<li class="item ci-row" data-id="${esc(x.id)}"><span class="badge ${STATUS_CLS[x.status]}">${esc(x.kind || STATUS[x.status])}</span>
         <div><div class="item-title"><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a></div><div class="item-sub">${esc(x.note || '')}</div></div>

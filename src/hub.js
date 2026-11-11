@@ -654,6 +654,7 @@ import './freedata.js';
 import './costs.js';
 import './avatar.js';
 import './autoresearch.js';
+import './spend.js';
 import './vault.js';
 import './appointments.js';
 import './lines.js';

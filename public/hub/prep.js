@@ -76,7 +76,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
         <div style="min-width:0"><div class="item-title">${intel ? `Scope from the research: ${Q.services.length} services` : 'Scope: research first'} <span class="small">(about ${esc(hoursOf(E.monthly))} h a month to deliver. You set the price.)</span></div>
           <div class="small">${esc(rec.why.join(' · '))}</div></div>
         <div class="row" style="margin-left:auto">
-          <button class="btn btn-ghost btn-sm" data-act="research">${intel ? 'Refresh research' : 'Research now'}</button>
+          <button class="btn btn-ghost btn-sm" data-act="research">${intel ? 'Refresh research' : 'Research now'}<span class="cost-hint" data-cost="research_call"></span></button>
           ${can(window.__rwUser, 'close') ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
           <a class="btn btn-ghost btn-sm" href="/scan.html?lead=${esc(lead.id)}" target="_blank" rel="noopener">Scan tool</a>` : ''}
           <button class="btn btn-ghost btn-sm" data-act="book">Book meeting</button>
@@ -137,7 +137,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
   const lst = $('#preplst', el);
   const drawLst = (L) => {
     lst.innerHTML = `${L ? `<p class="small" style="margin:0 0 8px">${esc(listingsLine(L))} <span class="muted">Checked ${esc(fmt.ago(L.at))}${L.demo ? ' (demo data)' : ''}.</span></p>${listingsTable(L, { max: 15 })}` : '<p class="small muted" style="margin:0 0 8px">Not checked yet. Searches 15 directories for this business and flags wrong phone numbers, wrong ZIP codes and missing listings. About 3 cents.</p>'}
-      <button class="btn btn-ghost btn-sm" data-act="lst" style="margin-top:8px">${L ? 'Check again' : 'Check listings'}</button>`;
+      <button class="btn btn-ghost btn-sm" data-act="lst" style="margin-top:8px">${L ? 'Check again' : 'Check listings'}<span class="cost-hint" data-cost="listing_check"></span></button>`;
     $('[data-act="lst"]', lst).addEventListener('click', async (e) => {
       busy(e.target, true, 'Checking 15 directories...');
       try { const r = await api(`/api/leads/${lead.id}/listings`, { method: 'POST' }); lead.listings = r; drawLst(r); toast('Listings checked'); }

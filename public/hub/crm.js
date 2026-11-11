@@ -134,7 +134,7 @@ export async function pipelinePage(app, user, openId) {
           <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop10"${f.notTop10 ? ' checked' : ''}> Not on the first page</label>
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
       </div>
-      <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)</button>${rows.some((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)) ? ` · <button class="linkbtn" id="scruball">Scrub the ${rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length} not scrubbed yet (free)</button>` : ''}${user.role === 'admin' && all.some((l) => !l.tz_known || !l.tz_how) ? ` · <button class="linkbtn" id="fixtz">${all.some((l) => !l.tz_known) ? `Find the time zone for the ${all.filter((l) => !l.tz_known).length} unknown (free)` : 'Re-check time zones (free)'}</button>` : ''}</div>
+      <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)<span class="cost-hint" data-cost="research_call" data-n="${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)}"></span></button>${rows.some((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)) ? ` · <button class="linkbtn" id="scruball">Scrub the ${rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length} not scrubbed yet (free)</button>` : ''}${user.role === 'admin' && all.some((l) => !l.tz_known || !l.tz_how) ? ` · <button class="linkbtn" id="fixtz">${all.some((l) => !l.tz_known) ? `Find the time zone for the ${all.filter((l) => !l.tz_known).length} unknown (free)` : 'Re-check time zones (free)'}</button>` : ''}</div>
       <div id="pbody"></div>`;
     const body = $('#pbody', view);
     if (p.view === 'list') renderList(body, rows); else renderBoard(body, by);
@@ -767,8 +767,9 @@ export async function dialerPage(app, user) {
   const view = staffShell(app, user, 'dialer');
   let flt = {};
   try { flt = JSON.parse(localStorage.getItem(DIAL_KEY) || '{}'); } catch { flt = {}; }
-  let auto = true;
-  try { auto = localStorage.getItem('rw-dial-auto') !== '0'; } catch { /* ignore */ }
+  // Researching the next leads as you dial costs money, so it starts off (Nov 2026). The old saved choice is ignored once.
+  let auto = false;
+  try { auto = localStorage.getItem('rw-dial-auto2') === '1'; } catch { /* ignore */ }
   const qs = new URLSearchParams(Object.entries(flt).filter(([, v]) => v)).toString();
   let me, q, cal, nums = { numbers: [] };
   try { [me, q, cal, nums] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] })), api('/api/dialer/numbers').catch(() => ({ numbers: [] }))]); }
@@ -857,7 +858,7 @@ export async function dialerPage(app, user) {
     view.innerHTML = `
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
-          <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead</label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
+          <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
           ${me.twilio ? `<button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
       ${dialTabs('queue', user)}
       <div class="tiers">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
@@ -913,7 +914,7 @@ export async function dialerPage(app, user) {
     wireFolds(view);
     $$('[data-jump]', view).forEach((b) => b.addEventListener('click', () => { idx = Number(b.dataset.jump); render(); }));
     [['lay-q', 'queue'], ['lay-p', 'prep'], ['lay-c', 'compact']].forEach(([id, k]) => $(`#${id}`, view)?.addEventListener('change', (e) => { lay[k] = e.target.checked; try { localStorage.setItem('rw-dial-layout', JSON.stringify(lay)); } catch { /* ignore */ } render(); }));
-    $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
+    $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto2', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
     $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
     $$('[data-dq]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, data: b.dataset.dq }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $$('[data-cat]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, cat: b.dataset.cat }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
@@ -1025,7 +1026,7 @@ export async function settingsPage(app, user) {
   const formUrl = `${location.origin}/api/public/lead`;
   view.innerHTML = `
     <div class="page-head"><h1>Settings</h1></div>${settingsTabs('general', user)}
-    ${isAdmin ? '<div class="card" id="setbal"></div><div class="card" id="setrs"></div>' : ''}
+    ${isAdmin ? '<div class="card" id="setspend"></div><div class="card" id="setbal"></div><div class="card" id="setrs"></div>' : ''}
     <div id="stripesetup"></div>
     <div class="card"><div class="card-head"><h2>Connections</h2></div>
       <ul class="list">
@@ -1079,6 +1080,7 @@ export async function settingsPage(app, user) {
       <p class="muted">Point the audit form on rightwaygrowth.com here and requests land in the pipeline as "Audit requested", at the top of the call queue.</p>
       <div class="copybox"><code>${esc(formUrl)}</code><button class="btn btn-ghost btn-sm" id="cpf">Copy</button></div></div>`;
   $('#cpf', view).addEventListener('click', () => copy(formUrl, 'Form address copied'));
+  if (isAdmin) import('./spend.js').then((m) => m.spendCard($('#setspend', view)));
   if (isAdmin) import('./balances.js').then((m) => m.balancesCard($('#setbal', view)));
   if (isAdmin) Promise.all([api('/api/research/status'), api('/api/lead-mode').catch(() => ({ mode: 'paid', sunbiz: true }))]).then(([r, lm]) => {
     const box = $('#setrs', view); if (!box) return;
@@ -1091,25 +1093,11 @@ export async function settingsPage(app, user) {
         <button class="btn btn-ghost btn-sm" id="lmsave">Save</button></div>
       <hr style="margin:16px 0;border:0;border-top:1px solid var(--line)">
       <div class="card-head" style="padding:0"><h2>Lead research and scrubbing</h2><span class="small muted">${r.left} waiting · ${r.scrubbed} scrubbed</span></div>
-      <p class="small">Every imported lead is researched in the background (DataForSEO bills per search, from nothing up to about $0.04 a lead, depending on the depth below), scored, graded and split into the dialer's quality queues. Bad and toll free numbers and businesses closed on Google are scrubbed out.</p>
-      <div class="row"><label class="row" style="gap:8px"><input type="checkbox" id="rson"${r.on ? ' checked' : ''}> Research every new lead automatically</label>
-        <label class="row small" style="gap:6px">Daily cap <input id="rscap" type="number" min="0" max="5000" value="${r.cap}" style="width:100px"> leads (<span id="rscost"></span> a day at most)</label></div>
-      <div class="row" style="margin-top:10px;gap:16px">
-        <label class="field" style="flex:1 1 240px"><span>Automatic research (in the background)</span><select id="rsdepth">${Object.entries(RESEARCH_DEPTHS).map(([k, v]) => `<option value="${k}"${r.depth === k ? ' selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
-        <label class="field" style="flex:1 1 240px"><span>When a rep opens one lead</span><select id="rscall">${Object.entries(RESEARCH_DEPTHS).map(([k, v]) => `<option value="${k}"${r.callDepth === k ? ' selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
-        <button class="btn btn-ghost btn-sm" id="rssave" style="align-self:flex-end">Save</button></div>
-      <p class="small muted" id="rsdx" style="margin:6px 0 0"></p>`;
-    const depthNote = () => {
-      const a = RESEARCH_DEPTHS[$('#rsdepth', box).value], c = RESEARCH_DEPTHS[$('#rscall', box).value];
-      $('#rscost', box).textContent = a.cost ? `about $${(Number($('#rscap', box).value || 0) * (a.cost + 0.002)).toFixed(0)}` : '$0';
-      $('#rsdx', box).innerHTML = `Automatic: <b>${esc(a.label)}</b>, ${esc(a.what)}<br>One lead opened by a rep: <b>${esc(c.label)}</b>, ${esc(c.what)} Leads from the Lead finder already carry their Google details, so they skip the profile lookup. The website, speed check, registry and ad tracking are always free.`;
-    };
-    box.addEventListener('input', (e) => { if (e.target.matches('#rsdepth, #rscall, #rscap')) depthNote(); });
-    depthNote();
+      <p class="small">Researched leads are scored, graded and split into the dialer's quality queues. Bad and toll free numbers and businesses closed on Google are scrubbed out.</p>
+      <p class="small">Automatic research is off until you switch it on in <b>Spending and background jobs</b> above, where its price per lead and daily limit are.</p>`;
     $('#lmsave', box).addEventListener('click', async () => {
       try { await api('/api/lead-mode', { method: 'PUT', body: { mode: box.querySelector('[name=lmode]:checked')?.value || 'paid', sunbiz: $('#lmsb', box).checked } }); toast('Saved'); settingsPage(app, user); } catch (e) { toast(e.message, true); }
     });
-    $('#rssave', box).addEventListener('click', async () => { try { await api('/api/research/settings', { method: 'PUT', body: { on: $('#rson', box).checked, cap: Number($('#rscap', box).value), depth: $('#rsdepth', box).value, callDepth: $('#rscall', box).value } }); toast('Saved'); } catch (e) { toast(e.message, true); } });
     api('/api/scrub/status').then((sc) => {
       const d = document.createElement('div');
       d.innerHTML = `<h3 style="margin-top:18px">Data scrubber</h3>
