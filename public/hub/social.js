@@ -25,6 +25,7 @@ export async function socialTab(el, c) {
     if (f.channel) items = items.filter((i) => i.channels.includes(f.channel));
     const s = summary(d.items);
     el.innerHTML = `
+      <div class="card" id="spauto"></div>
       <div class="card">
         <div class="card-head"><h2>Social planner</h2>
           <div class="row" style="gap:8px"><button class="btn btn-ghost btn-sm" id="spideas">Get ideas</button><button class="btn btn-primary btn-sm" id="spnew">New post</button></div></div>
@@ -44,7 +45,7 @@ export async function socialTab(el, c) {
     const body = $('#spbody', el);
     if (view === 'calendar') calendar(body, items); else if (view === 'board') board(body, items); else list(body, items);
     $$('[data-open]', el).forEach((b) => b.addEventListener('click', () => open(b.dataset.open)));
-    shareCard($('#spshare', el)); connCard($('#spconn', el));
+    autoCard($('#spauto', el)); shareCard($('#spshare', el)); connCard($('#spconn', el));
   };
   const refresh = async () => { await load(); paint(); };
   const open = (id) => editor(c, d.items.find((i) => i.id === id), d.items, refresh);
@@ -155,6 +156,16 @@ export async function socialTab(el, c) {
     });
     $$('[data-copy]', host).forEach((b) => b.addEventListener('click', () => copy(`${location.origin}/social.html#${b.dataset.copy}`, 'Link copied')));
     $$('[data-revoke]', host).forEach((b) => b.addEventListener('click', async () => { if (!confirm('Stop sharing this link? The client will no longer be able to open it.')) return; try { await api(`/api/social/shares/${b.dataset.revoke}`, { method: 'DELETE' }); await refresh(); } catch (e) { toast(e.message, true); } }));
+  }
+
+  // The autopilot card is built once too, so paging the calendar does not reload it.
+  let autoHost = null;
+  function autoCard(host) {
+    if (!autoHost) {
+      autoHost = document.createElement('div'); autoHost.className = 'card'; autoHost.id = 'spauto';
+      import('./socialauto.js').then((m) => m.autopilotCard(autoHost, c, { onChange: refresh, open })).catch((e) => { autoHost.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; });
+    }
+    host.replaceWith(autoHost);
   }
 
   // Built once and put back on every redraw, so changing the month or filters does not ask Meta's status again.

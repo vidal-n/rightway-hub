@@ -663,6 +663,7 @@ import './gbp.js';
 import './photos.js';
 import './social.js';
 import './meta.js';
+import './socialauto.js';
 import './schedule.js';
 import './gmail.js';
 import './gcal.js';

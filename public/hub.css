@@ -2445,3 +2445,11 @@ p.badge, .badge.wrap { white-space: normal; max-width: 100%; display: block; ove
 .auth { min-height: 100dvh; }
 .hub, .deck { min-height: 100dvh; }
 .rail { height: 100dvh; }
+/* Social autopilot: ready-to-post list */
+.sq-day { margin: 14px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.sq-day.is-late { color: var(--bad, #c0392b); }
+.item.sq-row { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.sq-main { flex: 1 1 260px; min-width: 0; cursor: default; overflow-wrap: anywhere; }
+.sq-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 100%; }
+.sq-score input { min-width: 0; }
+@media (max-width: 600px) { .sq-actions { justify-content: flex-start; width: 100%; } }

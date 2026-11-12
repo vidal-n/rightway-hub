@@ -15,6 +15,7 @@ import { reviewTick } from './reputation.js';
 import { ensureMonthTasks } from './work.js';
 import { digestTick, meetingReminders } from './notify.js';
 import { ensureClientChats } from './chat.js';
+import { socialAutoTick } from './socialauto.js';
 import { automationTick } from './automations.js';
 import { researchTick } from './autoresearch.js';
 import { scrubTick } from './scrub.js';
@@ -57,6 +58,7 @@ export default {
       if (used < 30) await googleHealthTick(env).catch((e) => console.error('google health', e));
       // Clients without their private chat get one (one per run, about 5 Slack calls each).
       if (used < 35) await ensureClientChats(env, 1).catch((e) => console.error('client chats', e));
+      await socialAutoTick(env).catch((e) => console.error('social autopilot', e));
     })());
   },
   async fetch(request, rawEnv, execCtx) {

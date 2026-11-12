@@ -15,7 +15,7 @@ let ticker = null;
 
 function tabsHtml(active) {
   // Setters and schedulers only see their schedule here; client work tabs are for closers and owners.
-  const all = [['', 'My work'], ['hours', 'Hours'], ['guides', 'Guides'], ['schedule', 'Schedule']];
+  const all = [['', 'My work'], ['posts', 'Posts'], ['hours', 'Hours'], ['guides', 'Guides'], ['schedule', 'Schedule']];
   const list = can(window.__rwUser, 'deliver') ? all : all.filter(([k]) => k === 'schedule');
   return `<nav class="tabs">${list.map(([k, n]) => `<a href="#/work${k ? `/${k}` : ''}" class="${active === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>`;
 }
@@ -27,6 +27,7 @@ export async function workPage(app, user, sub = '', param = '') {
     return m.scheduleView(view, user, param, tabsHtml('schedule'));
   }
   const view = staffShell(app, user, 'work');
+  if (sub === 'posts') { const m = await import('./socialauto.js'); return m.postsView(view, user, tabsHtml('posts')); }
   if (sub === 'hours') return hoursView(view, user);
   if (sub === 'guides') return guidesView(view, user, param);
   await queueView(view, user);

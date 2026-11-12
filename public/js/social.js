@@ -29,6 +29,8 @@ export const STATUS = Object.fromEntries(STATUSES.map((s) => [s.id, s]));
 export const statusIds = STATUSES.map((s) => s.id);
 export const CLIENT_SEES = ['review', 'changes', 'approved', 'scheduled', 'posted'];
 export const visibleToClient = (status) => CLIENT_SEES.includes(status);
+// Autopilot posts stay hidden from the client until a person verifies them.
+export const clientCanSee = (item) => visibleToClient(item.status) && (!item.auto || Boolean(item.verified_at));
 
 const str = (v, max) => String(v ?? '').replace(/\u0000/g, '').slice(0, max);
 const hashtagCount = (t) => (String(t).match(/(^|\s)#[\p{L}\p{N}_]+/gu) || []).length;

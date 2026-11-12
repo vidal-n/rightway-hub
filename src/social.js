@@ -8,7 +8,7 @@ import { requireClientAccess, requireStaff, isStaff } from './auth.js';
 import { generateCaptions } from './captions.js';
 import { logClaude } from './costs.js';
 import { notify } from './notify.js';
-import { cleanItem, readyForReview, fillCaptions, visibleToClient, templateIdeas, platformIds, STATUS, PLATFORM, progress } from '../public/js/social.js';
+import { cleanItem, readyForReview, fillCaptions, clientCanSee, templateIdeas, platformIds, STATUS, PLATFORM, progress } from '../public/js/social.js';
 import { clientMeta } from './meta.js';
 
 const MAX_IMG = 10 * 1024 * 1024;
@@ -39,7 +39,7 @@ route('GET', '/api/clients/:id/social', async ({ env, user, params }) => {
   requireClientAccess(user, params.id);
   const staff = isStaff(user);
   let items = (await all(env, 'SELECT * FROM social_items WHERE client_id = ? ORDER BY COALESCE(scheduled_at, 9e15), created_at DESC LIMIT 1000', params.id)).map(shape);
-  if (!staff) items = items.filter((i) => visibleToClient(i.status));
+  if (!staff) items = items.filter((i) => clientCanSee(i));
   const counts = Object.fromEntries((await all(env, 'SELECT item_id, COUNT(*) n FROM social_comments WHERE client_id = ? GROUP BY item_id', params.id)).map((r) => [r.item_id, r.n]));
   items = items.map((i) => ({ ...i, comments: counts[i.id] || 0, notes: staff ? i.notes : undefined }));
   const shares = staff ? await all(env, 'SELECT token, label, project, created_at, last_seen, views FROM social_shares WHERE client_id = ? ORDER BY created_at DESC', params.id) : [];
@@ -78,6 +78,7 @@ route('PATCH', '/api/social/:id', async ({ env, user, params, body: readBody, de
   for (const k of ['title', 'project', 'notes', 'status', 'scheduled_at', 'assignee']) if (k in c) put(k, c[k] ?? null);
   for (const k of ['channels', 'captions', 'post_links']) if (k in c) put(k, JSON.stringify(c[k]));
   if (c.status === 'posted' && it.status !== 'posted') put('posted_at', now());
+  if (it.auto && !it.verified_at && ['review', 'approved', 'scheduled', 'posted'].includes(c.status)) put('verified_at', now()); // a person acted on it
   if (c.status === 'approved' && it.status !== 'approved') { put('approved_at', now()); put('approved_by', user.name || 'Rightway Growth'); }
   if (c.status && c.status !== 'approved' && it.status === 'approved' && c.status !== 'scheduled' && c.status !== 'posted') { put('approved_at', null); put('approved_by', null); }
   if (!sets.length) return json({ item: it });
@@ -174,7 +175,7 @@ async function sendMedia(env, m, url, request) {
 route('GET', '/api/social/:id/media/:idx', async ({ env, user, params, url, request }) => {
   const it = await loadItem(env, params.id);
   requireClientAccess(user, it.client_id);
-  if (!isStaff(user) && !visibleToClient(it.status)) throw new HttpError('Post not found.', 404);
+  if (!isStaff(user) && !clientCanSee(it)) throw new HttpError('Post not found.', 404);
   const m = it.media[Number(params.idx)];
   if (!m) throw new HttpError('File not found.', 404);
   return sendMedia(env, m, url, request);
@@ -271,7 +272,7 @@ route('POST', '/api/social/:id/comments', async ({ env, user, params, body: read
 route('GET', '/api/clients/:id/social/overview', async ({ env, user, params }) => {
   requireClientAccess(user, params.id);
   const c = await loadClient(env, params.id);
-  const items = (await all(env, 'SELECT * FROM social_items WHERE client_id = ? ORDER BY COALESCE(scheduled_at, 9e15), created_at DESC LIMIT 1000', params.id)).map(shape).filter((i) => visibleToClient(i.status));
+  const items = (await all(env, 'SELECT * FROM social_items WHERE client_id = ? ORDER BY COALESCE(scheduled_at, 9e15), created_at DESC LIMIT 1000', params.id)).map(shape).filter((i) => clientCanSee(i));
   const ids = items.filter((i) => ['review', 'changes'].includes(i.status)).map((i) => i.id);
   const comments = ids.length ? await all(env, `SELECT item_id, author, kind, body, created_at FROM social_comments WHERE item_id IN (${ids.map(() => '?').join(',')}) ORDER BY created_at`, ...ids) : [];
   const shaped = items.map((i) => ({
@@ -286,7 +287,7 @@ route('POST', '/api/clients/:id/social/items/:itemId/:action', async ({ env, use
   const body = await readBody();
   requireClientAccess(user, params.id);
   const it = await loadItem(env, params.itemId);
-  if (it.client_id !== params.id || !visibleToClient(it.status)) throw new HttpError('That post is not available for review.', 404);
+  if (it.client_id !== params.id || !clientCanSee(it)) throw new HttpError('That post is not available for review.', 404);
   const act = params.action;
   if (!['comment', 'approve', 'changes'].includes(act)) throw new HttpError('Unknown action.', 404);
   const name = user.name || 'Client';
@@ -328,7 +329,7 @@ async function loadShare(env, tok) {
   return s;
 }
 const shareItems = async (env, s) => (await all(env, 'SELECT * FROM social_items WHERE client_id = ? ORDER BY COALESCE(scheduled_at, 9e15), created_at', s.client_id)).map(shape)
-  .filter((i) => visibleToClient(i.status) && (!s.project || i.project === s.project));
+  .filter((i) => clientCanSee(i) && (!s.project || i.project === s.project));
 async function shareItem(env, s, id) {
   const it = (await shareItems(env, s)).find((i) => i.id === id);
   if (!it) throw new HttpError('That post is not available for review.', 404);
