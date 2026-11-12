@@ -67,7 +67,7 @@ function sortLeads(rows, sort) {
   });
 }
 
-export async function pipelinePage(app, user, openId) {
+export async function pipelinePage(app, user, openId, screen) {
   setRep(user);
   const view = staffShell(app, user, 'pipeline');
   let data;
@@ -212,7 +212,7 @@ export async function pipelinePage(app, user, openId) {
           <select id="bstage"><option value="">Move to...</option>${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
           <button class="btn btn-ghost btn-sm" data-bulk="tag">Tag</button><button class="btn btn-danger btn-sm" data-bulk="delete">Delete</button></div></div>
       <div class="table-wrap"><table class="leads-table"><thead><tr><th><input type="checkbox" id="selall"></th>${COLS.map(([k, n, s]) => `<th><button class="th" data-sort="${s}">${n}${p.sort.replace('-', '') === s.replace('-', '') ? (p.sort.startsWith('-') ? ' ↓' : ' ↑') : ''}</button></th>`).join('')}</tr></thead>
-      <tbody>${[...groups.entries()].map(([g, ls]) => `${p.group ? `<tr class="grp"><td colspan="${COLS.length + 1}">${esc(g)} <span class="small">${ls.length}</span></td></tr>` : ''}${ls.slice(0, 1500).map(row).join('')}`).join('') || `<tr><td colspan="${COLS.length + 1}" class="muted">No leads match.</td></tr>`}</tbody></table></div>`;
+      <tbody>${[...groups.entries()].map(([g, ls]) => `${p.group ? `<tr class="grp"><td colspan="${COLS.length + 1}">${esc(g)} <span class="small">${ls.length}</span></td></tr>` : ''}${ls.slice(0, PER_LIST).map(row).join('')}${ls.length > PER_LIST ? `<tr class="more"><td colspan="${COLS.length + 1}"><a class="btn btn-ghost btn-sm" href="${p.group ? `#/pipeline/group/${esc(p.group)}/${encodeURIComponent(g)}` : '#/pipeline/stage/all'}">Open all ${ls.length}${p.group ? ` in ${esc(g)}` : ' leads'} in a full screen</a></td></tr>` : ''}`).join('') || `<tr><td colspan="${COLS.length + 1}" class="muted">No leads match.</td></tr>`}</tbody></table></div>`;
     const syncBulk = () => { $('#bulk', el).hidden = !selected.size; $('#selc', el).textContent = `${selected.size} selected`; };
     $('#grp', el).addEventListener('change', (e) => { p.group = e.target.value; render(); });
     $$('[data-sort]', el).forEach((b) => b.addEventListener('click', () => { const s = b.dataset.sort; const base = s.replace('-', ''); p.sort = p.sort.replace('-', '') === base ? (p.sort.startsWith('-') ? base : `-${base}`) : s; render(); }));
@@ -297,7 +297,28 @@ export async function pipelinePage(app, user, openId) {
     });
     $('#resall', view).addEventListener('click', () => researchMany(filterLeads(all, p).filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).slice(0, 50), reload));
   };
-  render();
+  const fullScreen = () => {
+    const rows0 = filterLeads(all, p);
+    let title; let rows;
+    if (screen.kind === 'group') { const v = screen.value; rows = rows0.filter((l) => (String(l[screen.field] ?? '') || 'None') === v); title = `${v}`; }
+    else if (screen.key === 'all') { rows = rows0; title = 'All leads in this view'; }
+    else { rows = rows0.filter((l) => l.stage === screen.key); title = STAGE_LABEL[screen.key] || 'Leads'; }
+    rows = sortLeads(rows, p.sort || '-score');
+    let q = ''; let shown = 50;
+    const draw = () => {
+      const ql = q.trim().toLowerCase();
+      const list = ql ? rows.filter((l) => [l.business, l.phone, l.city, l.state, l.zip, l.industry, l.contact_name, l.owner_name].join(' ').toLowerCase().includes(ql)) : rows;
+      $('#fsl', view).innerHTML = `${list.slice(0, shown).map(card).join('') || '<p class="muted">No leads match.</p>'}${list.length > shown ? `<button class="btn btn-ghost" id="fsmore">Show 50 more (${list.length - shown} left)</button>` : ''}`;
+      $('#fscount', view).textContent = `${list.length} lead${list.length === 1 ? '' : 's'}`;
+      $$('#fsl .lead-card', view).forEach((c) => c.addEventListener('click', () => leadModal(c.dataset.id, () => pipelinePage(app, user, null, screen))));
+      $('#fsmore', view)?.addEventListener('click', () => { shown += 50; draw(); });
+    };
+    view.innerHTML = `<div class="fullscreen-list"><div class="page-head"><div><a class="btn btn-ghost btn-sm" href="#/pipeline">&lsaquo; Back to the pipeline</a><h1 style="margin-top:10px">${esc(title)}</h1><p class="small muted" id="fscount"></p></div></div>
+      <label class="field"><input id="fsq" placeholder="Search this list" autocomplete="off"></label><div class="fs-grid" id="fsl"></div></div>`;
+    $('#fsq', view).addEventListener('input', (e) => { q = e.target.value; shown = 50; draw(); });
+    draw();
+  };
+  if (screen) fullScreen(); else render();
 }
 
 // Research several leads, three at a time, with a progress bar and a stop button.
@@ -361,9 +382,11 @@ async function duplicatesModal(onDone) {
   });
 }
 
+const PER_LIST = 10;
 function column(stage, leads) {
+  const more = leads.length > PER_LIST;
   return `<section class="col" data-stage="${stage}"><header class="col-head"><b>${STAGE_LABEL[stage]}</b><span class="badge gray">${leads.length}</span></header>
-    <div class="col-body">${leads.slice(0, 200).map(card).join('')}${leads.length > 200 ? `<p class="small">${leads.length - 200} more. Use List view.</p>` : ''}</div></section>`;
+    <div class="col-body">${leads.slice(0, PER_LIST).map(card).join('')}${more ? `<a class="btn btn-ghost btn-sm col-all" href="#/pipeline/stage/${esc(stage)}">Open all ${leads.length} in a full screen</a>` : ''}</div></section>`;
 }
 function card(l) {
   return `<article class="lead-card" draggable="true" data-id="${esc(l.id)}">
@@ -1072,7 +1095,7 @@ export async function dialerPage(app, user) {
       ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
       <div class="dial-grid${lay.queue ? '' : ' no-queue'}${lay.prep ? '' : ' no-prep'}${lay.compact ? ' tight' : ''}">
         <aside class="dial-queue card" aria-label="Up next"><div class="card-head"><h3>Up next</h3><span class="small muted">${Math.max(0, q.queue.length - idx - 1)} after this</span></div>
-          <ol>${q.queue.slice(idx, idx + 12).map((x, i) => `<li><button type="button" data-jump="${idx + i}" class="${i === 0 ? 'is-on' : ''}">${gradeBadge(x.grade, x.score)}<span class="dq-t"><b>${esc(x.business)}</b><small>${esc([x.city, x.state].filter(Boolean).join(', '))}${x.local_time ? ` · ${esc(x.local_time)}` : ''}</small>${catChip(callCategory(x))}</span></button></li>`).join('')}</ol></aside>
+          <ol>${q.queue.slice(idx, idx + 10).map((x, i) => `<li><button type="button" data-jump="${idx + i}" class="${i === 0 ? 'is-on' : ''}">${gradeBadge(x.grade, x.score)}<span class="dq-t"><b>${esc(x.business)}</b><small>${esc([x.city, x.state].filter(Boolean).join(', '))}${x.local_time ? ` · ${esc(x.local_time)}` : ''}</small>${catChip(callCategory(x))}</span></button></li>`).join('')}</ol></aside>
         <div class="dial-left">
           <div class="card dial-card">
             <p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · attempt ${l.attempts + 1}` : ''}${l.next_action ? ` · ${esc(l.next_action)}` : ''}</p>

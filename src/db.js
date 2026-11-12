@@ -33,6 +33,19 @@ const SCHEMA = [
     status TEXT NOT NULL DEFAULT 'draft', ai INTEGER NOT NULL DEFAULT 0, created_by TEXT, created_at INTEGER NOT NULL,
     approved_at INTEGER, posted_at INTEGER)`,
   `CREATE INDEX IF NOT EXISTS posts_client ON posts (client_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS social_items (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', project TEXT, notes TEXT,
+    status TEXT NOT NULL DEFAULT 'draft', channels TEXT NOT NULL DEFAULT '[]', captions TEXT NOT NULL DEFAULT '{}', media TEXT NOT NULL DEFAULT '[]',
+    scheduled_at INTEGER, assignee TEXT, post_links TEXT NOT NULL DEFAULT '{}', ai INTEGER NOT NULL DEFAULT 0,
+    approved_at INTEGER, approved_by TEXT, posted_at INTEGER, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS social_items_client ON social_items (client_id, scheduled_at)`,
+  `CREATE TABLE IF NOT EXISTS social_comments (
+    id TEXT PRIMARY KEY, item_id TEXT NOT NULL, client_id TEXT NOT NULL, author TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'staff',
+    body TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS social_comments_item ON social_comments (item_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS social_shares (
+    token TEXT PRIMARY KEY, client_id TEXT NOT NULL, label TEXT, project TEXT, created_by TEXT, created_at INTEGER NOT NULL, last_seen INTEGER, views INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS social_shares_client ON social_shares (client_id)`,
   `CREATE TABLE IF NOT EXISTS scans (
     id TEXT PRIMARY KEY, client_id TEXT NOT NULL, keyword TEXT, created_at INTEGER NOT NULL, summary TEXT, data TEXT)`,
   `CREATE INDEX IF NOT EXISTS scans_client ON scans (client_id, created_at)`,

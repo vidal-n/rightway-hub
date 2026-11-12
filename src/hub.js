@@ -661,6 +661,7 @@ import './lines.js';
 import './voicemail.js';
 import './gbp.js';
 import './photos.js';
+import './social.js';
 import './schedule.js';
 import './gmail.js';
 import './gcal.js';
