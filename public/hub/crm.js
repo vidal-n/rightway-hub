@@ -7,7 +7,7 @@ import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
 import { loadDispos, keyed, dispositionModal } from './dispo.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
-import { placeCall, startPhone, onPhoneState, contactRows, initialsOf, takeCallDraft } from './phone.js';
+import { placeCall, startPhone, onPhoneState, phoneState, hangUp, contactRows, initialsOf, takeCallDraft } from './phone.js';
 import { warmAudio } from './audioset.js';
 import { filterLeads } from '/js/leadfilter.js';
 import { quoteFor, callCategory, whoIs, CALL_CATS } from '/js/leadintel.js';
@@ -873,6 +873,11 @@ export async function dialerPage(app, user) {
   // then moves to the next 3. One call at a time, so nobody ever picks up to silence.
   let power = false, pdTimer = null, pdStart = 0, pdCalls = 0, pdWait = 5;
   try { pdWait = Number(localStorage.getItem('rw-pd-wait')) || 5; } catch { /* ignore */ }
+  pdWait = Math.min(10, Math.max(1, Math.round(pdWait)));
+  // One setting for the pause between calls: 1 to 10 seconds. Every picker (dialer header, power dial box, call window) shows the same value.
+  const WAITS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const waitOpts = () => WAITS.map((v) => `<option value="${v}"${v === pdWait ? ' selected' : ''}>${v} second${v === 1 ? '' : 's'}</option>`).join('');
+  const setWait = (v) => { pdWait = Math.min(10, Math.max(1, Math.round(Number(v)) || 5)); try { localStorage.setItem('rw-pd-wait', String(pdWait)); } catch { /* ignore */ } document.querySelectorAll('select.pd-wait').forEach((x) => { x.value = String(pdWait); }); };
   let pdBox = null;
   const powerStop = () => { power = false; clearInterval(pdTimer); pdBox?.remove(); pdBox = null; const b = document.getElementById('pdgo'); if (b) b.textContent = 'Start power dial'; };
   window.addEventListener('hashchange', powerStop, { once: true });
@@ -884,7 +889,7 @@ export async function dialerPage(app, user) {
     if (!pdBox) {
       pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox);
       // Drag it by the top bar or the name area. It remembers where you put it. The window is redrawn every second, so the grab test runs on the window itself.
-      makeDraggable(pdBox, { grab: (e) => Boolean(e.target.closest('.pd-head, .pd-who')), key: 'powerdial', off: () => innerWidth <= 900 });
+      makeDraggable(pdBox, { grab: () => true, key: 'powerdial', off: () => innerWidth <= 900 });
     }
     if (!next.length) { pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial</span><b>${pdCalls} calls · ${sessClock()}</b></div><div class="pd-list"><p style="margin:0">Queue clear. Pick another quality tab or time zone.</p></div><div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdx">Close</button></div>`; $('#pdx', pdBox).onclick = powerStop; return; }
     let left = pdWait;
@@ -896,29 +901,34 @@ export async function dialerPage(app, user) {
           <div style="min-width:0"><b>${esc(whoIs(l).name || 'Ask for the owner')}</b><span class="small">${esc([l.business, l.city, l.local_time ? `${l.local_time} their time` : ''].filter(Boolean).join(' · '))}</span>${l.email ? `<span class="small">${esc(l.email)}</span>` : ''}${catChip(callCategory(l))}</div>
           <span class="small">${i === 0 ? 'Calling next' : `Then #${i + 1}`}</span></div>`).join('')}</div>
         <div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdnow">Call now</button><button class="btn btn-ghost btn-sm" id="pdskip">Skip</button><button class="btn btn-ghost btn-sm" id="pdpause">Pause</button>
-          <label class="row small" style="gap:6px;margin-left:auto">Wait <select id="pdw" style="width:auto;min-height:32px;padding:4px 8px">${[3, 5, 8, 12].map((v) => `<option${v === pdWait ? ' selected' : ''}>${v}</option>`).join('')}</select> s</label></div>`;
+          <label class="row small" style="gap:6px;margin-left:auto">Wait between calls <select id="pdw" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label></div>`;
       $('#pdnow', pdBox).onclick = () => { clearInterval(pdTimer); dialFirst(); };
       $('#pdskip', pdBox).onclick = () => { clearInterval(pdTimer); idx++; render(); };
       $('#pdpause', pdBox).onclick = () => { clearInterval(pdTimer); pdBox.querySelector('.pd-count').textContent = 'II'; $('#pdpause', pdBox).textContent = 'Resume'; $('#pdpause', pdBox).onclick = () => powerStep(); };
-      $('#pdw', pdBox).onchange = (e) => { pdWait = Number(e.target.value); try { localStorage.setItem('rw-pd-wait', String(pdWait)); } catch { /* ignore */ } };
+      $('#pdw', pdBox).onchange = (e) => { setWait(e.target.value); left = Math.min(left, pdWait); draw(); };
     };
     draw();
     pdTimer = setInterval(() => { left--; if (left <= 0) { clearInterval(pdTimer); dialFirst(); } else draw(); }, 1000);
   };
+  // The result popup was closed without a result: keep the session, say what it is waiting for.
+  const holdPower = (reopen) => {
+    if (!power) return;
+    clearInterval(pdTimer);
+    if (!pdBox) { pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox); makeDraggable(pdBox, { grab: () => true, key: 'powerdial', off: () => innerWidth <= 900 }); }
+    pdBox.className = 'pd';
+    pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial · <b>${pdCalls}</b> calls · <b>${sessClock()}</b></span></div>
+      <div class="pd-list"><p style="margin:0"><b>Waiting for the result.</b> Pick how the call went and the next one starts ${pdWait} second${pdWait === 1 ? '' : 's'} after.</p></div>
+      <div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdre">Pick the result</button><button class="btn btn-ghost btn-sm" id="pdx2">Stop power dial</button></div>`;
+    $('#pdre', pdBox).onclick = reopen;
+    $('#pdx2', pdBox).onclick = powerStop;
+  };
+  let skipDispo = null;
   const dialFirst = () => {
     const btn = document.getElementById('dhub');
     if (!btn || btn.disabled) { toast('The browser phone is not ready. Check Phone setup.', true); return powerStop(); }
     pdCalls++;
-    if (pdBox) {
-      const l = q.queue[idx], c = l && callCategory(l), w = l && whoIs(l);
-      pdBox.className = 'pd compact'; pdBox.querySelector('.pd-count').textContent = 'LIVE';
-      const hs = pdBox.querySelector('.pd-head > span'); if (hs) hs.innerHTML = `Power dial · <b>${pdCalls}</b> calls · <b>${sessClock()}</b>`;
-      pdBox.querySelector('.pd-live')?.remove();
-      if (l) pdBox.querySelector('.pd-head').insertAdjacentHTML('afterend', `<div class="pd-live"><div class="pd-who"><span class="pd-av">${esc(initialsOf(w.known ? w.name : l.business))}</span>
-        <div style="min-width:0"><h3 class="pd-name">${esc(w.known ? w.name : 'Ask for the owner')}${w.known && w.role ? ` <span class="cc-role">${esc(w.role)}</span>` : ''}</h3><div class="pd-biz">${esc(l.business)}</div></div></div>
-        ${contactRows(callInfo(l))}
-        <div class="dial-cat">${catChip(c)}<span>${esc(c.lead)}</span></div></div>`);
-    }
+    // The call window holds the person, the info and the power dial controls. The small box steps aside so nothing covers it.
+    if (pdBox) { pdBox.className = 'pd compact'; const hs = pdBox.querySelector('.pd-head > span'); if (hs) hs.innerHTML = `Power dial · <b>${pdCalls}</b> calls · <b>${sessClock()}</b>`; }
     btn.click();
   };
   const intelCache = new Map();
@@ -961,7 +971,7 @@ export async function dialerPage(app, user) {
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
           <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
-          ${me.twilio ? `<button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
+          ${me.twilio ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
       ${dialTabs('queue', user)}
       <div class="tiers" data-sec="tiers">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
         .map(([k, n, t]) => `<button type="button" data-tier="${k}" title="${esc(t)}" class="${(flt.tier || '') === k ? 'is-on' : ''}">${n}<b>${k ? (q.tiers?.[k] ?? 0) : Object.values(q.tiers || {}).reduce((a, b) => a + b, 0)}</b></button>`).join('')}</div>
@@ -1038,6 +1048,7 @@ export async function dialerPage(app, user) {
     $$('[data-dq]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, data: b.dataset.dq }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $$('[data-cat]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, cat: b.dataset.cat }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $$('[data-tier]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, tier: b.dataset.tier }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
+    $('#pdwh', view)?.addEventListener('change', (e) => setWait(e.target.value));
     $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); startPhone().catch(() => {}); power = !power; if (power) { pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
@@ -1054,21 +1065,19 @@ export async function dialerPage(app, user) {
       busy(btn, true);
       try {
         await placeCall({ leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
-          tools: { chips: callbackChips(l), actions: [['Text them', () => textModal(l, { rep: REP })], ['Book audit', () => bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true))], ['Full details', () => leadModal(l.id, () => {})]] },
+          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [['Text them', () => textModal(l, { rep: REP })], ['Book audit', () => bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true))], ['Full details', () => leadModal(l.id, () => {})]] },
           onEnd: ({ answered }) => {
           const dr = takeCallDraft();
           if (q.queue[idx]?.id !== l.id) return;
-          const w = whoIs(l);
-          dispositionModal({ title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), note: dr.note, callbackAt: dr.when,
-            sub: answered ? 'Pick how it went. It moves the lead to the right next step.' : 'No one picked up? Pick the result.', answered,
-            onSave: async (r) => {
-              const note = $('#dnote', view); if (note && r.note) note.value = [note.value, r.note].filter(Boolean).join('\n');
-              const w = $('#dwhen', view); if (w && r.callbackAt) w.value = r.callbackAt;
-              await logOutcome(r.dispo, $(`[data-out="${r.dispo}"]`, view));
-            } });
+          if (skipDispo === l.id) { skipDispo = null; return; }
+          openDispo(l, answered, dr);
         } });
       }
-      catch (err) { toast(err.message, true); } finally { busy(btn, false); }
+      catch (err) {
+        toast(err.message, true);
+        // Power dialing never stalls on one bad number (do not call, outside hours): skip it and keep going.
+        if (power && !/already on a call/i.test(err.message) && q.queue[idx]?.id === l.id) { idx++; render(); return; }
+      } finally { busy(btn, false); }
     });
     $$('[data-out]', view).forEach((b) => b.addEventListener('click', () => logOutcome(b.dataset.out, b)));
     if (power) setTimeout(powerStep, 300);
@@ -1087,6 +1096,25 @@ export async function dialerPage(app, user) {
   };
   const rsTimer = setInterval(rsTick, 20e3);
   setTimeout(rsTick, 1500);
+  const openDispo = (l, answered, dr) => {
+    const w = whoIs(l);
+    dispositionModal({ title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), note: dr.note, callbackAt: dr.when,
+      sub: answered ? 'Pick how it went. It moves the lead to the right next step.' : 'No one picked up? Pick the result.', answered,
+      onSkip: () => { if (power && q.queue[idx]?.id === l.id) holdPower(() => openDispo(l, answered, dr)); },
+      onSave: async (r) => {
+        const note = $('#dnote', view); if (note && r.note) note.value = [note.value, r.note].filter(Boolean).join('\n');
+        const wh = $('#dwhen', view); if (wh && r.callbackAt) wh.value = r.callbackAt;
+        await logOutcome(r.dispo, $(`[data-out="${r.dispo}"]`, view));
+      } });
+  };
+  // The strip inside the call window while power dialing: the wait between calls and a Stop.
+  const powerStrip = () => ({
+    html: () => `<span class="cbp-t"><b>Power dial</b> on</span><label class="cbp-w" title="The next call starts this long after you save the result">Next call in <select class="pd-wait" aria-label="Seconds before the next call">${waitOpts()}</select></label><button type="button" class="cbp-stop" data-pstop>Stop</button>`,
+    bind: (el) => {
+      el.querySelector('select').addEventListener('change', (e) => setWait(e.target.value));
+      el.querySelector('[data-pstop]').addEventListener('click', () => { powerStop(); el.innerHTML = '<span class="cbp-t">Power dial stopped. Finish this call, then pick a result.</span>'; });
+    },
+  });
   const logOutcome = async (outcome, btn, alreadyBooked = false) => {
     const l = q.queue[idx];
     const acts = dispoOf(outcome).acts;
@@ -1095,6 +1123,7 @@ export async function dialerPage(app, user) {
     if (acts === 'booked' && !when && !alreadyBooked) return bookModal(l, () => logOutcome(outcome, btn, true));
     busy(btn, true);
     try {
+      if (phoneState().onCall) { skipDispo = l.id; takeCallDraft(); hangUp(); }
       if (!(alreadyBooked && acts === 'booked')) { const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note: $('#dnote', view).value, callbackAt: when || null } }); if (r.calendar?.warning) toast(`Heads up: ${r.calendar.warning} Hand it to someone else on the lead.`, true); }
       else if ($('#dnote', view).value) await api(`/api/leads/${l.id}/note`, { method: 'POST', body: { text: $('#dnote', view).value } });
       q.stats.dials++;

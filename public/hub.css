@@ -1968,3 +1968,22 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 
 /* --card and --card-2 are used across the Hub rules but only the client app defined them, so those panels were see-through. */
 :root { --card: var(--surface); --card-2: var(--surface-2); }
+
+/* Call window v3: one draggable window. Grab it anywhere that is not a button or field. */
+.callbar { cursor: grab; max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain; }
+.callbar.dragging { cursor: grabbing; user-select: none; }
+.callbar button, .callbar a, .callbar input, .callbar textarea, .callbar select, .callbar label { cursor: pointer; }
+.callbar textarea { cursor: text; }
+.cb-grip { display: flex; align-items: center; justify-content: space-between; margin: -6px -4px 8px; min-height: 22px; touch-action: none; }
+.cb-grip i { flex: 1; height: 4px; max-width: 54px; margin: 0 auto 0 calc(50% - 27px); border-radius: 4px; background: rgba(255, 255, 255, .22); }
+.cb-min { background: transparent; border: 0; color: #85988F; font: 600 11px var(--body); padding: 2px 6px; border-radius: 6px; }
+.cb-min:hover { color: #E7F1EC; background: rgba(255, 255, 255, .08); }
+.callbar.min .cb-info, .callbar.min .cb-cat, .callbar.min .cb-tools .cb-notein, .callbar.min .cb-tools .cb-sub, .callbar.min .cb-tools .cb-chips, .callbar.min .cb-quick, .callbar.min .cb-pad, .callbar.min .cb-rec { display: none; }
+.cb-power { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; padding: 8px 10px; border-radius: 12px; background: rgba(157, 235, 203, .1); border: 1px solid rgba(157, 235, 203, .22); font-size: 12px; color: #CFE3D9; }
+.cb-power b { color: #9DEBCB; }
+.cbp-w { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cb-power select { width: auto; min-height: 28px; padding: 2px 6px; font-size: 12px; background: #0F1B17; color: #E7F1EC; border: 1px solid rgba(157, 235, 203, .3); border-radius: 8px; }
+.cbp-stop { margin-left: auto; background: transparent; color: #F2A39B; border: 1px solid rgba(242, 163, 155, .4); border-radius: 8px; padding: 3px 10px; font: 600 12px var(--body); }
+.pd { cursor: grab; }
+.pd.dragging { cursor: grabbing; user-select: none; }
+.pd.compact { display: none; }

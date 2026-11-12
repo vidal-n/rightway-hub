@@ -93,6 +93,8 @@ export function contactRows(rows = []) {
 // ---------- call bar ----------
 let bar = null;
 let tick = null;
+let barMin = false;
+try { barMin = localStorage.getItem('rw-callbar-min') === '1'; } catch { /* ignore */ }
 function ensureBar() {
   if (bar && document.body.contains(bar)) return bar;
   bar = document.createElement('div');
@@ -101,10 +103,13 @@ function ensureBar() {
   bar.setAttribute('aria-label', 'Phone call');
   document.body.appendChild(bar);
   // Drag the call window by its top (the name area); it remembers where you left it. On a phone it stays docked.
-  makeDraggable(bar, { grab: (e) => Boolean(e.target.closest('.cb-top, .cb-grip')), key: 'callbar', off: () => innerWidth <= 900 });
+  const drag = makeDraggable(bar, { grab: () => true, key: 'callbar', off: () => innerWidth <= 900 });
+  bar.addEventListener('dblclick', (e) => { if (e.target.closest('.cb-grip')) drag.reset(); });
   bar.addEventListener('click', (e) => {
     const c = e.target.closest('[data-copy]');
     if (c) navigator.clipboard?.writeText(c.dataset.copy).then(() => toast('Copied'));
+    const m = e.target.closest('[data-act="min"]');
+    if (m) { barMin = !barMin; try { localStorage.setItem('rw-callbar-min', barMin ? '1' : '0'); } catch { /* ignore */ } bar.classList.toggle('min', barMin); m.textContent = barMin ? 'Bigger' : 'Smaller'; m.setAttribute('aria-pressed', String(barMin)); }
   });
   return bar;
 }
@@ -122,9 +127,11 @@ function syncTools(b, view) {
   const tl = view.tools;
   t = document.createElement('div');
   t.className = 'cb-tools';
-  t.innerHTML = `<textarea class="cb-notein" rows="3" placeholder="Notes while you talk. They fill in the result box when you hang up." aria-label="Call notes"></textarea>
+  t.innerHTML = `${tl.strip ? '<div class="cb-power" data-nodrag-off></div>' : ''}<textarea class="cb-notein" rows="3" placeholder="Notes while you talk. They fill in the result box when you hang up." aria-label="Call notes"></textarea>
     ${tl.chips?.length ? `<div class="cb-sub">If they say call back</div><div class="cb-chips">${tl.chips.map(([n, v], i) => `<button type="button" class="cb-chip" data-chip="${i}" data-v="${esc(v)}">${esc(n)}</button>`).join('')}</div>` : ''}
     ${tl.actions?.length ? `<div class="cb-quick">${tl.actions.map(([n], i) => `<button type="button" class="cb-q" data-q="${i}">${esc(n)}</button>`).join('')}</div>` : ''}`;
+  const ps = t.querySelector('.cb-power');
+  if (ps && tl.strip) { ps.innerHTML = tl.strip.html(); tl.strip.bind?.(ps); }
   const note = t.querySelector('.cb-notein');
   note.value = draft.note;
   note.addEventListener('input', () => { draft.note = note.value; });
@@ -140,12 +147,14 @@ function renderBar(view) {
   const b = ensureBar();
   b.classList.remove('out');
   b.dataset.state = view.state;
+  b.classList.toggle('min', barMin);
   let main = b.querySelector(':scope > .cb-main');
   if (!main) { b.querySelectorAll(':scope > :not(.cb-tools)').forEach((n) => n.remove()); main = document.createElement('div'); main.className = 'cb-main'; b.prepend(main); }
   const live = view.state === 'live';
   const person = view.who?.known ? view.who.name : '';
   const longLabel = String(view.label || '').length > 14; // long messages go on their own line so the name is never squeezed out
   main.innerHTML = `
+    <div class="cb-grip" title="Drag anywhere on this window to move it. Double click here to put it back."><i></i><button type="button" class="cb-min" data-act="min" aria-pressed="${barMin}" title="${barMin ? 'Show the whole window' : 'Make it smaller'}">${barMin ? 'Bigger' : 'Smaller'}</button></div>
     <div class="cb-top">
       <div class="cb-av${view.state === 'ringing' || view.state === 'incoming' || view.state === 'dialing' ? ' pulse' : ''}">${person || view.name ? esc(initialsOf(person || view.name)) : picon.phone}</div>
       <div class="cb-who"><b>${esc(person || view.name || pretty(view.number))}</b>${person ? `<em class="cb-p">${esc(view.name || '')}${view.who.role ? ` <u>${esc(view.who.role)}</u>` : ''}</em>` : view.who ? `<em class="cb-p">${esc(view.who.line)}</em>` : ''}<span>${esc(view.name ? pretty(view.number) : '')}${view.from ? `${view.name ? ' · ' : ''}${view.incoming ? 'to' : 'from'} ${esc(pretty(view.from))}` : ''}</span></div>
