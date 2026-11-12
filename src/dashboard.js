@@ -5,6 +5,7 @@ import { requireStaff } from './auth.js';
 import { monthKey } from './plans.js';
 import { inCallingHours, apptScope } from './crm.js';
 import { route } from './router.js';
+import { dialGoalOf } from './avail.js';
 
 const OPEN = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up'];
 
@@ -39,7 +40,7 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
   const mrr = real.reduce((s, c) => s + (c.mrr_cents || 0), 0) / 100;
   const byStage = Object.fromEntries(stages.map((r) => [r.stage, r.n]));
   return json({
-    me: { dials: mine?.dials || 0, talks: mine?.talks || 0, booked: mine?.booked || 0 },
+    me: { dials: mine?.dials || 0, talks: mine?.talks || 0, booked: mine?.booked || 0, goal: await dialGoalOf(env, user.id) },
     week: { dials: team?.dials || 0, talks: team?.talks || 0, booked: team?.booked || 0 },
     pipeline: { byStage, open: leads.length, callableNow: leads.filter((l) => inCallingHours(l.timezone, Date.now(), l.tz_alt)).length, aLeads: leads.filter((l) => l.grade === 'A').length },
     due, meetings,

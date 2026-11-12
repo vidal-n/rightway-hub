@@ -1,3 +1,4 @@
+import { isPersonName } from './names.js';
 // Free lead data (pure, shared by the Worker and Node tests): OpenStreetMap discovery through the free Overpass API, the Florida Sunbiz
 // business registry (owner and officer names, date filed, status), and a wider read of a business's own website (services, areas served,
 // years in business, license number, hours, team names, about text). None of this costs a cent. It is thinner than Google Maps data:
@@ -178,7 +179,7 @@ export function yearsSince(filed, nowMs = Date.now()) {
 // The person most likely to be the owner: manager or president first, then the first person who is not a registered agent service.
 const RANK = ['Manager', 'Managing Member', 'Authorized Member', 'President', 'CEO', 'Member', 'Director', 'Authorized Person', 'Vice President', 'Treasurer', 'Secretary'];
 export function pickOwner(detail) {
-  const ppl = (detail?.people || []).filter((p) => p.name && p.name.split(' ').length >= 2 && !/registered agent|incorporat|corporate|services|legalzoom|northwest|csc|ct corp/i.test(p.name));
+  const ppl = (detail?.people || []).filter((p) => p.name && isPersonName(p.name) && !/registered agent|incorporat|corporate|services|legalzoom|northwest|csc|ct corp/i.test(p.name));
   if (!ppl.length) return null;
   const rank = (p) => { const i = RANK.indexOf(p.title); return i < 0 ? 50 : i; };
   return [...ppl].sort((a, b) => rank(a) - rank(b))[0];

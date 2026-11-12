@@ -141,18 +141,61 @@ export function makeDraggable(el, { grab, key = '', off = () => false, onMove } 
   return { reset() { x = 0; y = 0; put(0, 0); if (KEY) { try { localStorage.removeItem(KEY); } catch { /* ignore */ } } } };
 }
 
-export function modal(html, { onClose } = {}) {
+// Daily dial goal: click the number, type a new one (1 to 1000) or pick a common one, Enter saves. Saved on the person, shown everywhere.
+export function editGoal(btn, current, onSaved) {
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.min = '1'; inp.max = '1000'; inp.value = String(current); inp.className = 'goal-in'; inp.setAttribute('list', 'goal-presets'); inp.setAttribute('aria-label', 'Daily dial goal');
+  if (!document.getElementById('goal-presets')) { const dl = document.createElement('datalist'); dl.id = 'goal-presets'; dl.innerHTML = [25, 40, 60, 80, 100, 120, 150, 200, 250, 300].map((n) => `<option value="${n}">`).join(''); document.body.appendChild(dl); }
+  btn.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return; done = true;
+    const v = Math.round(Number(inp.value));
+    if (save && v >= 1 && v <= 1000 && v !== Number(current)) { try { const r = await api('/api/me/dial-goal', { method: 'PUT', body: { goal: v } }); toast(`Goal is ${r.goal} dials a day`); onSaved(r.goal); return; } catch (e) { toast(e.message, true); } }
+    else if (save && !(v >= 1 && v <= 1000)) toast('Pick a goal from 1 to 1000.', true);
+    inp.replaceWith(btn);
+  };
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
+  inp.addEventListener('blur', () => finish(true));
+}
+
+// ---------- the tray ----------
+// Pop ups can be minimized into a tray along the bottom of the Hub. It stays through every page, so a half finished lead, booking or result
+// waits while you go and do something else. Click a chip to pick it back up, X to throw it away.
+const tray = new Map();
+let trayEl = null;
+function paintTray() {
+  if (!tray.size) { trayEl?.remove(); trayEl = null; return; }
+  if (!trayEl) { trayEl = document.createElement('div'); trayEl.className = 'tray'; trayEl.setAttribute('aria-label', 'Minimized windows'); document.body.appendChild(trayEl); }
+  trayEl.innerHTML = [...tray.entries()].map(([id, t]) => `<div class="tray-chip${t.hot ? ' hot' : ''}" data-id="${esc(id)}"><button type="button" class="tray-main" data-resume title="Pick this back up"><i></i><span><b>${esc(t.title)}</b>${t.sub ? `<small>${esc(t.sub)}</small>` : ''}</span></button><button type="button" class="tray-x" data-drop aria-label="Close ${esc(t.title)}" title="Close it">×</button></div>`).join('');
+  trayEl.onclick = (e) => {
+    const chip = e.target.closest('.tray-chip'); if (!chip) return;
+    const t = tray.get(chip.dataset.id); if (!t) return;
+    if (e.target.closest('[data-drop]')) { tray.delete(chip.dataset.id); paintTray(); t.onDrop?.(); return; }
+    if (e.target.closest('[data-resume]')) { tray.delete(chip.dataset.id); paintTray(); t.onResume?.(); }
+  };
+}
+export const trayAdd = (id, t) => { tray.set(id, t); paintTray(); };
+export const trayHas = (id) => tray.has(id);
+export const trayRemove = (id) => { if (tray.delete(id)) paintTray(); };
+
+let modalSeq = 0;
+// Modes: "modal" (centered, page behind is dimmed), "float" (small window over the page, the page stays usable and it follows you to every page),
+// "docked" (minimized into the tray). Leaving the page parks a modal in the tray instead of throwing its work away.
+export function modal(html, { onClose, title: wantTitle } = {}) {
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
+  const id = `m${++modalSeq}`;
   let closed = false;
   let dragging = false;
-  const close = () => { if (closed) return; closed = true; bg.remove(); onClose?.(); };
-  // A drag that ends over the dark backdrop must not count as a click on it.
-  bg.addEventListener('click', (e) => { if (dragging) return; if (e.target === bg || e.target.closest('[data-close]')) close(); });
-  // Every pop up can be moved by its title bar (or its top edge when it has no title bar).
+  let mode = 'modal';
   const box = bg.firstElementChild;
-  makeDraggable(box, {
+  const close = () => { if (closed) return; closed = true; trayRemove(id); document.removeEventListener('keydown', onKey); window.removeEventListener('hashchange', away); bg.remove(); onClose?.(); };
+  // A drag that ends over the dark backdrop must not count as a click on it.
+  bg.addEventListener('click', (e) => { if (dragging) return; if (mode === 'modal' && e.target === bg) return close(); if (e.target.closest('[data-close]')) close(); });
+  // Every pop up can be moved by its title bar (or its top edge when it has no title bar).
+  const drag = makeDraggable(box, {
     grab: (e) => {
       const r = box.getBoundingClientRect();
       const head = box.querySelector('.card-head, .modal-head, .aud-head, h2');
@@ -162,11 +205,33 @@ export function modal(html, { onClose } = {}) {
     off: () => innerWidth < 700, onMove: (v) => { dragging = v; },
   });
   box.classList.add('movable');
-  document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } });
-  // Going to another page closes the panel, so it never sits on top of the next page.
-  window.addEventListener('hashchange', close, { once: true });
+  const nameOf = () => (wantTitle || box.querySelector('.dp-who h2, h2, h3, .item-title')?.textContent || 'Window').replace(/\s+/g, ' ').trim().slice(0, 40);
+  const subOf = () => (box.querySelector('.pd-biz, .muted, .small')?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 48);
+  const setMode = (m) => {
+    mode = m;
+    bg.classList.toggle('float', m === 'float');
+    bg.classList.toggle('docked', m === 'docked');
+    box.classList.toggle('floating', m === 'float');
+    drag.reset();
+    const fb = box.querySelector('.mdl-float'); if (fb) { fb.textContent = m === 'float' ? 'Full size' : 'Float'; fb.setAttribute('aria-pressed', String(m === 'float')); }
+    if (m === 'docked') trayAdd(id, { title: nameOf(), sub: subOf(), onResume: () => { setMode('modal'); document.body.appendChild(bg); }, onDrop: close });
+    else trayRemove(id);
+  };
+  const tools = document.createElement('div');
+  tools.className = 'mdl-tools';
+  tools.setAttribute('data-nodrag', '');
+  tools.innerHTML = '<button type="button" class="mdl-float" data-nodrag aria-pressed="false" title="Keep this window on top while you use the rest of the Hub. It follows you to every page.">Float</button><button type="button" class="mdl-min" data-nodrag title="Minimize. It waits in the tray at the bottom until you pick it back up.">Minimize</button>';
+  tools.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; e.stopPropagation(); if (b.classList.contains('mdl-min')) setMode('docked'); else setMode(mode === 'float' ? 'modal' : 'float'); });
+  box.prepend(tools);
+  // Many windows redraw their whole body; keep the buttons through that.
+  new MutationObserver(() => { if (tools.parentNode !== box) box.prepend(tools); }).observe(box, { childList: true });
+  function onKey(e) { if (e.key === 'Escape' && mode === 'modal' && document.body.lastElementChild === bg) close(); }
+  document.addEventListener('keydown', onKey);
+  // Going to another page does not lose the work: a centered window parks itself in the tray, a floating one simply stays.
+  function away() { if (!closed && mode === 'modal') setMode('docked'); }
+  window.addEventListener('hashchange', away);
   document.body.appendChild(bg);
-  return { el: bg.firstElementChild, close };
+  return { el: box, close, dock: () => setMode('docked'), float: () => setMode('float') };
 }
 
 export function busy(btn, on, label) {

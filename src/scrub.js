@@ -8,7 +8,7 @@ import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { extractProfile, mergeProfiles } from '../public/js/freedata.js';
 import { registryLookup, leadMode } from './freedata.js';
-import { cleanName, phoneInfo, emailInfo, pickEmail, emailStatus, extractContacts, mergeContacts, contactLinks, dataScore } from '../public/js/scrub.js';
+import { isPersonName, cleanPerson, nameFromEmail, firstFromEmail, cleanName, phoneInfo, emailInfo, pickEmail, emailStatus, extractContacts, mergeContacts, contactLinks, dataScore } from '../public/js/scrub.js';
 
 const UA = 'Mozilla/5.0 (compatible; RightwayHub/1.0; +https://rightwaygrowth.com)';
 const OPEN = ['new', 'attempting', 'callback', 'follow_up', 'not_now', 'audit_requested', 'no_show'];
@@ -108,8 +108,19 @@ export async function scrubLead(env, lead, opts = {}) {
   if (best && !lead.email) set.email = best.email;
   const chosen = lead.email ? emails.find((x) => x.email === String(lead.email).toLowerCase()) : best;
   set.email_status = emailStatus(chosen);
-  const ownerFound = c.owner || (sb?.found && sb.owner) || null;   // the website's own word first, then the state registry
-  if (ownerFound) { set.owner_name = ownerFound; if (!lead.contact_name) set.contact_name = ownerFound; }
+  // The owner is a person's name or nothing: the website's own word first, then the state registry. Every candidate has to pass
+  // isPersonName, so a title ("Owner Operator", "Authorized Person") can never be saved. A name a rep typed is kept.
+  const ownerFound = cleanPerson(c.owner) || cleanPerson(sb?.found && sb.owner) || '';
+  const hadOwner = isPersonName(lead.owner_name);
+  if (ownerFound && !hadOwner) { set.owner_name = ownerFound; report.name_source = c.owner ? (c.ownerVia === 'schema' ? 'website data' : 'website text') : 'state registry'; }
+  else if (lead.owner_name && !hadOwner) { set.owner_name = null; }                                  // an old wrong value is cleared even when nothing better turns up
+  // Nobody named on the site or registry: a first.last email on their own domain is a good contact name (never saved as the owner).
+  const emailName = nameFromEmail(chosen?.email || lead.email || best?.email) || '';
+  const contactBad = lead.contact_name && lead.contact_name === lead.owner_name && !hadOwner;
+  if ((!lead.contact_name || contactBad) && (set.owner_name || emailName)) { set.contact_name = set.owner_name || emailName; if (!set.owner_name) report.name_source = 'email address'; }
+  else if (contactBad) set.contact_name = null;
+  const hint = firstFromEmail(chosen?.email || lead.email || best?.email);
+  if (hint && !set.owner_name && !emailName && !isPersonName(lead.owner_name)) report.name_hint = hint;
   if (Object.keys(c.socials).length) set.socials = JSON.stringify({ ...(safeJson(lead.socials) || {}), ...c.socials });
   if (report.site?.ok && report.site.url && lead.website && !/^https?:/i.test(lead.website)) set.website = report.site.url;
   const merged = { ...lead, ...set };
@@ -185,6 +196,21 @@ route('POST', '/api/scrub/queue', async ({ env, user, body }) => {
     n = r.length;
   } else throw new HttpError('Pick some leads first.');
   return json({ ok: true, queued: n });
+});
+
+// Clear owner names that are not people (a job title or a page heading an older scrub saved), 200 leads a request. Owners only.
+// Returns the ids it cleared so the page can rescrub exactly those and fill in real names.
+route('POST', '/api/scrub/fix-names', async ({ env, user, body }) => {
+  requireAdmin(user);
+  const b = await body().catch(() => ({}));
+  const after = String(b?.after || '');
+  const rows = await all(env, `SELECT id, owner_name, contact_name FROM leads WHERE owner_name IS NOT NULL AND owner_name != '' AND id > ? ORDER BY id LIMIT 200`, after);
+  const bad = rows.filter((r) => !isPersonName(r.owner_name));
+  for (const r of bad) {
+    const clearContact = r.contact_name && String(r.contact_name).trim() === String(r.owner_name).trim();
+    await run(env, `UPDATE leads SET owner_name = NULL${clearContact ? ', contact_name = NULL' : ''}, updated_at = ? WHERE id = ?`, now(), r.id);
+  }
+  return json({ ok: true, scanned: rows.length, fixed: bad.length, ids: bad.map((r) => r.id), examples: bad.slice(0, 5).map((r) => r.owner_name), next: rows.length === 200 ? rows[rows.length - 1].id : null });
 });
 
 route('POST', '/api/scrub/cancel', async ({ env, user }) => {

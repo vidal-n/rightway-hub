@@ -1,3 +1,5 @@
+import { cleanPerson, isPersonName, nameFromEmail, firstFromEmail } from './names.js';
+export { isPersonName, cleanPerson, nameFromEmail, firstFromEmail };
 // The lead scrubber, the part that needs no network. Pure, so the Worker, the browser and the tests share it.
 // Cleans business names (SEO stuffing, legal endings, shouting), checks phones and emails, pulls emails, social pages and the
 // owner's name out of a website, and scores how complete and usable a lead's data is.
@@ -116,16 +118,38 @@ const SOCIAL = [
   ['nextdoor', /https?:\/\/(?:www\.)?nextdoor\.com\/(?:pages|page)\/[\w\-%]+/i],
   ['google', /https?:\/\/(?:g\.page|maps\.app\.goo\.gl|goo\.gl\/maps|(?:www\.)?google\.com\/maps\/place)\/[\w\-%+./@,]+/i],
 ];
-const NOT_NAME = /^(our|the|meet|contact|about|read|learn|free|call|get|home|team|more|view|click|book|request|schedule|service|services|company|business|customer|privacy|terms|best|top|local|family|quality|professional|general|licensed|insured|google|facebook|yelp|real|great|new|all|any|this|that|your|we|us)$/i;
-const NAME = "([A-Z][a-z]{1,15}(?:\\s[A-Z]\\.)?\\s(?:Mc|Mac|O')?[A-Z][a-z]{1,20}(?:-[A-Z][a-z]+)?)";
+// Owner and name finding. Every candidate must pass isPersonName (names.js): a known first name, no job title, no trade word.
+// "Owner Operator", "Message From" or "Authorized Person" can never be saved as a person any more.
+const TITLE = '(?:Co-?\\s?Owner|Owner\\s*(?:and|&|/)\\s*(?:Operator|Founder|President|CEO)|Owner|Founder\\s*(?:and|&)\\s*(?:Owner|CEO|President)|Co-?Founder|Founder|President|Proprietor|CEO|Principal|Managing\\s+(?:Member|Partner))';
+const CAND = "([A-Z][A-Za-z'.-]{1,18}(?:\\s+[A-Z]\\.?)?(?:\\s+(?:De|Del|La|Van|Von|Di|Da|Mc|Mac)?\\s?[A-Z][A-Za-z'-]{1,22}){1,2})";
 const OWNER_RES = [
-  new RegExp(`"founder"\\s*:\\s*\\{[^}]*?"name"\\s*:\\s*"${NAME}"`),
-  new RegExp(`\\b(?:Owner|Founder|Co-Founder|President|Proprietor|CEO|Owner and Operator|Owner/Operator)\\s*[:\\-–,]?\\s+${NAME}`),
-  new RegExp(`${NAME},?\\s+(?:the\\s+)?(?:Owner|Founder|President|Proprietor|owner|founder|president)\\b`),
-  new RegExp(`\\b(?:founded|owned|started|run|operated)\\s+(?:in\\s+\\d{4}\\s+)?by\\s+${NAME}`, 'i'),
-  new RegExp(`\\bMeet\\s+${NAME}\\b`),
+  new RegExp(`"founder"\\s*:\\s*(?:\\[\\s*)?\\{[^}]*?"name"\\s*:\\s*"([^"]{4,40})"`, 'g'),
+  new RegExp(`"founder"\\s*:\\s*"([^"]{4,40})"`, 'g'),
+  new RegExp(`"name"\\s*:\\s*"([^"]{4,40})"[^}]{0,200}?"jobTitle"\\s*:\\s*"[^"]*(?:owner|founder|president|proprietor|principal)[^"]*"`, 'gi'),
+  new RegExp(`"jobTitle"\\s*:\\s*"[^"]*(?:owner|founder|president|proprietor|principal)[^"]*"[^}]{0,200}?"name"\\s*:\\s*"([^"]{4,40})"`, 'gi'),
+  new RegExp(`\\b${TITLE}\\s*[:\\-–—|,]?\\s+${CAND}`, 'g'),
+  new RegExp(`${CAND}\\s*[,\\-–—|:(]?\\s*(?:the\\s+)?${TITLE}\\b`, 'g'),
+  new RegExp(`\\b(?:founded|owned|started|run|operated|established)\\s+(?:in\\s+\\d{4}\\s+)?by\\s+${CAND}`, 'gi'),
+  new RegExp(`\\b(?:I'm|I am|My name is|Hi,? I'm|Hello,? I'm)\\s+${CAND}(?=[^.]{0,120}\\b(?:owner|founder|own|started|founded)\\b)`, 'g'),
+  new RegExp(`\\b${CAND}\\s+(?:is|was)\\s+(?:the\\s+)?(?:owner|founder|president|proprietor)`, 'g'),
+  new RegExp(`\\bMeet\\s+${CAND}\\b`, 'g'),
 ];
-const okName = (n) => n && n.split(/\s+/).every((w) => !NOT_NAME.test(w.replace(/\W/g, '')));
+// The first candidate on the page that is really a person, with the pattern that found it.
+export function findOwner(html, text) {
+  for (let i = 0; i < OWNER_RES.length; i++) {
+    const src = i < 4 ? html : text;
+    const re = OWNER_RES[i];
+    re.lastIndex = 0;
+    let m, guard = 0;
+    // Matches may overlap ("Owner Operator Plumbing Owner: Mike Diaz"), so step one character past each start.
+    while ((m = re.exec(src)) && guard++ < 200) {
+      const n = cleanPerson(m[1]);
+      if (n) return { name: n, via: i < 4 ? 'schema' : 'page' };
+      re.lastIndex = m.index + 1;
+    }
+  }
+  return null;
+}
 
 // Emails, social pages, phone numbers and the owner's name from one page of a website.
 export function extractContacts(html, pageUrl = '') {
@@ -143,12 +167,11 @@ export function extractContacts(html, pageUrl = '') {
   }
   const phones = [...new Set([...h.matchAll(/href=["']tel:([^"']+)/gi)].map((m) => m[1].replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '')).filter((d) => d.length === 10))];
   const text = h.replace(/<script(?![^>]*ld\+json)[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-  let owner = null;
-  for (const re of OWNER_RES) { const m = (re === OWNER_RES[0] ? h : text).match(re); if (m && okName(m[1])) { owner = m[1]; break; } }
-  return { emails: good.slice(0, 10), socials, phones: phones.slice(0, 5), owner, host };
+  const o = findOwner(h, text);
+  return { emails: good.slice(0, 10), socials, phones: phones.slice(0, 5), owner: o?.name || null, ownerVia: o?.via || '', host };
 }
 export function mergeContacts(a, b) {
-  return { emails: [...new Set([...a.emails, ...b.emails])].slice(0, 10), socials: { ...b.socials, ...a.socials }, phones: [...new Set([...a.phones, ...b.phones])].slice(0, 5), owner: a.owner || b.owner, host: a.host || b.host };
+  return { emails: [...new Set([...a.emails, ...b.emails])].slice(0, 10), socials: { ...b.socials, ...a.socials }, phones: [...new Set([...a.phones, ...b.phones])].slice(0, 5), owner: a.owner || b.owner, ownerVia: a.owner ? a.ownerVia : b.ownerVia, host: a.host || b.host };
 }
 // Same site links to the contact, about and team pages (where emails and owner names live).
 export function contactLinks(html, pageUrl) {

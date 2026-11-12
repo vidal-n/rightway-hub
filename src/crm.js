@@ -9,6 +9,7 @@ import { route } from './router.js';
 import { scoreLead, dupKeys, callCategory } from '../public/js/leadintel.js';
 import { resolveDispo } from './dispo.js';
 import { notifyLater } from './notify.js';
+import { dialGoalOf } from './avail.js';
 import { autoChatFor } from './chat.js';
 import { can } from '../public/js/jobs.js';
 import { cleanNewLead, queueScrub } from './scrub.js';
@@ -536,7 +537,7 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const stats = await first(env, `SELECT COUNT(*) AS dials, SUM(outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(outcome = 'booked') AS booked
     FROM activities WHERE type = 'call' AND by = ? AND at >= ?`, user.id, today.getTime());
-  return json({ queue: now_.slice(0, Number(url.searchParams.get('limit')) || 50), waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0 }, tiers, cats });
+  return json({ queue: now_.slice(0, Number(url.searchParams.get('limit')) || 50), waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0, goal: await dialGoalOf(env, user.id) }, tiers, cats });
 });
 // Quality tiers: callbacks and booked follow ups always count as hot; not researched yet is its own queue.
 export function tierOf(l) {

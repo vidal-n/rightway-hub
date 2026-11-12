@@ -1,5 +1,5 @@
 // Team home: today's calling, meetings, callbacks, pipeline, clients, deals. Plus the Client view (see the app as a client does).
-import { $, $$, esc, api, toast, busy, fmt, icon, animateNumbers } from './core.js';
+import { $, $$, esc, api, toast, busy, fmt, icon, animateNumbers, editGoal } from './core.js';
 import { staffShell, clientsTabs } from './staff.js';
 import { can } from '/js/jobs.js';
 import { leadModal, STAGE_LABEL } from './crm.js';
@@ -8,7 +8,6 @@ import { initials } from './shell.js';
 import { avatarHtml, wireAvatars, miniAvatar } from './avatar.js';
 import { lineChart, barChart, donut, ring, spark, legend } from '/js/charts.js';
 
-const DIAL_TARGET = 60;
 const when = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const hello = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
 const ACT = { call: 'Call', sms: 'Text', stage: 'Update', note: 'Note', payment: 'Payment', meeting: 'Meeting' };
@@ -28,6 +27,7 @@ export async function homePage(app, user) {
     [d, an] = await Promise.all([api(`/api/dashboard?since=${day.getTime()}&week=${day.getTime() - 6 * 864e5}`), api('/api/analytics/calls?days=14').catch(() => null)]);
   } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const first = (user.name || '').split(' ')[0];
+  const DIAL_TARGET = d.me.goal || 60;
   const pctDials = Math.min(100, Math.round((100 * d.me.dials) / DIAL_TARGET));
   const workPct = d.work.tasksTotal ? Math.round((100 * d.work.tasksDone) / d.work.tasksTotal) : 0;
   const daily = an?.daily || [];
@@ -54,7 +54,7 @@ export async function homePage(app, user) {
 
       <div class="card w-8 wc-blue"><div class="card-head"><h2>${scope} calls, last 14 days</h2><span class="small muted">${an ? `${an.total.dials} dials, ${an.total.connects} contacts, ${an.total.booked} booked` : ''}</span></div>
         ${daily.length > 1 ? (() => { const S = [{ name: 'Dials', color: 'var(--c-blue)', values: lastN('dials') }, { name: 'Contacts', color: 'var(--c-green)', values: lastN('contacts') }, { name: 'Booked', color: 'var(--c-amber)', values: lastN('booked') }]; return lineChart(dl, S, { h: 230, area: true }) + legend(S); })() : '<p class="muted">Calls show up here as soon as the dialer is used.</p>'}</div>
-      <div class="card w-4 wc-green"><div class="card-head"><h2>Today's goal</h2><span class="badge gray mono">${d.me.dials}/${DIAL_TARGET}</span></div>
+      <div class="card w-4 wc-green"><div class="card-head"><h2>Today's goal</h2><span class="badge gray mono">${d.me.dials}/<button type="button" class="goal-btn" id="hgoal" title="Click to change your daily dial goal">${DIAL_TARGET}</button></span></div>
         <div class="goal-ring">${ring(pctDials, { size: 150, thick: 16, color: pctDials >= 100 ? 'var(--c-green)' : 'var(--c-blue)', center: `${pctDials}%`, sub: 'of dial goal' })}</div>
         <div class="mini3"><div><b>${d.me.dials}</b><span>dials</span></div><div><b>${d.me.talks}</b><span>talks</span></div><div><b>${d.me.booked}</b><span>booked</span></div></div>
         <p class="small" style="margin:10px 0 0">${DIAL_TARGET - d.me.dials > 0 ? `${DIAL_TARGET - d.me.dials} dials to goal.` : 'Goal hit. Keep going.'} Team this week: ${d.week.dials} dials, ${d.week.booked} booked.</p></div>
@@ -91,6 +91,7 @@ export async function homePage(app, user) {
     </div>`;
   animateNumbers(view);
   wireAvatars(view);
+  $('#hgoal', view)?.addEventListener('click', (e) => editGoal(e.currentTarget, DIAL_TARGET, () => homePage(app, user)));
   api('/api/agents').then((r) => {
     const box = $('#floor', view); if (!box) return;
     const st = (a) => ({ on_call: 'On a call', available: 'Available', break: 'Break', lunch: 'Lunch', training: 'Training', meeting: 'Meeting', admin: 'Admin work', maintenance: 'Hub maintenance', offline: 'Offline' })[a.status] || a.status;

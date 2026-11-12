@@ -1,4 +1,5 @@
 import { parseListings } from './listings.js';
+import { isPersonName } from './names.js';
 import { SERVICE_LIST } from './plancopy.js';
 import { SCOPE, unitOf, hasQty, clampQty, tierOf, dollars } from './scope.js';
 // Lead intelligence: scoring, problems found, the scope of work built from the research, call script, dedupe keys.
@@ -317,8 +318,11 @@ export function callCategory(lead = {}) {
 
 // Who to ask for. The owner when we know one, else the contact on file, else a plain prompt.
 export function whoIs(lead = {}) {
-  const owner = String(lead.owner_name || '').trim();
-  const contact = String(lead.contact_name || '').trim();
+  // An owner name that is not a person (a job title a scrub once saved) is ignored everywhere, so nobody asks for "Owner Operator".
+  const rawOwner = String(lead.owner_name || '').trim();
+  const owner = rawOwner && isPersonName(rawOwner) ? rawOwner : '';
+  const rawContact = String(lead.contact_name || '').trim();
+  const contact = rawContact && rawContact === rawOwner && !owner ? '' : rawContact;
   const same = owner && contact && owner.toLowerCase() === contact.toLowerCase();
   if (owner) return { name: owner, role: 'Owner', also: contact && !same ? contact : '', line: `Ask for ${owner}`, known: true };
   if (contact) return { name: contact, role: 'Contact', also: '', line: `Ask for ${contact}`, known: true };

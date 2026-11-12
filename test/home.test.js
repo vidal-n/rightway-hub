@@ -77,7 +77,7 @@ test('dashboard counts today, meetings, and callable leads', async () => {
   const r = await t.call('GET', `/api/dashboard?since=${Date.now() - 3600e3}`);
   assert.equal(r.status, 200);
   assert.equal(r.data.pipeline.open, 1);
-  assert.deepEqual(Object.keys(r.data.me), ['dials', 'talks', 'booked']);
+  assert.deepEqual(Object.keys(r.data.me), ['dials', 'talks', 'booked', 'goal']);
 });
 
 test('citations: real sign up links, cost, and trade lists by industry', () => {

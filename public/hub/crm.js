@@ -1,5 +1,5 @@
 // CRM screens: pipeline board, lead details, CSV import, power dialer, settings.
-import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable } from './core.js';
+import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable, editGoal } from './core.js';
 import { staffShell, settingsTabs } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
 import { textModal } from './texts.js';
@@ -7,6 +7,8 @@ import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
 import { loadDispos, keyed, dispositionModal } from './dispo.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
+import { hoverCards, hoverHtml } from './hovercard.js';
+import { isPersonName } from '/js/names.js';
 import { placeCall, startPhone, onPhoneState, phoneState, hangUp, contactRows, initialsOf, takeCallDraft } from './phone.js';
 import { warmAudio } from './audioset.js';
 import { filterLeads } from '/js/leadfilter.js';
@@ -51,6 +53,8 @@ const GRADES = ['A', 'B', 'C', 'D'];
 const GROUPS = [['', 'No grouping'], ['tz_short', 'Time zone'], ['state', 'State'], ['city', 'City'], ['industry', 'Industry'], ['grade', 'Grade'], ['stage', 'Stage'], ['source', 'Source'], ['tags', 'Tag']];
 const PIPE_KEY = 'rw-pipe-v2';
 const loadPipe = () => { try { return { view: 'board', tz: '', group: '', sort: '-score', f: {}, ...JSON.parse(localStorage.getItem(PIPE_KEY) || '{}') }; } catch { return { view: 'board', tz: '', group: '', sort: '-score', f: {} }; } };
+const PIPE_LAYOUT = [['get', 'Step 1: Get leads'], ['clean', 'Step 2: Clean up'], ['tz', 'Time zone tabs'], ['lists', 'Call list chips'], ['stats', 'Numbers line']];
+const loadLay = () => { const d = { get: true, clean: true, tz: true, lists: true, stats: true }; try { return { ...d, ...JSON.parse(localStorage.getItem('rw-pipe-layout') || '{}') }; } catch { return d; } };
 const savePipe = (p) => { try { localStorage.setItem(PIPE_KEY, JSON.stringify(p)); } catch { /* private mode */ } };
 
 function sortLeads(rows, sort) {
@@ -78,6 +82,11 @@ export async function pipelinePage(app, user, openId) {
   const industries = [...new Set(all.map((l) => l.industry).filter(Boolean))].sort();
   const selected = new Set();
   const reload = () => pipelinePage(app, user);
+  const lay = loadLay();
+  const playShut = (e) => { if (!document.body.contains(view)) { document.removeEventListener('click', playShut); document.removeEventListener('keydown', playShut); return; } if (!playOpen) return; if (e.type === 'keydown' ? e.key === 'Escape' : !e.target.closest('.dlayout')) { playOpen = false; const b = document.getElementById('playbody'); if (b) b.hidden = true; document.getElementById('playbtn')?.setAttribute('aria-expanded', 'false'); } };
+  document.addEventListener('click', playShut); document.addEventListener('keydown', playShut);
+  let playOpen = false;
+  let offHover = null;
 
   const render = () => {
     savePipe(p);
@@ -89,29 +98,35 @@ export async function pipelinePage(app, user, openId) {
     const open = rows.filter((l) => !['won', 'lost', 'dnc'].includes(l.stage));
     const f = p.f;
     const activeFilters = Object.entries(f).filter(([k, v]) => k !== 'q' && (Array.isArray(v) ? v.length : v !== '' && v != null && v !== false)).length;
+    const badNames = user.role === 'admin' ? all.filter((l) => l.owner_name && !isPersonName(l.owner_name)).length : 0;
+    const unscrubbed = rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length;
+    const unresearched = rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length;
+    view.dataset.hide = Object.entries(lay).filter(([, v]) => !v).map(([k]) => k).join(' ');
     view.innerHTML = `
       <div class="page-head"><div><p class="eyebrow">CRM</p><h1>Pipeline</h1></div>
-        <div class="row"><a class="btn btn-mint" href="#/phone" id="godial">${icon.phone}Dial this list</a><button class="btn btn-ghost" id="imp">${icon.upload}Import</button>
-          <button class="btn btn-ghost" id="dups">Duplicates</button><button class="btn btn-primary" id="addl">${icon.plus}Add lead</button></div></div>
-      <div class="stats">
-        <div class="stat hero"><div class="stat-num">${open.length}</div><div class="stat-label">open leads in view (${all.length} total)</div></div>
-        <div class="stat"><div class="stat-num">${open.filter((l) => l.grade === 'A').length}</div><div class="stat-label">A leads</div></div>
-        <div class="stat"><div class="stat-num">${open.filter((l) => l.callable_now).length}</div><div class="stat-label">callable right now</div></div>
-        <div class="stat"><div class="stat-num">${(by.audit_booked || []).length}</div><div class="stat-label">audits booked</div></div>
-        <div class="stat"><div class="stat-num">${(by.won || []).length}</div><div class="stat-label">won</div></div>
-      </div>
-      <div class="tz-tabs"><button class="tz ${!p.tz ? 'is-on' : ''}" data-tz="">All <b>${all.length}</b></button>${TZS.map(([k, n]) => {
-        const c = tzCount(k);
-        return c ? `<button class="tz ${p.tz === k ? 'is-on' : ''}" data-tz="${k}" title="${n}">${tzNow(k) ? '<i class="live"></i>' : ''}${k === '?' ? 'Unknown' : k} <b>${c}</b></button>` : '';
-      }).join('')}</div>
-      <div class="filterbar">
-        <input id="fq" value="${esc(f.q || '')}" placeholder="Search name, phone, city, industry, zip, tag" style="flex:1 1 240px">
-        <div class="chips">${GRADES.map((g) => `<button class="chip ${f.grades?.includes(g) ? 'on' : ''}" data-grade="${g}">${g}</button>`).join('')}</div>
-        <button class="btn btn-ghost btn-sm" id="fmore">Filters${activeFilters ? ` (${activeFilters})` : ''}</button>
-        <div class="seg"><button class="${p.view === 'board' ? 'is-on' : ''}" data-view="board">Board</button><button class="${p.view === 'list' ? 'is-on' : ''}" data-view="list">List</button></div>
-      </div>
-      <div class="chips lists" aria-label="Call lists"><span class="small muted">Call lists:</span>${CALL_LISTS.map(([k, n]) => `<button class="chip ${p.list === k ? 'on' : ''}" data-list="${k}">${n}</button>`).join('')}</div>
-      <div class="card filters" id="fpanel" ${p.open ? '' : 'hidden'}>
+        <div class="row"><div class="dlayout"><button type="button" class="dl-btn" id="playbtn" aria-expanded="${playOpen}" aria-haspopup="true">Customize layout</button>
+          <div class="dlayout-body" id="playbody" role="group" aria-label="Customize layout"${playOpen ? '' : ' hidden'}>
+            <p class="small muted" style="margin:0">Show or hide parts of this page. Saved for you on this computer.</p>
+            ${PIPE_LAYOUT.map(([k, n]) => `<label><input type="checkbox" data-play="${k}"${lay[k] ? ' checked' : ''}> ${n}</label>`).join('')}
+            <button type="button" class="btn btn-ghost btn-sm" id="playreset">Show everything</button></div></div></div></div>
+      <div class="flow">
+        <section class="fstep" data-sec="get"><header><span class="fn">1</span><div><h3>Get leads</h3><p>Find new businesses or bring a list in.</p></div></header>
+          <div class="row">${user.role === 'admin' ? `<a class="btn btn-ghost btn-sm" href="#/finder">Lead finder</a>` : ''}<button class="btn btn-ghost btn-sm" id="imp">${icon.upload}Import a list</button><button class="btn btn-ghost btn-sm" id="addl">${icon.plus}Add one lead</button></div></section>
+        <section class="fstep" data-sec="clean"><header><span class="fn">2</span><div><h3>Clean up</h3><p>${unscrubbed ? `${unscrubbed} not scrubbed yet.` : 'Every lead in view is scrubbed.'} ${unresearched} not researched.</p></div></header>
+          <div class="row small">${unscrubbed ? `<button class="btn btn-ghost btn-sm" id="scruball">Scrub ${unscrubbed} (free)</button>` : ''}${badNames ? `<button class="btn btn-mint btn-sm" id="fixnames" title="Owner names that are really job titles or page headings. They are cleared and those leads are scrubbed again to find the real name.">Fix ${badNames} wrong owner name${badNames === 1 ? '' : 's'}</button>` : ''}<button class="btn btn-ghost btn-sm" id="fillin">Fill in missing info</button>
+            <button class="btn btn-ghost btn-sm" id="resall">Research ${Math.min(50, unresearched)}<span class="cost-hint" data-cost="research_call" data-n="${Math.min(50, unresearched)}"></span></button><button class="btn btn-ghost btn-sm" id="dups">Duplicates</button>
+            ${user.role === 'admin' && all.some((l) => !l.tz_known || !l.tz_how) ? `<button class="btn btn-ghost btn-sm" id="fixtz">${all.some((l) => !l.tz_known) ? `Find ${all.filter((l) => !l.tz_known).length} unknown time zones` : 'Re-check time zones'}</button>` : ''}</div></section>
+        <section class="fstep wide" data-sec="pick"><header><span class="fn">3</span><div><h3>Choose who to call</h3><p>${rows.length} leads match. Narrow it by time zone, list or grade.</p></div></header>
+          <div class="tz-tabs" data-sec="tz"><button class="tz ${!p.tz ? 'is-on' : ''}" data-tz="">All <b>${all.length}</b></button>${TZS.map(([k, n]) => {
+            const c = tzCount(k);
+            return c ? `<button class="tz ${p.tz === k ? 'is-on' : ''}" data-tz="${k}" title="${n}">${tzNow(k) ? '<i class="live"></i>' : ''}${k === '?' ? 'Unknown' : k} <b>${c}</b></button>` : '';
+          }).join('')}</div>
+          <div class="chips lists" data-sec="lists" aria-label="Call lists"><span class="small muted">Call lists:</span>${CALL_LISTS.map(([k, n]) => `<button class="chip ${p.list === k ? 'on' : ''}" data-list="${k}">${n}</button>`).join('')}</div>
+          <div class="filterbar">
+            <input id="fq" value="${esc(f.q || '')}" placeholder="Search name, phone, city, industry, zip, tag" style="flex:1 1 240px">
+            <div class="chips">${GRADES.map((g) => `<button class="chip ${f.grades?.includes(g) ? 'on' : ''}" data-grade="${g}">${g}</button>`).join('')}</div>
+            <button class="btn btn-ghost btn-sm" id="fmore">Filters${activeFilters ? ` (${activeFilters})` : ''}</button></div>
+          <div class="card filters" id="fpanel" ${p.open ? '' : 'hidden'}>
         <div class="form-grid filt">
           <label class="field"><span>State</span><select data-f="state"><option value="">Any</option>${states.map((s) => `<option${f.state === s ? ' selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
           <label class="field"><span>City</span><input data-f="city" value="${esc(f.city || '')}" placeholder="Any"></label>
@@ -136,7 +151,12 @@ export async function pipelinePage(app, user, openId) {
           <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop10"${f.notTop10 ? ' checked' : ''}> Not on the first page</label>
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
       </div>
-      <div class="row small" style="margin:6px 0 14px">${rows.length} leads match. <button class="linkbtn" id="resall">Research the ${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)} unresearched ones (up to 50)<span class="cost-hint" data-cost="research_call" data-n="${Math.min(50, rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length)}"></span></button>${rows.some((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)) ? ` · <button class="linkbtn" id="scruball">Scrub the ${rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length} not scrubbed yet (free)</button>` : ''}${` · <button class="linkbtn" id="fillin">Fill in missing info...</button>`}${user.role === 'admin' && all.some((l) => !l.tz_known || !l.tz_how) ? ` · <button class="linkbtn" id="fixtz">${all.some((l) => !l.tz_known) ? `Find the time zone for the ${all.filter((l) => !l.tz_known).length} unknown (free)` : 'Re-check time zones (free)'}</button>` : ''}</div>
+        </section>
+        <section class="fstep wide go" data-sec="work"><header><span class="fn">4</span><div><h3>Call and work the list</h3>
+          <p class="fstats" data-sec="stats"><b>${open.length}</b> open · <b>${open.filter((l) => l.grade === 'A').length}</b> A leads · <b>${open.filter((l) => l.callable_now).length}</b> callable now · <b>${(by.audit_booked || []).length}</b> audits booked · <b>${(by.won || []).length}</b> won</p></div></header>
+          <div class="row"><div class="seg"><button class="${p.view === 'board' ? 'is-on' : ''}" data-view="board">Board</button><button class="${p.view === 'list' ? 'is-on' : ''}" data-view="list">List</button></div>
+            <a class="btn btn-mint" href="#/phone" id="godial">${icon.phone}Dial this list</a></div></section>
+      </div>
       <div id="scstrip"></div>
       <div id="pbody"></div>`;
     const body = $('#pbody', view);
@@ -214,6 +234,14 @@ export async function pipelinePage(app, user, openId) {
   };
 
   const wire = () => {
+    offHover?.();
+    offHover = hoverCards(view, { selector: '.lead-card, tbody tr[data-id]', build: (el) => leadHover(all.find((x) => x.id === (el.dataset.id || ''))) });
+    // Customize layout: ticks apply at once and the menu stays open (no redraw), same as the dialer.
+    const pbody = document.getElementById('playbody');
+    const applyPlay = () => { view.dataset.hide = Object.entries(lay).filter(([, v]) => !v).map(([k]) => k).join(' '); try { localStorage.setItem('rw-pipe-layout', JSON.stringify(lay)); } catch { /* ignore */ } };
+    $('#playbtn', view)?.addEventListener('click', (e) => { e.stopPropagation(); playOpen = !playOpen; pbody.hidden = !playOpen; e.currentTarget.setAttribute('aria-expanded', String(playOpen)); });
+    $$('[data-play]', view).forEach((c) => c.addEventListener('change', () => { lay[c.dataset.play] = c.checked; applyPlay(); }));
+    $('#playreset', view)?.addEventListener('click', () => { Object.keys(lay).forEach((k) => { lay[k] = true; }); $$('[data-play]', view).forEach((c) => { c.checked = true; }); applyPlay(); });
     $('#addl', view).addEventListener('click', () => leadForm(null, reload));
     $('#imp', view).addEventListener('click', () => importModal(reload));
     $('#dups', view).addEventListener('click', () => duplicatesModal(reload));
@@ -236,6 +264,22 @@ export async function pipelinePage(app, user, openId) {
     }));
     $('#scruball', view)?.addEventListener('click', () => scrubMany(filterLeads(all, p).filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)), reload));
     $('#fillin', view)?.addEventListener('click', () => import('./fillin.js').then((m) => m.fillInPanel(filterLeads(all, p), { scrubMany, onDone: reload, owner: user.role === 'admin' })));
+    $('#fixnames', view)?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      if (!confirm('Clear every owner name that is not a real person (like "Owner Operator" or "Authorized Person") and scrub those leads again to find the real name? Names you typed that are real people are not touched.')) return;
+      busy(btn, true, 'Cleaning');
+      try {
+        let after = '', fixed = 0; const ids = []; const seen = [];
+        for (let n = 0; n < 200; n++) {
+          const r = await api('/api/scrub/fix-names', { method: 'POST', body: { after } });
+          fixed += r.fixed; ids.push(...r.ids); seen.push(...r.examples);
+          if (!r.next) break;
+          after = r.next;
+        }
+        toast(fixed ? `Cleared ${fixed} wrong name${fixed === 1 ? '' : 's'}${seen.length ? ` (like "${seen[0]}")` : ''}. Scrubbing them again for the real names.` : 'No wrong owner names found.');
+        if (ids.length) { await scrubMany(ids.map((id) => ({ id })), reload); } else reload();
+      } catch (err) { toast(err.message, true); busy(btn, false); }
+    });
     $('#fixtz', view)?.addEventListener('click', async (e) => {
       const btn = e.currentTarget; btn.disabled = true;
       let after = '', checked = 0, fixed = 0, unknown = 0;
@@ -530,7 +574,8 @@ function leadDataCard(box, l, scrub, onChange) {
 // ---------- lead details ----------
 export async function leadModal(id, onChange) {
   let changed = false;
-  const m = modal('<div class="skeleton"></div>', { onClose: () => { if (changed) onChange?.(); } });
+  const origin = location.hash.split('/').slice(0, 2).join('/');   // the page it was opened from; its list is only redrawn if you are still on it
+  const m = modal('<div class="skeleton"></div>', { onClose: () => { if (changed && location.hash.startsWith(origin)) onChange?.(); } });
   let data;
   try { [data] = await Promise.all([api(`/api/leads/${id}`), refreshDispos()]); } catch (e) { m.el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const l = data.lead;
@@ -842,6 +887,22 @@ const callInfo = (l) => {
     { k: 'Google', v: l.reviews != null ? `${l.reviews} reviews${l.rating ? ` · ${l.rating}★` : ''}` : '' },
   ];
 };
+// Everything known about a lead, for the hover card on the board, the list and the dialer queue.
+const leadHover = (l) => {
+  if (!l) return '';
+  const w = whoIs(l);
+  const info = callInfo(l);
+  const pick = (k) => info.find((x) => x.k === k) || { k, v: '' };
+  const meet = l.meet_at && l.meet_at > Date.now() - 3600e3 ? bothTimes(l.meet_at, validZone(l.timezone) || yourZone(), yourZone()) : '';
+  const tags = Array.isArray(l.tags) ? l.tags.join(', ') : String(l.tags || '').replace(/[\[\]"]/g, '').replace(/,/g, ', ');
+  return hoverHtml({ initials: initialsOf(w.known ? w.name : l.business), name: w.known ? w.name : '', role: w.known ? w.role : '', business: l.business,
+    badges: [l.grade ? `Grade ${l.grade}${l.score != null ? ` · ${l.score}` : ''}` : '', STAGE_LABEL[l.stage] || '', l.dnc ? 'Do not call' : '', l.sms_consent ? 'OK to text' : ''],
+    rows: [pick('Phone'), pick('Their time'), pick('Email'), w.known ? { k: 'Speaking with', v: `${w.name}${w.role ? `, ${w.role}` : ''}` } : { k: 'Ask for', v: 'The owner' }, pick('Place'), pick('Website'), pick('Google'),
+      { k: 'Industry', v: l.industry || l.category || '' }, { k: 'Map rank', v: l.map_rank == null ? '' : l.map_rank > 20 ? 'Not in the first 20' : `#${l.map_rank}` },
+      { k: 'Source', v: l.source || '' }, { k: 'Calls', v: l.attempts ? `${l.attempts} tried${l.last_call_at ? `, last ${new Date(l.last_call_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}` : 'Not called yet' },
+      { k: 'Next step', v: l.next_action_at ? `${l.next_action || 'Follow up'} · ${dueText(l.next_action_at)}` : '' }, { k: 'Audit', v: meet }, { k: 'Tags', v: tags }],
+    foot: 'Click to open. Everything here is saved on the lead.' });
+};
 // One tap callback times for the call window, set on the lead's clock where it is known (10 AM their time), filled into the result box in your clock.
 const callbackChips = (l) => {
   const mine = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
@@ -869,6 +930,7 @@ export async function dialerPage(app, user) {
   if (me.twilio) startPhone().catch(() => {});
   const offPhone = onPhoneState((st) => { if (!document.body.contains(view)) return offPhone(); const b = $('#pbadge', view); if (b) b.innerHTML = phoneBadge(st); });
   let idx = 0;
+  let offDialHover = null;
   // Power dial: shows the next 3, counts down, rings the first through the browser phone, opens the result popup when it ends,
   // then moves to the next 3. One call at a time, so nobody ever picks up to silence.
   let power = false, pdTimer = null, pdStart = 0, pdCalls = 0, pdWait = 5;
@@ -889,7 +951,7 @@ export async function dialerPage(app, user) {
     if (!pdBox) {
       pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox);
       // Drag it by the top bar or the name area. It remembers where you put it. The window is redrawn every second, so the grab test runs on the window itself.
-      makeDraggable(pdBox, { grab: () => true, key: 'powerdial', off: () => innerWidth <= 900 });
+      makeDraggable(pdBox, { grab: () => true, key: 'dialwin', off: () => innerWidth <= 900 });
     }
     if (!next.length) { pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial</span><b>${pdCalls} calls · ${sessClock()}</b></div><div class="pd-list"><p style="margin:0">Queue clear. Pick another quality tab or time zone.</p></div><div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdx">Close</button></div>`; $('#pdx', pdBox).onclick = powerStop; return; }
     let left = pdWait;
@@ -914,7 +976,7 @@ export async function dialerPage(app, user) {
   const holdPower = (reopen) => {
     if (!power) return;
     clearInterval(pdTimer);
-    if (!pdBox) { pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox); makeDraggable(pdBox, { grab: () => true, key: 'powerdial', off: () => innerWidth <= 900 }); }
+    if (!pdBox) { pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox); makeDraggable(pdBox, { grab: () => true, key: 'dialwin', off: () => innerWidth <= 900 }); }
     pdBox.className = 'pd';
     pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial · <b>${pdCalls}</b> calls · <b>${sessClock()}</b></span></div>
       <div class="pd-list"><p style="margin:0"><b>Waiting for the result.</b> Pick how the call went and the next one starts ${pdWait} second${pdWait === 1 ? '' : 's'} after.</p></div>
@@ -981,7 +1043,7 @@ export async function dialerPage(app, user) {
       ${fold('dfilters', 'More filters and research status', `<div class="row small" style="margin:-4px 0 10px;gap:8px">Data: <div class="seg">${[['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Has an email']].map(([k, n]) => `<button type="button" data-dq="${k}" class="${(flt.data || '') === k ? 'is-on' : ''}">${n}</button>`).join('')}</div></div>
       <div id="rsx" class="small muted" style="margin:6px 0 0"></div>
       ${filterText ? `<div class="row small" style="margin:6px 0 0">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}`, Boolean(filterText))}
-      <div class="dstrip" aria-label="Today"><span><b>${q.stats.dials}</b> dials <i>of 60</i></span><span><b>${q.stats.talks}</b> owner talks</span><span><b>${q.stats.booked}</b> booked</span><span><b>${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</b> contact rate</span>
+      <div class="dstrip" aria-label="Today"><span class="dgoal"><b>${q.stats.dials}</b> dials <i>of <button type="button" class="goal-btn" id="dgoal" title="Click to change your daily dial goal">${q.stats.goal || 60}</button></i><em class="dgbar" aria-hidden="true"><u style="width:${Math.min(100, Math.round((100 * q.stats.dials) / (q.stats.goal || 60)))}%"></u></em>${q.stats.dials >= (q.stats.goal || 60) ? '<b class="gdone">Goal hit</b>' : ''}</span><span><b>${q.stats.talks}</b> owner talks</span><span><b>${q.stats.booked}</b> booked</span><span><b>${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</b> contact rate</span>
         <div class="dlayout"><button type="button" class="dl-btn" id="dlaybtn" aria-expanded="${layOpen}" aria-haspopup="true">Customize layout</button>
           <div class="dlayout-body" id="dlaybody" role="group" aria-label="Customize layout"${layOpen ? '' : ' hidden'}>
             <p class="small muted" style="margin:0">Show or hide. Saved for you on this computer.</p>
@@ -1042,7 +1104,10 @@ export async function dialerPage(app, user) {
     $('#dlaybtn', view)?.addEventListener('click', (e) => { e.stopPropagation(); openLay(!layOpen); });
     $$('[data-lay]', view).forEach((c) => c.addEventListener('change', () => { lay[c.dataset.lay] = c.checked; saveLay(); applyLay(); }));
     $('#dlayreset', view)?.addEventListener('click', () => { lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true }; saveLay(); applyLay(); $$('[data-lay]', view).forEach((c) => { c.checked = Boolean(lay[c.dataset.lay]); }); });
+    $('#dgoal', view)?.addEventListener('click', (e) => editGoal(e.currentTarget, q.stats.goal || 60, (g) => { q.stats.goal = g; render(); }));
     applyLay();
+    offDialHover?.();
+    offDialHover = hoverCards(view, { selector: '[data-jump]', build: (el) => leadHover(q.queue[Number(el.dataset.jump)]) });
     $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto2', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
     $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
     $$('[data-dq]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, data: b.dataset.dq }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));

@@ -103,7 +103,7 @@ function ensureBar() {
   bar.setAttribute('aria-label', 'Phone call');
   document.body.appendChild(bar);
   // Drag the call window by its top (the name area); it remembers where you left it. On a phone it stays docked.
-  const drag = makeDraggable(bar, { grab: () => true, key: 'callbar', off: () => innerWidth <= 900 });
+  const drag = makeDraggable(bar, { grab: () => true, key: 'dialwin', off: () => innerWidth <= 900 });
   bar.addEventListener('dblclick', (e) => { if (e.target.closest('.cb-grip')) drag.reset(); });
   bar.addEventListener('click', (e) => {
     const c = e.target.closest('[data-copy]');

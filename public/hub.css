@@ -1987,3 +1987,64 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .pd { cursor: grab; }
 .pd.dragging { cursor: grabbing; user-select: none; }
 .pd.compact { display: none; }
+
+/* Hover card */
+.hcard { position: fixed; z-index: 160; width: 320px; max-width: calc(100vw - 16px); background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 16px; padding: 14px; box-shadow: 0 22px 60px rgba(6, 14, 11, .28); pointer-events: none; animation: rise .14s var(--ease) both; }
+.hc-head { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.hc-name { display: block; font: 600 16px/1.2 var(--display); } .hc-name em { font: 600 11px var(--body); font-style: normal; color: var(--accent); background: rgba(35, 176, 126, .14); border-radius: 6px; padding: 1px 6px; margin-left: 4px; }
+.hc-biz { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.hc-badges { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 8px; } .hc-badges span { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 8px; background: var(--surface-2); border: 1px solid var(--line); }
+.hc-rows { margin: 0; display: grid; gap: 5px; } .hc-rows > div { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-size: 12.5px; }
+.hc-rows dt { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; padding-top: 2px; } .hc-rows dd { margin: 0; overflow-wrap: anywhere; }
+.hc-foot { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+
+/* Pipeline v3: the process as four steps */
+.flow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.fstep { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; position: relative; }
+.fstep.wide { grid-column: 1 / -1; }
+.fstep > header { display: flex; align-items: center; gap: 12px; }
+.fstep h3 { margin: 0; font: 600 15px/1.2 var(--display); } .fstep header p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+.fn { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font: 700 13px var(--mono); background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); }
+.fstep.go { border-color: rgba(35, 176, 126, .5); background: linear-gradient(180deg, rgba(157, 235, 203, .14), var(--surface) 70%); } .fstep.go .fn { background: var(--mint-strong, #23B07E); color: #fff; border-color: transparent; }
+.fstep.go { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.fstats b { font-family: var(--mono); color: var(--ink); }
+.fstep .tz-tabs, .fstep .chips.lists, .fstep .filterbar { margin: 0; }
+.fstep .filters { margin: 0; }
+.flow + #scstrip, #scstrip { margin-top: 4px; }
+[data-hide~="get"] [data-sec="get"], [data-hide~="clean"] [data-sec="clean"], [data-hide~="tz"] [data-sec="tz"], [data-hide~="lists"] [data-sec="lists"], [data-hide~="stats"] [data-sec="stats"] { display: none !important; }
+@media (max-width: 820px) { .flow { grid-template-columns: 1fr; } }
+.page-head .dlayout { position: relative; } .page-head .dlayout-body { right: 0; left: auto; }
+
+/* Windows: float, minimize, tray */
+.modal { position: relative; }
+.mdl-tools { position: sticky; top: -14px; float: right; height: 0; z-index: 6; display: flex; gap: 6px; margin: -14px -12px 0 0; }
+.mdl-tools button { background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); border-radius: 999px; font: 600 11px var(--body); padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+.mdl-tools button:hover { color: var(--ink); border-color: var(--ink-2); }
+.modal-bg.docked { display: none; }
+.modal-bg.float { inset: auto; right: 18px; bottom: 18px; top: auto; left: auto; background: none; padding: 0; display: block; pointer-events: none; animation: none; z-index: 95; }
+.modal-bg.float .modal { pointer-events: auto; width: min(460px, calc(100vw - 24px)); max-height: min(72vh, 680px); padding: 20px; border-radius: 18px; box-shadow: 0 18px 50px rgba(6, 14, 11, .34); border: 1px solid var(--line); animation: none; }
+.modal-bg.float .modal.movable .card-head, .modal-bg.float .modal.movable h2 { cursor: grab; }
+.tray { position: fixed; left: 252px; bottom: 14px; z-index: 125; display: flex; gap: 8px; flex-wrap: wrap; max-width: calc(100vw - 280px); pointer-events: none; }
+.tray-chip { pointer-events: auto; display: flex; align-items: stretch; background: #0F1B17; color: #E7F1EC; border: 1px solid rgba(157, 235, 203, .3); border-radius: 14px; box-shadow: 0 10px 30px rgba(6, 14, 11, .3); overflow: hidden; animation: rise .2s var(--ease) both; }
+.tray-chip.hot { border-color: #9DEBCB; }
+.tray-main { display: flex; align-items: center; gap: 9px; background: none; border: 0; color: inherit; padding: 8px 6px 8px 12px; cursor: pointer; text-align: left; max-width: 240px; }
+.tray-main i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #9DEBCB; box-shadow: 0 0 0 3px rgba(157, 235, 203, .2); }
+.tray-main span { min-width: 0; } .tray-main b { display: block; font: 600 13px/1.2 var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tray-main small { display: block; font-size: 11px; color: #85988F; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tray-x { background: none; border: 0; border-left: 1px solid rgba(255, 255, 255, .08); color: #85988F; padding: 0 11px; font-size: 16px; cursor: pointer; }
+.tray-x:hover { color: #F2A39B; }
+@media (max-width: 900px) { .tray { left: 10px; max-width: calc(100vw - 20px); bottom: calc(72px + env(safe-area-inset-bottom)); } .modal-bg.float { right: 8px; bottom: calc(76px + env(safe-area-inset-bottom)); } }
+
+/* Dial goal */
+.goal-btn { font: inherit; color: inherit; background: none; border: 0; border-bottom: 1px dashed currentColor; padding: 0 1px; cursor: pointer; }
+.goal-btn:hover { color: var(--accent); }
+.goal-in { width: 72px; min-height: 28px; padding: 2px 6px; font: 600 14px var(--mono); border-radius: 8px; }
+.dgoal { display: inline-flex; align-items: center; gap: 6px; }
+.dgbar { display: inline-block; width: 70px; height: 6px; border-radius: 6px; background: var(--line); overflow: hidden; vertical-align: middle; }
+.dgbar u { display: block; height: 100%; background: var(--mint-strong, #23B07E); text-decoration: none; transition: width .4s; }
+.gdone { color: var(--accent); font-size: 12px; }
+
+/* One window: the call window opens where the power dial box was and shares its place on screen. */
+@media (min-width: 901px) {
+  .callbar { top: 76px; bottom: auto; width: 400px; max-height: calc(100vh - 92px); }
+}
