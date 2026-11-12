@@ -122,7 +122,7 @@ export async function trainingPage(app, user, sub, arg) {
 function scripts(view, user, which) {
   const voice = voiceFor(user);
   which = ['clarity', 'plan', 'analysis'].includes(which) ? which : 'cold';
-  const NAMES = { cold: 'Cold call script', analysis: 'Cold call: free competitor analysis', clarity: 'Google clarity audit script', plan: 'Google Game Plan script (website audit)' };
+  const NAMES = { cold: 'Cold call script', analysis: 'Competitor analysis script', clarity: 'Google clarity audit script', plan: 'Google Game Plan script (website audit)' };
   const steps = scriptSteps(which, undefined, voice);
   view.innerHTML = `${head(NAMES[which], 'Scripts')}${tabs('scripts', user)}
     <div class="row" style="justify-content:space-between;margin-bottom:16px">

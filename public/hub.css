@@ -2217,85 +2217,6 @@ html, body { overflow-x: clip; }
 /* Desktop with a mouse: board fills the width, columns still snap when there are more than fit. */
 @media (min-width: 1281px) { .board { grid-auto-columns: minmax(270px, 1fr); scroll-snap-type: x proximity; } }
 
-/* ===== iPhone power dialer (Nov 2026): same dialer, three screens on one page. Call, Script, Up next. Only under 601px. ===== */
-.dm-nav, .dm-only { display: none; }
-@media (max-width: 600px) {
-  /* header: one slim row (ready count, wait, power dial) */
-  [data-dm] .page-head { margin: 0 0 8px; }
-  [data-dm] .page-head > div:first-child { display: none; }
-  [data-dm] .page-head > .row { width: 100%; gap: 8px; align-items: center; flex-wrap: wrap; }
-  [data-dm] .page-head .row > a[href="#/pipeline"], [data-dm] .page-head .row label:has(#dauto), [data-dm] .page-head .badge.gray { display: none; }
-  [data-dm] #pdgo { flex: 1 1 auto; min-height: 44px; font-size: 15px; }
-  [data-dm] .page-head .row label:has(#pdwh) { flex: 0 0 auto; }
-  /* the old top tabs, filters and appointments live in Up next */
-  [data-dm] .dm-top-tabs, [data-dm] .dropfilters, [data-dm] #lowbal, [data-dm] .upcoming, [data-dm] details.fold:has(#rsx) { display: none; }
-  [data-dm="empty"] .dm-top-tabs, [data-dm="empty"] .dropfilters, [data-dm="empty"] .upcoming { display: block; }
-  [data-dm="empty"] .dropfilters { display: grid; }
-  [data-dm="queue"] .dropfilters { display: grid; }
-  [data-dm="queue"] .upcoming, [data-dm="queue"] #lowbal { display: block; }
-  [data-dm="queue"] details.fold:has(#rsx) { display: block; }
-  .dm-only { display: block; }
-  .dm-queue-tabs .tabs { margin: 0 0 10px; flex-wrap: wrap; }
-  [data-dm="empty"] .dm-queue-tabs { display: none; }
-  /* today strip: one line, no layout menu */
-  .dstrip { padding: 6px 10px; margin: 0 0 8px; gap: 4px 12px; font-size: 12px; }
-  .dstrip b { font-size: 15px; }
-  .dstrip .dlayout, #dlaybtn, #dlaybody { display: none; }
-  /* three screen switch */
-  .dm-nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; margin: 0 0 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; position: sticky; top: 0; z-index: 5; }
-  .dm-nav button { border: 0; background: transparent; color: var(--ink-2, inherit); font: 700 15px var(--body, sans-serif); min-height: 44px; border-radius: 10px; cursor: pointer; }
-  .dm-nav button.is-on { background: var(--ink, #0F1B17); color: #fff; }
-  /* one screen at a time, nothing sideways */
-  .dial-grid, .dial-grid.no-queue, .dial-grid.no-prep, .dial-grid.no-queue.no-prep { display: block; }
-  .dial-grid .dm-sec { display: none; }
-  [data-dm="call"] .dial-grid .dial-left, [data-dm="script"] .dial-grid .dial-prep, [data-dm="queue"] .dial-grid .dial-queue { display: block; }
-  .dial-grid .no-queue .dial-queue, .dial-grid.no-queue .dial-queue, .dial-grid.no-prep .dial-prep { display: none; }
-  [data-dm="queue"] .dial-grid.no-queue .dial-queue { display: block; }
-  [data-dm="script"] .dial-grid.no-prep .dial-prep { display: block; }
-  .dial-prep { position: static; max-height: none; overflow: visible; }
-  .dial-queue ol { max-height: none; overflow: visible; }
-  .dial-queue .dq-t b { font-size: 15px; }
-  /* Call screen: compact person card */
-  .dial-left { display: grid; gap: 8px; }
-  .dial-left .card { padding: 12px; }
-  .dial-card .eyebrow { display: none; }
-  .dial-card h2 { font-size: 20px !important; line-height: 1.2; }
-  .dial-card .dial-who { margin-top: 4px; }
-  .dial-card > .muted { display: none; }
-  .dial-card .dial-cat { margin: 6px 0 0; font-size: 13px; }
-  .dial-card .dial-cat small { display: none; }
-  .dial-card .row { margin: 6px 0 0 !important; gap: 6px; }
-  .dial-card .badge { font-size: 12px; }
-  .dial-phone { font-size: 28px; margin-top: 4px; }
-  .dial-infobox { margin-top: 6px !important; font-size: 13px; }
-  .dial-infobox .ci-row, .dial-infobox > * { padding-block: 2px; }
-  .dial-card #dhub, .dial-card .btn-xl { min-height: 56px; font-size: 18px; }
-  .dial-card #dtel { min-height: 44px; font-size: 13px; }
-  .dial-card [data-sec="links"] { gap: 6px; }
-  .dial-card [data-sec="links"] .btn { min-height: 40px; padding: 6px 12px; }
-  /* results: three across, big enough to tap, no key hints */
-  .dial-left .outcomes, .dial-left .outcomes.big { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-  .dial-left .outcomes.big .btn { min-height: 48px; padding: 6px 6px; font-size: 13px; line-height: 1.15; justify-content: center; text-align: center; }
-  .dial-left .outcomes .kbd, .dial-left .small:has(+ .kbd) { display: none; }
-  .dial-left h3 { margin: 0 0 8px; font-size: 16px; }
-  .dial-left > .card:nth-child(2) > .row:last-of-type .small { display: none; }
-  .dial-left .row .btn-sm { min-height: 40px; }
-}
-@media (max-width: 600px) {
-  /* tighter so the call button and every result fit one screen */
-  .dstrip { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 2px 8px; font-size: 11px; }
-  .dstrip > span:nth-child(4) { display: none; }
-  .dstrip .dgoal { grid-column: 1; }
-  .dial-card h2 { font-size: 18px !important; }
-  .dial-card .dial-cat span { font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .dial-phone { font-size: 24px; margin-top: 2px; }
-  .dial-card [data-sec="links"] { flex-wrap: nowrap; }
-  .dial-card [data-sec="links"] .btn { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 12px; min-height: 38px; }
-  .dial-left .outcomes.big .btn { min-height: 42px; font-size: 12.5px; }
-  .dial-left > .card:nth-child(2) > .row:last-of-type { margin-top: 6px; }
-  body:has([data-dm]) .aib { display: none; }
-}
-
 /* Competitor analysis (prospect page and Present mode) */
 .pk { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 18px; }
 .pk-top img, .pm-logo { height: 30px; width: auto; display: block; }
@@ -2362,3 +2283,81 @@ body.presenting { background: var(--bg, #fff); }
 .pm-body .pk .pk-hero h1 { font-size: clamp(28px, 4vw, 44px); }
 .pm-body .pk .pk-kpi b { font-size: clamp(26px, 3.4vw, 40px); }
 @media (max-width: 600px) { .pm-bar { padding: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top)); } .pm-bar picture { display: none; } .pm-actions { margin-left: 0; width: 100%; } }
+
+/* ===== Phone power dial screens (Nov 2026): under 601px, when power dialing starts, the countdown, the call window, the script and the result sheet each fill the screen. Menu and dialer before that stay as they are. ===== */
+.pdx-back { display: none; }
+@media (max-width: 600px) {
+  body.pdx { overflow: hidden; }
+  body.pdx .aib, body.pdx .bbar, body.pdx .toasts { display: none !important; }
+
+  /* 1. Countdown to the next call */
+  body.pdx .pd:not(.compact) { inset: 0; width: auto; max-width: none; height: 100vh; height: 100dvh; border: 0; border-radius: 0; z-index: 130; display: flex; flex-direction: column; background: var(--surface); box-shadow: none; animation: none; }
+  body.pdx .pd:not(.compact) .pd-head { padding: calc(14px + env(safe-area-inset-top)) 16px 14px; font-size: 15px; }
+  body.pdx .pd:not(.compact) .pd-count { font-size: 56px; line-height: 1; }
+  body.pdx .pd:not(.compact) .pd-bar { height: 6px; flex: none; }
+  body.pdx .pd:not(.compact) .pd-list { flex: 1; align-content: start; overflow-y: auto; padding: 16px; gap: 12px; }
+  body.pdx .pd:not(.compact) .pd-card { grid-template-columns: 44px minmax(0, 1fr); padding: 14px; border-radius: 16px; }
+  body.pdx .pd:not(.compact) .pd-card > :nth-child(3) { grid-column: 2; }
+  body.pdx .pd:not(.compact) .pd-card.first { padding: 18px 14px; }
+  body.pdx .pd:not(.compact) .pd-card.first b { font-size: 22px; white-space: normal; }
+  body.pdx .pd:not(.compact) .pd-card b { white-space: normal; }
+  body.pdx .pd:not(.compact) .pd-card > span:last-child, body.pdx .pd:not(.compact) .pd-card > div > .small:last-child { font-size: 13px; }
+  body.pdx .pd:not(.compact) .pd-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface); }
+  body.pdx .pd:not(.compact) .pd-foot .btn { min-height: 52px; font-size: 16px; }
+  body.pdx .pd:not(.compact) #pdnow, body.pdx .pd:not(.compact) #pdre { grid-column: 1 / -1; min-height: 60px; font-size: 18px; }
+  body.pdx .pd:not(.compact) .pd-foot label { grid-column: 1 / -1; margin: 0; justify-content: space-between; font-size: 14px; }
+  body.pdx .pd:not(.compact) .pd-foot select { min-height: 44px; }
+
+  /* 2. The call window */
+  body.pdx .callbar { inset: 0; left: 0; right: 0; top: 0; bottom: 0; width: auto; max-width: none; height: 100vh; height: 100dvh; max-height: none; border-radius: 0; border: 0; z-index: 130; padding: calc(12px + env(safe-area-inset-top)) 16px 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overscroll-behavior: contain; animation: none; cursor: auto; }
+  body.pdx .callbar .cb-main { display: contents; }
+  body.pdx .callbar .cb-grip { display: none; }
+  body.pdx .callbar .cb-top { order: 1; }
+  body.pdx .callbar .cb-note { order: 1; }
+  body.pdx .callbar .cb-who b { font-size: 22px; white-space: normal; overflow-wrap: anywhere; }
+  body.pdx .callbar .cb-status { font-size: 20px; }
+  body.pdx .callbar .cb-info { order: 2; }
+  body.pdx .callbar .cb-cat { order: 3; }
+  body.pdx .callbar .cb-rec, body.pdx .callbar .cb-level, body.pdx .callbar .cb-pad { order: 4; }
+  body.pdx .callbar .cb-tools { order: 5; display: grid; gap: 10px; }
+  body.pdx .callbar .cb-power { order: 0; }
+  body.pdx .callbar .cb-notein { min-height: 84px; font-size: 16px; }
+  body.pdx .callbar .cb-chip, body.pdx .callbar .cb-q { min-height: 44px; font-size: 14px; }
+  body.pdx .callbar .cb-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  body.pdx .callbar .cb-actions { order: 10; position: sticky; bottom: 0; margin-top: auto; padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); background: inherit; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; z-index: 2; }
+  body.pdx .callbar .cb-btn { min-height: 64px; }
+  body.pdx .callbar .cb-hang { grid-column: 1 / -1; min-height: 68px; font-size: 18px; order: -1; }
+  body.pdx .callbar .cb-min { display: none; }
+
+  /* 3. The script, one tap from the call window */
+  body.pdx .dial-prep { position: static; }
+  body.pdx.pdx-script .dial-prep { position: fixed; inset: 0; z-index: 135; max-height: none; height: 100vh; height: 100dvh; margin: 0; border-radius: 0; overflow-y: auto; padding: calc(12px + env(safe-area-inset-top)) 16px calc(88px + env(safe-area-inset-bottom)); background: var(--surface); animation: none; transform: none; display: block; }
+  body.pdx.pdx-script .pdx-back { display: block; position: fixed; z-index: 136; left: 16px; right: 16px; bottom: calc(14px + env(safe-area-inset-bottom)); min-height: 56px; font-size: 17px; }
+
+  /* 4. The result sheet after each call */
+  body.pdx .modal-bg { z-index: 140; padding: 0; place-items: stretch; background: var(--surface); }
+  body.pdx .modal { width: 100%; max-width: none; height: 100vh; height: 100dvh; max-height: none; border-radius: 0; box-shadow: none; padding: calc(14px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); overflow-y: auto; animation: none; }
+  body.pdx .modal .mdl-tools { display: none; }
+  body.pdx .modal .dispo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  body.pdx .modal .dispo-btn { min-height: 58px; font-size: 15px; }
+  body.pdx .modal #dpsave { width: 100%; min-height: 56px; font-size: 17px; }
+  body.pdx .modal .row.end { position: sticky; bottom: 0; background: var(--surface); padding-top: 10px; }
+  body.pdx .modal textarea { font-size: 16px; min-height: 84px; }
+}
+
+/* Script notes readable in dark mode, and script pages that fit phones (Nov 2026) */
+@media (prefers-color-scheme: dark) {
+  .script-step .say-note, .script-read p.cue, .script-read .cue, .do-in { background: #3A2F10; color: #FFF1C9; border-color: #E8A317; }
+  .script-step .say-note *, .script-read .cue *, .do-in * { color: inherit; }
+  .script-read .cue .blank, .say-note .blank, .do-in .blank { background: rgba(255, 214, 107, .18); color: #FFF1C9; border-bottom-color: #E8A317; }
+  .script-read .cue .do-tag, .say-note .do-tag, .do-in .do-tag { background: #0F1B17; color: #FFD66B; }
+}
+:root[data-theme="dark"] .script-step .say-note, :root[data-theme="dark"] .script-read .cue, :root[data-theme="dark"] .do-in { background: #3A2F10; color: #FFF1C9; border-color: #E8A317; }
+:root[data-theme="dark"] .script-read .cue * { color: inherit; }
+@media (max-width: 700px) {
+  .view .row > .seg, .row > .seg { display: flex; flex-wrap: wrap; width: 100%; }
+  .row > .seg .btn, .row > .seg button { flex: 1 1 auto; text-align: center; white-space: normal; }
+  .script-read { padding-bottom: 96px; }
+  .script-read p, .script-read .cue, .script-read .say-screen { overflow-wrap: anywhere; max-width: 100%; }
+  .script-read .cue { display: block; }
+}

@@ -450,20 +450,19 @@ export const SCRIPT_VERSION = 10;
 // clarity call (or start it right there). Clarity call: the screen share that ends in a signed work order.
 export const SCRIPT_GROUPS = [
   ['cold', 'Cold call', ['k_open', 'k_site', 'k_hook', 'k_why', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
-  ['analysis', 'Cold call: free competitor analysis', ['a_open', 'a_hook', 'a_why', 'a_teach', 'a_book', 'a_after', 'a_lock', 'a_gate', 'a_vm']],
+  ['analysis', 'Competitor analysis', ['a_call', 'a_ask', 'a_set']],
   ['plan', 'Game Plan (website audit)', ['g_call', 'g_ask', 'g_set']],
   ['clarity', 'Clarity audit', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
 ];
 export const SCRIPT_KEYS = [
   ['k_open', 'Cold: the owner picks up'], ['k_site', 'Cold: no website, the site I built'], ['k_hook', 'Cold: the pattern interrupt'], ['k_why', 'Cold: why I called'],
   ['k_value', 'Cold: on the fence'], ['k_teach', 'Cold: before you book'], ['k_book', 'Cold: book it on this call'], ['k_after', 'Cold: after booking, discovery'], ['k_lock', 'Cold: lock it in'],
-  ['a_open', 'Analysis: the owner picks up'], ['a_hook', 'Analysis: the pattern interrupt'], ['a_why', 'Analysis: why I called'], ['a_teach', 'Analysis: what they get'], ['a_book', 'Analysis: book it on this call'],
-  ['a_after', 'Analysis: after booking'], ['a_lock', 'Analysis: lock it in'], ['a_gate', 'Analysis: gatekeeper'], ['a_vm', 'Analysis: voicemail'],
   ['c_open', 'Opener: the Google clarity audit'], ['c_frame', 'Set the frame'], ['c_discovery', 'Discovery (write it down)'],
   ['c_verify', 'Verify the business'], ['c_scan', 'The clarity scan'], ['c_live', 'Search together'], ['c_why', 'Why they are up there (slow down)'],
   ['c_listings', 'Inconsistencies'], ['c_story', 'Why we are having this conversation'], ['c_program', 'What to expect'], ['c_process', 'Your app and your part'],
   ['c_trial', 'Trial close'], ['c_price', 'Price: the drop close'], ['c_close', 'Close'], ['c_post', 'Work order and payment'],
   ['g_call', 'The call'], ['g_ask', 'If they ask what it is'], ['g_set', 'Once they give you a time'],
+  ['a_call', 'The call'], ['a_ask', 'If they ask what it is'], ['a_set', 'Once they give you a time'],
   ['c_onboard', 'Onboarding and homework'], ['c_book', 'Book the audit for later'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'],
 ];
 
@@ -489,52 +488,24 @@ export const DEFAULT_SCRIPT = {
     "Please make sure to keep your appointment, because we have limited availability.",
     "(Book it in the Hub first, so the confirmation email goes out.)",
   ].join('\n'),
-  // Cold call, free competitor analysis: same voice as the cold call above, straight to the point. The analysis is real and they keep it.
-  a_open: [
-    "Hey, is this {first_or_owner}?",
-    "(Only if the line really cut out: 'You broke up there, is this {first_or_owner}?')",
+  // Free competitor analysis call: same framework as the Game Plan call above. The analysis is the hook (real and theirs to keep), the Google Game Plan is the solution walked through on the call.
+  a_call: [
+    "Hi {first_or_owner}? It's {rep} with {company}.",
+    "We have your free competitor analysis for {business} finished.",
+    "I/we have two spots left for tomorrow to take care of any questions about the report.",
+    "12pm or 4pm. Which works better for you?",
   ].join('\n'),
-  a_hook: [
-    "{open_line}",
-    "{open_where}",
-    "Perfect. Oh, I'm {rep} by the way, with RightWay Growth.",
+  a_ask: [
+    "IF THEY ASK WHAT IS THIS ABOUT: It's your free competitor analysis. It shows who's ahead of you on Google and why.",
+    "And we also threw in a Google Game Plan too, so you know what to tweak with no guessing.",
+    "Both are yours to keep!",
+    "12pm or 4pm?",
   ].join('\n'),
-  a_why: [
-    "{analysis_line} I can book it in today, completely free. Is that something you'd want?",
-    "Or: If you're not interested, no worries. Or just give me 20 seconds and I can let you know what we found?",
-    "{found_say}",
-  ].join('\n'),
-  a_teach: [
-    "Here's what we do. We look at all your competitors: their reviews, their websites, how they show up on Google, and any ads they're running. Then we compare it to you and show you all of it, so even if we never work together, you walk away knowing exactly what they're doing.",
-    "And at the end, if it makes sense, I/we can show you the plan to close the gap. If not, you keep the analysis.",
-  ].join('\n'),
-  a_book: [
-    "I/we would love to show you. We have to share the screen to walk you through it. Does {slot1} work for you, or is {slot2} better?",
-    "(If they want more info first:) Totally, and that's exactly what we go over on the call. It's way easier to show you than to read it off. {slot1} or {slot2}?",
-    "(Book it on this call.)",
-  ].join('\n'),
-  a_after: [
-    "Perfect, you're locked in for [day and time]. What's the best email for the Google Meet link?",
-    "And is this the best cell to text you a reminder? (If yes, tap 'They said yes to texts'.)",
-    "A few quick ones so we have everything ready:",
-    "1. Is anyone else part of decisions like this? Have them hop on too.",
-    "2. Ballpark, what's a typical job worth to you?",
-    "3. Where do most of your customers come from right now?",
-    "4. What cities do you want to be known in?",
-    "5. Who are the competitors you worry about most?",
-    "(Type the answers into the lead notes.)",
-  ].join('\n'),
-  a_lock: [
-    "Awesome. The Google Meet link is going to your email right now, and we'll send you a heads up the morning of and right before. Talk soon, {first}.",
-    "(Log it as Booked.)",
-  ].join('\n'),
-  a_gate: [
-    "Hi, it's {rep} with RightWay Growth. Is the owner around? It's quick, I/we put together a free competitor analysis for {business}.",
-    "(If the owner is not in:) No problem. When's the best time to catch them?",
-    "(If they ask what it's about:) It's a free breakdown of what the other {industry} businesses around {city} are doing on Google that {business} isn't. I just need two minutes with the owner.",
-  ].join('\n'),
-  a_vm: [
-    "Hey {first_or_owner}, it's {rep} with RightWay Growth. {analysis_vm} It's free and you keep it either way. Call or text me back at {my_number}. Again, {rep}, {my_number}.",
+  a_set: [
+    "Got it. You'll receive your email confirmation in the next few minutes.",
+    "We recommend having a computer or tablet handy, so we can share our screen and walk you through the competitor analysis and your Game Plan in real time.",
+    "Please make sure to keep your appointment, because we have limited availability.",
+    "(Book it in the Hub first, so the confirmation email goes out.)",
   ].join('\n'),
   k_open: [
     "Hey, is this {first_or_owner}?",
@@ -960,9 +931,6 @@ function coldVars(lead, intel, { kw, top, first, L, lbad, worst }) {
     strategy_note: found ? '' : '(No research yet? Say it this way:)',
     strategy_line: found ? `So I/we actually looked you guys up and used your info to build an automated, tailored strategy to help bring in ${jobs}.`
       : `So we've been putting together tailored strategies for ${info.label.toLowerCase()} businesses around ${city || 'here'} to help bring in ${jobs}.`,
-    analysis_line: found ? `So I/we actually looked you guys up and ran a free competitor analysis on ${lead.business || 'your business'}. It shows who's getting the calls you're missing, and exactly why.`
-      : `So we run free competitor analyses for ${info.label.toLowerCase()} businesses around ${city || 'here'}. It shows who's getting the calls you're missing, and exactly why.`,
-    analysis_vm: found ? `I/we ran a free competitor analysis on ${lead.business || 'your business'} and found who's getting the calls you're missing.` : `We run free competitor analyses for ${info.label.toLowerCase()} businesses around ${city || 'here'}, and we'd like to show you what the others are doing that you're not.`,
     found_say: found ? `(If they ask what you found:) ${scanLine(lead, intel)}${L?.results?.length && lbad ? ` And ${lbad} of ${L.results.length} directories Google checks have you wrong or missing${worst ? `, ${worst.name} for one` : ''}.` : ''}` : '',
     value_line: top?.title ? `we can help you get more of the calls${kw ? ` from people searching "${kw}"` : ''} that are going to ${top.title} right now` : `we can help you get more of the calls from people searching for what you do around ${city || 'you'}`,
     gk_reason: found ? `I/we looked ${lead.business || 'the business'} up on Google and put something together for ${them}. It's quick.` : `We're putting together free Google plans for a few ${info.label.toLowerCase()} businesses around ${city || 'here'} and wanted to show ${them}.`,
