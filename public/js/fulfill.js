@@ -146,16 +146,18 @@ export function reviewTarget(intel = null) {
 const t10 = (g) => (!g ? null : g.top10 != null ? g.top10 : (g.cells || []).filter((c) => !c.error && c.rank != null && c.rank <= 10).length);
 const FIX_WEEK = { not_found: 1, unclaimed: 1, no_hours: 1, few_photos: 2, few_reviews: 1, review_gap: 1, low_rating: 1, no_website: 2, site_down: 1, no_https: 2, weak_title: 2, no_click_to_call: 2, no_schema: 3, slow_site: 4, not_top3: 4, not_top10: 4, grid_weak: 6 };
 
-export function ninetyDayPlan(plan = 'growth', intel = null, lead = {}) {
+// qty = what this deal's scope really includes ({ posts, pages, links }); without it the old per plan numbers are used (onboarding of older clients).
+export function ninetyDayPlan(plan = 'growth', intel = null, lead = {}, qty = null) {
   const probs = findProblems(intel, lead);
-  const pages = { starter: 0, growth: 2, authority: 4, leader: 6 }[plan] ?? 2;
-  const links = { starter: 0, growth: 4, authority: 6, leader: 10 }[plan] ?? 4;
+  const pages = qty ? qty.pages || 0 : { starter: 0, growth: 2, authority: 4, leader: 6 }[plan] ?? 2;
+  const links = qty ? qty.links || 0 : { starter: 0, growth: 4, authority: 6, leader: 10 }[plan] ?? 4;
+  const posts = qty?.posts || 4;
   const m1 = ['Kickoff call and access to the Google profile, website, and Analytics', 'Baseline map scan saved (your "before")', 'Google profile fully optimized: categories, services, description, hours, photos',
     'Review link, text template, and counter QR code live', 'Citations fixed on Apple, Bing, Yelp, Facebook, BBB, and the data aggregators', 'First on-page fixes: titles, headings, tap-to-call'];
-  const m2 = ['4 Google posts with real job photos', pages ? `${pages} new service or city pages` : 'On-page fix on the website', links ? `${links} local links or citations` : 'Citation cleanup continues',
+  const m2 = [`${posts} Google posts with real job photos`, pages ? `${pages} new service or city pages` : 'On-page fix on the website', links ? `${links} local links or citations` : 'Citation cleanup continues',
     'Review replies within 48 hours', 'First monthly ranking report and results meeting'];
   const m3 = ['Second map scan compared to the baseline', 'Double down on the keywords and areas that moved', pages ? `${pages} more pages aimed at the weakest areas` : 'Next on-page fix', 'Competitor check: who moved and why', 'Plan for months 4 to 6'];
-  const fixes = probs.map((p) => ({ week: FIX_WEEK[p.key] || 3, title: p.title, fix: p.fix })).sort((a, b) => a.week - b.week);
+  const fixes = probs.map((p) => ({ key: p.key, week: FIX_WEEK[p.key] || 3, title: p.title, fix: p.fix })).sort((a, b) => a.week - b.week);
   return { months: [{ title: 'Month 1: Foundation', items: m1 }, { title: 'Month 2: Build', items: m2 }, { title: 'Month 3: Compound', items: m3 }], fixes };
 }
 

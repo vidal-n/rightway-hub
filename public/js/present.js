@@ -2,7 +2,10 @@
 // Open /present.html#<leadId>. Presenter view: /present.html?presenter=1#<leadId>. Keys: arrows or space, F fullscreen, P presenter view.
 import { findProblems, industryInfo, rankText, buildScript, roi, top10Of, quoteFor, allServicesFor, unbold } from './leadintel.js';
 import { ninetyDayPlan, reviewTarget } from './fulfill.js';
-import { SERVICE_LIST } from './plancopy.js';
+import { SERVICE_LIST, WEBSITE_SERVICE_IDS, WEBSITE_PROBLEM_KEYS } from './plancopy.js';
+import { INCLUDED_ALL, refFor, refLines, refMoney } from './planref.js';
+import { urgencyFor, LF8 } from './lifeforce.js';
+import { buildPack } from './pack.js';
 import { qrSvg } from './qr.js';
 import { parseListings, listingsLine, listingsTable } from './listings.js';
 import { can } from './jobs.js';
@@ -12,6 +15,7 @@ const id = decodeURIComponent(location.hash.slice(1));
 const presenter = new URLSearchParams(location.search).get('presenter') === '1';
 const chan = 'BroadcastChannel' in window ? new BroadcastChannel(`rw-present-${id}`) : null;
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const SITE_WORDS = /website|on-page|titles, headings|\bsite\b/i;
 const money = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
 
 async function api(path, opts = {}) {
@@ -21,7 +25,9 @@ async function api(path, opts = {}) {
   return data;
 }
 
-const state = { i: 0, plan: 'growth', ticket: 500, jobs: 4, quote: null, entered: { setup: '', monthly: '' }, kwi: 0 };
+const state = { i: 0, plan: 'growth', ticket: 500, jobs: 4, quote: null, entered: { setup: '', monthly: '' }, kwi: 0, svc: null };
+// What the closer sees about pricing: the plan guide. Never drawn on the client's screen except the plan NAME, very small.
+const svcNow = () => state.svc || (state.quote ? state.quote.services.map((x) => ({ id: x.id, qty: x.qty })) : []);
 // The deep scan run in the Scan tool tab (saved to the lead) wins over the quick research grid. One entry per keyword.
 function deepScans() {
   const raw = D?.lead?.deep_scan;
@@ -54,7 +60,19 @@ function slides() {
   const first = (lead.contact_name || '').split(' ')[0];
   const r = roi({ ticket: state.ticket, jobs: state.jobs, price: Q.monthly });
   const rt = reviewTarget(intel);
-  const nd = ninetyDayPlan(plan, intel, lead);
+  const qtyOf = (id) => Q.services.find((x) => x.id === id)?.qty;
+  const nd = ninetyDayPlan(plan, intel, lead, { posts: qtyOf('posts'), pages: qtyOf('pages') || 0, links: qtyOf('links') || 0 });
+  const shown = Q.services.filter((x) => !WEBSITE_SERVICE_IDS.includes(x.id));
+  const hiddenSvc = Q.services.filter((x) => WEBSITE_SERVICE_IDS.includes(x.id));
+  const ref = refFor(Q.services.map((x) => ({ id: x.id, qty: x.qty })));
+  const siteProbs = probs.filter((p) => WEBSITE_PROBLEM_KEYS.includes(p.key));
+  const seoProbs = probs.filter((p) => !WEBSITE_PROBLEM_KEYS.includes(p.key));
+  const P = buildPack(lead, { intel, listings: lead.listings, deepScan: lead.deep_scan });
+  const topC = comps[0];
+  const lf = urgencyFor({ business: lead.business, industry: info.label, grid: intel?.grid || null, you: { reviews: L.reviews ?? null, rating: L.rating ?? null, rank: intel?.rank ?? null }, top: topC ? { name: topC.title, reviews: topC.reviews, rating: topC.rating, wins: topC.wins } : null });
+  const lfNotes = lf.asks.map((a) => `• ${LF8.find((x) => x.id === a.id).name}: "${a.ask}"`).join('\n');
+  // Closer only: website findings and what to sell after results. Never on screen.
+  const siteNotes = `\n\nWEBSITE (closer only, not on screen, sold separately after results):\n${intel?.speed?.score != null ? `Mobile speed ${intel.speed.score} of 100. ` : ''}${siteProbs.length ? siteProbs.map((x) => `• ${x.title}: ${x.detail}`).join('\n') : 'No website problems found.'}${hiddenSvc.length ? `\nIn the quote but not shown: ${hiddenSvc.map((x) => `${x.name} (${x.qty} a month)`).join(', ')}.` : ''}`;
   const out = [];
   const add = (key, title, html, notes, dark = false) => out.push({ key, title, html, notes, dark });
   // Presenter notes come straight from the one pitch (the Google clarity call), so the deck and the phone script never drift apart.
@@ -75,7 +93,7 @@ function slides() {
     <div class="cols c2" style="align-items:start"><div class="pack anim"><div class="q">🔍 ${esc(kw)}</div>
       ${comps.map((c, i) => `<div class="row"><span class="pin">${String.fromCharCode(65 + i)}</span><div><b>${esc(c.title)}</b><br><span style="font-size:18px;color:#61716B">${c.rating ? stars(c.rating) : ''} (${c.reviews ?? 0})</span></div></div>`).join('') || '<div class="row">Run research to show the live map pack.</div>'}
       ${intel ? `<div class="row you"><span class="pin">${intel.rank && intel.rank <= 20 ? intel.rank : '?'}</span><div><b>${esc(lead.business)}</b><br><span style="font-size:18px;color:#61716B">You: ${esc(rankText(intel.rank))}${L.reviews != null ? ` · ${L.reviews} reviews` : ''}</span></div></div>` : ''}</div>
-      <div class="anim"><div class="box"><h3>Why every spot matters</h3><p>Most people call one of the first businesses they see on the map, and few look past the first page. Each spot higher gets more of the calls. Spots are earned with a complete Google profile, reviews, a website Google trusts, and steady activity. Every one of those is something we can work on.</p></div></div></div>`,
+      <div class="anim"><div class="box"><h3>Why every spot matters</h3><p>Most people call one of the first businesses they see on the map, and few look past the first page. Each spot higher gets more of the calls. Spots are earned with a complete Google profile, matching listings everywhere, reviews, and steady activity. Every one of those is something we can work on.</p></div></div></div>`,
   `Teach them something about their own market:\n"This is exactly what your customer sees when they search ${kw}. Most people call one of the first few and few scroll past the first page."\n${comps[0] ? `${comps[0].title} gets the first look with ${comps[0].reviews ?? 'a lot of'} reviews.\n` : ''}You come up ${intel ? rankText(intel.rank) : '(run research first)'}.\n\nAsk: "When you search your own service, where do you see yourself?"`);
 
   const g = activeGrid();
@@ -109,29 +127,15 @@ function slides() {
     const rows = [{ title: lead.business, rating: L.rating, reviews: L.reviews, category: L.category, site: L.url || lead.website, you: true }, ...comps.map((c) => ({ title: c.title, rating: c.rating, reviews: c.reviews, category: c.category, site: c.domain }))];
     const maxRev = Math.max(...rows.map((x) => x.reviews || 0));
     add('vs', 'You vs the leaders', `<p class="kicker">You vs the leaders</p><h2>${comps[0].reviews > (L.reviews || 0) ? `${esc(comps[0].title)} has ${comps[0].reviews - (L.reviews || 0)} more reviews` : 'How you stack up'}</h2>
-      <table class="vs anim"><thead><tr><th>Business</th><th>Reviews</th><th>Rating</th><th>Google category</th><th>Website</th></tr></thead><tbody>
-      ${rows.map((x) => `<tr class="${x.you ? 'you' : ''}"><td>${x.you ? '★ ' : ''}${esc(x.title)}</td><td class="${x.reviews === maxRev ? 'good' : x.you ? 'badv' : ''}">${x.reviews ?? '-'}</td><td>${x.rating ? stars(x.rating) : '-'}</td><td>${esc(x.category || '-')}</td><td>${x.site ? '✓' : '<span class="badv">None</span>'}</td></tr>`).join('')}
+      <table class="vs anim"><thead><tr><th>Business</th><th>Reviews</th><th>Rating</th><th>Google category</th></tr></thead><tbody>
+      ${rows.map((x) => `<tr class="${x.you ? 'you' : ''}"><td>${x.you ? '★ ' : ''}${esc(x.title)}</td><td class="${x.reviews === maxRev ? 'good' : x.you ? 'badv' : ''}">${x.reviews ?? '-'}</td><td>${x.rating ? stars(x.rating) : '-'}</td><td>${esc(x.category || '-')}</td></tr>`).join('')}
       </tbody></table>`,
     `These are the businesses showing up highest around you.\n${comps.map((c) => `${c.title}: ${c.reviews ?? '?'} reviews, ${c.rating ?? '?'} stars`).join('\n')}\nYou: ${L.reviews ?? '?'} reviews, ${L.rating ?? '?'} stars.\n\nAsk: "Do you know these guys? Is their work better than yours?" (Almost always no.)\nThen: "So the only difference is what Google sees. That part is fixable."\n\n${say('c_why')}`);
   }
 
-  add('problems', 'What is holding you back', `<p class="kicker">What we found</p><h2>${probs.length ? `${probs.length} things holding ${esc(lead.business)} back` : 'Your foundation is solid'}</h2>
-    ${probs.length ? `<div class="probs anim">${probs.slice(0, 6).map((p) => `<div class="prob ${p.severity}"><b>${esc(p.title)}</b><span>${esc(p.detail)}</span></div>`).join('')}</div>` : '<p class="lead">No major gaps. The plan focuses on protecting your spot and growing into more searches and areas.</p>'}`,
-  probs.length ? `One at a time: what it is, and what it costs them in calls. Plain words.\n\n${probs.slice(0, 6).map((p) => `• ${p.talk}`).join('\n')}\n\nAsk: "Which of these surprises you most?" Lead with that one in the close.\n\n${say('c_listings')}` : `Pitch growth: more searches, more areas, staying ahead of competitors who are catching up.\n\n${say('c_listings')}`);
-
-  const W = intel?.website;
-  if (intel?.speed || (W && W.ok)) {
-    const s = intel.speed?.score;
-    const color = s == null ? '#9AA8A2' : s >= 90 ? '#23B07E' : s >= 50 ? '#E8A33D' : '#D64545';
-    const C = 2 * Math.PI * 70;
-    const checks = W && W.ok ? [[W.https, 'Secure (HTTPS)'], [W.titleHasService && W.titleHasCity, 'Title says what you do and where'], [W.tel, 'Tap to call on phones'], [W.schema, 'Local business schema for Google'], [W.viewport, 'Built for mobile screens'], [W.form, 'Contact or quote form']] : [];
-    add('site', 'Your website', `<p class="kicker">Your website</p><h2>${s != null && s < 50 ? 'Your site is slow on phones' : 'How your website helps or hurts'}</h2>
-      <div class="cols" style="grid-template-columns:auto 1fr;gap:80px;align-items:center">
-        <div class="gauge"><svg viewBox="0 0 160 160"><circle cx="80" cy="80" r="70" fill="none" stroke="#EAF1EE" stroke-width="16"/><circle cx="80" cy="80" r="70" fill="none" stroke="${color}" stroke-width="16" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - (s ?? 0) / 100)}"/></svg>
-          <div class="v"><div>${s ?? '?'}<small>Google mobile speed score</small></div></div></div>
-        <ul class="checks anim">${checks.map(([ok, t]) => `<li class="${ok ? 'ok' : ''}">${esc(t)}</li>`).join('')}${W?.platform ? `<li class="ok">Built on ${esc(W.platform)}</li>` : ''}</ul></div>`,
-    `${s != null ? `Google scores the site ${s} out of 100 on mobile.${intel.speed.lcp ? ` The main content takes ${intel.speed.lcp} to show.` : ''}` : ''}\nMost of their customers search on a phone.\n${checks.filter(([ok]) => !ok).map(([, t]) => `Missing: ${t}`).join('\n')}`);
-  }
+  add('problems', 'What is holding you back', `<p class="kicker">What we found</p><h2>${seoProbs.length ? `${seoProbs.length} things holding ${esc(lead.business)} back` : 'Your foundation is solid'}</h2>
+    ${seoProbs.length ? `<div class="probs anim">${seoProbs.slice(0, 6).map((p) => `<div class="prob ${p.severity}"><b>${esc(p.title)}</b><span>${esc(p.detail)}</span></div>`).join('')}</div>` : '<p class="lead">No major gaps. The plan focuses on protecting your spot and growing into more searches and areas.</p>'}`,
+  seoProbs.length ? `One at a time: what it is, and what it costs them in calls. Plain words.\n\n${seoProbs.slice(0, 6).map((p) => `• ${p.talk}`).join('\n')}\n\nAsk: "Which of these surprises you most?" Lead with that one in the close.\n\n${say('c_listings')}${siteNotes}` : `Pitch growth: more searches, more areas, staying ahead of competitors who are catching up.\n\n${say('c_listings')}${siteNotes}`);
 
   const LS = parseListings(lead.listings);
   const lc = LS?.counts || {};
@@ -139,6 +143,22 @@ function slides() {
     ${LS ? `<p class="lead" style="margin:-6px 0 18px">${esc(listingsLine(LS))}</p><div class="anim lstwrap">${listingsTable(LS, { max: 12, links: true })}</div>`
       : `<p class="lead">Google checks your name, address and phone against dozens of sites before it trusts you. Let's see what it finds for ${esc(lead.business)}.</p><button class="btn" id="run-lst" style="margin-top:26px">Run the listing check now</button><div id="lst-out" class="lstwrap" style="margin-top:20px"></div>`}`,
   `SCREEN: this slide. Point at each red row first, then the yellow ones.\n\n${LS ? listingsLine(LS) : 'Press "Run the listing check now" (about 3 cents, 15 directories). It takes about 10 seconds.'}\n\n${say('c_listings')}`);
+
+  if (P.ready && P.compare?.length) {
+    const rm = P.reviewMath;
+    add('ahead', 'Side by side', `<p class="kicker">Side by side</p><h2>${esc(lead.business)} against ${esc(topC.title)}</h2>
+      <div class="cols c2" style="align-items:start;gap:56px"><table class="vs anim"><thead><tr><th></th><th>${esc(lead.business)}</th><th>${esc(topC.title)}</th></tr></thead><tbody>
+      ${P.compare.map((r) => `<tr><td>${esc(r.label)}</td><td class="${r.lead === 'you' ? 'good' : r.lead === 'them' ? 'badv' : ''}">${esc(r.you ?? '-')}</td><td class="${r.lead === 'them' ? 'good' : ''}">${esc(r.them ?? '-')}</td></tr>`).join('')}</tbody></table>
+      ${rm ? `<div class="anim"><div class="box"><h3>The review math</h3><p>${rm.gap ? `<strong>${rm.gap} reviews</strong> to pass ${esc(rm.leader)}. At <strong>${rm.perMonth} a month</strong> that is about ${rm.months} months, with a real customer behind every one.` : `You already have more reviews than ${esc(rm.leader)}. The job is to keep it that way.`}</p></div></div>` : ''}</div>`,
+    `Show the gap in numbers, not opinions.\n${P.compare.map((r) => `${r.label}: you ${r.you ?? '-'}, them ${r.them ?? '-'}`).join('\n')}\n\n${rm?.gap ? `Reviews: ${rm.gap} to pass them, about ${rm.perMonth} a month, about ${rm.months} months. The app makes asking take seconds.` : ''}\n\nAsk: "Is their work actually better than yours?" Then: "So what is different? What Google can see. That part is fixable."`);
+  }
+
+  if (lf.lines.length) {
+    add('urgency', 'What waiting costs', `<p class="kicker">What waiting costs</p><h2>Your own numbers, not a sales pitch</h2>
+      <div class="probs anim">${lf.lines.slice(0, 4).map((u) => `<div class="prob medium"><span>${esc(u.line)}</span></div>`).join('')}</div>
+      <p class="note" style="margin-top:22px">From your scan. Where you show up also depends on distance and relevance, so no one can promise a spot.</p>`,
+    `Urgency from the Life-Force 8, using ONLY real numbers on screen. No made up deadlines, discounts or call counts.\n\nPick the two that matter to them and ask the questions out loud, then stop talking:\n${lfNotes}\n\nNot used: ${lf.skipped.map((x) => `${LF8.find((y) => y.id === x.id).name} (${x.why})`).join('; ')}\n\nNever promise a ranking.`);
+  }
 
   add('worth', 'What it is worth', `<p class="kicker">What it's worth</p><h2>What a few more jobs a month means for you</h2>
     <div class="calc"><div class="anim"><label>Average job value<input id="in-ticket" type="number" min="0" step="50" value="${state.ticket}"></label>
@@ -152,13 +172,15 @@ function slides() {
   const t10 = intel?.grid ? top10Of(intel.grid) : null;
   add('plan', 'What gets you results', `<p class="kicker">What gets you results</p><h2>What ${esc(lead.business)} needs to reach the first page</h2>
     ${intel?.grid ? `<p class="lead" style="margin:-6px 0 22px">Today: first page (top 10) in ${t10} of ${intel.grid.points} spots around you. Goal: the first page across ${esc(city || 'your area')}, then climb.</p>` : ''}
-    <div class="svcs anim${Q.services.length > 6 ? ' many' : ''}">${Q.services.map((x) => `<div class="svc" data-svc="${esc(x.id)}"><button class="svc-x" data-drop="${esc(x.id)}" title="Remove" aria-label="Remove ${esc(x.name)}">×</button><b>${esc(x.name)}</b><span>${x.unit ? `<strong>${x.qty} ${esc(x.unit)}.</strong> ` : ''}${esc(x.why || x.what)}</span></div>`).join('')}</div>
-    ${SERVICE_LIST.some((x) => !Q.services.find((y) => y.id === x.id)) ? `<div class="svc-add" style="position:absolute;bottom:96px;right:116px"><select id="svc-add"><option value="">Add a service</option>${SERVICE_LIST.filter((x) => !Q.services.find((y) => y.id === x.id)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div>` : ''}`,
-  `Only what they need. Walk each one: what it is, and why it gets them onto the first page (top 10) in more of their area. Rank also depends on distance and relevance, so never promise a spot.\n\n${say('c_story')}\n\n(Hover a service and press × to drop it, or add one from the list. The price slide and the work order use this list.)`);
+    <span class="plan-tag" title="For us only">Plan: ${esc(ref.name)}</span>
+    <div class="svcs anim${shown.length > 6 ? ' many' : ''}">${shown.map((x) => `<div class="svc" data-svc="${esc(x.id)}"><button class="svc-x" data-drop="${esc(x.id)}" title="Remove" aria-label="Remove ${esc(x.name)}">×</button><b>${esc(x.name)}</b><span>${x.unit ? `<strong>${x.qty} ${esc(x.unit)}.</strong> ` : ''}${esc(x.why || x.what)}</span></div>`).join('')}</div>
+    <div class="incl anim"><span>Included every month</span>${INCLUDED_ALL.map((x) => `<b title="${esc(x.what)}">${esc(x.name)}</b>`).join('')}</div>
+    ${SERVICE_LIST.some((x) => !WEBSITE_SERVICE_IDS.includes(x.id) && !Q.services.find((y) => y.id === x.id)) ? `<div class="svc-add" style="position:absolute;bottom:96px;right:116px"><select id="svc-add"><option value="">Add a service</option>${SERVICE_LIST.filter((x) => !WEBSITE_SERVICE_IDS.includes(x.id) && !Q.services.find((y) => y.id === x.id)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div>` : ''}`,
+  `Only what they need. Walk each one: what it is, and why it gets them onto the first page (top 10) in more of their area. Rank also depends on distance and relevance, so never promise a spot.\n\n${say('c_story')}\n\n(Hover a service and press × to drop it, or add one from the list. The price slide and the work order use this list.)\n\nEvery line is sized from their own scan, so say the number out loud: posts, links, reviews a month, directories to fix. Included on every plan, say it as a bonus: competitor analysis, a monthly branding call, and the Rightway app with a direct line to their manager.\n\nPRICING GUIDE (closer only):\n${refLines(Q.services.map((x) => ({ id: x.id, qty: x.qty }))).join('\n')}${siteNotes}`);
 
   add('days', 'First 90 days', `<p class="kicker">First 90 days</p><h2>What happens after you say yes</h2>
-    <div class="months anim">${nd.months.map((m) => `<div class="month"><h3>${esc(m.title)}</h3><ul>${m.items.slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>
-    ${nd.fixes.length ? `<p class="note" style="margin-top:22px">Your fixes first: ${esc(nd.fixes.slice(0, 4).map((f) => `${f.title} (week ${f.week})`).join(' · '))}</p>` : ''}`,
+    <div class="months anim">${nd.months.map((m) => `<div class="month"><h3>${esc(m.title)}</h3><ul>${m.items.filter((x) => !SITE_WORDS.test(x)).slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>
+    ${nd.fixes.filter((f) => !WEBSITE_PROBLEM_KEYS.includes(f.key)).length ? `<p class="note" style="margin-top:22px">Your fixes first: ${esc(nd.fixes.filter((f) => !WEBSITE_PROBLEM_KEYS.includes(f.key)).slice(0, 4).map((f) => `${f.title} (week ${f.week})`).join(' · '))}</p>` : ''}`,
   `${say('c_program')}\n\n` + 'Make it concrete so it feels safe. Onboarding call within a few business days of signing. Month 1 is the foundation, month 2 we build, month 3 it compounds.\n\nBe honest about timing: profile fixes and reviews move things in 30 to 60 days, pages and links build over 3 to 6 months. Honesty here is what makes them trust the rest.');
 
   if (intel?.found) {
@@ -187,9 +209,9 @@ function slides() {
       <div class="box"><div class="label">Monthly</div><div class="num">$<input id="q-monthly" class="qin" inputmode="decimal" value="${esc(state.entered.monthly)}" aria-label="Monthly"></div></div>
       <div class="box dark"><div class="label">Due today</div><div class="num" id="q-today">${dueToday()}</div><div class="label">next payment in 30 days</div></div>
     </div>
-    <p class="note" style="margin-top:22px">Includes: ${esc(Q.services.map((x) => x.name).join(', '))}.</p>
+    <p class="note" style="margin-top:22px">Includes: ${esc([...shown.map((x) => x.name), ...INCLUDED_ALL.map((x) => x.name)].join(', '))}.</p>
     <div class="terms"><span>3 month minimum, then month to month</span><span>30 days notice to cancel after that</span><span>You own your profile and accounts</span><span>No ranking guarantees, every task shown in your app</span></div>`,
-  `Drop close. The amounts start blank: click each box and type the buildout and monthly you set from discovery. When you move to the next slide they are saved to the lead, and Send the work order fills them in.\n\n${say('c_price')}\n\n${say('c_close')}\n\nIf price comes up: ${script.objections.find((o) => /afford/i.test(o.q))?.a || ''}\n\nIf it still doesn't fit: ${script.objections.find((o) => /\\(drop\\)/.test(o.q))?.a || ''}`);
+  `PRICING GUIDE (closer only, never on screen):\n${refLines(Q.services.map((x) => ({ id: x.id, qty: x.qty }))).join('\n')}\n\nDrop close. The amounts start blank: click each box and type the buildout and monthly you set from discovery. When you move to the next slide they are saved to the lead, and Send the work order fills them in.\n\n${say('c_price')}\n\n${say('c_close')}\n\nIf price comes up: ${script.objections.find((o) => /afford/i.test(o.q))?.a || ''}\n\nIf it still doesn't fit: ${script.objections.find((o) => /\\(drop\\)/.test(o.q))?.a || ''}`);
 
   add('next', 'Next steps', `<div class="cols c2" style="align-items:center;gap:64px"><div class="anim"><p class="kicker">Next steps</p><h2 style="color:#fff">Start this week</h2>
       <div class="steps"><div class="step"><i>1</i>Sign the one page work order</div><div class="step"><i>2</i>Secure payment through Stripe</div><div class="step"><i>3</i>Book your onboarding call</div><div class="step"><i>4</i>Baseline map saved, work starts</div></div>
@@ -198,7 +220,7 @@ function slides() {
   `${say('c_post')}\n\nPress the button, have them scan the code or send the link.\n\n${say('c_onboard')}`, true);
 
   // Same order as the clarity call script, so the screen cues line up slide by slide.
-  const ORDER = ['cover', 'agenda', 'pack', 'grid', 'vs', 'problems', 'listings', 'site', 'plan', 'days', 'app', 'reviews', 'worth', 'price', 'next'];
+  const ORDER = ['cover', 'agenda', 'pack', 'grid', 'vs', 'ahead', 'problems', 'listings', 'urgency', 'plan', 'days', 'app', 'reviews', 'worth', 'price', 'next'];
   out.sort((a, b) => (ORDER.indexOf(a.key) + 1 || 99) - (ORDER.indexOf(b.key) + 1 || 99));
   return out;
 }
@@ -275,7 +297,7 @@ function go(n, broadcast = true) {
   document.querySelectorAll('.slide').forEach((el) => { const k = Number(el.dataset.n); el.classList.toggle('on', k === state.i); el.classList.toggle('past', k < state.i); });
   const c = document.getElementById('cnt'); if (c) c.textContent = `${state.i + 1} / ${list.length}`;
   const p = document.getElementById('prog'); if (p) p.style.width = `${((state.i + 1) / list.length) * 100}%`;
-  if (broadcast) chan?.postMessage({ type: 'slide', i: state.i, plan: state.plan, ticket: state.ticket, jobs: state.jobs });
+  if (broadcast) chan?.postMessage({ type: 'slide', i: state.i, plan: state.plan, ticket: state.ticket, jobs: state.jobs, svc: svcNow() });
   if (!presenter && list[state.i]?.key === 'grid' && (prev !== state.i || !broadcast)) playGrid();
   if (!presenter && list[state.i]?.key === 'app') loadApp();
 }
@@ -319,7 +341,7 @@ function saveQuote() {
   return api(`/api/leads/${encodeURIComponent(id)}/quote`, { method: 'PUT', body: { setup: q.setup, monthly: q.monthly, services: q.services.map((x) => ({ id: x.id, qty: x.qty })) } }).catch(() => null);
 }
 let saveTimer = 0;
-const saveSoon = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveQuote, 700); };
+const saveSoon = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveQuote, 700); chan?.postMessage({ type: 'svc', svc: svcNow() }); };
 const allServices = () => allServicesFor(D.lead, D.intel);
 
 async function sendWorkOrder(btn) {
@@ -396,7 +418,7 @@ function startDeck() {
     const m = e.data || {};
     if (m.type === 'deep') refresh();
     if (m.type === 'go') go(m.i);
-    if (m.type === 'hello') chan.postMessage({ type: 'slide', i: state.i, plan: state.plan, ticket: state.ticket, jobs: state.jobs });
+    if (m.type === 'hello') chan.postMessage({ type: 'slide', i: state.i, plan: state.plan, ticket: state.ticket, jobs: state.jobs, svc: svcNow() });
   });
 }
 
@@ -413,6 +435,7 @@ function startPresenter() {
         <div class="notes">${esc(s.notes)}</div>
         <div class="ctrls" style="margin-top:16px"><button class="ghost" id="pp">← Back</button><button id="pn">Next →</button></div></div>
       <div class="side"><div class="card"><div class="small" style="color:#85988F">Time in meeting</div><div class="timer" id="tm">0:00</div></div>
+        <div class="card guide"><b>Pricing guide (closer only)</b>${(() => { const r = refFor(svcNow()); return `<p class="gref"><span>${esc(r.name)}</span> ${esc(refMoney(r.monthly))} a month to start</p>${r.why.length ? `<p class="small">${esc(r.why.join('; '))}</p>` : ''}${r.key === 'starter' ? '' : `<p class="small">Entry plan (loss leader): ${esc(r.entry.name)} ${esc(refMoney(r.entry.monthly))}</p>`}${r.next ? `<p class="small">Upsell after results: ${esc(r.next.name)} ${esc(refMoney(r.next.monthly))} adds ${esc(r.adds.join('; '))}</p>` : ''}<p class="small">Buildout is your custom number. The client never sees this card.</p>`; })()}</div>
         <div class="card list">${list.map((x, n) => `<button data-go="${n}" class="${n === state.i ? 'on' : ''}">${n + 1}. ${esc(x.title)}</button>`).join('')}</div>
         <div class="card"><b>Objections</b>${script.objections.map((o) => `<details><summary>${esc(o.q)}</summary><p>${esc(o.a)}</p></details>`).join('')}</div></div></div>`;
     document.getElementById('pp').onclick = () => { state.i = Math.max(0, state.i - 1); chan?.postMessage({ type: 'go', i: state.i }); render(); };
@@ -420,7 +443,14 @@ function startPresenter() {
     document.querySelectorAll('[data-go]').forEach((b) => { b.onclick = () => { state.i = Number(b.dataset.go); chan?.postMessage({ type: 'go', i: state.i }); render(); }; });
   };
   setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); const el = document.getElementById('tm'); if (el) el.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 1000);
-  chan?.addEventListener('message', (e) => { const m = e.data || {}; if (m.type === 'slide') { Object.assign(state, { i: m.i, plan: m.plan, ticket: m.ticket, jobs: m.jobs }); render(); } });
+  // The closer may add, drop or resize services in the deck window: keep the pricing guide in step.
+  const takeSvc = (svc) => {
+    if (!Array.isArray(svc)) return;
+    const all = allServices();
+    state.quote.services = svc.map((x) => { const a = all.find((y) => y.id === x.id); return a ? { ...a, qty: x.qty } : null; }).filter(Boolean);
+    state.svc = svc;
+  };
+  chan?.addEventListener('message', (e) => { const m = e.data || {}; if (m.type === 'slide') { Object.assign(state, { i: m.i, plan: m.plan, ticket: m.ticket, jobs: m.jobs }); takeSvc(m.svc); render(); } if (m.type === 'svc') { takeSvc(m.svc); render(); } });
   document.addEventListener('keydown', (e) => { if (e.key === 'ArrowRight' || e.key === ' ') document.getElementById('pn')?.click(); if (e.key === 'ArrowLeft') document.getElementById('pp')?.click(); });
   render();
   chan?.postMessage({ type: 'hello' });

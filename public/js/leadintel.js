@@ -2,6 +2,7 @@ import { parseListings } from './listings.js';
 import { isPersonName, titleLike } from './names.js';
 import { SERVICE_LIST } from './plancopy.js';
 import { SCOPE, unitOf, hasQty, clampQty, tierOf, dollars } from './scope.js';
+import { refFor, photosFor } from './planref.js';
 // Lead intelligence: scoring, problems found, the scope of work built from the research, call script, dedupe keys.
 // Pure functions with no DOM or network, shared by the Worker, the Hub screens, and the tests.
 
@@ -390,17 +391,32 @@ function describeServices(lead = {}, intel = null) {
     content: bigJobs && strong ? 4 : 2,
     onpage: siteIssues >= 3 ? 3 : siteIssues === 2 ? 2 : 1,
   };
+  // Exact numbers from the research behind each service, so every line on the slide says what is needed and how much.
+  const L = intel?.listing || {};
+  const top = intel?.competitors?.[0];
+  const gapRev = top && top.reviews ? Math.max(0, top.reviews - (L.reviews ?? 0) + 1) : 0;
+  let ls = lead.listings;
+  if (typeof ls === 'string') { try { ls = JSON.parse(ls); } catch { ls = null; } }
+  const wrong = ls?.results?.length ? (ls.counts?.mismatch || 0) + (ls.counts?.missing || 0) : null;
+  const offPage = g && g.points ? g.points - t10 : null;
   return SERVICE_LIST.map((s) => {
     const hit = probs.find((x) => s.fixes.includes(x.key));
+    const n = qty[s.id] || SCOPE[s.id]?.def || 1;
     let why = hit ? hit.title : '';
     if ((s.id === 'pages' || s.id === 'links' || s.id === 'cleanup') && g) {
       why = t10 >= g.points * 0.8 ? `First page in ${t10} of ${g.points} spots today. This moves you up toward the top 3 and keeps you there.`
         : `First page (top 10) in ${t10} of ${g.points} spots today. This is what pushes you onto the first page in more of your area.`;
     }
+    if (s.id === 'cleanup' && wrong != null) why = wrong ? `${wrong} of the ${ls.results.length} directories Google checks have your name, address or phone wrong or missing. We fix every one.` : `All ${ls.results.length} directories we checked match. We keep them that way.`;
+    if (s.id === 'pages' && offPage > 0) why = `${n} new pages a month aimed at the ${offPage} of ${g.points} spots where you are not on the first page.`;
+    if (s.id === 'links' && offPage > 0) why = `${n} local links a month to build the trust Google wants in the ${offPage} of ${g.points} spots where you are not on the first page.`;
+    if (s.id === 'posts') why = `${n} posts and ${photosFor(n)} photo uploads a month.${L.photos != null ? ` Your profile has ${L.photos} photos today.` : ''}`;
+    if (s.id === 'reviews' && gapRev > 0) why = `${gapRev} reviews to pass ${top.title}: about ${Math.max(4, Math.ceil(gapRev / 6))} new reviews a month over six months, every one answered.`;
+    if (s.id === 'competitors' && top) why = `${top.title} holds ${top.wins || 0} top 3 spots${g?.points ? ` of the ${g.points} we checked` : ''}. We track them every month.`;
     if (s.id === 'report') why = g ? `Your starting point: first page in ${t10} of ${g.points} spots. You watch it climb.` : 'You see the climb month by month.';
     return {
       id: s.id, name: s.name, what: s.what, why, problem: Boolean(hit),
-      rec: s.core || on[s.id] === true, qty: qty[s.id] || SCOPE[s.id]?.def || 1, unit: unitOf(s.id),
+      rec: s.core || on[s.id] === true, qty: n, unit: unitOf(s.id),
     };
   });
 }
@@ -424,6 +440,7 @@ export function quoteFor(lead = {}, intel = null, saved = null) {
   const pair = (o) => (o && (dollars(o.setup) != null || dollars(o.monthly) != null) ? { setup: dollars(o.setup), monthly: dollars(o.monthly) } : null);
   return {
     plan: tierOf(services),
+    ref: refFor(services),
     setup: dollars(q?.setup),
     monthly: dollars(q?.monthly),
     anchor: pair(q?.anchor),

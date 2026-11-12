@@ -187,7 +187,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   today. The amounts start blank every meeting; the rep types them, and moving to the next slide saves them to the lead's quote, which the
   work order fills in (sending without typed amounts asks to confirm the saved quote).
   Printable reading copy of the script is a Claude Doc (V prints it for calls).
-- No packages, price per client (Nov 2026): Starter, Growth, Authority and Market Leader are gone from everything a client, lead or the website sees. Every client is tailored.
+- No packages, price per client (Nov 2026): Starter, Growth, Authority and Market Leader are gone from everything a client, lead or the website sees (one exception, below: the small plan name on one slide). Every client is tailored.
   The research (scan, listings, site, reviews, problems) picks a scope of work; the owner or closer types the buildout and the monthly after discovery. Nothing has a default
   price: the work order, payment link and convert refuse to run without typed amounts (400 "Type the buildout and the monthly"), scripts show `[your monthly]` style blanks
   until a number is typed, and MRR is only ever `clients.mrr_cents` (typed, or from Stripe, or the quote monthly at convert).
@@ -227,6 +227,21 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   the client's plan, services, cities, keywords, voice, intake, this month's tasks, latest scans, site audit issues, latest reviews, and the task guide.
   System rules: no invented facts, Google guidelines, no ranking promises, no dashes. `POST /api/assistant` {clientId?, taskId?, messages}. Needs
   ANTHROPIC_API_KEY; model ANTHROPIC_ASSIST_MODEL, else ANTHROPIC_CONTENT_MODEL, else ANTHROPIC_MODEL. Chats live in the browser while the Hub is open.
+- Plan guide, included services, no website in the deck (Nov 2026, V: a solid upsell and loss leader tactic): `public/js/planref.js` (pure, tests `test/planref.test.js`) holds V's internal pricing chart under OUR names:
+  Starter $399, Growth $549, Authority $749, Market Leader $998 a month (the chart's own names Essentials, Pro and Premier and its "Save $" lines are NOT used anywhere). `PLAN_REF` lists what each plan covers
+  (Google posts and photo uploads, Yelp posts, listing cleanup, review requests, social posts, reporting, citation building and linking, schema, website management and overhaul). `refFor(services)` picks the plan a
+  researched scope needs (Google posts a month first, then pages and competitors = Growth, links, 2+ website fixes, content, tracking, reputation = Authority, locations or over 8 posts = Market Leader) and returns
+  the why, the entry plan (Starter, the loss leader), the next plan up and what it adds (the upsell); `refLines` is the closer's text; `photosFor(posts)` is the chart's 4/6/8/12 posts = 20/30/40/50 photos. It is a
+  START POINT for the custom price, never a price: nothing is defaulted, the buildout and monthly stay blank until typed. `quoteFor` returns `ref`. Who sees what: the client sees only the plan NAME, very small (`.plan-tag`,
+  "Plan: Authority", on the "What gets you results" slide); the prices, the chart and the upsell ladder show only in the presenter view "Pricing guide" card, the presenter notes of the plan and price slides, and the lead panel
+  "Scope and price" fold (closers and owners). Never in the work order, client app, reports, analysis link or website. `INCLUDED_ALL` (competitor analysis, monthly branding call, Rightway app with a direct line to the manager)
+  shows on every deck and on the price slide's "Includes" line. Website is a separate service sold after results: the deck has no website slide, no Website column, no website problems, no website fixes (`WEBSITE_SERVICE_IDS`,
+  `WEBSITE_PROBLEM_KEYS` in `plancopy.js`); the findings (speed, problems, hidden services) go in the closer notes ("WEBSITE (closer only)") and in the pack data (`site`, `growth`, `reasons[].site`, `foundation[].site`), and
+  `packParts(p, {closer: true})` shows them. The analysis' Step 2 for clients is one sentence about the monthly branding call ("what is next"). Every service line on the plan slide carries the exact number from the research
+  (`describeServices`: directories wrong or missing, posts and photo uploads, reviews to pass the leader and per month, pages and links against the spots off page one); `ninetyDayPlan(plan, intel, lead, qty)` uses the deal's own
+  posts, pages and links. Analysis grew: `compare` (you vs the leader table), `reviewMath`, `lost`, `urgency` in the pack (v2) and tabs Side by side and What waiting costs in Present mode; the deck gained "Side by side" and
+  "What waiting costs" slides. `public/js/lifeforce.js` (pure): the Life-Force 8 as honest urgency, `urgencyFor` gives client safe `lines` only when a real number backs them (spots off page one, spots the leader holds,
+  reviews behind, rating) plus `asks` for the closer (presenter notes). Sexual companionship is never used, food and drink only for food businesses. No made up deadlines, discounts or scarcity, no ranking promises.
 - Booking page is "Book a consultation" (`/book.html`, default title "Book a free consultation", invite "Rightway Growth consultation"). The marketing
   site (rightwaygrowth.com) is not in this repo: V built it himself (was on Netlify). Its pricing comes off, website services go on, every call to
   action links to `/book.html` on the Hub.

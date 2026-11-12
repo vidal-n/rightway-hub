@@ -43,7 +43,7 @@ export function presentPicker() {
   search();
 }
 
-const TABS_LEAD = [['overview', 'Overview'], ['competitors', 'Competitors'], ['why', 'Why they win'], ['plan', 'Game plan'], ['slides', 'Slides'], ['scan', 'Live scan']];
+const TABS_LEAD = [['overview', 'Overview'], ['competitors', 'Competitors'], ['compare', 'Side by side'], ['cost', 'What waiting costs'], ['why', 'Why they win'], ['plan', 'Game plan'], ['slides', 'Slides'], ['scan', 'Live scan']];
 const TABS_CLIENT = [['progress', 'Your progress'], ['overview', 'Original audit'], ['competitors', 'Competitors'], ['plan', 'Next steps']];
 
 // Step 2: the clean view.

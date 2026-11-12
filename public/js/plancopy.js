@@ -16,6 +16,10 @@ export const SERVICE_LIST = [
   { id: 'tracking', name: 'Call tracking and lead report', what: 'A tracking number so you see every call Google sends you, answered and missed.', min: 'authority', fixes: [] },
   { id: 'reputation', name: 'Reputation monitoring', what: 'Every new review watched, bad ones flagged the same day, and what customers say about you each month.', min: 'authority', fixes: ['low_rating'] },
   { id: 'locations', name: 'Every location and service area covered', what: 'Each location gets its own profile work, scans and reports.', min: 'leader', fixes: [] },
-  { id: 'report', name: 'Monthly map scan, report and meeting', what: 'A new map every month so you see exactly where you are climbing toward the top 10, plus a short meeting on what is next.', min: 'starter', core: true, fixes: [] },
+  { id: 'report', name: 'Monthly map scan, report and meeting', what: 'A new map every month so you see exactly where you are climbing toward the top 10, and a monthly branding call to go over it.', min: 'starter', core: true, fixes: [] },
 ];
 export const PLAN_ORDER = ['starter', 'growth', 'authority', 'leader'];
+
+// Website work stays in the closer's notes. The presentation and the analysis never list it (it is sold separately, after results).
+export const WEBSITE_SERVICE_IDS = ['onpage'];
+export const WEBSITE_PROBLEM_KEYS = ['no_website', 'no_https', 'weak_title', 'no_schema', 'no_click_to_call', 'site_down', 'slow_site'];

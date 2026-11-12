@@ -238,3 +238,11 @@ body.presenter { overflow: auto; background: #0B1411; color: #E7F1EC; }
 .kwtabs button.on { background: #0F1B17; color: #fff; border-color: #0F1B17; }
 #deepscan { background: #0F1B17; color: #fff; border-color: #0F1B17; margin-left: 10px; }
 .box .replay { font: 600 18px var(--body, inherit); border: 1px solid #0F1B17; border-radius: 999px; padding: 10px 22px; cursor: pointer; }
+
+/* Plan guide (closer only) and what is included every month */
+.plan-tag { position: absolute; top: 44px; right: 116px; font: 500 13px var(--body); letter-spacing: .06em; text-transform: uppercase; color: #9AA8A2; }
+.incl { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-top: 20px; font-size: 17px; color: var(--ink-2); }
+.incl span { font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: 14px; }
+.incl b { background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-weight: 600; }
+.pv .guide .gref { font-size: 20px; margin: 6px 0; } .pv .guide .gref span { background: #23B07E; color: #0F1B17; border-radius: 8px; padding: 2px 10px; font-weight: 700; margin-right: 8px; }
+.pv .guide .small { font-size: 14px; color: #A9BBB3; margin: 4px 0; }

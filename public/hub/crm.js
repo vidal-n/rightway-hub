@@ -16,6 +16,7 @@ import { testTextModal, testBookModal, testLeadModal, testSummaryHtml } from './
 import { practiceModal } from './practice.js';
 import { filterLeads } from '/js/leadfilter.js';
 import { quoteFor, callCategory, whoIs, personOf, CALL_CATS } from '/js/leadintel.js';
+import { refLines } from '/js/planref.js';
 import { SCOPE, effort, hoursOf } from '/js/scope.js';
 import { can, canRunCalls } from '/js/jobs.js';
 import { PHONE_TYPE_LABEL, EMAIL_STATUS_LABEL } from '/js/scrub.js';
@@ -646,6 +647,7 @@ export async function leadModal(id, onChange) {
             ${c.unit ? `<label class="scope-qty small"><input type="number" data-qty="${esc(s.id)}" min="${c.min}" max="${c.max}" value="${picked?.qty ?? s.qty}" inputmode="numeric"> <span class="muted">${esc(c.unit)}</span></label>` : ''}</div>`;
         }).join('')}</div></div>
         <div class="scope-fx small" id="lfx"></div>
+        <div class="card small" id="lref" style="margin-top:8px;box-shadow:none"></div>
         <div class="row" style="margin-top:8px;gap:8px">
           <label class="field" style="flex:1 1 110px"><span>Buildout $</span><input id="lsetup" inputmode="decimal" value="${esc(Q.setup ?? '')}" placeholder="You set it"></label>
           <label class="field" style="flex:1 1 110px"><span>Monthly $</span><input id="lmonthly" inputmode="decimal" value="${esc(Q.monthly ?? '')}" placeholder="You set it"></label>
@@ -762,6 +764,8 @@ export async function leadModal(id, onChange) {
     const sc = readScope().map((x) => ({ id: x.id, qty: Number(x.qty) || undefined }));
     const e = effort(sc);
     const mo = Number(String(val('lmonthly')).replace(/[$,\s]/g, ''));
+    const rf = $('#lref', m.el);
+    if (rf) rf.innerHTML = `<b>Plan guide (internal, never shown to the client)</b><ul class="list" style="margin:6px 0 0">${refLines(sc).map((t) => `<li class="item"><div class="item-sub">${esc(t)}</div></li>`).join('')}</ul>`;
     box.innerHTML = `Delivery time: about <b>${hoursOf(e.monthly)} h a month</b>, plus about ${hoursOf(e.setup)} h to set up.${mo > 0 && e.monthly ? ` At ${esc(fmt.money(mo))} a month that is <b>${esc(fmt.money(Math.round(mo / (e.monthly / 60))))} an hour</b> of delivery.` : ' Type your monthly to see what it pays per hour.'}`;
   };
   $('.scope-pick', m.el)?.addEventListener('input', fx);

@@ -2470,3 +2470,7 @@ p.badge, .badge.wrap { white-space: normal; max-width: 100%; display: block; ove
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .script-read.doc .d-brand .on-light { display: none; } :root:not([data-theme="light"]) .script-read.doc .d-brand .on-dark { display: block; } }
 :root[data-theme="dark"] .script-read.doc .d-brand .on-light { display: none; }
 :root[data-theme="dark"] .script-read.doc .d-brand .on-dark { display: block; }
+
+/* Analysis: compare against the leader */
+.pk-cmp th { text-align: left; font-weight: 600; font-size: 13px; color: var(--muted); padding: 8px; }
+.pk-cmp .pk-win { font-weight: 700; color: #0A6B4C; } .pk-cmp .pk-lose { font-weight: 700; color: #B23A3A; }

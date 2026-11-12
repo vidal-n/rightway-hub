@@ -19,7 +19,8 @@ const stars = (r) => (r == null ? 'n/a' : r.toFixed(1));
 const FIT = { high: ['Fix first', 'bad'], good: ['Strong fit', 'good'], later: ['Later', 'gray'] };
 
 // The analysis in four parts so Present mode can show one at a time and the report page can show all of them.
-export function packParts(p) {
+// closer = true also shows the website findings and the full list of services sold separately (never on a client's screen or link).
+export function packParts(p, { closer = false } = {}) {
   const top = p.competitors[0], y = p.you, g = p.grid;
   const kpi = (big, label, sub) => `<div class="pk-kpi"><b>${esc(big)}</b><span>${esc(label)}</span>${sub ? `<i>${esc(sub)}</i>` : ''}</div>`;
   const kpis = [
@@ -33,23 +34,35 @@ export function packParts(p) {
       <div class="pk-nums"><span><b>${c.reviews ?? 'n/a'}</b> reviews</span><span><b>${stars(c.rating)}</b> rating</span>${c.wins ? `<span><b>${c.wins}</b> top 3 spots</span>` : ''}</div>
       ${c.why.length ? `<ul>${c.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : '<p class="muted">Close to you on the numbers we can see.</p>'}</article>`).join('')}</div>` : '<p class="muted">No competitors were captured in the research.</p>';
   const you = `<article class="pk-comp you"><header><b>${esc(p.business)} (you)</b><span class="muted">${esc(y.category || '')}</span></header><div class="pk-nums"><span><b>${y.reviews ?? 'n/a'}</b> reviews</span><span><b>${stars(y.rating)}</b> rating</span>${g ? `<span><b>${g.top3}</b> top 3 spots</span>` : ''}</div></article>`;
-  const reasons = p.reasons.length ? p.reasons.map((r) => `<li class="pk-reason ${esc(r.severity)}"><b>${esc(r.title)}</b><span>${esc(r.detail)}</span></li>`).join('') : '<li class="muted">No major gaps found.</li>';
+  const shownReasons = closer ? p.reasons : p.reasons.filter((r) => !r.site);
+  const reasons = shownReasons.length ? shownReasons.map((r) => `<li class="pk-reason ${esc(r.severity)}"><b>${esc(r.title)}</b><span>${esc(r.detail)}</span></li>`).join('') : '<li class="muted">No major gaps found.</li>';
   const lst = p.listings ? `<section class="pk-sec"><h2>Directories Google double checks</h2><p class="muted">We checked ${p.listings.checked} directories. ${p.listings.counts.mismatch || 0} show wrong information, ${p.listings.counts.missing || 0} do not list you, ${p.listings.counts.match || 0} match.</p>
     ${p.listings.rows.length ? `<table class="pk-table"><tbody>${p.listings.rows.map((r) => `<tr><td>${esc(r.name)}</td><td><span class="pk-tag ${r.status === 'mismatch' ? 'bad' : 'warn'}">${esc(r.label)}</span> ${esc(r.note)}</td></tr>`).join('')}</tbody></table>` : ''}</section>` : '';
-  const site = p.site ? `<section class="pk-sec"><h2>Your website</h2><div class="pk-nums wide">
+  const site = closer && p.site ? `<section class="pk-sec"><h2>Your website</h2><div class="pk-nums wide">
     <span><b>${p.site.https ? 'Yes' : 'No'}</b> secure (HTTPS)</span><span><b>${p.site.titleOk ? 'Yes' : 'No'}</b> homepage says service and city</span><span><b>${p.site.tel ? 'Yes' : 'No'}</b> tap to call</span><span><b>${p.site.schema ? 'Yes' : 'No'}</b> local business code</span>${p.site.speed != null ? `<span><b>${p.site.speed}</b> mobile speed (of 100)</span>` : ''}</div></section>` : '';
-  const found = p.foundation.length ? p.foundation.map((s) => `<li><b>${esc(s.name)}</b><span>${esc(s.what)}</span>${s.why ? `<em>${esc(s.why)}</em>` : ''}</li>`).join('') : '';
-  const growth = p.growth.map((s) => { const [l, c] = FIT[s.fit] || FIT.later; return `<li><b>${esc(s.name)} <span class="pk-tag ${c}">${l}</span></b><span>${esc(s.what)}</span><em>${esc(s.why)}</em></li>`; }).join('');
+  const foundationList = closer ? p.foundation : p.foundation.filter((s) => !s.site);
+  const found = foundationList.length ? foundationList.map((s) => `<li><b>${esc(s.name)}</b><span>${esc(s.what)}</span>${s.why ? `<em>${esc(s.why)}</em>` : ''}</li>`).join('') : '';
+  const growth = (closer ? p.growth : []).map((s) => { const [l, c] = FIT[s.fit] || FIT.later; return `<li><b>${esc(s.name)} <span class="pk-tag ${c}">${l}</span></b><span>${esc(s.what)}</span><em>${esc(s.why)}</em></li>`; }).join('');
+
+  const ok = (v) => (v == null ? '-' : v);
+  const board = p.compare?.length ? `<section class="pk-sec"><h2>You against ${esc(top?.name || 'the leader')}, side by side</h2><table class="pk-table pk-cmp"><thead><tr><th></th><th>${esc(p.business)}</th><th>${esc(top?.name || '')}</th></tr></thead><tbody>${p.compare.map((r) => `<tr><td>${esc(r.label)}</td><td class="${r.lead === 'you' ? 'pk-win' : r.lead === 'them' ? 'pk-lose' : ''}">${esc(ok(r.you))}</td><td class="${r.lead === 'them' ? 'pk-win' : r.lead === 'you' ? 'pk-lose' : ''}">${esc(ok(r.them))}</td></tr>`).join('')}</tbody></table></section>` : '';
+  const rm = p.reviewMath;
+  const math = rm ? `<section class="pk-sec"><h2>The review math</h2><div class="pk-nums wide"><span><b>${rm.mine}</b> your reviews today</span><span><b>${rm.leaderReviews}</b> ${esc(rm.leader)}</span>${rm.gap ? `<span><b>${rm.gap}</b> reviews to pass them</span><span><b>${rm.perMonth} a month</b> gets you there in about ${rm.months} months</span>` : '<span><b>Ahead</b> of them today</span>'}</div><p class="muted">Every review comes from a real customer, asked at the right moment. The Rightway app makes asking take seconds.</p></section>` : '';
+  const urg = (p.urgency || []).length ? `<section class="pk-sec"><h2>What waiting costs</h2><ul class="pk-reasons">${p.urgency.map((u) => `<li class="pk-reason medium"><span>${esc(u.line)}</span></li>`).join('')}</ul><p class="muted">These are the numbers from your own scan. Where you show up also depends on distance and relevance, so no one can promise a spot.</p></section>` : '';
+  const step2 = closer ? `<h3>Step 2: grow on top of it (closer only)</h3><p class="muted">Each of these is its own service, pitched after results.</p><ul class="pk-list">${growth}</ul>`
+    : '<h3>Step 2: what is next</h3><p class="muted">Once the foundation is working, your monthly branding call is where we look at your results together and decide what to do next. You will know exactly what moved and why.</p>';
   const cad = p.cadence.map((c) => `<li><span class="pk-when">${esc(c.when)}</span><b>${esc(c.title)}</b><span>${esc(c.text)}</span></li>`).join('');
   return {
     overview: `<section class="pk-hero"><div class="eyebrow">Free competitor analysis</div><h1>${esc(p.business)}</h1><p>${esc(p.city)}${p.state ? `, ${esc(p.state)}` : ''} · "${esc(p.keyword || '')}"</p><p class="pk-head">${esc(p.headline)}</p></section>
   <div class="pk-kpis">${kpis}</div>
   ${g ? `<section class="pk-sec"><h2>Where customers find you</h2><p class="muted">Each square is a spot around the business. The number is where you show up when someone there searches "${esc(p.keyword || '')}". Green is the top 3, yellow is the rest of page one, red is not on the first page.</p><div class="pk-map">${gridSvg(g.cells, g.size, 'Search results around the business')}</div></section>` : ''}`,
     competitors: `<section class="pk-sec"><h2>Who is getting your calls, and why</h2><div class="pk-comps">${you}</div>${comps}</section>`,
+    compare: `${board}${math}` || '<section class="pk-sec"><p class="muted">No competitor numbers captured yet.</p></section>',
+    cost: urg || '<section class="pk-sec"><p class="muted">Run the scan to see what waiting costs.</p></section>',
     why: `<section class="pk-sec"><h2>Exactly why they are ahead</h2><ul class="pk-reasons">${reasons}</ul></section>${lst}${site}`,
     plan: `<section class="pk-sec"><h2>The game plan</h2>
     <h3>Step 1: fix the local SEO foundation</h3><p class="muted">This is the base. Everything else works better once it is done.</p><ul class="pk-list">${found}</ul>
-    <h3>Step 2: grow on top of it</h3><p class="muted">Each of these is its own service. We review them together on a monthly branding call and add the next one when it makes sense.</p><ul class="pk-list">${growth}</ul>
+    ${step2}
     <h3>How it runs</h3><ol class="pk-cad">${cad}</ol></section>
   <p class="pk-note">${esc(p.note)}</p>`,
   };
@@ -58,5 +71,5 @@ export function packParts(p) {
 export function packHtml(p, { bookUrl = '/book.html', present = false } = {}) {
   if (!p?.ready) return `<div class="card"><p class="muted">${esc(p?.reason || 'Nothing to show yet.')}</p></div>`;
   const x = packParts(p);
-  return `${x.overview}${x.competitors}${x.why}${x.plan}${present ? '' : `<p class="no-print"><a class="btn btn-primary" href="${esc(bookUrl)}">Book a time to go over it</a> <button class="btn btn-ghost" onclick="window.print()">Print or save as PDF</button></p>`}`;
+  return `${x.overview}${x.competitors}${x.compare}${x.why}${x.cost}${x.plan}${present ? '' : `<p class="no-print"><a class="btn btn-primary" href="${esc(bookUrl)}">Book a time to go over it</a> <button class="btn btn-ghost" onclick="window.print()">Print or save as PDF</button></p>`}`;
 }

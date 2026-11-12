@@ -29,7 +29,25 @@ test('pack carries nothing internal and no dashes', () => {
   const text = JSON.stringify(p) + packHtml(p);
   assert.doesNotMatch(text, /SECRET NOTE|999|score|\$\d/);
   assert.doesNotMatch(text, /[–—]/);
-  assert.deepEqual(Object.keys(packParts(p)), ['overview', 'competitors', 'why', 'plan']);
+  assert.deepEqual(Object.keys(packParts(p)), ['overview', 'competitors', 'compare', 'cost', 'why', 'plan']);
+});
+
+test('the client view never mentions a website, the closer view keeps the data', () => {
+  const p = buildPack(lead, { intel });
+  const client = packHtml(p) + Object.values(packParts(p)).join('');
+  assert.doesNotMatch(client, /website|Website/);
+  assert.ok(p.reasons.some((r) => r.site), 'website problems stay in the data');
+  const closer = Object.values(packParts(p, { closer: true })).join('');
+  assert.match(closer, /Website build or rebuild/);
+  assert.match(closer, /closer only/);
+});
+
+test('the analysis shows the side by side, the review math and what waiting costs from real numbers', () => {
+  const p = buildPack(lead, { intel });
+  assert.ok(p.compare.find((r) => r.label === 'Google reviews' && r.you === 12 && r.them === 210));
+  assert.equal(p.reviewMath.gap, 199);
+  assert.ok(p.urgency.length >= 3);
+  assert.match(p.urgency[0].line, /6 of the 9 spots/);
 });
 
 test('no research means not ready, with a reason', () => {
