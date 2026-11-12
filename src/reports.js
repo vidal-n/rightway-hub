@@ -12,6 +12,8 @@ import { callStats } from './calltrack.js';
 import { linksForMonth } from './citations.js';
 import { analyzeReviews } from './reputation.js';
 import { notify } from './notify.js';
+import { clientMeta } from './meta.js';
+import { PLATFORM } from '../public/js/social.js';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 export const monthLabel = (m) => { const [y, mo] = m.split('-').map(Number); return `${MONTHS[mo - 1]} ${y}`; };
@@ -112,6 +114,7 @@ export async function buildReport(env, client, month) {
     first(env, 'SELECT COUNT(*) AS n FROM posts WHERE client_id = ? AND posted_at >= ? AND posted_at < ?', client.id, a, b),
     first(env, 'SELECT COUNT(*) AS n FROM kit_scans WHERE client_id = ? AND at >= ? AND at < ?', client.id, a, b),
   ]);
+  const social = await socialSnapshot(env, client.id, a, b);
   const done = tasks.filter((t) => t.status === 'done');
   const byKind = new Map();
   for (const t of done) byKind.set(t.kind, (byKind.get(t.kind) || 0) + 1);
@@ -136,11 +139,29 @@ export async function buildReport(env, client, month) {
         .map((t) => ({ id: t.id, title: t.title, label: KIND[t.kind] || t.kind, link: /^https?:\/\//.test(t.link || '') ? t.link : null, shot: Boolean(t.proof_key) })),
     },
     posts: posts?.n || 0,
+    social,
     qrScans: qr?.n || 0,
     calls,
     links,
     reputation,
     next: workloadOf(client).monthly.map(([, title, n]) => (n > 1 ? `${n} x ${title}` : title)),
+  };
+}
+
+// Facebook and Instagram work for the month: posts that went out (per channel, with their links) and whether the accounts are connected.
+async function socialSnapshot(env, clientId, a, b) {
+  const rows = (await all(env, "SELECT title, channels, post_links, posted_at FROM social_items WHERE client_id = ? AND status = 'posted' AND posted_at >= ? AND posted_at < ? ORDER BY posted_at", clientId, a, b)
+    .catch(() => [])).map((r) => ({ ...r, channels: (() => { try { return JSON.parse(r.channels) || []; } catch { return []; } })(), links: (() => { try { return JSON.parse(r.post_links) || {}; } catch { return {}; } })() }));
+  const meta = await clientMeta(env, clientId).catch(() => null);
+  const connected = meta?.connected?.length ? meta.counts : null;
+  if (!rows.length && !connected) return null;
+  const by = {};
+  for (const r of rows) for (const ch of r.channels) by[ch] = (by[ch] || 0) + 1;
+  return {
+    posted: rows.length,
+    byChannel: Object.entries(by).map(([id, n]) => ({ id, label: PLATFORM[id]?.label || id, n })).sort((x, y) => y.n - x.n),
+    items: rows.slice(-8).map((r) => ({ title: r.title, channels: r.channels.map((id) => PLATFORM[id]?.label || id), link: Object.values(r.links).find((v) => /^https?:\/\//.test(v || '')) || null })),
+    connected,
   };
 }
 
@@ -180,6 +201,7 @@ export function reportEmail(rep, url, note = '') {
     d.gbp ? `Google profile: ${d.gbp.calls} calls, ${d.gbp.directions} direction requests, ${d.gbp.website} website clicks` : '',
     d.reviews.count != null ? `Google reviews: ${d.reviews.count}${d.reviews.rating ? ` (${d.reviews.rating} stars)` : ''}` : '',
     d.calls ? `Calls: ${d.calls.total} (${d.calls.firstTime} new callers, ${d.calls.missed} missed)` : '',
+    d.social?.posted ? `Social media: ${d.social.posted} post${d.social.posted === 1 ? '' : 's'} published${d.social.byChannel.length ? ` (${d.social.byChannel.map((x) => `${x.label} ${x.n}`).join(', ')})` : ''}` : '',
     d.reputation ? `Google reviews: ${d.reputation.newThisMonth} new this month${d.reputation.rating ? `, ${d.reputation.rating} stars overall` : ''}` : '',
     `Work done this month: ${d.work.done} task${d.work.done === 1 ? '' : 's'}${d.posts ? `, ${d.posts} Google post${d.posts === 1 ? '' : 's'}` : ''}`,
     '', `See the full report: ${url}`, '', 'Rightway Growth',
@@ -201,6 +223,7 @@ export function reportEmail(rep, url, note = '') {
       <p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#33443E">
         ${d.reviews.count != null ? `Google reviews: <b>${d.reviews.count}</b>${d.reviews.rating ? `, ${d.reviews.rating} stars` : ''}<br>` : ''}
         ${d.gbp ? `From your Google profile: <b>${d.gbp.calls}</b> calls, <b>${d.gbp.directions}</b> direction requests, <b>${d.gbp.website}</b> website clicks<br>` : ''}
+        ${d.social?.posted ? `Social media: <b>${d.social.posted}</b> post${d.social.posted === 1 ? '' : 's'} published${d.social.byChannel.length ? ` (${d.social.byChannel.map((x) => `${h(x.label)} ${x.n}`).join(', ')})` : ''}<br>` : ''}
         ${d.calls ? `Calls: <b>${d.calls.total}</b> (${d.calls.firstTime} new caller${d.calls.firstTime === 1 ? '' : 's'}, ${d.calls.missed} missed)<br>` : ''}
         Work done this month: <b>${d.work.done}</b> task${d.work.done === 1 ? '' : 's'}${d.posts ? `, <b>${d.posts}</b> Google post${d.posts === 1 ? '' : 's'}` : ''}</p>
       <p style="margin:22px 0 4px"><a href="${h(url)}" style="display:inline-block;background:#0F1B17;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:12px">See the full report</a></p>

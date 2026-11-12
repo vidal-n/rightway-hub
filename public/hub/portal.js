@@ -60,6 +60,10 @@ export async function portal(app, user, tab, state) {
     const v = shell(app, c, user, 'home', 'Your calls', 'Calls from your Google profile and website.');
     return import('./calltrack.js').then((m) => m.clientCalls(v, c));
   }
+  if (tab === 'social') {
+    const v = shell(app, c, user, 'home', 'Social media', 'Posts, progress and your Facebook and Instagram connection.');
+    return import('./socialclient.js').then((m) => m.clientSocial(v, c));
+  }
   if (tab === 'results') {
     const v = shell(app, c, user, 'results', 'Your results', 'Where you show up on Google across your area.');
     return renderRankings(v, c.id, { staff: false });
@@ -104,6 +108,11 @@ export async function portal(app, user, tab, state) {
     const stats = v.querySelector('.stats');
     if (s && stats && v.isConnected) stats.insertAdjacentHTML('afterend', `<a class="card start-card" href="#/calls"><b>${s.total} call${s.total === 1 ? '' : 's'} this month</b><span>${s.firstTime} new caller${s.firstTime === 1 ? '' : 's'}${s.missed ? `, ${s.missed} missed. Tap to call them back.` : '. Tap to see them.'}</span></a>`);
   });
+  import('./socialclient.js').then(async (m) => {
+    const html = await m.socialCard(c.id);
+    const stats = v.querySelector('.stats');
+    if (html && stats && v.isConnected) stats.insertAdjacentHTML('afterend', html);
+  }).catch(() => {});
   import('./content.js').then(async (m) => {
     const n = await m.waitingCount(c.id);
     if (n && v.isConnected) v.insertAdjacentHTML('afterbegin', `<a class="card start-card" href="#/content"><b>${n} new page${n === 1 ? '' : 's'} to check</b><span>Read ${n === 1 ? 'it' : 'them'} and approve, or tell us what to change.</span></a>`);

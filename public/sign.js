@@ -3,7 +3,7 @@
 import { agreementHtml, AGREEMENT_CSS, SIG_FONTS, SIG_FONTS_URL, initialsOf, TITLES, sigFont } from '/js/agreement.js';
 
 document.head.insertAdjacentHTML('beforeend', `<link rel="stylesheet" href="${SIG_FONTS_URL}"><style>${AGREEMENT_CSS}
-.fontpick { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 6px; }
+.fontpick { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); gap: 8px; margin-top: 6px; }
 .fontpick label { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; background: var(--surface-2); display: flex; align-items: center; gap: 8px; min-height: 58px; }
 .fontpick input { width: auto; min-height: 0; }
 .fontpick span { font-size: 30px; line-height: 1.2; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

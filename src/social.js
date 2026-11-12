@@ -8,7 +8,8 @@ import { requireClientAccess, requireStaff, isStaff } from './auth.js';
 import { generateCaptions } from './captions.js';
 import { logClaude } from './costs.js';
 import { notify } from './notify.js';
-import { cleanItem, readyForReview, fillCaptions, visibleToClient, templateIdeas, platformIds, STATUS } from '../public/js/social.js';
+import { cleanItem, readyForReview, fillCaptions, visibleToClient, templateIdeas, platformIds, STATUS, PLATFORM, progress } from '../public/js/social.js';
+import { clientMeta } from './meta.js';
 
 const MAX_IMG = 10 * 1024 * 1024;
 const MAX_VID = 50 * 1024 * 1024;
@@ -82,6 +83,12 @@ route('PATCH', '/api/social/:id', async ({ env, user, params, body: readBody, de
   if (!sets.length) return json({ item: it });
   put('updated_at', now());
   await run(env, `UPDATE social_items SET ${sets.join(', ')} WHERE id = ?`, ...args, it.id);
+  if (c.status === 'posted' && it.status !== 'posted') {
+    const links = { ...it.post_links, ...(c.post_links || {}) };
+    const where = (merged.channels || []).map((id) => PLATFORM[id]?.label).filter(Boolean).join(', ');
+    const link = Object.values(links).find((v) => /^https?:\/\//.test(v || '')) || null;
+    await run(env, 'INSERT INTO log (id, client_id, text, link, at, by) VALUES (?, ?, ?, ?, ?, ?)', newId('l_'), it.client_id, `Posted${where ? ` to ${where}` : ''}: ${merged.title || 'a new post'}`, link, now(), user.id).catch(() => {});
+  }
   if (c.status === 'review' && it.status !== 'review') {
     const cl = await loadClient(env, it.client_id);
     defer?.(notify(env, { to: { clientUsers: cl.id }, kind: 'update', title: 'A post is ready for you to check', body: merged.title, url: '/#/social', slack: false }).catch(() => {}));
@@ -257,6 +264,46 @@ route('POST', '/api/social/:id/comments', async ({ env, user, params, body: read
   if (!b) throw new HttpError('Write a comment first.');
   await run(env, 'INSERT INTO social_comments (id, item_id, client_id, author, kind, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', newId('sc_'), it.id, it.client_id, user.name || 'Rightway Growth', 'staff', b, now());
   return json({ comments: await all(env, 'SELECT id, author, kind, body, created_at FROM social_comments WHERE item_id = ? ORDER BY created_at', it.id) });
+});
+
+// ---------- the client app: progress, posts to check, connection ----------
+// A logged in client sees the same posts the review link shows, plus their numbers and whether Facebook and Instagram are connected.
+route('GET', '/api/clients/:id/social/overview', async ({ env, user, params }) => {
+  requireClientAccess(user, params.id);
+  const c = await loadClient(env, params.id);
+  const items = (await all(env, 'SELECT * FROM social_items WHERE client_id = ? ORDER BY COALESCE(scheduled_at, 9e15), created_at DESC LIMIT 1000', params.id)).map(shape).filter((i) => visibleToClient(i.status));
+  const ids = items.filter((i) => ['review', 'changes'].includes(i.status)).map((i) => i.id);
+  const comments = ids.length ? await all(env, `SELECT item_id, author, kind, body, created_at FROM social_comments WHERE item_id IN (${ids.map(() => '?').join(',')}) ORDER BY created_at`, ...ids) : [];
+  const shaped = items.map((i) => ({
+    id: i.id, title: i.title, project: i.project, status: i.status, channels: i.channels, captions: i.captions, scheduled_at: i.scheduled_at, posted_at: i.posted_at, updated_at: i.updated_at,
+    approved_by: i.approved_by, post_links: i.post_links, media: i.media.map((m, n) => ({ type: m.type, url: `/api/social/${i.id}/media/${n}` })),
+    comments: comments.filter((x) => x.item_id === i.id),
+  }));
+  return json({ business: c.name, items: shaped, progress: progress(items), meta: await clientMeta(env, params.id), statuses: Object.fromEntries(Object.entries(STATUS).map(([k, v]) => [k, v.label])) });
+});
+
+route('POST', '/api/clients/:id/social/items/:itemId/:action', async ({ env, user, params, body: readBody, defer }) => {
+  const body = await readBody();
+  requireClientAccess(user, params.id);
+  const it = await loadItem(env, params.itemId);
+  if (it.client_id !== params.id || !visibleToClient(it.status)) throw new HttpError('That post is not available for review.', 404);
+  const act = params.action;
+  if (!['comment', 'approve', 'changes'].includes(act)) throw new HttpError('Unknown action.', 404);
+  const name = user.name || 'Client';
+  const msg = text(body?.body, 2000);
+  if ((act === 'comment' || act === 'changes') && !msg) throw new HttpError(act === 'changes' ? 'Tell us what to change.' : 'Write a comment first.');
+  if (act !== 'comment' && !['review', 'changes', 'approved'].includes(it.status)) throw new HttpError('This post can not be changed any more. Send us a comment instead.');
+  if (msg) await run(env, 'INSERT INTO social_comments (id, item_id, client_id, author, kind, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', newId('sc_'), it.id, it.client_id, name, 'client', msg, now());
+  if (act === 'approve') {
+    await run(env, "UPDATE social_items SET status = 'approved', approved_at = ?, approved_by = ?, updated_at = ? WHERE id = ?", now(), name, now(), it.id);
+    defer?.(tell(env, { client_id: it.client_id }, it, `approved "${it.title}"`, `By ${name}.${msg ? ` ${msg}` : ''}`));
+  } else if (act === 'changes') {
+    await run(env, "UPDATE social_items SET status = 'changes', approved_at = NULL, approved_by = NULL, updated_at = ? WHERE id = ?", now(), it.id);
+    defer?.(tell(env, { client_id: it.client_id }, it, `asked for changes on "${it.title}"`, msg));
+  } else {
+    defer?.(tell(env, { client_id: it.client_id }, it, `commented on "${it.title}"`, msg));
+  }
+  return json({ ok: true, status: act === 'approve' ? 'approved' : act === 'changes' ? 'changes' : it.status });
 });
 
 // ---------- review links ----------

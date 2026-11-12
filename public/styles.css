@@ -128,7 +128,7 @@ input:focus, select:focus { outline: 2px solid var(--mint-strong); outline-offse
 .progress > span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--mint-strong), var(--mint)); transition: width 0.3s var(--ease);
   background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
 
-.r-mapsec { display: grid; grid-template-columns: minmax(0, 760px) minmax(280px, 1fr); gap: 24px; align-items: start; }
+.r-mapsec { display: grid; grid-template-columns: minmax(0, 760px) minmax(min(280px, 100%), 1fr); gap: 24px; align-items: start; }
 @media (max-width: 880px) { .r-mapsec { grid-template-columns: 1fr; } }
 .map-tools { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 10px; }
 .map-tools .field { flex: 1 1 220px; }

@@ -159,3 +159,32 @@ export function templateIdeas(client, count = 8) {
   }
   return out;
 }
+
+// Numbers for the client app and the monthly report. `items` are posts (the client's own list is already filtered to what they can see).
+// A post counts once in the month it went out, and once per channel it went to.
+export function progress(items, nowMs = Date.now(), months = 6) {
+  const list = Array.isArray(items) ? items : [];
+  const cur = monthKey(nowMs);
+  const postedAt = (i) => i.posted_at || i.scheduled_at || i.updated_at || 0;
+  const posted = list.filter((i) => i.status === 'posted');
+  const perMonth = new Map();
+  for (const i of posted) { const k = monthKey(postedAt(i)); perMonth.set(k, (perMonth.get(k) || 0) + 1); }
+  const thisMonth = posted.filter((i) => monthKey(postedAt(i)) === cur);
+  const byChannel = {};
+  for (const i of thisMonth) for (const ch of i.channels || []) byChannel[ch] = (byChannel[ch] || 0) + 1;
+  const upcoming = list.filter((i) => ['scheduled', 'approved'].includes(i.status))
+    .sort((a, b) => (a.scheduled_at || 9e15) - (b.scheduled_at || 9e15));
+  const last = [...posted].sort((a, b) => postedAt(b) - postedAt(a))[0] || null;
+  return {
+    month: cur,
+    postedThisMonth: thisMonth.length,
+    postedTotal: posted.length,
+    byChannel: Object.entries(byChannel).map(([id, n]) => ({ id, label: PLATFORM[id]?.label || id, n })).sort((a, b) => b.n - a.n),
+    waiting: list.filter((i) => i.status === 'review').length,
+    changes: list.filter((i) => i.status === 'changes').length,
+    upcoming: upcoming.length,
+    next: upcoming[0] ? { id: upcoming[0].id, title: upcoming[0].title, scheduled_at: upcoming[0].scheduled_at, channels: upcoming[0].channels || [] } : null,
+    last: last ? { id: last.id, title: last.title, at: postedAt(last) } : null,
+    months: Array.from({ length: months }, (_, n) => { const k = shiftMonth(cur, n - (months - 1)); return { key: k, label: monthLabel(k).split(' ')[0].slice(0, 3), posted: perMonth.get(k) || 0 }; }),
+  };
+}

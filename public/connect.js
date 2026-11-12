@@ -12,7 +12,7 @@ const foot = '<p class="small muted cn-foot">You can remove our access any time 
 if (q.get('deleted')) {
   root.innerHTML = `${head}<div class="card cn-ok"><h2>Your information was deleted</h2><p>We removed the Facebook and Instagram access you gave Rightway Growth, and what we saved from it. Confirmation code: <span class="cn-code">${esc(q.get('deleted'))}</span></p></div>${foot}`;
 } else if (!token) {
-  root.innerHTML = `${head}<div class="card cn-err"><h2>This link is missing something</h2><p>Open the whole link we sent you, or ask your Rightway Growth contact to send it again.</p></div>`;
+  root.innerHTML = `${head}<div class="card cn-err"><h2>${q.get('err') ? 'That did not finish' : 'This link is missing something'}</h2><p>${esc(q.get('err') || 'Open the whole link we sent you, or ask your Rightway Growth contact to send it again.')}</p>${q.get('err') ? '<p class="small muted">Open the link we sent you again to start over.</p>' : ''}</div>`;
 } else {
   let d;
   try {

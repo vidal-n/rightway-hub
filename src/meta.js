@@ -5,7 +5,7 @@
 import { HttpError, json } from './util.js';
 import { all, first, run, newId, token, now, getSettings, setSetting } from './db.js';
 import { route } from './router.js';
-import { requireStaff, requireAdmin } from './auth.js';
+import { requireStaff, requireAdmin, requireClientAccess } from './auth.js';
 import { seal, unseal, unb64u } from './seal.js';
 import { notify } from './notify.js';
 import { SCOPES, GRAPH_VERSION, permissionState, assetsFrom, connectionLine, problems, fbDialogUrl } from '../public/js/meta.js';
@@ -144,6 +144,31 @@ route('POST', '/api/clients/:id/meta/link', async ({ env, user, params, body, ur
   return json({ token: t, url: `${url.origin}/connect.html#${t}` });
 });
 
+// What the client app shows: which accounts are connected and what is still missing. Never tokens.
+export async function clientMeta(env, clientId) {
+  const cfg = await appConfig(env);
+  const conns = await all(env, "SELECT * FROM meta_connections WHERE client_id = ? AND status != 'revoked' ORDER BY created_at", clientId);
+  const assets = await all(env, 'SELECT * FROM meta_assets WHERE client_id = ?', clientId);
+  const shaped = conns.map((x) => shapeConn(x, assets));
+  const mine = shaped.flatMap((x) => x.assets);
+  return {
+    configured: cfg.ok, businessId: cfg.businessId,
+    connected: shaped.map((x) => ({ name: x.fb_name, status: x.status, line: x.line, problems: x.problems, assets: x.assets.map((a) => ({ kind: a.kind, name: a.name, can_post: a.can_post })) })),
+    counts: { pages: mine.filter((a) => a.kind === 'page').length, instagram: mine.filter((a) => a.kind === 'instagram').length, ads: mine.filter((a) => a.kind === 'adaccount').length },
+  };
+}
+
+// A client who is logged in to the app makes their own connect link, so they never wait for us to send one.
+route('POST', '/api/clients/:id/meta/self-link', async ({ env, user, params, url }) => {
+  requireClientAccess(user, params.id);
+  await loadClient(env, params.id);
+  const cfg = await appConfig(env);
+  if (!cfg.ok) throw new HttpError('We are still finishing this setup on our side. Your team will message you when it is ready.');
+  const t = token(18);
+  await run(env, 'INSERT INTO meta_links (token, client_id, label, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)', t, params.id, 'From the client app', user.id, now(), now() + 2 * 864e5);
+  return json({ token: t, url: `${url.origin}/connect.html#${t}` });
+});
+
 route('DELETE', '/api/meta/links/:token', async ({ env, user, params }) => {
   requireStaff(user);
   await run(env, 'UPDATE meta_links SET revoked = 1 WHERE token = ?', params.token);
@@ -271,6 +296,8 @@ route('GET', '/api/meta/callback', async ({ env, url, defer }) => {
     const me = await graph(env, '/me', { token: access, params: { fields: 'id,name' } });
     const r = await pullAndSave(env, l.client_id, l.token, access, me, expiresIn ? now() + Number(expiresIn) * 1000 : null);
     const c = await first(env, 'SELECT name FROM clients WHERE id = ?', l.client_id);
+    // Shows in the client's "What we did" list.
+    await run(env, 'INSERT INTO log (id, client_id, text, at, by) VALUES (?, ?, ?, ?, ?)', newId('l_'), l.client_id, `Facebook and Instagram connected. ${connectionLine(r.assets, r.perms)}`, now(), null).catch(() => {});
     defer?.(notify(env, { to: { client: l.client_id }, kind: 'client', title: `${c?.name || 'A client'} connected Facebook and Instagram`, body: connectionLine(r.assets, r.perms) + (r.issues.length ? ` ${r.issues[0]}` : ''), url: `/#/client/${l.client_id}/social` }).catch(() => {}));
     return back('done=1');
   } catch (e) {

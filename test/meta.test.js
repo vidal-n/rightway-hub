@@ -334,3 +334,83 @@ test('Meta deauthorize and data deletion callbacks verify the signature', async 
     assert.equal((await t.env.DB.prepare('SELECT COUNT(*) n FROM meta_connections').first()).n, 0);
   } finally { meta.restore(); }
 });
+
+test('client app: progress, approve in the app, own connect link, report and activity feed', async () => {
+  const { progress } = await import('../public/js/social.js');
+  const nowMs = Date.UTC(2026, 10, 15, 12);
+  const p = progress([
+    { id: 'a', status: 'posted', channels: ['facebook', 'instagram'], posted_at: nowMs - 864e5, title: 'A' },
+    { id: 'b', status: 'posted', channels: ['facebook'], posted_at: nowMs - 40 * 864e5, title: 'B' },
+    { id: 'c', status: 'review', channels: ['facebook'] },
+    { id: 'd', status: 'scheduled', channels: ['instagram'], scheduled_at: nowMs + 864e5, title: 'D' },
+  ], nowMs);
+  assert.equal(p.postedThisMonth, 1);
+  assert.equal(p.postedTotal, 2);
+  assert.deepEqual(p.byChannel.map((x) => `${x.id}:${x.n}`).sort(), ['facebook:1', 'instagram:1']);
+  assert.equal(p.waiting, 1);
+  assert.equal(p.upcoming, 1);
+  assert.equal(p.next.id, 'd');
+  assert.equal(p.months.length, 6);
+  assert.equal(progress([]).postedTotal, 0);
+
+  const t = setup(); const meta = fakeMeta(GOOD());
+  try {
+    const c = await owner(t); await saveApp(t);
+    // A post with the client, then one that is posted.
+    const mk = async (title, status) => (await t.call('POST', `/api/clients/${c.id}/social`, { title, channels: ['facebook'], captions: { facebook: { text: `Caption for ${title}` } }, status })).data.item;
+    const waiting = await mk('Roof job', 'review');
+    const posted = await mk('Fixed leak', 'draft');
+    let r = await t.call('PATCH', `/api/social/${posted.id}`, { status: 'posted', post_links: { facebook: 'https://facebook.com/p/1' } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    const feed = await t.env.DB.prepare("SELECT text, link FROM log WHERE client_id = ? AND text LIKE 'Posted%'").bind(c.id).first();
+    assert.match(feed.text, /Posted to Facebook: Fixed leak/);
+    assert.equal(feed.link, 'https://facebook.com/p/1');
+    // The client's own login, with its own session.
+    const inv = await t.call('POST', `/api/clients/${c.id}/invite`, { name: 'Sam Owner', email: 'sam@sunrise.test' });
+    assert.equal(inv.status, 200, JSON.stringify(inv.data));
+    let ck = '';
+    const as = async (method, path, body) => {
+      const h = { 'x-rw': '1', ...(ck ? { cookie: ck } : {}), ...(body !== undefined ? { 'content-type': 'application/json' } : {}) };
+      const res = await worker.fetch(new Request(`https://hub.test${path}`, { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined }), t.env);
+      const set = res.headers.get('set-cookie'); if (set) ck = set.split(';')[0];
+      return { status: res.status, data: await res.clone().json().catch(() => null), res };
+    };
+    const acc = await as('POST', '/api/auth/invite/accept', { token: inv.data.inviteUrl.split('/').pop(), password: 'a long client password 1' });
+    assert.equal(acc.status, 200, JSON.stringify(acc.data));
+    // The client sees the same numbers and can act, but never drafts.
+    const staff = t.call;
+    t.call = as;
+    // Staff view of the same overview works and hides drafts.
+    r = await t.call('GET', `/api/clients/${c.id}/social/overview`);
+    assert.equal(r.status, 200);
+    assert.equal(r.data.items.length, 2);
+    assert.equal(r.data.progress.waiting, 1);
+    assert.equal(r.data.progress.postedThisMonth, 1);
+    assert.equal(r.data.meta.configured, true);
+    assert.equal(r.data.items.find((i) => i.id === waiting.id).media.length, 0);
+    // Changes need a note. Approve works. Wrong client or draft is refused.
+    r = await t.call('POST', `/api/clients/${c.id}/social/items/${waiting.id}/changes`, { body: '' });
+    assert.equal(r.status, 400);
+    r = await t.call('POST', `/api/clients/${c.id}/social/items/${waiting.id}/approve`, { body: 'Looks great' });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.status, 'approved');
+    const draft = (await staff('POST', `/api/clients/${c.id}/social`, { title: 'Hidden', channels: ['facebook'] })).data.item;
+    assert.equal((await t.call('POST', `/api/clients/${c.id}/social/items/${draft.id}/approve`, {})).status, 404);
+    // Own connect link from the app, then the report carries the social section.
+    r = await t.call('POST', `/api/clients/${c.id}/meta/self-link`);
+    assert.equal(r.status, 200);
+    const { to } = await clientConnects(t, r.data.token);
+    assert.equal(to.hostname, 'www.facebook.com');
+    r = await t.call('GET', `/api/clients/${c.id}/social/overview`);
+    assert.equal(r.data.meta.counts.pages, 1);
+    assert.equal(r.data.meta.counts.instagram, 1);
+    const log = await t.env.DB.prepare("SELECT text FROM log WHERE client_id = ? AND text LIKE 'Facebook and Instagram connected%'").bind(c.id).first();
+    assert.ok(log);
+    const { buildReport } = await import('../src/reports.js');
+    const month = new Date().toISOString().slice(0, 7);
+    const snap = await buildReport(t.env, await t.env.DB.prepare('SELECT * FROM clients WHERE id = ?').bind(c.id).first(), month);
+    assert.equal(snap.social.posted, 1);
+    assert.equal(snap.social.connected.pages, 1);
+    assert.equal(snap.social.items[0].link, 'https://facebook.com/p/1');
+  } finally { meta.restore(); }
+});

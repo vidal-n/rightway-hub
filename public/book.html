@@ -20,7 +20,7 @@
     .day { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 10px 14px; cursor: pointer; text-align: center; font: 600 14px var(--body); color: var(--ink); min-width: 74px; }
     .day b { display: block; font: 700 22px var(--display); }
     .day.on { background: var(--btn); color: var(--btn-ink); border-color: transparent; }
-    .times { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; margin-top: 14px; }
+    .times { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(110px, 100%), 1fr)); gap: 8px; margin-top: 14px; }
     .time { border: 1px solid var(--line); background: var(--surface-2); border-radius: 12px; padding: 12px; cursor: pointer; font: 600 15px var(--body); color: var(--ink); }
     .time.on { background: var(--mint); color: #0F1B17; border-color: var(--mint-strong); }
     .hp { position: absolute; left: -9999px; }

@@ -24,7 +24,7 @@
     .sr-post { display: grid; gap: 12px; min-width: 0; }
     .sr-top { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
     .sr-top .item-title { overflow-wrap: anywhere; }
-    .sr-media { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+    .sr-media { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); gap: 8px; }
     .sr-media img, .sr-media video { width: 100%; max-height: 320px; object-fit: cover; border-radius: 12px; display: block; background: var(--surface-2); }
     .sr-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
     .sr-tabs button { border: 1px solid var(--line); background: var(--surface); color: inherit; border-radius: 999px; padding: 6px 12px; font: 600 13px var(--body, sans-serif); cursor: pointer; }

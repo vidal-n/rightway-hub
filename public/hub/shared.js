@@ -263,8 +263,8 @@ export async function renderRankings(el, clientId, { staff = false } = {}) {
           </div>
         </div>
         <h3 style="margin-top:18px">Who holds the top 10</h3>
-        <div class="table-wrap"><table><thead><tr><th>Spot</th><th>Business</th><th>First page share</th><th>Avg rank</th><th>Reviews</th><th>${staff ? 'To pass them' : 'Gap'}</th></tr></thead>
-          <tbody>${rows.map((r) => `<tr class="${r.isTarget ? 'is-you' : ''}"><td><b>#${r.position}</b></td><td>${esc(r.title)}${r.isTarget ? ' (you)' : ''}</td><td>${r.sov10}%</td><td>${r.avgRank}</td>
+        <div class="table-wrap"><table class="rk-table"><thead><tr><th>Spot</th><th>Business</th><th>First page share</th><th>Avg rank</th><th>Reviews</th><th>${staff ? 'To pass them' : 'Gap'}</th></tr></thead>
+          <tbody>${rows.map((r) => `<tr class="${r.isTarget ? 'is-you' : ''}"><td><b>#${r.position}</b></td><td>${esc(r.title)}${r.isTarget ? ' (you)' : ''}${!r.isTarget && lad.target && r.position < lad.position && r.gapText ? `<div class="gap-line small muted">${esc(r.gapText)}</div>` : ''}</td><td>${r.sov10}%</td><td>${r.avgRank}</td>
             <td>${fmt.int(r.reviews)}${r.rating ? ` <span class="muted small">${Number(r.rating).toFixed(1)}</span>` : ''}</td><td class="small">${!r.isTarget && lad.target && r.position < lad.position ? esc(r.gapText || '-') : ''}</td></tr>`).join('')}</tbody></table></div>
         <h3 style="margin-top:18px">How to climb</h3>
         <div class="climb">${steps.map((st) => `<div class="climb-step is-${st.status}"><div class="row"><b>${esc(st.label)}</b><span class="spacer"></span><span class="badge ${st.status === 'strong' ? '' : st.status === 'some' ? 'warn' : 'gray'}">${st.have}% of the area</span></div>
