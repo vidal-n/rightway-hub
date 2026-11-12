@@ -161,6 +161,7 @@ function renderBar(view) {
       <div class="cb-status" aria-live="polite">${longLabel ? '' : esc(view.label)}</div>
     </div>
     ${longLabel ? `<div class="cb-note" aria-live="polite">${esc(view.label)}</div>` : ''}
+    ${view.test ? '<div class="cb-test">TEST CALL. Nothing is dialed, saved or billed.</div>' : ''}
     ${contactRows(view.info)}
     ${view.cat ? `<div class="cb-cat"><i class="cc cc-${esc(view.cat.id)}">${esc(view.cat.label)}</i><span>${esc(view.cat.lead)}</span></div>` : ''}
     ${view.recording && view.state !== 'ended' ? '<div class="cb-rec"><i></i>Recording</div>' : ''}
@@ -265,8 +266,31 @@ function track(call, view, { onEnd, act } = {}) {
 }
 
 // Outgoing: checks the number on the server, then connects through the browser.
-export async function placeCall({ to, leadId, from, name, who, cat, info, tools, onEnd } = {}) {
+// Test power dial: a pretend call with the same call window, so a rep can watch the whole flow. Nothing is dialed, saved or billed.
+function testCall({ name, who, cat, info, tools, onEnd, outcome, onLive }) {
+  const h = {}; let muted = false; const timers = [];
+  const fire = (n, ...a) => (h[n] || []).slice().forEach((f) => f(...a));
+  const call = {
+    test: true,
+    on(n, f) { (h[n] ||= []).push(f); return call; },
+    isMuted: () => muted,
+    mute(m) { muted = Boolean(m); fire('mute', muted); },
+    sendDigits() {},
+    disconnect() { timers.forEach((t) => { clearTimeout(t); clearInterval(t); }); fire('disconnect'); },
+  };
+  const view = { state: 'dialing', label: 'Calling...', name, who, cat, info, tools, number: '(555) 010-0000', from: '', kind: 'test', test: true };
+  renderBar(view);
+  track(call, view, { onEnd: (r) => onEnd?.({ ...r, activityId: null, leadId: null, name }) });
+  timers.push(setTimeout(() => fire('ringing', true), 500));
+  if (outcome === 'no-answer') timers.push(setTimeout(() => call.disconnect(), 6000));
+  else {
+    timers.push(setTimeout(() => { fire('accept'); timers.push(setInterval(() => fire('volume', Math.random() * 0.35), 250)); onLive?.(); }, 3500));
+  }
+  return call;
+}
+export async function placeCall({ to, leadId, from, name, who, cat, info, tools, onEnd, test, outcome, onLive } = {}) {
   if (st.call) throw new Error('You are already on a call. Hang up first.');
+  if (test) return testCall({ name, who, cat, info, tools, onEnd, outcome, onLive });
   warmAudio();   // before any await: iPhone and iPad only start audio inside the tap that began the call
   // "Use my phone": the Hub rings your mobile, then connects the lead. Works with the screen locked or in another app.
   if (callMode() === 'phone' && leadId && !to) return bridgeCall({ leadId, from, name, who, cat, info, onEnd });

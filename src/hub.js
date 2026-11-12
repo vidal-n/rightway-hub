@@ -677,3 +677,4 @@ import './files.js';
 import './hubmail.js';
 import './teamcal.js';
 import './pack.js';
+import './practice.js';

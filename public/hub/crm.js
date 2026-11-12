@@ -11,6 +11,8 @@ import { hoverCards, hoverHtml } from './hovercard.js';
 import { isPersonName, titleLike } from '/js/names.js';
 import { placeCall, startPhone, onPhoneState, phoneState, hangUp, contactRows, initialsOf, takeCallDraft } from './phone.js';
 import { warmAudio } from './audioset.js';
+import { testLeads } from '/js/testleads.js';
+import { practiceModal } from './practice.js';
 import { filterLeads } from '/js/leadfilter.js';
 import { quoteFor, callCategory, whoIs, personOf, CALL_CATS } from '/js/leadintel.js';
 import { SCOPE, effort, hoursOf } from '/js/scope.js';
@@ -972,6 +974,11 @@ export async function dialerPage(app, user) {
   const waitOpts = () => WAITS.map((v) => `<option value="${v}"${v === pdWait ? ' selected' : ''}>${v} second${v === 1 ? '' : 's'}</option>`).join('');
   const setWait = (v) => { pdWait = Math.min(10, Math.max(1, Math.round(Number(v)) || 5)); try { localStorage.setItem('rw-pd-wait', String(pdWait)); } catch { /* ignore */ } document.querySelectorAll('select.pd-wait').forEach((x) => { x.value = String(pdWait); }); };
   let pdBox = null;
+  let skipDispo = null;
+  // Test power dial: pretend leads and a pretend call so anyone can watch the whole flow. Nothing is dialed, saved or counted.
+  let testMode = false;
+  const dialOn = () => Boolean(me.twilio) || testMode;
+  const testNote = (what) => toast(`Test mode: ${what} is for real leads. Nothing happens here.`);
   // On a phone (600px or less) power dialing takes over the whole screen: countdown, call window and result sheet are each full screen. Everything else keeps its normal layout.
   const phoneNarrow = () => matchMedia('(max-width: 600px)').matches;
   const setPdx = () => {
@@ -981,6 +988,21 @@ export async function dialerPage(app, user) {
     let back = document.getElementById('pdxback');
     if (on && !back) { back = document.createElement('button'); back.id = 'pdxback'; back.type = 'button'; back.className = 'btn btn-primary pdx-back'; back.textContent = 'Back to the call'; back.addEventListener('click', () => document.body.classList.remove('pdx-script')); document.body.appendChild(back); }
     if (!on) back?.remove();
+    let shut = document.getElementById('pdxclose');
+    if (on && !shut) {
+      shut = document.createElement('button'); shut.id = 'pdxclose'; shut.type = 'button'; shut.className = 'pdx-close'; shut.setAttribute('aria-label', 'Close power dial'); shut.innerHTML = '<span aria-hidden="true">&times;</span><b>Close</b>';
+      shut.addEventListener('click', () => {
+        const live = phoneState().onCall;
+        if (live && !window.confirm('End the call and stop power dialing?')) return;
+        const id = q.queue[idx]?.id;
+        powerStop();
+        document.querySelectorAll('.modal-bg [data-close]').forEach((b) => b.click());
+        if (live) { skipDispo = id; takeCallDraft(); hangUp(); }
+        toast('Power dial stopped.');
+      });
+      document.body.appendChild(shut);
+    }
+    if (!on) shut?.remove();
   };
   const powerStop = () => { power = false; clearInterval(pdTimer); pdBox?.remove(); pdBox = null; setPdx(); const b = document.getElementById('pdgo'); if (b) b.textContent = 'Start power dial'; };
   // Leaving the dialer pauses power dialing instead of ending it: a chip waits in the tray, one click comes back and carries on.
@@ -1033,7 +1055,6 @@ export async function dialerPage(app, user) {
     $('#pdre', pdBox).onclick = reopen;
     $('#pdx2', pdBox).onclick = powerStop;
   };
-  let skipDispo = null;
   const dialFirst = () => {
     const btn = document.getElementById('dhub');
     if (!btn || btn.disabled) { toast('The browser phone is not ready. Check Phone setup.', true); return powerStop(); }
@@ -1046,6 +1067,7 @@ export async function dialerPage(app, user) {
   const researching = new Set();
   const prefetch = async (l) => {
     if (!l || intelCache.has(l.id) || researching.has(l.id)) return;
+    if (testMode) { intelCache.set(l.id, null); return; }
     researching.add(l.id);
     try {
       const d = await api(`/api/leads/${l.id}`);
@@ -1082,7 +1104,9 @@ export async function dialerPage(app, user) {
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
           <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
-          ${me.twilio ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
+          <button class="btn btn-ghost btn-sm" id="pdtest" title="Try power dialing with pretend leads and a pretend call. Nothing is dialed or saved.">${testMode ? 'Exit test' : 'Test power dial'}</button>
+          ${dialOn() ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
+      ${testMode ? '<div class="card test-banner"><b>Test mode.</b> Pretend leads and a pretend call. Press Start power dial to watch the whole flow: countdown, ringing, the call window, an AI owner who picks up so you can practice your opener, the result popup, then the next lead. Nothing is dialed, saved or counted. <a href="#/training/warmup">Warm up in Training</a>. <button type="button" class="btn btn-ghost btn-sm" id="pdtestx">Exit test</button></div>' : ''}
       ${dialTabs('queue', user)}
       <div class="dropfilters">
         <label class="dropf" data-sec="tiers"><span>Quality</span><select id="dtier" data-tier-sel aria-label="Quality">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
@@ -1119,8 +1143,8 @@ export async function dialerPage(app, user) {
             <div class="dial-phone">${esc(l.phone || '')}</div>
             <div class="pd-live dial-infobox" style="padding:0;margin-top:10px">${contactRows(callInfo(l).filter((x) => ['Email', 'Owner', 'Website', 'Google'].includes(x.k)))}</div>
             <div class="row" style="margin-top:14px">
-              ${me.twilio ? `<button class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" id="dhub">${icon.phone}Call</button>` : ''}
-              <a class="btn ${me.twilio ? 'btn-ghost' : 'btn-mint btn-xl'}" style="width:auto;${me.twilio ? '' : 'flex:1 1 200px'}" href="${telHref(l.phone)}" id="dtel">${me.twilio ? '' : icon.phone}Call from my phone</a>
+              ${dialOn() ? `<button class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" id="dhub">${icon.phone}Call</button>` : ''}
+              <a class="btn ${dialOn() ? 'btn-ghost' : 'btn-mint btn-xl'}" style="width:auto;${dialOn() ? '' : 'flex:1 1 200px'}" href="${telHref(l.phone)}" id="dtel">${dialOn() ? '' : icon.phone}Call from my phone</a>
             </div>
             ${me.twilio ? `<div class="row" style="margin-top:10px;align-items:flex-end">${nums.numbers.length > 1 ? callerSelect(nums.numbers) : ''}<span id="pbadge" style="margin-bottom:10px">${phoneBadge()}</span></div>` : ''}
             <div class="row" data-sec="links" style="margin-top:12px">
@@ -1165,23 +1189,32 @@ export async function dialerPage(app, user) {
     $('#dcat', view)?.addEventListener('change', (e) => { flt = { ...flt, cat: e.target.value }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); });
     $('#dtier', view)?.addEventListener('change', (e) => { flt = { ...flt, tier: e.target.value }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); });
     $('#pdwh', view)?.addEventListener('change', (e) => setWait(e.target.value));
-    $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
+    $('#pdtest', view)?.addEventListener('click', () => {
+      if (testMode) return dialerPage(app, user);
+      if (phoneState().onCall) return toast('Finish your call first.', true);
+      powerStop();
+      testMode = true; idx = 0; pdStart = 0; pdCalls = 0;
+      q = { ...q, queue: testLeads() };
+      render();
+    });
+    $('#pdtestx', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
+    $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
     prefetch(l);
     prefetch(q.queue[idx + 1]);
     $('#dskip', view).addEventListener('click', () => { idx++; render(); });
-    $('#dopen', view).addEventListener('click', () => leadModal(l.id, () => {}));
-    $('#dtext', view).addEventListener('click', () => textModal(l, { rep: REP }));
+    $('#dopen', view).addEventListener('click', () => (testMode ? testNote('Open lead') : leadModal(l.id, () => {})));
+    $('#dtext', view).addEventListener('click', () => (testMode ? testNote('Text') : textModal(l, { rep: REP })));
     const bookedId = (DISP.find((d) => d.acts === 'booked') || { id: 'booked' }).id;
-    $('#dbook', view).addEventListener('click', () => bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true)));
+    $('#dbook', view).addEventListener('click', () => (testMode ? testNote('Booking') : bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true))));
     const callerVal = bindCaller(view);
     $('#dhub', view)?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       busy(btn, true);
       try {
-        await placeCall({ leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
-          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : []), ['Text them', () => textModal(l, { rep: REP })], ['Book audit', () => bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true))], ['Full details', () => leadModal(l.id, () => {})]] },
+        await placeCall({ test: testMode, outcome: l.test_outcome, onLive: () => { if (testMode) practiceModal({ persona: l.persona, lead: l, onFinish: () => { if (phoneState().onCall) hangUp(); } }); }, leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
+          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : []), ['Text them', () => (testMode ? testNote('Text') : textModal(l, { rep: REP }))], ['Book audit', () => (testMode ? testNote('Booking') : bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true)))], ['Full details', () => (testMode ? testNote('Full details') : leadModal(l.id, () => {}))]] },
           onEnd: ({ answered }) => {
           const dr = takeCallDraft();
           if (q.queue[idx]?.id !== l.id) return;
@@ -1233,6 +1266,11 @@ export async function dialerPage(app, user) {
   });
   const logOutcome = async (outcome, btn, alreadyBooked = false) => {
     const l = q.queue[idx];
+    if (testMode) {
+      if (phoneState().onCall) { skipDispo = l?.id; takeCallDraft(); hangUp(); }
+      toast(`Test result: ${dispoOf(outcome).label || outcome}. Nothing was saved.`);
+      idx++; render(); return;
+    }
     const acts = dispoOf(outcome).acts;
     const when = $('#dwhen', view)?.value;
     if (acts === 'callback' && !when) return toast('Pick the date and time first.', true);

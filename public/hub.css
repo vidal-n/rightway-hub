@@ -2309,7 +2309,7 @@ body.presenting { background: var(--bg, #fff); }
   body.pdx .pd:not(.compact) .pd-foot select { min-height: 44px; }
 
   /* 2. The call window */
-  body.pdx .callbar { inset: 0; left: 0; right: 0; top: 0; bottom: 0; width: auto; max-width: none; height: 100vh; height: 100dvh; max-height: none; border-radius: 0; border: 0; z-index: 130; padding: calc(12px + env(safe-area-inset-top)) 16px 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overscroll-behavior: contain; animation: none; cursor: auto; }
+  body.pdx .callbar { background: var(--surface); inset: 0; left: 0; right: 0; top: 0; bottom: 0; width: auto; max-width: none; height: 100vh; height: 100dvh; max-height: none; border-radius: 0; border: 0; z-index: 130; padding: calc(12px + env(safe-area-inset-top)) 16px 0; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overscroll-behavior: contain; animation: none; cursor: auto; }
   body.pdx .callbar .cb-main { display: contents; }
   body.pdx .callbar .cb-grip { display: none; }
   body.pdx .callbar .cb-top { order: 1; }
@@ -2324,9 +2324,9 @@ body.presenting { background: var(--bg, #fff); }
   body.pdx .callbar .cb-notein { min-height: 84px; font-size: 16px; }
   body.pdx .callbar .cb-chip, body.pdx .callbar .cb-q { min-height: 44px; font-size: 14px; }
   body.pdx .callbar .cb-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  body.pdx .callbar .cb-actions { order: 10; position: sticky; bottom: 0; margin-top: auto; padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); background: inherit; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; z-index: 2; }
+  body.pdx .callbar .cb-actions { order: 10; position: sticky; bottom: 0; margin-top: auto; padding: 10px 0 calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); grid-auto-rows: 64px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; z-index: 2; }
   body.pdx .callbar .cb-btn { min-height: 64px; }
-  body.pdx .callbar .cb-hang { grid-column: 1 / -1; min-height: 68px; font-size: 18px; order: -1; }
+  body.pdx .callbar .cb-hang { grid-column: 1 / -1; min-height: 64px; font-size: 18px; order: -1; flex-direction: row; justify-content: center; gap: 10px; }
   body.pdx .callbar .cb-min { display: none; }
 
   /* 3. The script, one tap from the call window */
@@ -2361,3 +2361,33 @@ body.presenting { background: var(--bg, #fff); }
   .script-read p, .script-read .cue, .script-read .say-screen { overflow-wrap: anywhere; max-width: 100%; }
   .script-read .cue { display: block; }
 }
+
+/* Test power dial and the phone Close button (Nov 2026) */
+.test-banner { border-color: #E8A317; background: #FFF4D6; color: #3A2F10; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.test-banner .btn { margin-left: auto; }
+.cb-test { margin: 6px 0; padding: 6px 10px; border-radius: 8px; background: #FFF4D6; color: #3A2F10; border-left: 4px solid #E8A317; font: 700 12px var(--mono); letter-spacing: .04em; }
+@media (prefers-color-scheme: dark) { .test-banner, .cb-test { background: #3A2F10; color: #FFF1C9; } }
+.pdx-close { display: none; }
+@media (max-width: 600px) {
+  body.pdx .pdx-close { display: inline-flex; align-items: center; gap: 6px; position: fixed; z-index: 150; top: calc(10px + env(safe-area-inset-top)); right: 12px; min-height: 44px; padding: 0 14px 0 12px; border-radius: 22px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: 700 15px var(--body); cursor: pointer; box-shadow: 0 4px 14px rgba(6, 14, 11, .25); }
+  body.pdx .pdx-close span { font-size: 24px; line-height: 1; margin-top: -2px; }
+  body.pdx .pdx-close b { font-weight: 700; }
+  body.pdx:has(.modal-bg) .pdx-close { display: none; }
+  body.pdx .pd:not(.compact) .pd-head { padding-right: 132px; }
+  body.pdx .pd:not(.compact) .pd-count { position: absolute; right: 16px; top: calc(70px + env(safe-area-inset-top)); font-size: 44px; }
+  body.pdx .callbar { padding-top: calc(64px + env(safe-area-inset-top)); }
+  body.pdx.pdx-script .pdx-close { display: none; }
+}
+
+/* AI practice owner (Nov 2026) */
+.pr { display: grid; gap: 10px; }
+.pr-meta { margin: 0; }
+.pr-log { display: grid; gap: 8px; max-height: 340px; overflow-y: auto; padding: 4px 2px; }
+.pr.compact .pr-log { max-height: 36vh; }
+.pr-b { max-width: 86%; padding: 9px 12px; border-radius: 14px; font-size: 15.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.pr-b small { display: block; font: 700 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; opacity: .7; margin-bottom: 2px; }
+.pr-b.lead { background: var(--surface-2); border: 1px solid var(--line); justify-self: start; }
+.pr-b.rep { background: var(--mint-mid); color: var(--ink); justify-self: end; }
+.pr-in textarea { width: 100%; font-size: 16px; }
+.pr-fb { border: 1px solid var(--line); border-left: 4px solid var(--mint-strong); border-radius: 10px; padding: 10px 12px; background: var(--surface-2); }
+.pr-fbt { white-space: pre-wrap; margin-top: 6px; font-size: 15px; line-height: 1.5; }

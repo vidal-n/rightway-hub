@@ -88,7 +88,7 @@ async function toggleDone(key, on) {
   if (on) done.add(key); else done.delete(key);
   try { await api('/api/me/training', { method: 'PUT', body: { done: [...done] } }); } catch (e) { toast(e.message, true); }
 }
-const tabs = (active, user) => `<nav class="tabs">${[['', 'Overview'], ['tour', 'Hub tour'], ['scripts', 'Scripts'], ['drills', 'Objection drills'], ['playbooks', 'Playbooks'], ['guides', 'Fulfillment guides'], ...(user.role === 'admin' ? [['setup', 'Owner setup']] : []), ['resources', 'Resources']]
+const tabs = (active, user) => `<nav class="tabs">${[['', 'Overview'], ['tour', 'Hub tour'], ['scripts', 'Scripts'], ['warmup', 'Warm up'], ['drills', 'Objection drills'], ['playbooks', 'Playbooks'], ['guides', 'Fulfillment guides'], ...(user.role === 'admin' ? [['setup', 'Owner setup']] : []), ['resources', 'Resources']]
   .map(([k, n]) => `<a href="#/training${k ? `/${k}` : ''}" class="${active === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>`;
 const head = (title, eyebrow = 'Training') => `<div class="page-head"><div><p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(title)}</h1></div></div>`;
 
@@ -96,6 +96,7 @@ export async function trainingPage(app, user, sub, arg) {
   const view = staffShell(app, user, 'training');
   await loadDone();
   if (sub === 'scripts') return scripts(view, user, arg || 'cold');
+  if (sub === 'warmup') return warmup(view, user);
   if (sub === 'drills') return drills(view, user, arg || 'cold');
   if (sub === 'playbooks') return playbooks(view, user);
   if (sub === 'guides') return guides(view, user);
@@ -111,6 +112,7 @@ export async function trainingPage(app, user, sub, arg) {
       ${card('#/training/scripts/cold', 'phone', 'Cold call script', 'Pattern interrupt, the free plan, book it on this call, discovery after.', `<span class="tr-done">${done.has('script:cold') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/scripts/plan', 'msg', 'Google Game Plan script (website audit)', 'Three short parts: the call, what to say if they ask, and what to say once they pick a time.', `<span class="tr-done">${done.has('script:plan') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/scripts/clarity', 'device', 'Google clarity audit script', 'The screen share pitch with every screen cue: slideshow, Scan tool tab and Google.', `<span class="tr-done">${done.has('script:clarity') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
+      ${card('#/training/warmup', 'phone', 'Warm up with the AI owner', 'Practice your opener and objections on a pretend owner by typing or speaking. It coaches you at the end.')}
       ${card('#/training/drills', 'msg', 'Objection drills', 'Flash cards for every objection, before price, after price and the closes.', `<span class="tr-done">${n(['drill:cold', 'drill:before', 'drill:after', 'drill:any'])} of 4 sets done</span>`)}
       ${card('#/training/playbooks', 'note', 'Playbooks', 'How we run the calling day, the audit, closing, onboarding and the monthly work.', `<span class="tr-done">${n(pbKeys)} of ${pbKeys.length} done</span>`)}
       ${card('#/training/guides', 'check', 'Fulfillment guides', 'Step by step for every task in My work, with the proof each one needs.')}
@@ -154,6 +156,13 @@ async function tourRef(view, user) {
   $$('[data-at]', view).forEach((b) => b.addEventListener('click', () => startTour(user, { at: Number(b.dataset.at) })));
 }
 
+async function warmup(view, user) {
+  const { practiceView } = await import('./practice.js');
+  view.innerHTML = `${head('Warm up')}${tabs('warmup', user)}
+    <p class="muted" style="max-width:640px">A pretend business owner picks up. Say your opener, handle the objections, and ask for the booking with two times. When you end the call, the coach scores it. Nothing is dialed or saved. Want the whole power dial flow too? Use Test power dial on the dialer.</p>
+    <div class="card" style="max-width:720px"><div id="wuhost"></div></div>`;
+  practiceView($('#wuhost', view), { persona: 'friendly', lead: { business: 'Test Plumbing Co', city: 'Miami' } });
+}
 function drills(view, user, set) {
   const groups = objectionGroups(undefined, voiceFor(user));
   const g = groups.find((x) => x[0] === set) || groups[0];
