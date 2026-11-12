@@ -355,6 +355,12 @@ export function showInvite(box, url, name) {
 }
 
 // ---------- team ----------
+// Daily dial goal per person: owners set their own and every agent's; agents just see theirs.
+const goalCell = (u, me) => {
+  const g = Number(u.dial_goal) >= 1 ? Number(u.dial_goal) : 60;
+  const mine = me.role === 'admin' && (u.role === 'team' || u.id === me.id);
+  return mine ? `<label class="goal-cell small" title="Dials a day">Goal <input type="number" min="1" max="1000" value="${g}" data-goal="${esc(u.id)}" data-was="${g}" aria-label="Daily dial goal for ${esc(u.name || u.email)}"></label>` : `<span class="goal-cell small muted">Goal ${g}</span>`;
+};
 export async function teamPage(app, user) {
   const view = staffShell(app, user, 'settings');
   let users;
@@ -367,7 +373,7 @@ export async function teamPage(app, user) {
       <label class="field" id="tjob"><span>Job</span><select name="job">${JOBS.map(([k, n]) => `<option value="${k}"${k === 'setter' ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
       <div class="span-all row end"><button class="btn btn-primary" type="submit">Create invite link</button></div></form><div id="tout"></div></div>` : ''}
     <div class="card"><h2>Owners and agents</h2><ul class="list">${users.map((u) => `<li class="item"><span class="badge ${u.active ? '' : 'warn'}">${esc(jobLabel(u))}</span>
-      <div><div class="item-title">${esc(u.name || u.email)}${u.id === user.id ? ' (you)' : ''}</div><div class="item-sub">${esc(u.email)}${u.active ? '' : ' · invite pending'}</div></div>${user.role === 'admin' && u.id !== user.id ? `<div class="row" style="gap:6px">${u.role === 'team' ? `<select data-job="${esc(u.id)}" aria-label="Job">${JOBS.map(([k, n]) => `<option value="${k}"${k === jobOf(u) ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-role="${esc(u.id)}" data-to="${u.role === 'admin' ? 'team' : 'admin'}">${u.role === 'admin' ? 'Make agent' : 'Make owner'}</button></div>` : '<span></span>'}</li>`).join('')}</ul>
+      <div><div class="item-title">${esc(u.name || u.email)}${u.id === user.id ? ' (you)' : ''}</div><div class="item-sub">${esc(u.email)}${u.active ? '' : ' · invite pending'}</div></div>${goalCell(u, user)}${user.role === 'admin' && u.id !== user.id ? `<div class="row" style="gap:6px">${u.role === 'team' ? `<select data-job="${esc(u.id)}" aria-label="Job">${JOBS.map(([k, n]) => `<option value="${k}"${k === jobOf(u) ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-role="${esc(u.id)}" data-to="${u.role === 'admin' ? 'team' : 'admin'}">${u.role === 'admin' ? 'Make agent' : 'Make owner'}</button></div>` : '<span></span>'}</li>`).join('')}</ul>
       <div class="jobs-key">${JOBS.map(([, n, d]) => `<p class="small"><b>${esc(n)}:</b> ${esc(d)}</p>`).join('')}</div>
       <p class="small muted" style="margin:12px 0 0">Owners can listen to agents' calls, hear agents' recordings, change phone settings and manage agents. Owners never see each other's personal line, recordings or vault. Agents only see their own calls and numbers.</p></div>`;
   $$('[data-role]', view).forEach((b) => b.addEventListener('click', async () => {
@@ -378,6 +384,12 @@ export async function teamPage(app, user) {
   $$('[data-job]', view).forEach((sel) => sel.addEventListener('change', async () => {
     try { await api(`/api/users/${sel.dataset.job}/job`, { method: 'PUT', body: { job: sel.value } }); toast(`Now ${JOBS.find(([k]) => k === sel.value)[1].toLowerCase()}. They see the change on their next page load.`); }
     catch (err) { toast(err.message, true); teamPage(app, user); }
+  }));
+  $$('[data-goal]', view).forEach((inp) => inp.addEventListener('change', async () => {
+    const v = Math.round(Number(inp.value));
+    if (!(v >= 1 && v <= 1000)) { toast('Pick a goal from 1 to 1000.', true); inp.value = inp.dataset.was; return; }
+    try { const r = await api(`/api/users/${inp.dataset.goal}/dial-goal`, { method: 'PUT', body: { goal: v } }); inp.dataset.was = String(r.goal); toast(`Goal is ${r.goal} dials a day`); }
+    catch (err) { toast(err.message, true); inp.value = inp.dataset.was; }
   }));
   const roleSel = $('#tinv select[name=role]', view);
   roleSel?.addEventListener('change', () => { $('#tjob', view).hidden = roleSel.value !== 'team'; });

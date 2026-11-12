@@ -2049,3 +2049,19 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
   .callbar { top: 76px; bottom: auto; width: 400px; max-height: calc(100vh - 92px); }
 }
 .flow { align-items: stretch; } .flow > .fstep { margin: 0; }
+
+/* Dial goal per person (owners set it) */
+.goal-cell { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.goal-cell input { width: 72px; padding: 4px 6px; font: inherit; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.goal-fixed { font-weight: 700; }
+
+/* Names are never cut off on the dialer: Up next, the dial card, the call window and the power dial cards wrap instead of using "..." */
+.dial-grid { grid-template-columns: 290px minmax(340px, 1fr) minmax(0, 1.25fr); }
+.dial-grid.no-prep { grid-template-columns: 290px minmax(340px, 1fr); }
+.dq-t b, .dq-t small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.25; }
+.dial-queue li button { align-items: flex-start; }
+.dial-grid h2, .dial-who > b, .dial-cat, .dial-phone { overflow-wrap: anywhere; min-width: 0; }
+.cb-who b, .cb-who span, .cb-p { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.pd-card b, .pd-card small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.tray-main b, .tray-main small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .dial-grid, .dial-grid.no-prep { grid-template-columns: 1fr; } }

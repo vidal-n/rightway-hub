@@ -8,6 +8,7 @@ import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { extractProfile, mergeProfiles } from '../public/js/freedata.js';
 import { registryLookup, leadMode } from './freedata.js';
+import { titleLike } from '../public/js/names.js';
 import { isPersonName, cleanPerson, nameFromEmail, firstFromEmail, cleanName, phoneInfo, emailInfo, pickEmail, emailStatus, extractContacts, mergeContacts, contactLinks, dataScore } from '../public/js/scrub.js';
 
 const UA = 'Mozilla/5.0 (compatible; RightwayHub/1.0; +https://rightwaygrowth.com)';
@@ -204,13 +205,18 @@ route('POST', '/api/scrub/fix-names', async ({ env, user, body }) => {
   requireAdmin(user);
   const b = await body().catch(() => ({}));
   const after = String(b?.after || '');
-  const rows = await all(env, `SELECT id, owner_name, contact_name FROM leads WHERE owner_name IS NOT NULL AND owner_name != '' AND id > ? ORDER BY id LIMIT 200`, after);
-  const bad = rows.filter((r) => !isPersonName(r.owner_name));
+  const rows = await all(env, `SELECT id, business, owner_name, contact_name FROM leads WHERE ((owner_name IS NOT NULL AND owner_name != '') OR (contact_name IS NOT NULL AND contact_name != '')) AND id > ? ORDER BY id LIMIT 200`, after);
+  // Bad owner name (a title or page heading), or a contact name that is not a person (Outscraper job titles and business labels).
+  const ownerBad = (r) => r.owner_name && !isPersonName(r.owner_name);
+  const contactBad = (r) => r.contact_name && !ownerBad(r) && titleLike(r.contact_name, r.business);
+  const bad = rows.filter((r) => ownerBad(r) || contactBad(r));
   for (const r of bad) {
-    const clearContact = r.contact_name && String(r.contact_name).trim() === String(r.owner_name).trim();
-    await run(env, `UPDATE leads SET owner_name = NULL${clearContact ? ', contact_name = NULL' : ''}, updated_at = ? WHERE id = ?`, now(), r.id);
+    const sets = [];
+    if (ownerBad(r)) sets.push('owner_name = NULL');
+    if (contactBad(r) || (ownerBad(r) && r.contact_name && String(r.contact_name).trim() === String(r.owner_name).trim())) sets.push('contact_name = NULL');
+    await run(env, `UPDATE leads SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`, now(), r.id);
   }
-  return json({ ok: true, scanned: rows.length, fixed: bad.length, ids: bad.map((r) => r.id), examples: bad.slice(0, 5).map((r) => r.owner_name), next: rows.length === 200 ? rows[rows.length - 1].id : null });
+  return json({ ok: true, scanned: rows.length, fixed: bad.length, ids: bad.map((r) => r.id), examples: bad.slice(0, 5).map((r) => (ownerBad(r) ? r.owner_name : r.contact_name)), next: rows.length === 200 ? rows[rows.length - 1].id : null });
 });
 
 route('POST', '/api/scrub/cancel', async ({ env, user }) => {

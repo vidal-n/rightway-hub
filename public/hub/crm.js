@@ -8,11 +8,11 @@ import { loadDispos, keyed, dispositionModal } from './dispo.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { hoverCards, hoverHtml } from './hovercard.js';
-import { isPersonName } from '/js/names.js';
+import { isPersonName, titleLike } from '/js/names.js';
 import { placeCall, startPhone, onPhoneState, phoneState, hangUp, contactRows, initialsOf, takeCallDraft } from './phone.js';
 import { warmAudio } from './audioset.js';
 import { filterLeads } from '/js/leadfilter.js';
-import { quoteFor, callCategory, whoIs, CALL_CATS } from '/js/leadintel.js';
+import { quoteFor, callCategory, whoIs, personOf, CALL_CATS } from '/js/leadintel.js';
 import { SCOPE, effort, hoursOf } from '/js/scope.js';
 import { can, canRunCalls } from '/js/jobs.js';
 import { PHONE_TYPE_LABEL, EMAIL_STATUS_LABEL } from '/js/scrub.js';
@@ -98,7 +98,7 @@ export async function pipelinePage(app, user, openId) {
     const open = rows.filter((l) => !['won', 'lost', 'dnc'].includes(l.stage));
     const f = p.f;
     const activeFilters = Object.entries(f).filter(([k, v]) => k !== 'q' && (Array.isArray(v) ? v.length : v !== '' && v != null && v !== false)).length;
-    const badNames = user.role === 'admin' ? all.filter((l) => l.owner_name && !isPersonName(l.owner_name)).length : 0;
+    const badNames = user.role === 'admin' ? all.filter((l) => (l.owner_name && !isPersonName(l.owner_name)) || (l.contact_name && titleLike(l.contact_name, l.business))).length : 0;
     const unscrubbed = rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length;
     const unresearched = rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length;
     view.dataset.hide = Object.entries(lay).filter(([, v]) => !v).map(([k]) => k).join(' ');
@@ -113,7 +113,7 @@ export async function pipelinePage(app, user, openId) {
         <section class="fstep" data-sec="get"><header><span class="fn">1</span><div><h3>Get leads</h3><p>Find new businesses or bring a list in.</p></div></header>
           <div class="row">${user.role === 'admin' ? `<a class="btn btn-ghost btn-sm" href="#/finder">Lead finder</a>` : ''}<button class="btn btn-ghost btn-sm" id="imp">${icon.upload}Import a list</button><button class="btn btn-ghost btn-sm" id="addl">${icon.plus}Add one lead</button></div></section>
         <section class="fstep" data-sec="clean"><header><span class="fn">2</span><div><h3>Clean up</h3><p>${unscrubbed ? `${unscrubbed} not scrubbed yet.` : 'Every lead in view is scrubbed.'} ${unresearched} not researched.</p></div></header>
-          <div class="row small">${unscrubbed ? `<button class="btn btn-ghost btn-sm" id="scruball">Scrub ${unscrubbed} (free)</button>` : ''}${badNames ? `<button class="btn btn-mint btn-sm" id="fixnames" title="Owner names that are really job titles or page headings. They are cleared and those leads are scrubbed again to find the real name.">Fix ${badNames} wrong owner name${badNames === 1 ? '' : 's'}</button>` : ''}<button class="btn btn-ghost btn-sm" id="fillin">Fill in missing info</button>
+          <div class="row small">${unscrubbed ? `<button class="btn btn-ghost btn-sm" id="scruball">Scrub ${unscrubbed} (free)</button>` : ''}${badNames ? `<button class="btn btn-mint btn-sm" id="fixnames" title="Owner or contact names that are really job titles, business names or page headings (Outscraper files do this). They are cleared and those leads are scrubbed again to find the real name.">Fix ${badNames} wrong owner name${badNames === 1 ? '' : 's'}</button>` : ''}<button class="btn btn-ghost btn-sm" id="fillin">Fill in missing info</button>
             <button class="btn btn-ghost btn-sm" id="resall">Research ${Math.min(50, unresearched)}<span class="cost-hint" data-cost="research_call" data-n="${Math.min(50, unresearched)}"></span></button><button class="btn btn-ghost btn-sm" id="dups">Duplicates</button>
             ${user.role === 'admin' && all.some((l) => !l.tz_known || !l.tz_how) ? `<button class="btn btn-ghost btn-sm" id="fixtz">${all.some((l) => !l.tz_known) ? `Find ${all.filter((l) => !l.tz_known).length} unknown time zones` : 'Re-check time zones'}</button>` : ''}</div></section>
         <section class="fstep wide" data-sec="pick"><header><span class="fn">3</span><div><h3>Choose who to call</h3><p>${rows.length} leads match. Narrow it by time zone, list or grade.</p></div></header>
@@ -199,7 +199,7 @@ export async function pipelinePage(app, user, openId) {
     if (p.group) for (const l of sorted) { const k = String(l[p.group] ?? '') || 'None'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(l); }
     else groups.set('', sorted);
     const row = (l) => `<tr data-id="${esc(l.id)}"><td><input type="checkbox" class="sel" data-id="${esc(l.id)}"${selected.has(l.id) ? ' checked' : ''}></td>
-      <td>${gradeBadge(l.grade, l.score)}</td><td><b>${esc(l.business)}</b><div class="small">${esc([l.contact_name || l.owner_name, l.phone, PHONE_TYPE_LABEL[l.phone_type]].filter(Boolean).join(' · '))}</div></td>
+      <td>${gradeBadge(l.grade, l.score)}</td><td><b>${esc(l.business)}</b><div class="small">${esc([personOf(l), l.phone, PHONE_TYPE_LABEL[l.phone_type]].filter(Boolean).join(' · '))}</div></td>
       <td>${esc([l.city, l.state].filter(Boolean).join(', '))}${l.zip ? ` <span class="small">${esc(l.zip)}</span>` : ''}</td>
       <td>${l.tz_short ? `<span class="badge ${l.callable_now ? '' : 'gray'}" title="${l.tz_alt_short ? 'On the line between two zones. Call only when both are inside 8am to 8pm.' : ''}">${esc(l.tz_short)}${l.tz_alt_short ? `/${esc(l.tz_alt_short)}` : ''} ${esc(l.local_time)}</span>` : `<span class="small" title="Time zone unknown. Callable 11am to 8pm Eastern only.">?${l.callable_now ? '' : ' wait'}</span>`}</td>
       <td>${esc(l.industry || l.category || '')}</td><td>${l.reviews ?? ''}</td><td>${l.rating ?? ''}</td><td>${l.map_rank == null ? '' : l.map_rank > 20 ? '20+' : `#${l.map_rank}`}</td>
@@ -531,7 +531,7 @@ function leadDataCard(box, l, scrub, onChange) {
     ${!l.scrubbed_at ? '<p class="small muted">Not scrubbed yet. Scrub reads their website for the owner, emails and social pages, and checks the number.</p>' : `<dl class="kv">
       ${l.business_raw && l.business_raw !== l.business ? `<dt>Name on Google</dt><dd>${esc(l.business_raw)}</dd>` : ''}
       <dt>Phone</dt><dd>${esc(PHONE_TYPE_LABEL[l.phone_type] || 'Type not checked')}${l.phone_carrier ? ` · ${esc(l.phone_carrier)}` : ''}</dd>
-      <dt>Owner</dt><dd>${esc(l.owner_name || l.contact_name || 'Not found')}</dd>
+      <dt>Owner</dt><dd>${esc(personOf(l) || 'Not found')}</dd>
       <dt>Email</dt><dd>${emails.length ? emails.slice(0, 4).map((x) => `${esc(x.email)} <span class="badge ${x.mx === false ? 'bad' : x.role ? 'warn' : ''}">${esc(x.mx === false ? 'no mail server' : x.role ? 'shared inbox' : x.mx ? 'valid' : 'not checked')}</span>`).join('<br>') : 'None found'}</dd>
       ${Object.keys(socials).length ? `<dt>Social</dt><dd>${Object.entries(socials).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(k === 'x' ? 'X' : k.charAt(0).toUpperCase() + k.slice(1))}</a>`).join(' · ')}</dd>` : ''}
       ${sunbizRows(l, scrub)}${profileRows(scrub?.profile)}${adsRows(l, scrub?.profile?.ads)}
@@ -584,7 +584,7 @@ export async function leadModal(id, onChange) {
   const soon = l.stage === 'audit_booked' || Boolean(l.meet_at && l.meet_at > Date.now() - 3 * 3600e3 && l.meet_at < Date.now() + 3 * 3600e3);
   m.el.innerHTML = `
     <div class="lm-top"><div class="card-head"><div><p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · ${l.attempts} attempts` : ''}</p><h2>${esc(l.business)}</h2>
-      <div class="small">${esc([l.contact_name, l.city, l.state].filter(Boolean).join(' · '))}${l.tz_known ? ` · their time ${esc(l.local_time)}` : ''}</div></div>
+      <div class="small">${esc([personOf(l), l.city, l.state].filter(Boolean).join(' · '))}${l.tz_known ? ` · their time ${esc(l.local_time)}` : ''}</div></div>
       <button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     <div class="row lm-actions">
       ${l.phone ? `<a class="btn btn-mint" href="${telHref(l.phone)}">${icon.phone}${esc(l.phone)}</a>` : ''}
@@ -745,7 +745,7 @@ export async function leadModal(id, onChange) {
     try {
       const r = await api(`/api/leads/${l.id}/work-order`, { method: 'POST', body: { kind: 'website', setup: $('#wsetup', m.el).value, monthly: $('#wmonthly', m.el).value, scope: $('#wscope', m.el).value } });
       share(r.url, r.hasPayLink ? 'Website work order link (sign, then pay)' : 'Website work order link. No payment link yet: run Set up Stripe in Settings.',
-        `Hi ${l.contact_name ? l.contact_name.split(' ')[0] : ''}, here is your Rightway Growth website agreement. Review it, sign, and you can pay right after: ${r.url}`);
+        `Hi ${personOf(l) ? personOf(l).split(' ')[0] : ''}, here is your Rightway Growth website agreement. Review it, sign, and you can pay right after: ${r.url}`);
     } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
   });
   $('#lwo', m.el)?.addEventListener('click', async (e) => {
@@ -754,7 +754,7 @@ export async function leadModal(id, onChange) {
       await saveQuote();
       const r = await api(`/api/leads/${l.id}/work-order`, { method: 'POST', body: { kind: 'seo', setup: val('lsetup'), monthly: val('lmonthly') } });
       share(r.url, r.hasPayLink ? 'Work order link (sign, then pay)' : 'Work order link. No payment link yet: run Set up Stripe in Settings, then send a payment link.',
-        `Hi ${l.contact_name ? l.contact_name.split(' ')[0] : ''}, here is your Rightway Growth work order. Review it, sign, and you can pay right after: ${r.url}`);
+        `Hi ${personOf(l) ? personOf(l).split(' ')[0] : ''}, here is your Rightway Growth work order. Review it, sign, and you can pay right after: ${r.url}`);
     } catch (err) { toast(err.message, true); } finally { busy(e.target, false); }
   });
   $('#lpay', m.el)?.addEventListener('click', async (e) => {
@@ -807,8 +807,8 @@ export function parseCsv(textIn) {
 const MAP = [
   ['zip', /^(zip|zip ?code|postal|postal ?code|postcode)$/i], ['rating', /^(rating|stars|google rating|avg\.? rating|average rating|review rating)$/i],
   ['reviews', /(reviews?( count)?|# ?of reviews|num(ber)? of reviews|ratings? count|review_count|user_ratings_total)$/i], ['category', /^(category|main category|google category|primary category)$/i],
-  ['business', /^(business|company|business name|company name|account|organization|organisation|title|name of business)$/i],
-  ['contact_name', /(contact|owner|full name|first name|^name$|decision)/i], ['phone', /(phone|mobile|cell|tel)/i], ['email', /e-?mail/i],
+  ['business', /^(business|company|business name|company name|account|organization|organisation|name of business)$/i],
+  ['contact_name', /^(?!.*(title|job|position|role|link|url|_id\b|\bid\b|phone|status|valid|source|company|business|type)).*(contact|owner|full[ _]?name|first[ _]?name|^name$|decision)/i], ['phone', /(phone|mobile|cell|tel)/i], ['email', /^(?!.*(title|name|status|valid|source|phone|social|domain|position|role)).*e-?mail/i],
   ['website', /(website|url|domain|site)/i], ['city', /^city$/i], ['state', /^(state|province|region|st)$/i], ['industry', /(industry|category|niche|type|vertical)/i],
   ['address', /address/i],
 ];
@@ -816,7 +816,13 @@ const MAP = [
 export function mapRows(rows) {
   const [head, ...body] = rows;
   const cols = head.map((h) => { const hit = MAP.find(([, re]) => re.test(h.trim())); return hit ? hit[0] : null; });
-  if (!cols.includes('business')) { const i = cols.indexOf('contact_name'); if (i >= 0 && !cols.includes('business')) cols[i] = 'business'; }
+  // No business column: a plain "name" column is the business (Outscraper), else a "title" column (some exports), else the first name-like column.
+  if (!cols.includes('business')) {
+    const plain = head.findIndex((h) => /^name$/i.test(h.trim()));
+    const ti = head.findIndex((h) => /^title$/i.test(h.trim()));
+    const i = plain >= 0 ? plain : ti >= 0 ? ti : cols.indexOf('contact_name');
+    if (i >= 0) cols[i] = 'business';
+  }
   return body.map((r) => {
     const o = {};
     cols.forEach((k, i) => { if (k && r[i] != null && String(r[i]).trim() && !o[k]) o[k] = String(r[i]).trim(); });
@@ -1051,7 +1057,7 @@ export async function dialerPage(app, user) {
       ${fold('dfilters', 'More filters and research status', `<div class="row small" style="margin:-4px 0 10px;gap:8px">Data: <div class="seg">${[['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Has an email']].map(([k, n]) => `<button type="button" data-dq="${k}" class="${(flt.data || '') === k ? 'is-on' : ''}">${n}</button>`).join('')}</div></div>
       <div id="rsx" class="small muted" style="margin:6px 0 0"></div>
       ${filterText ? `<div class="row small" style="margin:6px 0 0">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}`, Boolean(filterText))}
-      <div class="dstrip" aria-label="Today"><span class="dgoal"><b>${q.stats.dials}</b> dials <i>of <button type="button" class="goal-btn" id="dgoal" title="Click to change your daily dial goal">${q.stats.goal || 60}</button></i><em class="dgbar" aria-hidden="true"><u style="width:${Math.min(100, Math.round((100 * q.stats.dials) / (q.stats.goal || 60)))}%"></u></em>${q.stats.dials >= (q.stats.goal || 60) ? '<b class="gdone">Goal hit</b>' : ''}</span><span><b>${q.stats.talks}</b> owner talks</span><span><b>${q.stats.booked}</b> booked</span><span><b>${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</b> contact rate</span>
+      <div class="dstrip" aria-label="Today"><span class="dgoal"><b>${q.stats.dials}</b> dials <i>of ${user.role === 'admin' ? `<button type="button" class="goal-btn" id="dgoal" title="Click to change your daily dial goal">${q.stats.goal || 60}</button>` : `<span class="goal-fixed" title="Your owner sets your daily dial goal">${q.stats.goal || 60}</span>`}</i><em class="dgbar" aria-hidden="true"><u style="width:${Math.min(100, Math.round((100 * q.stats.dials) / (q.stats.goal || 60)))}%"></u></em>${q.stats.dials >= (q.stats.goal || 60) ? '<b class="gdone">Goal hit</b>' : ''}</span><span><b>${q.stats.talks}</b> owner talks</span><span><b>${q.stats.booked}</b> booked</span><span><b>${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</b> contact rate</span>
         <div class="dlayout"><button type="button" class="dl-btn" id="dlaybtn" aria-expanded="${layOpen}" aria-haspopup="true">Customize layout</button>
           <div class="dlayout-body" id="dlaybody" role="group" aria-label="Customize layout"${layOpen ? '' : ' hidden'}>
             <p class="small muted" style="margin:0">Show or hide. Saved for you on this computer.</p>

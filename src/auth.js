@@ -126,7 +126,7 @@ export async function acceptInvite(env, { token: t, password }) {
 }
 
 export async function listUsers(env, clientId) {
-  const cols = 'id, email, name, role, job, client_id, created_at, last_login, (pass_hash IS NOT NULL) AS active';
+  const cols = 'id, email, name, role, job, dial_goal, client_id, created_at, last_login, (pass_hash IS NOT NULL) AS active';
   return clientId
     ? all(env, `SELECT ${cols} FROM users WHERE client_id = ? ORDER BY created_at`, clientId)
     : all(env, `SELECT ${cols} FROM users WHERE role IN ('admin','team') ORDER BY created_at`);

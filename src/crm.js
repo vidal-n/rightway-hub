@@ -6,13 +6,14 @@ import { PLANS, tasksForMonth, monthKey } from './plans.js';
 import { scopeFromLead } from './scopeof.js';
 import { tierOf as scopeTier } from '../public/js/scope.js';
 import { route } from './router.js';
-import { scoreLead, dupKeys, callCategory } from '../public/js/leadintel.js';
+import { scoreLead, dupKeys, callCategory, personOf } from '../public/js/leadintel.js';
 import { resolveDispo } from './dispo.js';
 import { notifyLater } from './notify.js';
 import { dialGoalOf } from './avail.js';
 import { autoChatFor } from './chat.js';
 import { can } from '../public/js/jobs.js';
 import { cleanNewLead, queueScrub } from './scrub.js';
+import { contactFromImport } from '../public/js/names.js';
 import { resolveZone, canCallNow, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
 
 export const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won', 'not_now', 'lost', 'dnc'];
@@ -255,6 +256,9 @@ export async function importLeads(env, user, rows, { source, tags, merge = true 
   for (const [n, r] of rows.entries()) {
     let d;
     try { d = cleanLead({ ...r, source: r.source || source || 'import' }); } catch { skipped.invalid++; out[n] = { skipped: 'invalid' }; continue; }
+    // CSV name columns often hold a job title or a business label (Outscraper): keep a contact only when it reads as a person.
+    if ('contact_name' in d) d.contact_name = contactFromImport(d.contact_name, d.business) || null;
+    if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) d.email = null;
     if (!d.phone_digits && !d.email) { skipped.invalid++; out[n] = { skipped: 'invalid' }; continue; }
     const ks = dupKeys(d);
     const hit = ks.find((k) => keys.has(k));
@@ -526,7 +530,7 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
       && has(`${l.industry} ${l.category}`, f.industry) && has(l.tags, f.tag) && has(l.city, f.city) && (l.score || 0) >= minScore)
     .filter((l) => !f.tier || tierOf(l) === f.tier)
     .filter((l) => !f.cat || callCategory(l).id === f.cat)
-    .filter((l) => !f.data || (f.data === 'mobile' ? l.phone_type === 'mobile' : f.data === 'owner' ? Boolean(l.owner_name || l.contact_name) : f.data === 'email' ? Boolean(l.email) && !['bad', 'no_mail_server'].includes(l.email_status) : true))
+    .filter((l) => !f.data || (f.data === 'mobile' ? l.phone_type === 'mobile' : f.data === 'owner' ? Boolean(personOf(l)) : f.data === 'email' ? Boolean(l.email) && !['bad', 'no_mail_server'].includes(l.email_status) : true))
     .sort((a, b) => (priority[a.stage] ?? 9) - (priority[b.stage] ?? 9) || (b.score || 0) - (a.score || 0) || (b.data_score || 0) - (a.data_score || 0) || (a.next_action_at || 0) - (b.next_action_at || 0));
   const now_ = ready.filter((l) => l.callable_now);
   // Sub queues by lead quality, counted on everything callable now (ignores the tier filter so the tabs always show their size).

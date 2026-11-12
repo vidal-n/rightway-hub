@@ -141,8 +141,8 @@ export function makeDraggable(el, { grab, key = '', off = () => false, onMove } 
   return { reset() { x = 0; y = 0; put(0, 0); if (KEY) { try { localStorage.removeItem(KEY); } catch { /* ignore */ } } } };
 }
 
-// Daily dial goal: click the number, type a new one (1 to 1000) or pick a common one, Enter saves. Saved on the person, shown everywhere.
-export function editGoal(btn, current, onSaved) {
+// Daily dial goal (owners only; pass userId to set an agent's): click the number, type a new one (1 to 1000) or pick a common one, Enter saves. Saved on the person, shown everywhere.
+export function editGoal(btn, current, onSaved, userId) {
   const inp = document.createElement('input');
   inp.type = 'number'; inp.min = '1'; inp.max = '1000'; inp.value = String(current); inp.className = 'goal-in'; inp.setAttribute('list', 'goal-presets'); inp.setAttribute('aria-label', 'Daily dial goal');
   if (!document.getElementById('goal-presets')) { const dl = document.createElement('datalist'); dl.id = 'goal-presets'; dl.innerHTML = [25, 40, 60, 80, 100, 120, 150, 200, 250, 300].map((n) => `<option value="${n}">`).join(''); document.body.appendChild(dl); }
@@ -151,7 +151,7 @@ export function editGoal(btn, current, onSaved) {
   const finish = async (save) => {
     if (done) return; done = true;
     const v = Math.round(Number(inp.value));
-    if (save && v >= 1 && v <= 1000 && v !== Number(current)) { try { const r = await api('/api/me/dial-goal', { method: 'PUT', body: { goal: v } }); toast(`Goal is ${r.goal} dials a day`); onSaved(r.goal); return; } catch (e) { toast(e.message, true); } }
+    if (save && v >= 1 && v <= 1000 && v !== Number(current)) { try { const r = await api(userId ? `/api/users/${userId}/dial-goal` : '/api/me/dial-goal', { method: 'PUT', body: { goal: v } }); toast(`Goal is ${r.goal} dials a day`); onSaved(r.goal); return; } catch (e) { toast(e.message, true); } }
     else if (save && !(v >= 1 && v <= 1000)) toast('Pick a goal from 1 to 1000.', true);
     inp.replaceWith(btn);
   };

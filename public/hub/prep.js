@@ -4,7 +4,7 @@ import { parseListings, listingsLine, listingsTable } from '/js/listings.js';
 import { markCues } from '/js/scriptprint.js';
 import { canRunCalls, can } from '/js/jobs.js';
 import { fromInputs, inputsIn, bothTimes, whenIn, ZONE_CHOICES, validZone } from '/js/apptime.js';
-import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of, quoteFor, scopeOfQuote } from '/js/leadintel.js';
+import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of, quoteFor, scopeOfQuote, personOf } from '/js/leadintel.js';
 import { effort, hoursOf } from '/js/scope.js';
 
 let customCache = null;
@@ -237,7 +237,7 @@ export async function bookModal(lead, onDone) {
       const moment = new Date(r.start).getTime();
       const when = whenIn(moment, f.tz);   // the lead reads their own zone in the invite text
       const both = bothTimes(moment, f.tz, yourTz);
-      const invite = `Hi ${(lead.contact_name || '').split(' ')[0] || 'there'}, this is ${r.rep || 'your rep'} with RightWay Growth. You're booked for your free Google clarity audit on ${when}.${r.meet ? ` Join here: ${r.meet}` : ' I will call you at this number and send the screen share link.'} Talk soon!`;
+      const invite = `Hi ${(personOf(lead) || '').split(' ')[0] || 'there'}, this is ${r.rep || 'your rep'} with RightWay Growth. You're booked for your free Google clarity audit on ${when}.${r.meet ? ` Join here: ${r.meet}` : ' I will call you at this number and send the screen share link.'} Talk soon!`;
       $('#bkout', m.el).innerHTML = `<div class="card" style="box-shadow:none;background:var(--mint-soft);margin-top:12px"><h3>Booked for ${esc(both)}</h3>
         ${r.meet ? `<div class="copybox"><code>${esc(r.meet)}</code></div>` : ''}
         <p class="small">${r.google === false ? 'Saved in the Hub. Send them the invite:' : 'Invite sent. The lead moved to Audit booked. Open Present before the call.'}</p>

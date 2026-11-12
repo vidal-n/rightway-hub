@@ -35,7 +35,9 @@ test('call category facts, tags and copy', () => {
 });
 
 test('who to ask for', () => {
-  assert.deepEqual(whoIs({ owner_name: 'Maria Lopez', contact_name: 'Front desk' }), { name: 'Maria Lopez', role: 'Owner', also: 'Front desk', line: 'Ask for Maria Lopez', known: true });
+  // A label like "Front desk" is not a person, so it is never shown as a second name.
+  assert.deepEqual(whoIs({ owner_name: 'Maria Lopez', contact_name: 'Front desk' }), { name: 'Maria Lopez', role: 'Owner', also: '', line: 'Ask for Maria Lopez', known: true });
+  assert.equal(whoIs({ owner_name: 'Maria Lopez', contact_name: 'Sam Lee' }).also, 'Sam Lee');
   assert.equal(whoIs({ owner_name: 'Maria Lopez', contact_name: 'maria lopez' }).also, '');
   assert.equal(whoIs({ contact_name: 'Sam' }).role, 'Contact');
   assert.equal(whoIs({}).line, 'Ask for the owner');

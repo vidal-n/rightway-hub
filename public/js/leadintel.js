@@ -1,5 +1,5 @@
 import { parseListings } from './listings.js';
-import { isPersonName } from './names.js';
+import { isPersonName, titleLike } from './names.js';
 import { SERVICE_LIST } from './plancopy.js';
 import { SCOPE, unitOf, hasQty, clampQty, tierOf, dollars } from './scope.js';
 // Lead intelligence: scoring, problems found, the scope of work built from the research, call script, dedupe keys.
@@ -322,12 +322,16 @@ export function whoIs(lead = {}) {
   const rawOwner = String(lead.owner_name || '').trim();
   const owner = rawOwner && isPersonName(rawOwner) ? rawOwner : '';
   const rawContact = String(lead.contact_name || '').trim();
-  const contact = rawContact && rawContact === rawOwner && !owner ? '' : rawContact;
+  // A contact that is a job title or the business name ("owner", "vice president", Outscraper columns) is not a person either.
+  const contact = rawContact && ((rawContact === rawOwner && !owner) || titleLike(rawContact, lead.business)) ? '' : rawContact;
   const same = owner && contact && owner.toLowerCase() === contact.toLowerCase();
   if (owner) return { name: owner, role: 'Owner', also: contact && !same ? contact : '', line: `Ask for ${owner}`, known: true };
   if (contact) return { name: contact, role: 'Contact', also: '', line: `Ask for ${contact}`, known: true };
   return { name: '', role: '', also: '', line: 'Ask for the owner', known: false };
 }
+
+// The person's name to show or greet: the owner or contact when it reads as a person, else ''.
+export const personOf = (lead = {}) => whoIs(lead).name;
 
 // ---------- workload tier ----------
 // Internal only (never shown, never priced): how heavy this lead's work looks, which sets the default tabs and guide steps.
@@ -825,7 +829,7 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
   const anchor = Q.anchor || null;
   const drop = Q.drop || null;
   const t10 = g ? top10Of(g) : 0;
-  const first = (lead.contact_name || '').split(' ')[0] || '';
+  const first = (personOf(lead) || '').split(' ')[0] || '';
   const L = parseListings(lead.listings);
   const lc = L?.counts || {};
   const lbad = (lc.mismatch || 0) + (lc.missing || 0);

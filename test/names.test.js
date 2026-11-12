@@ -76,4 +76,42 @@ test('fix-names clears only non people and returns the ids to scrub again', asyn
   assert.equal((await row(ids[0])).contact_name, null, 'the contact that only copied the bad owner is cleared too');
   assert.equal((await row(ids[1])).owner_name, 'Mike Diaz', 'a real name stays');
   assert.equal((await row(ids[2])).contact_name, 'Sam', 'a contact someone typed stays');
+
+  // Outscraper style: job titles and the business name saved as the contact (no owner name at all). Cleared; people and first names stay.
+  const mk = async (b, p, c) => { const x = await call('POST', '/api/leads', { business: b, phone: p, contact_name: c }); return x.data.lead?.id || x.data.id; };
+  const t1 = await mk('Canyon Plumbing', '3055550201', 'Owner');
+  const t2 = await mk('Canyon Plumbing 2', '3055550202', 'Canyon Plumbing 2');
+  const t3 = await mk('Reef Air', '3055550203', 'Dana Reef');
+  const again = await call('POST', '/api/scrub/fix-names', {});
+  assert.ok(again.data.fixed >= 2);
+  assert.equal((await row(t1)).contact_name, null);
+  assert.equal((await row(t2)).contact_name, null);
+  assert.equal((await row(t3)).contact_name, 'Dana Reef');
+});
+
+test('CSV import keeps only person names as the contact', async () => {
+  resetSchemaCache();
+  const env = { DB: d1(), MEDIA: r2(), ACCESS_KEY: 'owner-key-123' };
+  let cookie = '';
+  const call = async (method, path, body) => {
+    const h = { 'x-rw': '1' }; if (cookie) h.cookie = cookie;
+    let payload; if (body !== undefined) { h['content-type'] = 'application/json'; payload = JSON.stringify(body); }
+    const res = await worker.fetch(new Request(`https://hub.test${path}`, { method, headers: h, body: payload }), env);
+    const set = res.headers.get('set-cookie'); if (set) cookie = set.split(';')[0];
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  };
+  await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'Vidal Newton', password: 'correct horse battery' });
+  const r = await call('POST', '/api/leads/import', { rows: [
+    { business: 'Canyon Plumbing', phone: '3055550301', contact_name: 'Owner Operator', email: 'Owner' },
+    { business: 'Reef Air', phone: '3055550302', contact_name: 'Dana Reef', email: 'dana@reefair.com' },
+    { business: 'Palm Roofing', phone: '3055550303', contact_name: 'Palm Roofing' },
+  ] });
+  assert.equal(r.status, 200);
+  const rows = (await env.DB.prepare('SELECT business, contact_name, email FROM leads ORDER BY business').all()).results;
+  const by = Object.fromEntries(rows.map((x) => [x.business, x]));
+  assert.equal(by['Canyon Plumbing'].contact_name, null);
+  assert.equal(by['Canyon Plumbing'].email, null);
+  assert.equal(by['Reef Air'].contact_name, 'Dana Reef');
+  assert.equal(by['Reef Air'].email, 'dana@reefair.com');
+  assert.equal(by['Palm Roofing'].contact_name, null);
 });

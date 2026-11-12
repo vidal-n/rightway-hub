@@ -45,6 +45,32 @@ export function isPersonName(raw) {
   return true;
 }
 
+// A contact name that came in from a CSV (Outscraper puts job titles, business names and Google "owner" labels in name looking columns).
+// Keeps a real person (known first name, or a plain 2 to 3 word name that shares nothing with the business and has no title or trade word). Anything else gives ''.
+export function contactFromImport(raw, business = '') {
+  const t = cleanPerson(raw);
+  if (t) return t;
+  const s = trimName(raw);
+  if (!s || /[\d@&/\\:|()<>_=+*#!?%$^~`"]/.test(s)) return '';
+  const words = s.split(' ');
+  if (words.length === 1) return FIRST_SET.has(lc(s)) && /^[A-Z]/.test(s) && !DENY.has(lc(s)) ? s : '';
+  if (words.length > 3) return '';
+  if (!words.every((w) => /^[A-Z][a-z]+(?:['-][A-Za-z]+)?$/.test(w) && w.length > 1 && !DENY.has(lc(w)))) return '';
+  const biz = new Set(String(business || '').toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 2));
+  if (words.some((w) => biz.has(lc(w)))) return '';
+  return s;
+}
+
+// True when a saved contact name is plainly NOT a person: it has a title or trade word, symbols or digits, or is the business itself.
+export function titleLike(raw, business = '') {
+  const s = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!s) return false;
+  if (/[\d@&/\\:|()<>_=+*#!?%$^~`"]/.test(s)) return true;
+  if (s.split(' ').some((w) => DENY.has(lc(w)))) return true;
+  const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return Boolean(norm(business)) && norm(s) === norm(business);
+}
+
 export const isFirstName = (w) => FIRST_SET.has(lc(w));
 
 // The cleaned name, or '' when it is not a person.
