@@ -124,7 +124,7 @@ export async function pipelinePage(app, user, openId) {
           <div class="chips lists" data-sec="lists" aria-label="Call lists"><span class="small muted">Call lists:</span>${CALL_LISTS.map(([k, n]) => `<button class="chip ${p.list === k ? 'on' : ''}" data-list="${k}">${n}</button>`).join('')}</div>
           <div class="filterbar">
             <input id="fq" value="${esc(f.q || '')}" placeholder="Search name, phone, city, industry, zip, tag" style="flex:1 1 240px">
-            <div class="chips">${GRADES.map((g) => `<button class="chip ${f.grades?.includes(g) ? 'on' : ''}" data-grade="${g}">${g}</button>`).join('')}</div>
+            <div class="chips gradechips" aria-label="Lead grade"><span class="small muted" title="Grade is the lead score from our research. A is the best lead to call (75 and up), B 60 to 74, C 45 to 59, D under 45. Tap letters to show only those grades.">Grade</span>${GRADES.map((g) => `<button class="chip ${f.grades?.includes(g) ? 'on' : ''}" data-grade="${g}" title="${{ A: 'A: best leads, score 75 and up', B: 'B: score 60 to 74', C: 'C: score 45 to 59', D: 'D: score under 45' }[g]}">${g}</button>`).join('')}</div>
             <button class="btn btn-ghost btn-sm" id="fmore">Filters${activeFilters ? ` (${activeFilters})` : ''}</button></div>
           <div class="card filters" id="fpanel" ${p.open ? '' : 'hidden'}>
         <div class="form-grid filt">
@@ -367,8 +367,8 @@ function column(stage, leads) {
 }
 function card(l) {
   return `<article class="lead-card" draggable="true" data-id="${esc(l.id)}">
-    <div class="row" style="gap:8px;flex-wrap:nowrap">${gradeBadge(l.grade, l.score)}<div style="min-width:0"><div class="item-title ellip">${esc(l.business)}</div>
-    <div class="item-sub ellip">${esc([l.industry || l.category, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div></div></div>
+    <div class="row lc-top" style="gap:8px;flex-wrap:nowrap">${gradeBadge(l.grade, l.score)}<div style="min-width:0"><div class="item-title">${esc(l.business)}</div>
+    <div class="item-sub">${esc([l.industry || l.category, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div></div></div>
     <div class="row small" style="margin-top:6px;gap:6px">${l.next_action_at ? `<span class="badge ${l.next_action_at <= Date.now() ? 'warn' : 'gray'}">${esc(dueText(l.next_action_at))}</span>` : ''}
       ${l.meet_at && l.meet_at > Date.now() - 3600e3 ? `<span class="badge">Meet ${esc(new Date(l.meet_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</span>` : ''}
       ${l.reviews != null ? `<span>${l.reviews} rev</span>` : ''}${l.map_rank ? `<span>${l.map_rank > 20 ? '20+' : `#${l.map_rank}`}</span>` : ''}${l.tz_known ? `<span class="${l.callable_now ? 'ok-dot' : ''}">${esc(l.tz_short)}${l.tz_alt_short ? `/${esc(l.tz_alt_short)}` : ''} ${esc(l.local_time)}</span>` : ''}</div></article>`;

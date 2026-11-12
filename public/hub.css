@@ -2085,3 +2085,43 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .dropf { display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; min-width: 0; max-width: 100%; }
 .dropf > span { font: 600 12px var(--body); color: var(--muted); }
 .dropf select { width: 100%; min-height: 40px; max-width: 100%; text-overflow: ellipsis; }
+
+/* Pipeline and dialer scrolling that fits the screen (Nov 2026, V: scrolls in every direction, names cut off) */
+html, body { overflow-x: clip; }
+.board { scroll-snap-type: x mandatory; scroll-padding-inline: 2px; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; grid-auto-columns: minmax(250px, 1fr); max-width: 100%; }
+.board > .col { scroll-snap-align: start; min-width: 0; }
+.col-body { overflow-x: hidden; overscroll-behavior: contain; max-height: calc(100vh - 280px); min-height: 120px; scroll-snap-type: y proximity; }
+.col-body > .lead-card { scroll-snap-align: start; min-width: 0; }
+.lead-card { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.lead-card .item-title, .lead-card .item-sub { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; min-width: 0; }
+.lead-card .lc-top { min-width: 0; align-items: flex-start; }
+.lead-card .row.small { flex-wrap: wrap; }
+.gradechips { align-items: center; }
+.tz-tabs, .tabs, .chips.lists { scroll-snap-type: x proximity; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.tz-tabs > *, .tabs > *, .chips.lists > * { scroll-snap-align: start; }
+.dial-queue ol { scroll-snap-type: y proximity; }
+.dial-queue ol > li { scroll-snap-align: start; }
+@media (max-width: 900px) {
+  /* one scroll direction: the page goes up and down, stages swipe sideways and lock to the screen */
+  .board { grid-auto-columns: calc(100% - 28px); gap: 10px; margin-inline: -2px; padding-bottom: 12px; scroll-snap-stop: always; }
+  .col { padding: 10px; }
+  .col-body { max-height: none; overflow: visible; scroll-snap-type: none; }
+  .lead-card { padding: 12px; }
+  .lead-card .item-title { font-size: 16px; line-height: 1.25; }
+  .fstep, .fstep.wide, .fstep.go { min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .filterbar { flex-wrap: wrap; }
+  .filterbar #fq { flex: 1 1 100%; min-width: 0; }
+  .fstep .tz-tabs, .fstep .chips.lists { flex-wrap: nowrap; }
+  /* list view: each lead is a card, no sideways table */
+  .table-wrap { overflow: visible; }
+  .leads-table, .leads-table tbody { display: block; width: 100%; }
+  .leads-table thead { display: none; }
+  .leads-table tr { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 4px 10px; align-items: center; padding: 12px; margin-bottom: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .leads-table tr.grp { display: block; background: transparent; border: 0; padding: 6px 2px; }
+  .leads-table td { display: block; padding: 0; border: 0; min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+  .leads-table td:nth-child(3) { grid-column: 3; }
+  .leads-table td:nth-child(n+4) { grid-column: 3; font-size: 13px; color: var(--muted); }
+  .leads-table td:nth-child(6), .leads-table td:nth-child(8), .leads-table td:nth-child(9), .leads-table td:nth-child(10) { display: none; }
+  .leads-table td:nth-child(7):not(:empty)::after { content: " reviews"; }
+  .leads-table td:nth-child(4):empty, .leads-table td:nth-child(7):empty, .leads-table td:nth-child(12):empty { display: none; }
+}
