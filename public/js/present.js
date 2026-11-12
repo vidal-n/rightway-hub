@@ -1,6 +1,6 @@
 // Presentation mode: a tailored deck for one lead, built from the research, with a presenter view in a second window.
 // Open /present.html#<leadId>. Presenter view: /present.html?presenter=1#<leadId>. Keys: arrows or space, F fullscreen, P presenter view.
-import { findProblems, industryInfo, rankText, buildScript, roi, top10Of, quoteFor, allServicesFor } from './leadintel.js';
+import { findProblems, industryInfo, rankText, buildScript, roi, top10Of, quoteFor, allServicesFor, unbold } from './leadintel.js';
 import { ninetyDayPlan, reviewTarget } from './fulfill.js';
 import { SERVICE_LIST } from './plancopy.js';
 import { qrSvg } from './qr.js';
@@ -58,7 +58,7 @@ function slides() {
   const out = [];
   const add = (key, title, html, notes, dark = false) => out.push({ key, title, html, notes, dark });
   // Presenter notes come straight from the one pitch (the Google clarity call), so the deck and the phone script never drift apart.
-  const say = (id, coach = true) => (script.steps.find((x) => x.id === id)?.lines || []).filter((l) => coach || !/^\(/.test(l)).join('\n\n');
+  const say = (id, coach = true) => (script.steps.find((x) => x.id === id)?.lines || []).filter((l) => coach || !/^\(/.test(l)).map(unbold).join('\n\n');
 
   add('cover', 'Cover', `
     <img class="cover-mark" src="/brand/rightway-mark-light.svg" alt="">

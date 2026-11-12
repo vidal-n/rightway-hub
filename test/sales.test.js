@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import worker from '../src/worker.js';
 import { resetSchemaCache } from '../src/db.js';
 import { d1, r2 } from './shims.mjs';
-import { scoreLead, findProblems, recommendPlan, buildScript, dupKeys, normDomain, normName, industryInfo, fill, roi } from '../public/js/leadintel.js';
+import { scoreLead, findProblems, recommendPlan, buildScript, dupKeys, normDomain, normName, industryInfo, fill, roi, unbold } from '../public/js/leadintel.js';
 import { openSlots, zoned } from '../public/js/slots.js';
 import { citations, gbpChecklist, reviewTarget, ninetyDayPlan, compareIntel } from '../public/js/fulfill.js';
 import { matchListing, parseSite } from '../src/intel.js';
@@ -77,8 +77,8 @@ test('problems, score, plan, and script come from the research', () => {
   assert.match(s.steps[0].lines[0], /^Hey, is this Bob\?$/);
   assert.equal(s.steps[0].group, 'cold');
   assert.match(step(s, 'k_hook'), /Oh, I'm Vidal by the way, with RightWay Growth/);
-  assert.match(step(s, 'k_why'), /So I actually looked you guys up and used your info to build an automated, tailored strategy/);
-  assert.match(step(s, 'k_why'), /book you a plan today, completely free/);
+  assert.match(unbold(step(s, 'k_why')), /So I actually looked you guys up and used your info to build an automated, tailored strategy/);
+  assert.match(unbold(step(s, 'k_why')), /book you a plan today, completely free/);
   assert.match(step(s, 'k_teach'), /We're gonna look into all your competitors/);
   // The owner copy says I. The team copy says we for work someone else may have done, and never claims the founder's story.
   assert.match(step(s, 'c_story'), /I used to work inside/);
@@ -89,7 +89,7 @@ test('problems, score, plan, and script come from the research', () => {
   assert.match(step(s, 'k_after'), /typical job worth/);
   const spoken = s.steps.filter((x) => x.group === 'cold').flatMap((x) => x.lines).filter((l) => !/^\(/.test(l)).join(' ');
   assert.doesNotMatch(spoken, /consultant|analyst|Do you have 30 seconds|how are you/i);
-  assert.ok(!s.steps.some((x) => x.lines.some((l) => /\[[a-z ]+\]/.test(l) && !/\[(day and time|my number|your [a-z ]+|buildout \+ first month)\]/.test(l))), 'no unfilled blanks');
+  assert.ok(!s.steps.filter((x) => x.group !== 'analysis').some((x) => x.lines.some((l) => /\[[a-z ]+\]/.test(l) && !/\[(day and time|my number|your [a-z ]+|buildout \+ first month)\]/.test(l))), 'no unfilled blanks');
   assert.ok(s.steps.filter((x) => x.group === 'clarity').some((x) => x.lines.some((l) => /^\(SCREEN:/.test(l))), 'clarity call has screen cues');
   // A business with a website never hears the website opener; one without does. Hours missing on Google: the opener says so, truthfully.
   assert.equal(step(s, 'k_site'), '');

@@ -2453,3 +2453,20 @@ p.badge, .badge.wrap { white-space: normal; max-width: 100%; display: block; ove
 .sq-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 100%; }
 .sq-score input { min-width: 0; }
 @media (max-width: 600px) { .sq-actions { justify-content: flex-start; width: 100%; } }
+
+/* Script reading copy in V's doc layout (Nov 2026): Arial 14pt, one blank line between lines, centered bold underlined headings,
+   italic underlined notes for the rep, bold on the offer words, brackets for blanks. Same markup feeds the PDFs (scripts/script-pdfs.mjs). */
+.script-read.doc { max-width: 8.5in; padding: 40px 56px 28px; font-family: Arial, 'Liberation Sans', Helvetica, sans-serif; color: var(--ink); }
+.script-read.doc .d-brand { display: flex; justify-content: center; padding-bottom: 14px; margin-bottom: 26px; border-bottom: 2px solid var(--mint); }
+.script-read.doc .d-brand img { height: 28px; width: auto; }
+.script-read.doc .d-brand .on-dark { display: none; }
+.script-read.doc .d-title, .script-read.doc .d-h { margin: 0; font: 700 14pt/1.15 Arial, 'Liberation Sans', Helvetica, sans-serif; text-align: center; text-decoration: underline; border: 0; padding: 0; display: block; }
+.script-read.doc .d-h { margin: 1.7em 0 1.15em; }
+.script-read.doc .d-title + .d-h { margin-top: 1.7em; }
+.script-read.doc p { margin: 0 0 1.15em; font: 400 14pt/1.15 Arial, 'Liberation Sans', Helvetica, sans-serif; overflow-wrap: anywhere; }
+.script-read.doc b { font-weight: 700; }
+.script-read.doc .d-cue { font-style: italic; text-decoration: underline; }
+@media (max-width: 600px) { .script-read.doc { padding: 22px 18px 12px; } .script-read.doc p, .script-read.doc .d-title, .script-read.doc .d-h { font-size: 12.5pt; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .script-read.doc .d-brand .on-light { display: none; } :root:not([data-theme="light"]) .script-read.doc .d-brand .on-dark { display: block; } }
+:root[data-theme="dark"] .script-read.doc .d-brand .on-light { display: none; }
+:root[data-theme="dark"] .script-read.doc .d-brand .on-dark { display: block; }

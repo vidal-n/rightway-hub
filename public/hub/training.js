@@ -2,16 +2,16 @@
 // the owner setup checklist and links. Each person ticks off what they have done (users.training).
 import { $, $$, esc, api, toast, icon } from './core.js';
 import { staffShell } from './shell.js';
-import { scriptSteps, objectionGroups, markCues } from '/js/scriptprint.js';
+import { docHtml, objectionGroups, rich } from '/js/scriptprint.js';
 import { jobLabel } from '/js/jobs.js';
 import { DEFAULT_GUIDES, PROOF_LABEL } from '/js/guides.js';
 
-const PDF = { cold: '/training/RightWay-Growth-Cold-Call-Script.pdf', clarity: '/training/RightWay-Growth-Google-Clarity-Audit-Script.pdf' };
-const PDF_TEAM = { cold: '/training/RightWay-Growth-Cold-Call-Script-Team.pdf', clarity: '/training/RightWay-Growth-Google-Clarity-Audit-Script-Team.pdf' };
+const PDF = { cold: '/training/RightWay-Growth-Cold-Call-Script.pdf', analysis: '/training/RightWay-Growth-Competitor-Analysis-Script.pdf', plan: '/training/RightWay-Growth-Game-Plan-Script.pdf', clarity: '/training/RightWay-Growth-Google-Clarity-Audit-Script.pdf' };
+const PDF_TEAM = { cold: '/training/RightWay-Growth-Cold-Call-Script-Team.pdf', analysis: '/training/RightWay-Growth-Competitor-Analysis-Script-Team.pdf', plan: '/training/RightWay-Growth-Game-Plan-Script-Team.pdf', clarity: '/training/RightWay-Growth-Google-Clarity-Audit-Script-Team.pdf' };
 // Owners read the script as "I". Everyone else gets the "we" copy. Owners can flip to the team copy to see it.
 let teamView = false;
 const voiceFor = (user) => (user?.role === 'admin' && !teamView ? 'I' : 'we');
-const blanks = (s) => markCues(esc(s).replace(/\[\[(.+?)\]\]/g, '<span class="blank">$1</span>'));
+const blanks = (s) => rich(esc(s).replace(/\[\[(.+?)\]\]/g, '<span class="blank">$1</span>'));
 
 // Playbooks: how we actually run the day in the Hub. Plain steps, kept short.
 const PLAYBOOKS = [
@@ -110,6 +110,7 @@ export async function trainingPage(app, user, sub, arg) {
     <div class="tr-grid">
       ${card('#/training/tour', 'spark', 'Hub tour', 'A one minute walk through the menu and the top bar, fitted to your job.', `<span class="tr-done">${done.has('tour:hub') ? `${icon.check}Done` : 'Not taken yet'}</span>`)}
       ${card('#/training/scripts/cold', 'phone', 'Cold call script', 'Pattern interrupt, the free plan, book it on this call, discovery after.', `<span class="tr-done">${done.has('script:cold') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
+      ${card('#/training/scripts/analysis', 'msg', 'Competitor analysis script', 'Cold call that offers the free Competitor Analysis, what to say once they pick a time, discovery, and the rebuttals.', `<span class="tr-done">${done.has('script:analysis') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/scripts/plan', 'msg', 'Google Game Plan script (website audit)', 'Three short parts: the call, what to say if they ask, and what to say once they pick a time.', `<span class="tr-done">${done.has('script:plan') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/scripts/clarity', 'device', 'Google clarity audit script', 'The screen share pitch with every screen cue: slideshow, Scan tool tab and Google.', `<span class="tr-done">${done.has('script:clarity') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/warmup', 'phone', 'Warm up with the AI owner', 'Practice your opener and objections on a pretend owner by typing or speaking. It coaches you at the end.')}
@@ -125,20 +126,14 @@ function scripts(view, user, which) {
   const voice = voiceFor(user);
   which = ['clarity', 'plan', 'analysis'].includes(which) ? which : 'cold';
   const NAMES = { cold: 'Cold call script', analysis: 'Competitor analysis script', clarity: 'Google clarity audit script', plan: 'Google Game Plan script (website audit)' };
-  const steps = scriptSteps(which, undefined, voice);
   view.innerHTML = `${head(NAMES[which], 'Scripts')}${tabs('scripts', user)}
     <div class="row" style="justify-content:space-between;margin-bottom:16px">
       <div class="seg"><a class="btn btn-sm ${which === 'cold' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'analysis' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/analysis">Competitor analysis</a><a class="btn btn-sm ${which === 'plan' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/plan">Game Plan</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
-      <div class="row">${which === 'plan' || which === 'analysis' ? '' : `<a class="btn btn-ghost btn-sm" href="${(voice === 'I' ? PDF : PDF_TEAM)[which]}" target="_blank" rel="noopener">${icon.down}Large print PDF</a>`}
+      <div class="row"><a class="btn btn-ghost btn-sm" href="${(voice === 'I' ? PDF : PDF_TEAM)[which]}" target="_blank" rel="noopener">${icon.down}Print PDF</a>
         ${user.role === 'admin' ? `<div class="seg"><button class="btn btn-sm ${voice === 'I' ? 'btn-primary' : 'btn-ghost'}" data-voice="I">Owner copy (I)</button><button class="btn btn-sm ${voice === 'we' ? 'btn-primary' : 'btn-ghost'}" data-voice="we">Team copy (we)</button></div>` : ''}
         <label class="row small" style="gap:8px"><input type="checkbox" id="rd"${done.has(`script:${which}`) ? ' checked' : ''}> I have read it</label></div></div>
-    <p class="small muted" style="margin:0 0 16px">The live version with the lead's real names and numbers is in call prep and the presenter notes. Green blanks fill in there. Black boxes are the screen cues. Yellow DO notes are for you, never out loud.</p>
-    <div class="card script-read">${steps.map((st, i) => `<section class="st"><h3><span>${String(i + 1).padStart(2, '0')}</span>${esc(st.title)}</h3>${st.lines.map((l) =>
-      l.kind === 'screen' || l.kind === 'yourscreen' ? `<div class="say-screen"><b>${l.kind === 'yourscreen' ? 'Your screen' : 'Screen'}</b>${blanks(l.text)}</div>`
-        : l.kind === 'cue' ? `<p class="cue"><b class="do-tag">Do</b>${blanks(l.text)}</p>`
-          : l.kind === 'if' ? `<p><b>${esc(l.tag)}:</b> ${blanks(l.text)}</p>`
-            : l.kind === 'or' ? `<p><b class="muted">Or:</b> ${blanks(l.text)}</p>`
-              : l.kind === 'q' ? `<p><b>${esc(l.n)}.</b> ${blanks(l.text)}</p>` : `<p>${blanks(l.text)}</p>`).join('')}</section>`).join('')}</div>`;
+    <p class="small muted" style="margin:0 0 16px">Say the plain lines. Italic underlined lines are for you, never out loud. Brackets are blanks that call prep fills in with the lead's real names and numbers. The live version is in call prep and the presenter notes.</p>
+    <div class="card script-read doc"><div class="d-brand"><img class="on-light" src="/brand/rightway-logo-light.svg" alt="Rightway Growth" width="170" height="28"><img class="on-dark" src="/brand/rightway-logo-dark.svg" alt="" width="170" height="28"></div>${docHtml(which, { voice })}</div>`;
   $$('[data-voice]', view).forEach((b) => b.addEventListener('click', () => { teamView = b.dataset.voice === 'we'; scripts(view, user, which); }));
   $('#rd', view).addEventListener('change', (e) => toggleDone(`script:${which}`, e.target.checked));
 }
@@ -228,5 +223,6 @@ function resources(view, user) {
   view.innerHTML = `${head('Resources')}${tabs('resources', user)}
     <div class="tr-grid">${RESOURCES.map(([t, href, p]) => `<a class="tr-card" href="${esc(href)}"${href.startsWith('http') ? ' target="_blank" rel="noopener"' : ''}><span class="tr-ico">${(icon.chain || icon.share)}</span><h3>${esc(t)}</h3><p>${esc(p)}</p></a>`).join('')}
       <a class="tr-card" href="${(voiceFor(user) === 'I' ? PDF : PDF_TEAM).cold}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Cold call script PDF</h3><p>Large print, for the desk.</p></a>
-      <a class="tr-card" href="${(voiceFor(user) === 'I' ? PDF : PDF_TEAM).clarity}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Clarity audit script PDF</h3><p>Large print, with every screen cue.</p></a></div>`;
+      <a class="tr-card" href="${(voiceFor(user) === 'I' ? PDF : PDF_TEAM).clarity}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Clarity audit script PDF</h3><p>Large print, with every screen cue.</p></a>
+      <a class="tr-card" href="${(voiceFor(user) === 'I' ? PDF : PDF_TEAM).analysis}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Competitor analysis script PDF</h3><p>The cold call and rebuttals, for the desk.</p></a></div>`;
 }

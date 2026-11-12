@@ -1,7 +1,7 @@
 // Call prep: research snapshot, problems with talk tracks, the adaptive script, objections, booking, and presenting.
 import { $, $$, esc, api, toast, busy, modal, fmt } from './core.js';
 import { parseListings, listingsLine, listingsTable } from '/js/listings.js';
-import { markCues } from '/js/scriptprint.js';
+import { rich } from '/js/scriptprint.js';
 import { canRunCalls, can } from '/js/jobs.js';
 import { fromInputs, inputsIn, bothTimes, whenIn, ZONE_CHOICES, validZone } from '/js/apptime.js';
 import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of, quoteFor, scopeOfQuote, personOf } from '/js/leadintel.js';
@@ -45,8 +45,8 @@ function snapshot(lead, intel) {
 function scriptLine(l) {
   if (/^\(SCREEN:/.test(l)) return `<p class="say-screen"><b>Screen</b> ${esc(l.replace(/^\(SCREEN:\s*/, '').replace(/\)$/, ''))}</p>`;
   if (/^\(.*\)$/.test(l)) return `<p class="say-note"><b class="do-tag">Do</b>${esc(l.slice(1, -1))}</p>`;
-  if (/^Or:/i.test(l)) return `<p class="say-alt"><span class="badge gray">Or</span> ${markCues(esc(l.replace(/^Or:\s*/i, '')))}</p>`;
-  return `<p class="say-line">${markCues(esc(l))}</p>`;
+  if (/^Or:/i.test(l)) return `<p class="say-alt"><span class="badge gray">Or</span> ${rich(esc(l.replace(/^Or:\s*/i, '')))}</p>`;
+  return `<p class="say-line">${rich(esc(l))}</p>`;
 }
 
 // Collapsible section. Open or closed is remembered per section on this device, so the page opens the way the rep left it.
@@ -102,7 +102,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
       ${intel.competitors?.length ? `<div class="comps">${intel.competitors.slice(0, 3).map((c, i) => `<span class="badge gray">#${i + 1} ${esc(c.title)}${c.reviews != null ? ` · ${c.reviews} reviews` : ''}${c.rating ? ` · ${c.rating}★` : ''}</span>`).join('')}</div>` : ''}`, true)
       + fold('problems', 'Problems to pitch', probs.length ? `<ul class="probs">${probs.map((p) => `<li class="prob sev-${p.severity}"><div class="item-title">${esc(p.title)}</div><div class="small">${esc(p.detail)}</div><div class="say">Say: ${esc(p.talk)}</div></li>`).join('')}</ul>` : '<p class="muted" style="margin:0">No major problems found. Pitch protecting their spot and growing into more keywords and areas.</p>', false, probs.length) : ''}
       ${fold('listings', 'Listings Google double checks', '<div class="prep-lst" id="preplst"></div>', false)}
-      ${compact ? '' : fold('objections', 'Objections', `<div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary><p>${markCues(esc(o.a))}</p></details>`).join('')}</div>
+      ${compact ? '' : fold('objections', 'Objections', `<div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary><p>${rich(esc(o.a))}</p></details>`).join('')}</div>
       <details class="obj playbook"><summary>Why the script works (the playbook)</summary><ul>${s.playbook.map((p) => `<li><b>${esc(p.name)}</b> <span class="small">${esc(p.from)}</span><div class="small">${esc(p.use)}</div></li>`).join('')}</ul></details>`, false)}
     </div>`;
   wireFolds(el);

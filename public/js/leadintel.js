@@ -450,7 +450,7 @@ export const SCRIPT_VERSION = 10;
 // clarity call (or start it right there). Clarity call: the screen share that ends in a signed work order.
 export const SCRIPT_GROUPS = [
   ['cold', 'Cold call', ['k_open', 'k_site', 'k_hook', 'k_why', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
-  ['analysis', 'Competitor analysis', ['a_call', 'a_ask', 'a_set']],
+  ['analysis', 'Competitor analysis', ['a_call', 'a_set', 'a_disc', 'a_reb']],
   ['plan', 'Game Plan (website audit)', ['g_call', 'g_ask', 'g_set']],
   ['clarity', 'Clarity audit', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
 ];
@@ -462,7 +462,7 @@ export const SCRIPT_KEYS = [
   ['c_listings', 'Inconsistencies'], ['c_story', 'Why we are having this conversation'], ['c_program', 'What to expect'], ['c_process', 'Your app and your part'],
   ['c_trial', 'Trial close'], ['c_price', 'Price: the drop close'], ['c_close', 'Close'], ['c_post', 'Work order and payment'],
   ['g_call', 'The call'], ['g_ask', 'If they ask what it is'], ['g_set', 'Once they give you a time'],
-  ['a_call', 'The call'], ['a_ask', 'If they ask what it is'], ['a_set', 'Once they give you a time'],
+  ['a_call', 'The call'], ['a_set', 'Once they give you a time'], ['a_disc', 'Discovery after booking (Optional)'], ['a_reb', 'Rebuttals'],
   ['c_onboard', 'Onboarding and homework'], ['c_book', 'Book the audit for later'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'],
 ];
 
@@ -470,15 +470,15 @@ export const DEFAULT_SCRIPT = {
   // Game Plan call (also run as a website audit): the lead asked for it, so this is a short call or text that books the walk through.
   g_call: [
     "Hi {first_or_owner}? It's {rep} with {company}.",
-    "As requested, we have your free Google Game Plan finished for {business}.",
-    "Or: As requested, we have your free website audit finished for {business}.",
+    "As requested, we have your **free Google Game Plan** finished for {business}.",
+    "Or: As requested, we have your **free website audit** finished for {business}.",
     "I/we have two spots left for tomorrow to take care of any questions about the report.",
     "12pm or 4pm. Which works better for you?",
   ].join('\n'),
   g_ask: [
-    "IF THEY ASK WHAT IS THIS ABOUT: It's your free Google Game Plan. It shows where you rank on Google and why.",
-    "Or: It's your free website audit. It shows where you rank on Google and why.",
-    "And we also threw in a competitor analysis, so you know what to tweak with no guessing.",
+    "IF THEY ASK WHAT IS THIS ABOUT: It's your **free Google Game Plan**. It shows where you rank on Google and why.",
+    "Or: It's your **free website audit**. It shows where you rank on Google and why.",
+    "And we also threw in a **competitor analysis**, so you know what to tweak with no guessing.",
     "Both are yours to keep!",
     "12pm or 4pm?",
   ].join('\n'),
@@ -488,24 +488,40 @@ export const DEFAULT_SCRIPT = {
     "Please make sure to keep your appointment, because we have limited availability.",
     "(Book it in the Hub first, so the confirmation email goes out.)",
   ].join('\n'),
-  // Free competitor analysis call: same framework as the Game Plan call above. The analysis is the hook (real and theirs to keep), the Google Game Plan is the solution walked through on the call.
+  // Competitor analysis cold call, V's own script from his doc, word for word (typos and all). Only ** marks (bold) were added from the doc's bold type.
   a_call: [
-    "Hi {first_or_owner}? It's {rep} with {company}.",
-    "We have your free competitor analysis for {business} finished.",
-    "I/we have two spots left for tomorrow to take care of any questions about the report.",
-    "12pm or 4pm. Which works better for you?",
-  ].join('\n'),
-  a_ask: [
-    "IF THEY ASK WHAT IS THIS ABOUT: It's your free competitor analysis. It shows who's ahead of you on Google and why.",
-    "And we also threw in a Google Game Plan too, so you know what to tweak with no guessing.",
-    "Both are yours to keep!",
-    "12pm or 4pm?",
+    "Hey Is this [Name/Owner]",
+    "It's [Name] with Rightway Growth:",
+    "Just seeing how we could help , we used your info to create a **free Competitor Analysis**.",
+    "I have two spots left for tomorrow to take care of any questions about the report.",
+    "I have a 12PM or 5PM. Which works better for you?",
   ].join('\n'),
   a_set: [
-    "Got it. You'll receive your email confirmation in the next few minutes.",
-    "We recommend having a computer or tablet handy, so we can share our screen and walk you through the competitor analysis and your Game Plan in real time.",
-    "Please make sure to keep your appointment, because we have limited availability.",
-    "(Book it in the Hub first, so the confirmation email goes out.)",
+    "Got it. I’ll shoot you a email/text an invite while we’re still on the phone.",
+    "Also, if you have a computer or phone for the meeting so we can share our screen through the free analysis.",
+    "Make sure you keep you’re free for the appointment, since we only have a few slots.",
+  ].join('\n'),
+  a_disc: [
+    "Is there anything you’ve been thinking about you would want me to take a look into before we meet [time/date].",
+  ].join('\n'),
+  a_reb: [
+    "\"What's this about?\"",
+    "It's your free **Competitor Analysis** - shows where you rank on against your competitors and why. And then we also throw  in and send a **game plan report**, so you know what to tweak with no guessing…Both are yours to keep. So what time were your free for",
+    "“Who are you?”",
+    "We’re rightway growth, gotta be honest with you were a boutique marketing company(startup agency) and take on few clients so we can focus on quality. If we’re a good fit for each other we can help out. If not, you keep the report and strategy free…so which time did you say you were free with?",
+    "“How much does this cost?”",
+    "(Laugh) Honestly I don’t even know if there’s any way I could help you without getting to know you or where your gaps are,were performance based.  we can take a look at an analysis and if we can tailor something for you, we can get to work immediately. What time did you want to take a look at that?",
+    "“I get these calls all the time.”",
+    "I hear you boss me too, we’re business owners. Everyone’s gonna try to sell you something. But we also are looking for a good fit to work with which is why we’re reaching out. Let’s find out when we get on a call, so was either 12pm or 5pm good for you?",
+    "“I’m not interested.”",
+    "I’m sure. You probably have been burned before. We jumped ship from those guys too after seeing how business owners get treated like numbers. Which is why we’re boutique and focus on quality but I can only take on so many and we’re also selective if we can help. Would that be worth jumping on a meeting and see if we’re a good fit?",
+    "“What can you do for me about (problem)?“",
+    "Well there’s dozens of things we can provide for you, but I’m sure you can appreciate we can’t fix something unless we take a look at it first. If there was a chance we could fix the [problem] maybe bring more revenue would that be worth having a conversation about?",
+    "“What can you offer?”(broad)",
+    "Honestly we’re full service company, we can make your websites, run ads, organic marketing, even throw some ai in your business. But I wouldn’t sell you anything right now unless I knew I could help you. If you think there’s a chance we can help you grow, would that be worth having a conversation about?",
+    "“I already have a company”",
+    "I bet you do you’re in [industry]",
+    "“Why not have a second pair of eyes to make sure he’s working for you and not just fleecing your pockets? It’s free to find out. You get a report to show him and if you think we could help, you’ll have your answer on the call, I can meet today or tomorrow at 12 or 5?”",
   ].join('\n'),
   k_open: [
     "Hey, is this {first_or_owner}?",
@@ -523,7 +539,7 @@ export const DEFAULT_SCRIPT = {
   ].join('\n'),
   k_why: [
     "{strategy_note}",
-    "{strategy_line} I can book you a plan today, completely free. Is that something you'd want?",
+    "{strategy_line} I can book you a plan today, completely **free**. Is that something you'd want?",
     "Or: If you're not interested, no worries. Or just give me 20 seconds and I can let you know what we can do for you?",
     "{found_say}",
   ].join('\n'),
@@ -559,9 +575,9 @@ export const DEFAULT_SCRIPT = {
   ].join('\n'),
 
   c_open: [
-    "Hey, is this {first_or_owner}? ... Hey {first}, it's {rep}, with RightWay Growth. We're all set for your Google clarity audit.",
+    "Hey, is this {first_or_owner}? ... Hey {first}, it's {rep}, with RightWay Growth. We're all set for your **Google clarity audit**.",
     "(Smile. Then:) Quick agenda so you know how this goes. I'm going to show you exactly what a customer sees when they look for you on Google, where the inconsistencies are, and what's causing them. At the end, we'll both decide if it makes sense to work together.",
-    "And just so you know, we only take on ten clients at a time, so we can focus on the relationship, quality and results. So this is as much me seeing if you're a fit as you seeing if we are. Fair?",
+    "And just so you know, we only take on **ten clients at a time**, so we can focus on the relationship, quality and results. So this is as much me seeing if you're a fit as you seeing if we are. Fair?",
     "(Slow, low, certain. You're the one who did the work. You don't need this deal. You're deciding who gets one of the ten spots.)",
   ].join('\n'),
   c_frame: [
@@ -626,9 +642,9 @@ export const DEFAULT_SCRIPT = {
   ].join('\n'),
   c_story: [
     "And that's exactly why we're having this conversation. Whenever we audit a business and see inconsistencies like these, and we can see it's affecting where you show up and how far out you show up, then obviously we're going to offer you a way to fix it.",
-    "It's our local growth program, and it's what we've just been going over. First we do a data cleanup: every listing with wrong or outdated information gets corrected, so the damage stops. Then we get you in front of every directory Google checks that doesn't know who you are yet, and we build out your Google profile the right way.",
+    "It's our **local growth program**, and it's what we've just been going over. First we do a **data cleanup**: every listing with wrong or outdated information gets corrected, so the damage stops. Then we get you in front of every directory Google checks that doesn't know who you are yet, and we build out your Google profile the right way.",
     '(PAUSE)',
-    "Now before I go any further, I want to make sure we're on the same page. Like I said at the start, we only take on ten clients at a time, so we can focus on the relationship, the quality and the results. And I'll be straight with you: I/our founder used to work inside the big marketing companies. Year long contracts, reports nobody could read, promises of number one on Google. RightWay was built to do the opposite. You see every task, you see the map every month, and after the first three months you can leave any time. Fair?",
+    "Now before I go any further, I want to make sure we're on the same page. Like I said at the start, we only take on **ten clients at a time**, so we can focus on the relationship, the quality and the results. And I'll be straight with you: I/our founder used to work inside the big marketing companies. Year long contracts, reports nobody could read, promises of number one on Google. RightWay was built to do the opposite. You see every task, you see the map every month, and after the first three months you can leave any time. Fair?",
     '(SCREEN: "What gets you results" slide: only the services they need. Point at each one as you say it. Drop or add one live if discovery says so.)',
   ].join('\n'),
   c_program: [
@@ -642,7 +658,7 @@ export const DEFAULT_SCRIPT = {
   c_process: [
     '(SLOW DOWN.)',
     "The last thing I want to go over quickly is your app. When you start, you get your own login. You can go on any time and keep track of everything we do.",
-    "This is your home screen: the work we did this month and where you show up. This is Rankings: the map, month over month, compared to where you started today. Reviews: send a review request from your phone in five seconds. And Post a photo: snap a job, we write the post. We add new features every month, and you get them automatically.",
+    "This is your home screen: the work we did this month and where you show up. This is **Rankings**: the map, month over month, compared to where you started today. **Reviews**: send a review request from your phone in five seconds. And **Post a photo**: snap a job, we write the post. We add new features every month, and you get them automatically.",
     "Every month you meet with us for 15 to 30 minutes on a screen share like today. We show you all the work that's been done, the new map, and what's next. But the main reason we meet: we can do all the work behind the scenes, but without you as the owner involved, the whole process goes nowhere fast.",
     "So as long as you send us photos of your jobs, let us know about any changes in the business, send your review link after a job, and meet with us for those 15 minutes, you will never be in the dark about what's going on. Can you do that?",
     "And {first}, here's the honest picture: most of your customers look you up on Google before they call, even the referrals. What we do is make sure your information is right everywhere Google checks, get you in front of more of the searches that matter to you, and widen how far out people find you. That's how you start getting the calls that are going to {top_name_or_them} right now.",
@@ -655,7 +671,7 @@ export const DEFAULT_SCRIPT = {
   ].join('\n'),
   c_price: [
     "Perfect. Based on everything you told me, here's what gets you where you want to go: {services_list}. (Walk each one and why it gets them onto the first page in more of their area.)",
-    "The program comes in two parts: a one time buildout, which is us setting everything up the right way, and then a monthly for the ongoing work that moves you up and keeps you there.",
+    "The program comes in two parts: a **one time buildout**, which is us setting everything up the right way, and then a **monthly** for the ongoing work that moves you up and keeps you there.",
     '{price_anchor}',
     "For what you need, the buildout is {setup} and the monthly is {price}. Total today is {today_total}, and your next payment isn't for 30 days.",
     "And look, you told me a typical job is worth about {ticket}. {breakeven_jobs} a month pays for the whole thing. Everything after that is yours. Honestly, I think not doing this costs you a lot more than doing it, just from the calls you're already missing in your own backyard.",
@@ -667,7 +683,7 @@ export const DEFAULT_SCRIPT = {
     "Great. Do you want the work order sent to your phone or your email?",
   ].join('\n'),
   c_post: [
-    "Perfect. Let me walk you through the next steps so you're all set. First I'm sending you a one page work order. It's a digital signature. It puts everything we just went over in writing: the work, the price, the three month minimum. It's also what gives us permission to start. We'll take care of it while we're on the phone.",
+    "Perfect. Let me walk you through the next steps so you're all set. First I'm sending you a one page **work order**. It's a digital signature. It puts everything we just went over in writing: the work, the price, the three month minimum. It's also what gives us permission to start. We'll take care of it while we're on the phone.",
     "It takes about 60 seconds. Let me confirm the spelling of your first and last name, and the email. Remember, the total today is {today_total}: the buildout and your first month.",
     "(Send the work order from the lead: Send work order. Then:) OK, I just sent it. It comes from Rightway Growth. Open it and read it over. Your name, business and today's date are already filled in. Just pick your signature and initials, check the box, and sign. Let me know if anything doesn't open.",
     "(When it shows Signed:) Awesome, I see it signed. It takes you straight to the secure payment page by Stripe. That's the same card we use each month, and you can update it any time from your app or by asking your account manager.",
@@ -703,9 +719,9 @@ export const DEFAULT_SCRIPT = {
 export const DEFAULT_OBJECTIONS = [
   ['Cold: Not interested', "No worries at all. Just give me 20 seconds and I'll tell you what we found, and if it's not for you, that's totally fine. (20 seconds: why you called. Then:) It's way easier to show you on a quick screen share. {slot1} or {slot2}?"],
   ["Cold: We're booked out", "That's the best problem to have. Is it the work you want though, or would you take more of the bigger jobs if they came in? (Listen.) That's exactly what the plan is built around. {slot1} or {slot2}?"],
-  ['Cold: What is this about?', "I/we looked {business} up on Google and put together a plan to bring in more of the profitable jobs. It's free. We just need to share the screen to show you. {slot1} or {slot2}?"],
+  ['Cold: What is this about?', "I/we looked {business} up on Google and put together a plan to bring in more of the profitable jobs. It's **free**. We just need to share the screen to show you. {slot1} or {slot2}?"],
   ['Cold: Is this a sales call?', "Honestly, it's more of a show and tell. I/we put a plan together for you. If you like it, we can talk about doing it together. If not, you keep it. {slot1} or {slot2}?"],
-  ['Cold: How much does it cost?', "The plan's free, and you keep it either way. If you want help with it after, it depends on what you actually need, and I'd just be guessing before you see it. {slot1} or {slot2}?"],
+  ['Cold: How much does it cost?', "The plan's **free**, and you keep it either way. If you want help with it after, it depends on what you actually need, and I'd just be guessing before you see it. {slot1} or {slot2}?"],
   ['Cold: Just send me something', "I can, but it's all built around your map and your competitors, and that's way easier to show than send. Quick screen share and you keep everything. {slot1} or {slot2}?"],
   ['Cold: I already have someone', "Totally fine. Think of us as a second pair of eyes. If they're doing a great job, the plan will show it, and you'll know for sure. {slot1} or {slot2}?"],
   ["I don't need another sales pitch", "Look, I completely understand. As a business owner you probably get more calls than you can count, all trying to sell you something you don't need. This is a clarity call. What I'm showing you is a problem that's already costing {business} calls every single month. If there's a way to fix it and get those calls back, it's at least worth a look, right?"],
@@ -929,14 +945,17 @@ function coldVars(lead, intel, { kw, top, first, L, lbad, worst }) {
     open_line: noHours ? "Hey, you guys are open today, right? Google doesn't show your hours, so I wasn't sure." : 'Hey, you guys are still open, right?',
     open_where: noHours ? "(If they ask where:) On Google. Your hours aren't on your listing, so people can't tell if you're open." : "(If they ask why:) Just wanted to make sure I caught you before you closed.",
     strategy_note: found ? '' : '(No research yet? Say it this way:)',
-    strategy_line: found ? `So I/we actually looked you guys up and used your info to build an automated, tailored strategy to help bring in ${jobs}.`
-      : `So we've been putting together tailored strategies for ${info.label.toLowerCase()} businesses around ${city || 'here'} to help bring in ${jobs}.`,
+    strategy_line: found ? `So I/we actually looked you guys up and used your info to build an **automated, tailored strategy** to help bring in ${jobs}.`
+      : `So we've been putting together **tailored strategies** for ${info.label.toLowerCase()} businesses around ${city || 'here'} to help bring in ${jobs}.`,
     found_say: found ? `(If they ask what you found:) ${scanLine(lead, intel)}${L?.results?.length && lbad ? ` And ${lbad} of ${L.results.length} directories Google checks have you wrong or missing${worst ? `, ${worst.name} for one` : ''}.` : ''}` : '',
     value_line: top?.title ? `we can help you get more of the calls${kw ? ` from people searching "${kw}"` : ''} that are going to ${top.title} right now` : `we can help you get more of the calls from people searching for what you do around ${city || 'you'}`,
     gk_reason: found ? `I/we looked ${lead.business || 'the business'} up on Google and put something together for ${them}. It's quick.` : `We're putting together free Google plans for a few ${info.label.toLowerCase()} businesses around ${city || 'here'} and wanted to show ${them}.`,
     vm_line: found ? `I/we looked ${lead.business || 'you'} up on Google and put together a plan to bring in more of the profitable jobs.` : `We've been putting together free Google plans for ${info.label.toLowerCase()} businesses around ${city || 'here'} and we'd like to show you what we'd do for ${lead.business || 'you'}.`,
   };
 }
+
+// ** marks bold in script text (V's doc bolds the offer, like "free Competitor Analysis"). Screens that show script text as HTML turn it into <b>; plain text uses unbold.
+export const unbold = (t) => String(t).replace(/\*\*/g, '');
 
 const asLines = (v) => (Array.isArray(v) ? v : String(v || '').split('\n')).map((x) => x.trim()).filter(Boolean);
 

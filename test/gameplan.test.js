@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildScript, SCRIPT_GROUPS } from '../public/js/leadintel.js';
-import { scriptSteps, PRINT_VARS } from '../public/js/scriptprint.js';
+import { buildScript, SCRIPT_GROUPS, unbold } from '../public/js/leadintel.js';
+import { scriptSteps, PRINT_VARS, docHtml, markCues, boldHtml } from '../public/js/scriptprint.js';
 
 test('Game Plan script: own group, filled with rep, company and business', () => {
   assert.ok(SCRIPT_GROUPS.find((g) => g[0] === 'plan'));
@@ -48,18 +48,52 @@ test('an older saved disposition list gets Phone menu added once', async () => {
   assert.equal(r.dispositions.some((d) => d.acts === 'phone_menu'), false);
 });
 
-test('Competitor analysis script uses the same three step framework as the Game Plan', () => {
+test('Competitor analysis cold call is V\'s doc word for word, with rebuttals', () => {
   assert.ok(SCRIPT_GROUPS.find((g) => g[0] === 'analysis'));
   const s = buildScript({ business: 'Joe Plumbing', contact_name: 'Joe Smith', city: 'Miami', industry: 'Plumbing' }, null, { rep: 'Sam', voice: 'I' });
-  const ids = s.steps.filter((x) => x.group === 'analysis').map((x) => x.id);
-  assert.deepEqual(ids, ['a_call', 'a_ask', 'a_set']);
-  const all = s.steps.filter((x) => x.group === 'analysis').map((x) => x.lines.join(' ')).join(' ');
-  assert.match(all, /free competitor analysis/);
-  assert.match(all, /12pm or 4pm/);
-  assert.match(all, /Google Game Plan/);
-  assert.match(all, /Both are yours to keep/);
-  assert.match(all, /Joe Plumbing/);
-  assert.doesNotMatch(all, /\{\w+\}/);
-  assert.doesNotMatch(all, /[–—]/);
-  assert.equal(scriptSteps('analysis').length, 3);
+  const steps = s.steps.filter((x) => x.group === 'analysis');
+  assert.deepEqual(steps.map((x) => x.id), ['a_call', 'a_set', 'a_disc', 'a_reb']);
+  assert.deepEqual(steps.map((x) => x.title), ['The call', 'Once they give you a time', 'Discovery after booking (Optional)', 'Rebuttals']);
+  const plain = (id) => steps.find((x) => x.id === id).lines.map(unbold);
+  // Typos and odd spacing are his, so they stay.
+  assert.deepEqual(plain('a_call'), [
+    'Hey Is this [Name/Owner]', "It's [Name] with Rightway Growth:",
+    'Just seeing how we could help , we used your info to create a free Competitor Analysis.',
+    'I have two spots left for tomorrow to take care of any questions about the report.',
+    'I have a 12PM or 5PM. Which works better for you?']);
+  assert.equal(steps.find((x) => x.id === 'a_call').lines[2], 'Just seeing how we could help , we used your info to create a **free Competitor Analysis**.');
+  assert.equal(plain('a_set').length, 3);
+  assert.match(plain('a_set')[2], /keep you’re free for the appointment/);
+  assert.match(plain('a_disc')[0], /^Is there anything you’ve been thinking about you would want me to take a look into before we meet \[time\/date\]\.$/);
+  const reb = plain('a_reb');
+  assert.equal(reb.length, 17);
+  assert.equal(reb[0], '"What\'s this about?"');
+  assert.match(reb[1], /throw  in and send a game plan report, so you know what to tweak with no guessing…Both are yours to keep\. So what time were your free for$/);
+  assert.equal(reb[10], '“What can you do for me about (problem)?“');
+  assert.equal(reb[12], '“What can you offer?”(broad)');
+  assert.equal(reb[15], 'I bet you do you’re in [industry]');
+  assert.doesNotMatch(reb.join(' '), /\{\w+\}/);
+  assert.doesNotMatch(steps.flatMap((x) => x.lines).join(' '), /[–—]/);
+  // The same text reads the same for owners and teammates (no I/we markers in it).
+  const we = buildScript({ business: 'x' }, null, { rep: 'Sam', voice: 'we' }).steps.filter((x) => x.group === 'analysis').flatMap((x) => x.lines);
+  assert.deepEqual(we, steps.flatMap((x) => x.lines));
+  assert.equal(scriptSteps('analysis').length, 4);
+});
+
+test('doc layout: bold, notes, brackets and lowercase parentheses', () => {
+  const html = docHtml('analysis');
+  assert.match(html, /<h1 class="d-title">COLD CALL SCRIPT:<\/h1><h1 class="d-title">COMPETITOR ANALYSIS<\/h1>/);
+  assert.match(html, /create a <b>free Competitor Analysis<\/b>\./);
+  assert.match(html, /<span class="d-cue">\(Laugh\)<\/span> Honestly/);
+  // Lowercase parentheses are his wording, not a note.
+  assert.match(html, /company\(startup agency\)/);
+  assert.match(html, /about \(problem\)\?/);
+  assert.doesNotMatch(html, /\*\*/);
+  assert.match(markCues('Say (Let them answer.) then (problem)'), /do-tag">Do<\/b>Let them answer\.<\/span> then \(problem\)/);
+  assert.equal(boldHtml('a **b** c'), 'a <b>b</b> c');
+  const cold = docHtml('cold', { voice: 'we', objections: true });
+  assert.match(cold, /<h2 class="d-h">Objections:<\/h2>/);
+  assert.doesNotMatch(cold, /I\/we|\*\*|\{\w+\}/);
+  assert.match(docHtml('clarity'), /Screen: /);
+  assert.doesNotMatch(docHtml('clarity'), /\[\[/);
 });

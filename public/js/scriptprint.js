@@ -27,7 +27,7 @@ export const PRINT_VARS = {
   open_line: 'Hey, you guys are still open, right?',
   open_where: "(If they ask why:) Just wanted to make sure I caught you before you closed.",
   strategy_note: '',
-  strategy_line: 'So I/we actually looked you guys up and used your info to build an automated, tailored strategy to help bring in more of the specific, profitable jobs you actually want.',
+  strategy_line: 'So I/we actually looked you guys up and used your info to build an **automated, tailored strategy** to help bring in more of the specific, profitable jobs you actually want.',
   found_say: `(If they ask what you found:) ${B('scan line from call prep')} And ${B('X of 15')} directories Google checks have you wrong or missing.`,
   value_line: `we can help you get more of the calls from people searching "${B('keyword')}" that are going to ${B('top competitor')} right now`,
   vm_line: `I/we looked ${B('business')} up on Google and put together a plan to bring in more of the profitable jobs.`,
@@ -51,10 +51,58 @@ export function classify(raw, voice = 'I') {
   return { kind: 'say', text: t };
 }
 // Directions inside a spoken line, like "(Let them answer.)", get the same DO mark as a DO line, so nobody reads them out loud.
-// Takes HTML that is already escaped. A few asides in parentheses are said out loud and stay as they are.
+// Takes HTML that is already escaped. A few asides in parentheses are said out loud and stay as they are, and so does anything in
+// parentheses that starts with a lowercase letter (V's own wording like "company(startup agency)" or "about (problem)" is spoken or a label, not a note).
 const SPOKEN_ASIDE = /^(How many|No stress|end\b)/i;
+const isCue = (inner) => !SPOKEN_ASIDE.test(inner.trim()) && !/^[a-z]/.test(inner.trim());
 export function markCues(html) {
-  return String(html).replace(/\(([^()]{2,240})\)/g, (m, inner) => (SPOKEN_ASIDE.test(inner.trim()) ? m : `<span class="do-in"><b class="do-tag">Do</b>${inner.trim()}</span>`));
+  return String(html).replace(/\(([^()]{2,240})\)/g, (m, inner) => (isCue(inner) ? `<span class="do-in"><b class="do-tag">Do</b>${inner.trim()}</span>` : m));
+}
+// ** marks bold. Takes HTML that is already escaped.
+export const boldHtml = (html) => String(html).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+// Call prep and the live screens: DO marks plus bold.
+export const rich = (html) => boldHtml(markCues(html));
+
+// ---------- Reading copy in V's doc layout ----------
+// Arial 14, one blank line between lines, centered bold underlined headings, italic underlined notes for the rep, brackets for blanks.
+// One builder, so the Training page and the PDFs can never drift apart. Takes no HTML in, escapes everything it prints.
+const e = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const brackets = (h) => h.replace(/\[\[(.+?)\]\]/g, '[$1]');
+const docCues = (html) => String(html).replace(/\(([^()]{2,240})\)/g, (m, inner) => (isCue(inner) ? `<span class="d-cue">(${inner.trim()})</span>` : m));
+const noteText = (t) => boldHtml(brackets(e(t)));
+const spoken = (t) => boldHtml(docCues(brackets(e(t))));
+export const DOC_TITLES = {
+  cold: ['COLD CALL SCRIPT'], analysis: ['COLD CALL SCRIPT:', 'COMPETITOR ANALYSIS'],
+  plan: ['GAME PLAN SCRIPT:', 'WEBSITE AUDIT'], clarity: ['GOOGLE CLARITY AUDIT SCRIPT'],
+};
+export function docLine(l) {
+  if (l.kind === 'screen') return `<p class="d-cue">Screen: ${noteText(l.text)}</p>`;
+  if (l.kind === 'yourscreen') return `<p class="d-cue">Your screen: ${noteText(l.text)}</p>`;
+  if (l.kind === 'cue') return `<p class="d-cue">${noteText(l.text)}</p>`;
+  if (l.kind === 'if') return `<p><span class="d-cue">${e(l.tag)}:</span> ${spoken(l.text)}</p>`;
+  if (l.kind === 'or') return `<p><span class="d-cue">Or:</span> ${spoken(l.text)}</p>`;
+  if (l.kind === 'q') return `<p>${e(l.n)}. ${spoken(l.text)}</p>`;
+  // A short quoted line (what the owner says) stays with its answer on paper.
+  if (/^["\u201C\u201D].{0,110}["\u201C\u201D](\(\w+\))?$/.test(l.text)) return `<p class="d-q">${spoken(l.text)}</p>`;
+  return `<p>${spoken(l.text)}</p>`;
+}
+// The objections that go on paper with a script.
+const QUICK = ["I'm busy right now", 'Just send me an email', 'Are you with Google?', 'How did you get my number?', 'I already have someone handling my Google'];
+export function docObjections(group, voice = 'I') {
+  const og = Object.fromEntries(objectionGroups(undefined, voice).map(([k, , l]) => [k, l]));
+  if (group === 'cold') {
+    const quick = DEFAULT_OBJECTIONS.filter(([q]) => QUICK.includes(q)).map(([q, a]) => ({ q, a: voiceText(fillPrint(a), voice) }));
+    return [['Objections', [...og.cold, ...quick]]];
+  }
+  if (group === 'clarity') return [['Objections before price', og.before], ['Objections after price', og.after], ['Objections any time', og.any]];
+  return [];
+}
+export function docHtml(group, { voice = 'I', script = DEFAULT_SCRIPT, objections = false } = {}) {
+  const head = (t) => `<h2 class="d-h">${e(t)}</h2>`;
+  const titles = (DOC_TITLES[group] || [group.toUpperCase()]).map((t) => `<h1 class="d-title">${e(t)}</h1>`).join('');
+  const steps = scriptSteps(group, script, voice).map((st) => `${head(`${st.title}:`)}${st.lines.map(docLine).join('')}`).join('');
+  const obj = objections ? docObjections(group, voice).map(([name, list]) => `${head(`${name}:`)}${list.map((o) => `<p class="d-q">\u201C${boldHtml(e(o.q))}\u201D</p><p>${spoken(o.a)}</p>`).join('')}`).join('') : '';
+  return `${titles}${steps}${obj}`;
 }
 export function scriptSteps(group, script = DEFAULT_SCRIPT, voice = 'I') {
   const g = SCRIPT_GROUPS.find((x) => x[0] === group);
