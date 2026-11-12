@@ -1049,11 +1049,13 @@ export async function dialerPage(app, user) {
           <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
           ${me.twilio ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
       ${dialTabs('queue', user)}
-      <div class="tiers" data-sec="tiers">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
-        .map(([k, n, t]) => `<button type="button" data-tier="${k}" title="${esc(t)}" class="${(flt.tier || '') === k ? 'is-on' : ''}">${n}<b>${k ? (q.tiers?.[k] ?? 0) : Object.values(q.tiers || {}).reduce((a, b) => a + b, 0)}</b></button>`).join('')}</div>
-      <div class="tiers cats" data-sec="cats" aria-label="Call type"><span class="small muted">Call type</span>${[['', 'All', 'every call type'], ...CALL_CATS.map((c) => [c.id, c.label, c.lead])]
-        .filter(([k]) => !k || q.cats?.[k] || (flt.cat || '') === k)
-        .map(([k, n, t]) => `<button type="button" data-cat="${k}" title="${esc(t)}" class="${(flt.cat || '') === k ? 'is-on' : ''}">${esc(n)}<b>${k ? (q.cats?.[k] ?? 0) : Object.values(q.cats || {}).reduce((a, b) => a + b, 0)}</b></button>`).join('')}</div>
+      <div class="dropfilters">
+        <label class="dropf" data-sec="tiers"><span>Quality</span><select id="dtier" data-tier-sel aria-label="Quality">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
+          .map(([k, n]) => `<option value="${k}"${(flt.tier || '') === k ? ' selected' : ''}>${esc(n)} (${k ? (q.tiers?.[k] ?? 0) : Object.values(q.tiers || {}).reduce((a, b) => a + b, 0)})</option>`).join('')}</select></label>
+        <label class="dropf" data-sec="cats"><span>Call type</span><select id="dcat" data-cat-sel aria-label="Call type">${[['', 'All', 'every call type'], ...CALL_CATS.map((c) => [c.id, c.label, c.lead])]
+          .filter(([k]) => !k || q.cats?.[k] || (flt.cat || '') === k)
+          .map(([k, n]) => `<option value="${k}"${(flt.cat || '') === k ? ' selected' : ''}>${esc(n)} (${k ? (q.cats?.[k] ?? 0) : Object.values(q.cats || {}).reduce((a, b) => a + b, 0)})</option>`).join('')}</select></label>
+      </div>
       ${fold('dfilters', 'More filters and research status', `<div class="row small" style="margin:-4px 0 10px;gap:8px">Data: <div class="seg">${[['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Has an email']].map(([k, n]) => `<button type="button" data-dq="${k}" class="${(flt.data || '') === k ? 'is-on' : ''}">${n}</button>`).join('')}</div></div>
       <div id="rsx" class="small muted" style="margin:6px 0 0"></div>
       ${filterText ? `<div class="row small" style="margin:6px 0 0">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}`, Boolean(filterText))}
@@ -1125,8 +1127,8 @@ export async function dialerPage(app, user) {
     $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto2', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
     $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
     $$('[data-dq]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, data: b.dataset.dq }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
-    $$('[data-cat]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, cat: b.dataset.cat }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
-    $$('[data-tier]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, tier: b.dataset.tier }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
+    $('#dcat', view)?.addEventListener('change', (e) => { flt = { ...flt, cat: e.target.value }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); });
+    $('#dtier', view)?.addEventListener('change', (e) => { flt = { ...flt, tier: e.target.value }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); });
     $('#pdwh', view)?.addEventListener('change', (e) => setWait(e.target.value));
     $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); startPhone().catch(() => {}); power = !power; if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;

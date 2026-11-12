@@ -2079,3 +2079,9 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
   .tabs .tab-audio { flex: 1 1 auto; }
   .dial-grid .dq-t b, .dial-grid .dq-t small, .pd-card b, .pd-card small { white-space: normal; overflow-wrap: anywhere; }
 }
+
+/* Dialer filters as drop downs (Nov 2026, V: keep the phone screen uncluttered) */
+.dropfilters { display: flex; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; }
+.dropf { display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; min-width: 0; max-width: 100%; }
+.dropf > span { font: 600 12px var(--body); color: var(--muted); }
+.dropf select { width: 100%; min-height: 40px; max-width: 100%; text-overflow: ellipsis; }

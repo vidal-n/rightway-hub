@@ -361,7 +361,7 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   text on booking, day before email, 1 hour text, optional no show text; `dueFor` pure, `automationTick` from the cron, table `automation_log` unique per automation,
   lead and meet_at; Claude draft `POST /api/automations/draft`; test to yourself). `src/autoresearch.js`: background research of every new lead (1 per cron run plus
   `POST /api/research/tick` from the open dialer, daily cap `auto_research_cap`), `scrubReason` (bad, toll free, closed) at import and after research (`leads.scrub`).
-  Dialer quality tabs (`tierOf`: hot = A or callback/audit requested/no show, good B, maybe C, low D, fresh = not researched) and Power dial popup (next 3, countdown,
+  Dialer quality and call type filters are drop downs (`#dtier`, `#dcat`, counts in the labels; the old chip rows are gone; layout keys `tiers`, `cats` still hide them). Dialer quality tabs (`tierOf`: hot = A or callback/audit requested/no show, good B, maybe C, low D, fresh = not researched) and Power dial popup (next 3, countdown,
   rings via the browser phone, result popup, moves on; one call at a time). Booked with a time lands on the booker's Google Calendar with Meet (`bookOnCalendar` in
   `src/appointments.js`); team appointment calendar `#/calendar` (`GET /api/appointments`, all staff, view only); Google Meet now (`POST /api/leads/:id/meet-now`, opens
   in its own window: Meet cannot be embedded). Analytics: daily trend chart, funnel (dials to paid, work orders), call length bars (`public/js/charts.js`), Master sheet
