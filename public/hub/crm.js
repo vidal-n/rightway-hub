@@ -142,6 +142,7 @@ export async function pipelinePage(app, user, openId, screen) {
           <label class="field"><span>Stage</span><select data-f="stage"><option value="">Any</option>${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}"${f.stage === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
           <label class="field"><span>Tag</span><input data-f="tag" value="${esc(f.tag || '')}" placeholder="Any"></label>
           <label class="field"><span>Website</span><select data-f="site"><option value="">Any</option><option value="yes"${f.site === 'yes' ? ' selected' : ''}>Has a website</option><option value="no"${f.site === 'no' ? ' selected' : ''}>No website</option></select></label>
+          <label class="field"><span>Google profile</span><select data-f="gbp"><option value="">Any</option><option value="yes"${f.gbp === 'yes' ? ' selected' : ''}>Has one</option><option value="none"${f.gbp === 'none' ? ' selected' : ''}>None found (after the Google check)</option><option value="unknown"${f.gbp === 'unknown' ? ' selected' : ''}>Not checked yet</option></select></label>
           <label class="field"><span>Researched</span><select data-f="researched"><option value="">Any</option><option value="yes"${f.researched === 'yes' ? ' selected' : ''}>Yes</option><option value="no"${f.researched === 'no' ? ' selected' : ''}>Not yet</option></select></label>
           <label class="field"><span>Reviews from</span><input type="number" min="0" data-f="minReviews" value="${esc(f.minReviews ?? '')}"></label>
           <label class="field"><span>Reviews up to</span><input type="number" min="0" data-f="maxReviews" value="${esc(f.maxReviews ?? '')}"></label>
@@ -154,6 +155,7 @@ export async function pipelinePage(app, user, openId, screen) {
           <label class="field"><span>Data score at least</span><input type="number" min="0" max="100" data-f="minData" value="${esc(f.minData ?? '')}"></label>
         </div>
         <div class="row" style="margin-top:10px"><label class="row small" style="gap:6px"><input type="checkbox" data-f="callable"${f.callable ? ' checked' : ''}> Callable right now</label>
+          <label class="row small" style="gap:6px" title="Hides big brands, franchises, hospitals and schools, toll free numbers and businesses over 400 reviews. Fewer phone menus. A best guess."><input type="checkbox" data-f="small"${f.small ? ' checked' : ''}> Likely owner picks up</label>
           <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop3"${f.notTop3 ? ' checked' : ''}> Not in the top 3</label>
           <label class="row small" style="gap:6px"><input type="checkbox" data-f="notTop10"${f.notTop10 ? ' checked' : ''}> Not on the first page</label>
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
@@ -425,10 +427,10 @@ export function leadForm(lead, onSaved) {
 }
 
 // Call lists: the scrubbed data turned into who to call first.
-const CALL_LISTS = [['best', 'Best data first'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Email a person'], ['nosite', 'No website'], ['few', 'Under 20 reviews'], ['page2', 'Not on page one']];
-const CALL_LIST_F = { best: { minData: 60 }, mobile: { phoneType: 'mobile' }, owner: { owner: 'yes' }, email: { email: 'person' }, nosite: { site: 'no' }, few: { maxReviews: 20 }, page2: { notTop10: true } };
+const CALL_LISTS = [['best', 'Best data first'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Email a person'], ['nosite', 'No website'], ['few', 'Under 20 reviews'], ['page2', 'Not on page one'], ['nogbp', 'No Google profile'], ['small', 'Likely owner picks up']];
+const CALL_LIST_F = { best: { minData: 60 }, mobile: { phoneType: 'mobile' }, owner: { owner: 'yes' }, email: { email: 'person' }, nosite: { site: 'no' }, few: { maxReviews: 20 }, page2: { notTop10: true }, nogbp: { gbp: 'none' }, small: { small: true } };
 const CALL_LIST_SORT = { few: 'reviews', page2: '-score' };
-const LIST_KEYS = ['minData', 'phoneType', 'owner', 'email', 'site', 'maxReviews', 'notTop10'];
+const LIST_KEYS = ['minData', 'phoneType', 'owner', 'email', 'site', 'maxReviews', 'notTop10', 'gbp', 'small'];
 
 // Scrub: queue the leads on the server, then a progress strip on the Pipeline watches the queue and keeps it moving
 // (two leads per call, two calls at a time). It also finishes on its own in the background if the page is closed.
