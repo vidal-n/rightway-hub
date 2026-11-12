@@ -103,6 +103,7 @@ export function staffShell(app, user, active, inner) {
       <div class="side-scrim" id="scrim" hidden></div>
       <aside class="rail" id="side" aria-label="Main menu">
         <div class="rail-head"><a class="rail-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="140" height="24"></a>
+          <button type="button" class="cmd-ico rail-fold" id="rail-fold" aria-label="Collapse the menu" title="Collapse or open the menu">${icon.menu}</button>
           <button type="button" class="cmd-ico rail-close" id="menu-close" aria-label="Close menu">${icon.close}</button></div>
         <nav aria-label="Main">${railLinks(user, active)}</nav>
       </aside>
@@ -120,11 +121,17 @@ export function staffShell(app, user, active, inner) {
             <button type="button" class="pbub" data-pbub title="${esc(user.name || user.email || 'Profile')}" aria-label="Profile menu">${avatarHtml(user, initials(user))}</button>
           </div>
         </header>
+        <div class="qbar" id="qbar-top" aria-label="Quick links"></div>
         <main class="main" id="view">${inner || '<div class="skeleton"></div>'}</main>
       </div>
       <nav class="bbar" id="bbar" aria-label="Quick menu"></nav>
     </div>`;
   paintPills();
+  // Collapse the side menu to icons (computers and tablets). Remembered on this device.
+  const foldRail = (on, save = true) => { document.body.classList.toggle('rail-collapsed', on); if (save) { try { localStorage.setItem('rw-rail', on ? '1' : '0'); } catch { /* ignore */ } } const b = $('#rail-fold'); if (b) { b.setAttribute('aria-label', on ? 'Open the menu' : 'Collapse the menu'); b.setAttribute('aria-pressed', String(on)); } };
+  { let on = false; try { on = localStorage.getItem('rw-rail') === '1'; } catch { /* ignore */ } foldRail(on, false); }
+  $('#rail-fold')?.addEventListener('click', () => foldRail(!document.body.classList.contains('rail-collapsed')));
+  import('./quickbar.js').then((m) => m.mountQuickBar($('#qbar-top'), user, PAGES.filter(([n, href, role]) => (!role || user.role === role) && (/^#\/(work|clients|client)\b/.test(href) ? can(user, 'deliver') : href === '/scan.html' ? can(user, 'close') : true)))).catch(() => {});
   const side = $('#side'), scrim = $('#scrim');
   const setOpen = (on) => {
     side.classList.toggle('is-open', on); scrim.hidden = !on;
@@ -233,7 +240,7 @@ export function paintMaint(on) {
 }
 
 // ---------- command palette ----------
-const PAGES = [
+export const PAGES = [
   ['Dashboard', '#/'], ['Dialer', '#/phone'], ['Dial out', '#/phone/out'], ['Meetings: start or join Google Meet', '#/phone/meet'], ['Texts', '#/phone/texts'], ['Calls and voicemail', '#/phone/calls'],
   ['Recordings', '#/phone/recordings'], ['Agents', '#/agents'], ['Call analytics', '#/agents/analytics'], ['Pipeline', '#/pipeline'], ['Lead finder', '#/finder'], ['My work', '#/work'],
   ['Hours', '#/work/hours'], ['Task guides', '#/work/guides'], ['Clients', '#/clients'], ['Client view', '#/clients/view'], ['Scan tool', '/scan.html'],

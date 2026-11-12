@@ -12,16 +12,19 @@ export const clearDispos = () => { cache = null; };
 export const keyed = (list) => list.map((d, i) => ({ ...d, key: i < 9 ? String(i + 1) : '' }));
 export const needsTime = (d) => d && (d.acts === 'callback' || d.acts === 'booked');
 
-// The popup after a call ends. onSave gets { dispo, note, callbackAt, newLead } and does the saving; it may throw to keep the popup open.
-export async function dispositionModal({ title = 'How did the call go?', sub = '', answered = false, askLead = false, number = '', person = '', business = '', facts = [], note = '', callbackAt = '', onSave, onSkip } = {}) {
+// The result picker. It draws into any box: the popup (dispositionModal) or the call window itself (wrapUp in phone.js).
+// onSave gets { dispo, note, callbackAt, newLead } and does the saving; it may throw to keep the panel open. onDone(saved) runs after Save or Skip.
+// Returns { destroy, wasSaved } or null when the list could not load.
+export async function dispoPanel(host, { title = 'How did the call go?', sub = '', answered = false, askLead = false, number = '', person = '', business = '', facts = [], note = '', callbackAt = '', foot = '', footBind, skipLabel = 'Skip', bare = false, onSave, onSkip, onDone } = {}) {
   let list;
-  try { list = keyed((await loadDispos()).dispositions); } catch (e) { toast(e.message, true); return; }
+  try { list = keyed((await loadDispos()).dispositions); } catch (e) { toast(e.message, true); return null; }
   // A callback time tapped during the call picks the callback result for them.
   const suggest = callbackAt ? (list.find((d) => d.acts === 'callback') || {}).id : answered ? '' : (list.find((d) => d.acts === 'no_answer') || {}).id;
   let pick = suggest || '';
+  let saved = false, gone = false;
   const initials = String(person || business || '#').replace(/[^A-Za-z0-9 ]/g, ' ').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '#';
-  const m = modal(`
-    <div class="card-head"><div class="dp-who">${person || business ? `<span class="pd-av">${esc(initials)}</span>` : ''}<div style="min-width:0"><h2 style="margin:0">${esc(person || title)}</h2>${person || business ? `<div class="pd-biz">${esc(person ? business || title : '')}</div>` : ''}${sub ? `<p class="small muted" style="margin:4px 0 0">${esc(sub)}</p>` : ''}</div></div><button class="btn btn-ghost btn-sm" data-close>Skip</button></div>
+  host.innerHTML = `
+    <div class="card-head"><div class="dp-who">${person || business ? `<span class="pd-av">${esc(initials)}</span>` : ''}<div style="min-width:0"><h2 style="margin:0">${esc(person || title)}</h2>${person || business ? `<div class="pd-biz">${esc(person ? business || title : '')}</div>` : ''}${sub ? `<p class="small muted" style="margin:4px 0 0">${esc(sub)}</p>` : ''}</div></div><button class="btn btn-ghost btn-sm"${bare ? ' data-skip' : ' data-close'}>${esc(skipLabel)}</button></div>
     ${facts.filter((f) => f && f.v).length ? `<div class="dp-facts">${facts.filter((f) => f && f.v).map((f) => `<span><i>${esc(f.k)}</i>${esc(f.v)}</span>`).join('')}</div>` : ''}
     <div class="dispo-grid">${list.map((d) => `<button type="button" class="dispo-btn${d.id === pick ? ' on' : ''}" data-d="${esc(d.id)}">${d.key ? `<span class="kbd">${d.key}</span>` : ''}${esc(d.label)}</button>`).join('')}</div>
     <label class="field dispo-when" style="margin-top:12px${needsTime(list.find((d) => d.id === pick)) ? '' : ';display:none'}"><span>Callback or audit time</span><input type="datetime-local" id="dpwhen" value="${esc(callbackAt)}"></label>
@@ -29,11 +32,9 @@ export async function dispositionModal({ title = 'How did the call go?', sub = '
     ${askLead ? `<details class="dispo-lead" style="margin-top:12px"><summary>Add ${esc(number || 'this number')} as a new lead</summary>
       <div class="form-grid" style="margin-top:10px"><label class="field"><span>Business name</span><input id="dpbiz" placeholder="Shore Plumbing"></label>
       <label class="field"><span>Contact</span><input id="dpcontact" placeholder="Mike"></label><label class="field"><span>State</span><input id="dpstate" placeholder="FL" maxlength="20"></label></div></details>` : ''}
-    <div class="row end" style="margin-top:16px"><button type="button" class="btn btn-primary" id="dpsave"${pick ? '' : ' disabled'}>Save</button></div>`,
-  { onClose: () => { document.removeEventListener('keydown', onKey); if (!saved) onSkip?.(); } });
-  let saved = false;
-  const el = m.el;
-  el.classList.add('dispo-modal');
+    <div class="row end" style="margin-top:16px"><button type="button" class="btn btn-primary" id="dpsave"${pick ? '' : ' disabled'}>Save</button></div>
+    ${foot ? `<div class="dp-foot">${foot}</div>` : ''}`;
+  const el = host;
   const choose = (id) => {
     pick = id;
     $$('.dispo-btn', el).forEach((b) => b.classList.toggle('on', b.dataset.d === id));
@@ -42,12 +43,16 @@ export async function dispositionModal({ title = 'How did the call go?', sub = '
   };
   $$('.dispo-btn', el).forEach((b) => b.addEventListener('click', () => choose(b.dataset.d)));
   const onKey = (e) => {
-    if (!document.body.contains(el) || /input|textarea|select/i.test(e.target.tagName)) return;
+    if (!document.body.contains(el)) return destroy();
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
     const d = list.find((x) => x.key && x.key === e.key);
     if (d) { e.preventDefault(); choose(d.id); }
     if (e.key === 'Enter' && pick) { e.preventDefault(); $('#dpsave', el).click(); }
   };
+  function destroy() { gone = true; document.removeEventListener('keydown', onKey); }
   document.addEventListener('keydown', onKey);
+  if (foot) footBind?.($('.dp-foot', el));
+  $('[data-skip]', el)?.addEventListener('click', () => { if (gone) return; destroy(); onSkip?.(); onDone?.(false); });
   $('#dpsave', el).addEventListener('click', async (e) => {
     const d = list.find((x) => x.id === pick);
     const when = $('#dpwhen', el).value;
@@ -58,9 +63,21 @@ export async function dispositionModal({ title = 'How did the call go?', sub = '
       await onSave({ dispo: d.id, acts: d.acts, label: d.label, note: $('#dpnote', el).value.trim(), callbackAt: when || null,
         newLead: biz ? { business: biz, contact: $('#dpcontact', el).value.trim(), state: $('#dpstate', el).value.trim() } : null });
       saved = true;
-      m.close();
+      destroy();
+      onDone?.(true);
     } catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
   });
+  return { destroy, wasSaved: () => saved };
+}
+
+// The popup version (calls that did not go through the dialer window, and the dial out dial pad).
+export async function dispositionModal(opts = {}) {
+  try { await loadDispos(); } catch (e) { toast(e.message, true); return; }
+  let panel = null;
+  const m = modal('<div class="dispo-host"></div>', { onClose: () => { panel?.destroy(); if (!panel?.wasSaved()) opts.onSkip?.(); } });
+  m.el.classList.add('dispo-modal');
+  panel = await dispoPanel($('.dispo-host', m.el), { ...opts, onDone: (saved) => { if (saved) m.close(); } });
+  if (!panel) m.close();
   return m;
 }
 

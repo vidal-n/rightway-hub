@@ -139,6 +139,8 @@ const SCHEMA = [
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, endpoint TEXT UNIQUE NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL, ua TEXT,
     created_at INTEGER NOT NULL, last_ok INTEGER, fails INTEGER NOT NULL DEFAULT 0)`,
   `CREATE INDEX IF NOT EXISTS push_user ON push_subs (user_id)`,
+  `CREATE TABLE IF NOT EXISTS crash_reports (id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, user_id TEXT, who TEXT, role TEXT, message TEXT NOT NULL, stack TEXT, where_at TEXT, ua TEXT, build TEXT, extra TEXT, status TEXT NOT NULL DEFAULT 'new', count INTEGER NOT NULL DEFAULT 1)`,
+  `CREATE INDEX IF NOT EXISTS crash_created ON crash_reports (created_at)`,
   `CREATE TABLE IF NOT EXISTS notifications (
     id TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, url TEXT, tag TEXT, read_at INTEGER, created_at INTEGER NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS notif_user ON notifications (user_id, created_at)`,

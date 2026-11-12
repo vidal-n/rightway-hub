@@ -1,4 +1,6 @@
 // Rightway Hub: one app for the team and for clients. Routes by role.
+import './crash.js';
+import './appfeel.js';
 import { $, esc, api, toast, busy, VIEW } from './core.js';
 import { can } from '/js/jobs.js';
 import { playIntro } from './intro.js';
@@ -129,7 +131,7 @@ async function route() {
     return dialerPage(app, u);
   }
   // Owner areas: agents are sent back to their dashboard (the server refuses these for them too).
-  const ownerOnly = ['automations', 'vault', 'payments', 'finder'].includes(parts[0]) || (parts[0] === 'settings' && ['team', 'files', 'budget'].includes(parts[1])) || parts[0] === 'team';
+  const ownerOnly = ['automations', 'vault', 'payments', 'finder'].includes(parts[0]) || (parts[0] === 'settings' && ['team', 'files', 'budget', 'bugs'].includes(parts[1])) || parts[0] === 'team';
   if (ownerOnly && u.role !== 'admin') { location.replace('#/'); return; }
   // Jobs: Clients and My work are for closers and owners (setters and schedulers work the phones and the calendar).
   if (['work', 'clients', 'client', 'clientview'].includes(parts[0]) && !can(u, 'deliver') && !(parts[0] === 'work' && parts[1] === 'schedule')) { location.replace('#/'); return; }
@@ -155,6 +157,7 @@ async function route() {
   if (parts[0] === 'google') return googlePage(app, u);
   if (parts[0] === 'settings' && parts[1] === 'files') return import('./files.js').then((m) => m.filesPage(app, u, parts[2] || ''));
   if (parts[0] === 'settings' && parts[1] === 'budget') return import('./budget.js').then((m) => m.budgetPage(app, u));
+  if (parts[0] === 'settings' && parts[1] === 'bugs') return import('./bugs.js').then((m) => m.bugsPage(app, u));
   if (parts[0] === 'settings') return settingsPage(app, u);
   if (parts[0] === 'client' && parts[1]) return clientPage(app, u, parts[1], parts[2] || 'overview', { ...state, sub: parts[3] });
   if (parts[0] === 'clients' && parts[1] === 'view') return clientViewPage(app, u, parts[2]);

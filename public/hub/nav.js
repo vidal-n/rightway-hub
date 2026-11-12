@@ -103,6 +103,14 @@ export async function refreshBadges(force = false) {
   return last;
 }
 export const badgeCache = () => last;
+// The top bar's quick links, one list per person (saved with the menu order on the server, cached on this device).
+export const quickLinks = () => (Array.isArray(prefs?.quick) ? prefs.quick : null);
+export async function saveQuick(list) {
+  const r = await api('/api/me/nav', { method: 'PUT', body: { quick: list } });
+  prefs = r.prefs;
+  try { localStorage.setItem('rw-nav', JSON.stringify(prefs)); } catch { /* ignore */ }
+}
+export const ensurePrefs = () => loadPrefs();
 document.addEventListener('rw-badges', () => refreshBadges(true));
 
 // ---------- customize ----------

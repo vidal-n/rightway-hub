@@ -106,6 +106,17 @@ route('POST', '/api/clients/:id/assets', async ({ env, user, params, request }) 
   return json({ ok: true, ids });
 });
 
+// The client's logo for the app's opening screen. 404 when they have not sent one yet.
+route('GET', '/api/clients/:id/logo', async ({ env, user, params }) => {
+  requireClientAccess(user, params.id);
+  const c = await clientOr404(env, params.id);
+  if (!c.logo_key) throw new HttpError('No logo yet.', 404);
+  const obj = await env.MEDIA?.get(c.logo_key);
+  if (!obj) throw new HttpError('No logo yet.', 404);
+  const type = obj.httpMetadata?.contentType || 'image/png';
+  return new Response(obj.body, { headers: { 'content-type': type, 'cache-control': 'private, max-age=120', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'" } });
+});
+
 route('GET', '/api/assets/:id', async ({ env, user, params, url }) => {
   const a = await first(env, 'SELECT * FROM assets WHERE id = ?', params.id);
   if (!a) throw new HttpError('Not found.', 404);

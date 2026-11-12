@@ -534,3 +534,5 @@ export function audioPanel({ device = null } = {}) {
 let getDev = () => null;
 export const setDeviceGetter = (fn) => { getDev = fn; };
 document.addEventListener('click', (e) => { if (e.target.closest?.('[data-audio]')) audioPanel({ device: getDev() }); });
+// Any element with data-testmic opens the quick mic test (Phone tab bar).
+document.addEventListener('click', (e) => { if (e.target.closest?.('[data-testmic]')) import('./micquick.js').then((m) => m.testMic()); });

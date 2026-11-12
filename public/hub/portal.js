@@ -32,6 +32,7 @@ async function clientBadges() {
 }
 
 export async function portal(app, user, tab, state) {
+  if (user.role === 'client' && user.client_id && !user.viewAs) import('./splash.js').then((m) => m.showLogoSplash(user.client_id)).catch(() => {});
   let data;
   try { data = await api(`/api/clients/${user.client_id}`); } catch (e) { app.innerHTML = `<div class="auth"><div class="auth-card"><p class="err-text">${esc(e.message)}</p></div></div>`; return; }
   const c = data.client;

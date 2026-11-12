@@ -46,7 +46,7 @@ export function uploader(el, clientId, { onDone, staff = false } = {}) {
     fd.append('kind', inp.dataset.kind);
     [...inp.files].slice(0, 20).forEach((f) => fd.append('file', f));
     $('#upst', el).textContent = `Uploading ${inp.files.length}...`;
-    try { const r = await api(`/api/clients/${clientId}/assets`, { method: 'POST', form: fd }); toast(`${r.ids.length} uploaded`); onDone?.(); } catch (err) { toast(err.message, true); } finally { $('#upst', el).textContent = ''; inp.value = ''; }
+    try { const r = await api(`/api/clients/${clientId}/assets`, { method: 'POST', form: fd }); toast(`${r.ids.length} uploaded`); if (inp.dataset.kind === 'logo') import('./splash.js').then((m) => m.showLogoSplash(clientId, { force: true })).catch(() => {}); onDone?.(); } catch (err) { toast(err.message, true); } finally { $('#upst', el).textContent = ''; inp.value = ''; }
   }));
 }
 

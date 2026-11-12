@@ -653,6 +653,7 @@ import './leadfinder.js';
 import './freedata.js';
 import './costs.js';
 import './avatar.js';
+import './crash.js';
 import './autoresearch.js';
 import './spend.js';
 import './vault.js';

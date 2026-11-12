@@ -110,9 +110,9 @@ export async function homePage(app, user) {
   // The money widgets call Stripe, DataForSEO and Twilio, which are slow. The dashboard draws first, then these fill in one by one.
   if (admin) {
     const later = (ms, fn) => setTimeout(() => { if (document.body.contains(view) && $('#paysnap', view)) fn(); }, ms);
-    later(250, () => paymentsSnapshot($('#paysnap', view)));
-    later(600, () => import('./budget.js').then((m) => m.budgetCard($('#budsnap', view))));
-    later(950, () => import('./balances.js').then((m) => m.balancesCard($('#balsnap', view))));
+    later(2500, () => paymentsSnapshot($('#paysnap', view)));
+    later(5500, () => import('./budget.js').then((m) => m.budgetCard($('#budsnap', view))));
+    later(8500, () => import('./balances.js').then((m) => m.balancesCard($('#balsnap', view))));
   }
   $$('[data-lead]', view).forEach((li) => li.addEventListener('click', () => leadModal(li.dataset.lead, () => homePage(app, user))));
   $('#mk-sample', view)?.addEventListener('click', async (e) => {

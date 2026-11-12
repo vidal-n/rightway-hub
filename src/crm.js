@@ -529,7 +529,7 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const ready = rows
     .filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3))
     .map((l) => seeAppt(decorate(l), user))
-    .filter((l) => (!f.tz || l.tz_short === f.tz) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())
+    .filter((l) => (!f.tz || f.tz.split(',').includes(l.tz_short)) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())
       && has(`${l.industry} ${l.category}`, f.industry) && has(l.tags, f.tag) && has(l.city, f.city) && (l.score || 0) >= minScore)
     .filter((l) => !f.tier || tierOf(l) === f.tier)
     .filter((l) => !f.cat || callCategory(l).id === f.cat)

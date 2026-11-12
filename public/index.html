@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#0F1B17">
@@ -20,6 +20,8 @@
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@500;600;700&display=swap"></noscript>
   <link rel="stylesheet" href="/hub.css">
   <link rel="modulepreload" href="/hub/app.js">
+  <link rel="modulepreload" href="/hub/crash.js">
+  <link rel="modulepreload" href="/hub/appfeel.js">
   <link rel="modulepreload" href="/hub/core.js">
   <link rel="modulepreload" href="/hub/hovercard.js">
   <link rel="modulepreload" href="/hub/staff.js">
@@ -80,7 +82,12 @@
         if (!app || !app.querySelector('.spin')) return;
         app.innerHTML = '<div class="auth"><div class="auth-card"><h1 style="font-size:26px">The Hub did not load</h1><p class="muted">Usually an old copy of the app saved in this browser. Press Fix and reload.</p>'
           + (errs.length ? '<pre style="white-space:pre-wrap;font-size:12px;background:#F2F7F4;color:#0F1B17;padding:10px;border-radius:10px">' + errs.slice(0, 4).join('\n').replace(/[<>&]/g, '') + '</pre>' : '')
-          + '<button class="btn btn-primary" id="fixrl">Fix and reload</button></div></div>';
+          + '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" id="fixrl">Fix and reload</button><button class="btn btn-ghost" id="sndrp">Report it</button></div></div></div>';
+        document.getElementById('sndrp').onclick = function (ev) {
+          var b = ev.currentTarget; b.disabled = true; b.textContent = 'Sending...';
+          fetch('/api/crash', { method: 'POST', headers: { 'content-type': 'application/json', 'x-rw': '1' }, body: JSON.stringify({ message: 'The Hub did not load', stack: errs.slice(0, 6).join('\n'), where: location.hash + ' ' + location.pathname, ua: navigator.userAgent, extra: { online: navigator.onLine, sw: Boolean(navigator.serviceWorker && navigator.serviceWorker.controller) } }) })
+            .then(function (r) { b.textContent = r.ok ? 'Sent. Thank you.' : 'Could not send'; }, function () { b.textContent = 'Could not send'; });
+        };
         document.getElementById('fixrl').onclick = function () {
           var done = function () { location.replace('/?r=' + Date.now() + location.hash); };
           var jobs = [];

@@ -45,8 +45,14 @@ route('PUT', '/api/me/nav', async ({ env, user, body }) => {
   const b = await body();
   const clean = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === 'string' && /^[a-z]{2,20}$/.test(x)).slice(0, 30) : []);
   if (b.reset) { await run(env, 'UPDATE users SET nav_prefs = NULL WHERE id = ?', user.id); return json({ prefs: null }); }
-  const prefs = { order: clean(b.order), hidden: clean(b.hidden) };
-  if (!prefs.order.length) throw new HttpError('Nothing to save.');
+  const cleanQ = (a) => (Array.isArray(a) ? [...new Set(a.filter((x) => typeof x === 'string' && /^(#\/|\/)[A-Za-z0-9\/_.-]{0,60}$/.test(x)))].slice(0, 14) : []);
+  const cur = await first(env, 'SELECT nav_prefs FROM users WHERE id = ?', user.id);
+  let old = {}; try { old = cur?.nav_prefs ? JSON.parse(cur.nav_prefs) : {}; } catch { old = {}; }
+  // The top bar's quick links are saved on their own: sending only `quick` leaves the menu order alone.
+  const prefs = b.order ? { order: clean(b.order), hidden: clean(b.hidden) } : { order: old.order || [], hidden: old.hidden || [] };
+  if (b.order && !prefs.order.length) throw new HttpError('Nothing to save.');
+  if (b.quick !== undefined) prefs.quick = cleanQ(b.quick); else if (old.quick) prefs.quick = old.quick;
+  if (!prefs.order.length && !prefs.quick?.length) throw new HttpError('Nothing to save.');
   await run(env, 'UPDATE users SET nav_prefs = ? WHERE id = ?', JSON.stringify(prefs), user.id);
   return json({ prefs });
 });

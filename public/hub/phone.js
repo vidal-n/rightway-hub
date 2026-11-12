@@ -1,6 +1,7 @@
 // Browser phone: calls go out and come in through the computer's mic and speakers (Twilio Voice JS SDK, vendored in /vendor).
 // One Device per tab, created after login. A call bar floats over every page while a call is live.
 import { api, esc, toast, makeDraggable } from './core.js';
+import { dispoPanel } from './dispo.js';
 import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter, warmAudio } from './audioset.js';
 
 const SDK = '/vendor/twilio-voice-2.18.5.min.js';
@@ -117,6 +118,19 @@ function hideBar(delay = 0) {
   setTimeout(() => { if (!st.call && bar) { bar.classList.add('out'); setTimeout(() => { if (!st.call) { bar?.remove(); bar = null; } }, 250); } }, delay);
 }
 
+// The result picker inside the call window: the call ends, the same window turns into "How did it go?", Save closes it.
+// opts are dispoPanel's, plus onDone(saved). Returns the panel (or null when the list could not load).
+export async function wrapUp(opts = {}) {
+  const b = ensureBar();
+  b.classList.remove('out', 'min');
+  b.dataset.state = 'wrap';
+  b.innerHTML = '<div class="cb-grip" title="Drag anywhere on this window to move it. Double click here to put it back."><i></i></div><div class="cb-wrap"></div>';
+  const p = await dispoPanel(b.querySelector('.cb-wrap'), { ...opts, bare: true, onDone: (saved) => { hideBar(0); opts.onDone?.(saved); } });
+  if (!p) hideBar(0);
+  return p;
+}
+export const closeCallWindow = () => hideBar(0);
+
 // What the rep types and taps during a call survives the window redrawing and is read when the result popup opens.
 let draft = { note: '', when: '' };
 export const takeCallDraft = () => { const d = draft; draft = { note: '', when: '' }; return d; };
@@ -129,7 +143,7 @@ function syncTools(b, view) {
   t.className = 'cb-tools';
   t.innerHTML = `${tl.strip ? '<div class="cb-power" data-nodrag-off></div>' : ''}<textarea class="cb-notein" rows="3" placeholder="Notes while you talk. They fill in the result box when you hang up." aria-label="Call notes"></textarea>
     ${tl.chips?.length ? `<div class="cb-sub">If they say call back</div><div class="cb-chips">${tl.chips.map(([n, v], i) => `<button type="button" class="cb-chip" data-chip="${i}" data-v="${esc(v)}">${esc(n)}</button>`).join('')}</div>` : ''}
-    ${tl.actions?.length ? `<div class="cb-quick">${tl.actions.map(([n], i) => `<button type="button" class="cb-q" data-q="${i}">${esc(n)}</button>`).join('')}</div>` : ''}`;
+    ${tl.actions?.length ? `${tl.actions.filter((x) => x[2] === 'primary').map((x) => `<button type="button" class="cb-book" data-q="${tl.actions.indexOf(x)}">${esc(x[0])}</button>`).join('')}<div class="cb-quick">${tl.actions.map(([n, , kind], i) => (kind === 'primary' ? '' : `<button type="button" class="cb-q" data-q="${i}">${esc(n)}</button>`)).join('')}</div>` : ''}`;
   const ps = t.querySelector('.cb-power');
   if (ps && tl.strip) { ps.innerHTML = tl.strip.html(); tl.strip.bind?.(ps); }
   const note = t.querySelector('.cb-notein');
@@ -202,8 +216,9 @@ function track(call, view, { onEnd, act } = {}) {
     emit();
     const secs = answered ? Math.round((Date.now() - started) / 1000) : 0;
     set({ state: 'ended', label: label || endLabel || (answered ? `Call ended ${clock(secs)}` : 'No answer') });
-    hideBar(2200);
-    onEnd?.({ answered, seconds: secs });
+    // onEnd returns 'keep' when the window turns into the result picker (wrapUp), so it must not fade away.
+    const keep = onEnd?.({ answered, seconds: secs });
+    if (keep !== 'keep') hideBar(2200);
   };
   draw();
   call.on('ringing', (hasEarlyMedia) => { if (!answered) { set({ state: 'ringing', label: 'Ringing...' }); if (!hasEarlyMedia) ringback(true); } });
@@ -325,8 +340,8 @@ async function bridgeCall({ leadId, from, name, who, cat, info, onEnd }) {
     clearInterval(poll);
     if (st.call === call) { st.call = null; awakeDuringCall(false); emit(); }
     renderBar({ ...view, state: 'ended', label: label || (res.answered ? `Call ended ${clock(res.duration || 0)}` : 'Call finished') });
-    hideBar(2200);
-    onEnd?.({ answered: Boolean(res.answered), seconds: res.duration || 0, activityId: id, leadId, name: view.name });
+    const keep = onEnd?.({ answered: Boolean(res.answered), seconds: res.duration || 0, activityId: id, leadId, name: view.name });
+    if (keep !== 'keep') hideBar(2200);
   };
   const bar = ensureBar();
   bar.onclick = (ev) => { if (ev.target.closest('[data-act="hang"]')) finish(''); };

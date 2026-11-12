@@ -1,10 +1,12 @@
 // Pipeline filters. Pure so the tests can run it in Node.
 export function filterLeads(leads, p) {
   const f = p.f || {};
+  // Time zones are one or several, saved as 'ET,CT'. '?' means unknown.
+  const zs = String(p.tz || '').split(',').map((z) => z.trim()).filter(Boolean);
   const q = (f.q || '').toLowerCase().trim();
   const inc = (v, want) => !want || String(v || '').toLowerCase().includes(String(want).toLowerCase().trim());
   return leads.filter((l) => {
-    if (p.tz && (p.tz === '?' ? l.tz_short : l.tz_short !== p.tz)) return false;
+    if (zs.length && !zs.some((z) => (z === '?' ? !l.tz_short : l.tz_short === z))) return false;
     if (q && ![l.business, l.contact_name, l.phone, l.email, l.city, l.industry, l.category, l.zip, l.tags].some((v) => String(v || '').toLowerCase().includes(q))) return false;
     if (f.grades?.length && !f.grades.includes(l.grade)) return false;
     if (f.state && l.state !== f.state) return false;
