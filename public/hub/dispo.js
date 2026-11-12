@@ -74,7 +74,7 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
 export async function dispositionModal(opts = {}) {
   try { await loadDispos(); } catch (e) { toast(e.message, true); return; }
   let panel = null;
-  const m = modal('<div class="dispo-host"></div>', { onClose: () => { panel?.destroy(); if (!panel?.wasSaved()) opts.onSkip?.(); } });
+  const m = modal('<div class="dispo-host"></div>', { win: true, onClose: () => { panel?.destroy(); if (!panel?.wasSaved()) opts.onSkip?.(); } });
   m.el.classList.add('dispo-modal');
   panel = await dispoPanel($('.dispo-host', m.el), { ...opts, onDone: (saved) => { if (saved) m.close(); } });
   if (!panel) m.close();

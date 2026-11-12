@@ -194,7 +194,7 @@ export async function bookModal(lead, onDone) {
       ${noGoogle ? '<label class="field span-all"><span>Meeting link (optional: Zoom, Meet, or leave blank for a phone call)</span><input name="link" inputmode="url" placeholder="https://"></label>' : ''}
       <label class="field span-all"><span>Note in the invite (optional)</span><input name="note" placeholder="Anything they should have ready"></label>
       <div class="span-all row end"><button class="btn btn-primary" type="submit">${noGoogle ? 'Book it' : 'Book with Google Meet'}</button></div>
-    </form><div id="bkout"></div>`);
+    </form><div id="bkout"></div>`, { win: true });
   // Who is free at that time: busy people are marked, and the chosen person's clash is spelled out before booking.
   const bf = $('#bkf', m.el);
   // The moment for the typed day and time in their zone, and both clocks shown under the fields.

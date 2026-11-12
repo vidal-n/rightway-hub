@@ -1,4 +1,5 @@
 // Shared helpers for the Hub app.
+import { leaving, arriving } from "./dialwin.js";
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 export const REDUCED = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -100,20 +101,30 @@ export async function resizeImage(file, max = 1600, quality = 0.85) {
 
 // Move a window by its title area. `grab(e)` says whether the press started on a handle. The window is nudged with the CSS `translate`
 // property, so it keeps its own layout, and it can never be dragged fully off screen. With `key` the spot is remembered on this computer.
+// A real phone (iPhone, Android phone). iPads, split screen panes and narrow desktop windows are NOT phones: their pop ups float and can be moved.
+export const isPhone = () => /iPhone|iPod|Android.*Mobile|Windows Phone/i.test(navigator.userAgent || '');
+try { if (isPhone()) document.documentElement.classList.add('is-phone'); } catch { /* ignore */ }
+
 export function makeDraggable(el, { grab, key = '', off = () => false, onMove } = {}) {
   const KEY = key ? `rw-pos-${key}` : '';
-  const put = (x, y) => { el.style.translate = x || y ? `${x}px ${y}px` : ''; };
+  const M = 8;                                  // keep this much air from every screen edge
   let x = 0, y = 0;
-  if (KEY) { try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { x = Number(v.x) || 0; y = Number(v.y) || 0; } } catch { /* ignore */ } put(x, y); keepOnScreen(); }
-  function keepOnScreen() {
+  const put = (nx, ny) => { el.style.translate = nx || ny ? `${nx}px ${ny}px` : ''; };
+  if (KEY) { try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { x = Number(v.x) || 0; y = Number(v.y) || 0; } } catch { /* ignore */ } }
+  // The whole window stays on screen: on resize, split screen, rotation, or when its content grows after it was moved.
+  // While the window is docked (off), the saved spot is not applied at all.
+  function sync() {
+    if (off()) { if (el.style.translate) put(0, 0); return; }
+    put(x, y);
     const r = el.getBoundingClientRect();
     if (!r.width) return;
-    const m = 60;                              // always leave this much of the window on screen
+    const vw = document.documentElement.clientWidth || innerWidth, vh = (window.visualViewport && window.visualViewport.height) || innerHeight;
     let dx = 0, dy = 0;
-    if (r.right < m) dx = m - r.right; else if (r.left > innerWidth - m) dx = innerWidth - m - r.left;
-    if (r.top < 0) dy = -r.top; else if (r.top > innerHeight - m) dy = innerHeight - m - r.top;
+    if (r.width > vw - 2 * M) dx = M - r.left; else if (r.left < M) dx = M - r.left; else if (r.right > vw - M) dx = vw - M - r.right;
+    if (r.height > vh - 2 * M) dy = M - r.top; else if (r.top < M) dy = M - r.top; else if (r.bottom > vh - M) dy = vh - M - r.bottom;
     if (dx || dy) { x += dx; y += dy; put(x, y); }
   }
+  sync();
   let drag = null;
   el.addEventListener('pointerdown', (e) => {
     if (off() || e.button > 0 || !grab || !grab(e) || e.target.closest('button, a, input, select, textarea, label, [contenteditable], [data-nodrag]')) return;
@@ -126,7 +137,7 @@ export function makeDraggable(el, { grab, key = '', off = () => false, onMove } 
     const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
     if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
     drag.moved = true;
-    x = drag.x + dx; y = drag.y + dy; put(x, y); keepOnScreen(); onMove?.(true);
+    x = drag.x + dx; y = drag.y + dy; put(x, y); sync(); onMove?.(true);
   });
   const end = (e) => {
     if (!drag || (e && e.pointerId !== drag.id)) return;
@@ -137,8 +148,12 @@ export function makeDraggable(el, { grab, key = '', off = () => false, onMove } 
   };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
-  window.addEventListener('resize', keepOnScreen);
-  return { reset() { x = 0; y = 0; put(0, 0); if (KEY) { try { localStorage.removeItem(KEY); } catch { /* ignore */ } } } };
+  const again = () => { if (!document.body.contains(el)) { window.removeEventListener('resize', again); window.visualViewport?.removeEventListener('resize', again); return; } sync(); };
+  window.addEventListener('resize', again);
+  window.addEventListener('orientationchange', again);
+  window.visualViewport?.addEventListener('resize', again);
+  try { new ResizeObserver(() => { if (!drag) sync(); }).observe(el); } catch { /* older browsers */ }
+  return { reset() { x = 0; y = 0; put(0, 0); if (KEY) { try { localStorage.removeItem(KEY); } catch { /* ignore */ } } }, sync };
 }
 
 // Daily dial goal (owners only; pass userId to set an agent's): click the number, type a new one (1 to 1000) or pick a common one, Enter saves. Saved on the person, shown everywhere.
@@ -182,27 +197,42 @@ export const trayRemove = (id) => { if (tray.delete(id)) paintTray(); };
 let modalSeq = 0;
 // Modes: "modal" (centered, page behind is dimmed), "float" (small window over the page, the page stays usable and it follows you to every page),
 // "docked" (minimized into the tray). Leaving the page parks a modal in the tray instead of throwing its work away.
-export function modal(html, { onClose, title: wantTitle } = {}) {
+// win: true opens the pop up INSIDE the dialer window's place (same spot, same size motion) when a call or power dial window is showing,
+// so Book, Text and the result screens switch in one window instead of closing one pop up and opening another. Otherwise it is a normal pop up.
+export function modal(html, { onClose, title: wantTitle, win = false } = {}) {
+  const host = win && !isPhone() ? document.querySelector('.callbar:not(.under), .pd:not(.under)') : null;
+  // Never cover a call in progress: the hang up and mute buttons stay in view.
+  const under = host && !['dialing', 'ringing', 'live'].includes(host.dataset?.state) ? host : null;
   const bg = document.createElement('div');
-  bg.className = 'modal-bg';
+  bg.className = 'modal-bg' + (under ? ' win' : '');
   bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
   const id = `m${++modalSeq}`;
   let closed = false;
   let dragging = false;
   let mode = 'modal';
   const box = bg.firstElementChild;
-  const close = () => { if (closed) return; closed = true; trayRemove(id); document.removeEventListener('keydown', onKey); window.removeEventListener('hashchange', away); bg.remove(); onClose?.(); };
+  const close = () => {
+    if (closed) return; closed = true; trayRemove(id); document.removeEventListener('keydown', onKey); window.removeEventListener('hashchange', away);
+    if (under) {
+      leaving(box); bg.remove();
+      if (document.body.contains(under)) { under.classList.remove('under'); arriving(under); }
+    } else if (!mode.startsWith('d') && !matchMedia('(prefers-reduced-motion: reduce)').matches && bg.isConnected) {
+      bg.classList.add('closing'); setTimeout(() => bg.remove(), 230);
+    } else bg.remove();
+    onClose?.();
+  };
   // A drag that ends over the dark backdrop must not count as a click on it.
   bg.addEventListener('click', (e) => { if (dragging) return; if (mode === 'modal' && e.target === bg) return close(); if (e.target.closest('[data-close]')) close(); });
   // Every pop up can be moved by its title bar (or its top edge when it has no title bar).
   const drag = makeDraggable(box, {
+    key: under ? 'dialwin' : '',
     grab: (e) => {
       const r = box.getBoundingClientRect();
       const head = box.querySelector('.card-head, .modal-head, .aud-head, h2');
       const top = head && head.getBoundingClientRect().top - r.top < 140;
       return (top && head.contains(e.target)) || e.clientY - r.top < 28;
     },
-    off: () => innerWidth < 700, onMove: (v) => { dragging = v; },
+    off: () => isPhone(), onMove: (v) => { dragging = v; },
   });
   box.classList.add('movable');
   const nameOf = () => (wantTitle || box.querySelector('.dp-who h2, h2, h3, .item-title')?.textContent || 'Window').replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -228,9 +258,10 @@ export function modal(html, { onClose, title: wantTitle } = {}) {
   function onKey(e) { if (e.key === 'Escape' && mode === 'modal' && document.body.lastElementChild === bg) close(); }
   document.addEventListener('keydown', onKey);
   // Going to another page does not lose the work: a centered window parks itself in the tray, a floating one simply stays.
-  function away() { if (!closed && mode === 'modal') setMode('docked'); }
+  function away() { if (!closed && mode === 'modal' && !under) setMode('docked'); }
   window.addEventListener('hashchange', away);
   document.body.appendChild(bg);
+  if (under) { leaving(under); under.classList.add('under'); arriving(box); }
   return { el: box, close, dock: () => setMode('docked'), float: () => setMode('float') };
 }
 

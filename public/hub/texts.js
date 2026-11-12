@@ -60,7 +60,7 @@ export function textPanel(el, lead, { rep = '', onChange } = {}) {
 
 export function textModal(lead, opts = {}) {
   let stop = () => {};
-  const m = modal(`<div class="card-head"><div><p class="eyebrow">Texts</p><h2>${esc(lead.business)}</h2><div class="small">${esc(lead.phone || '')}</div></div><button class="btn btn-ghost btn-sm" data-close>Close</button></div><div id="tbody"></div>`, { onClose: () => stop() });
+  const m = modal(`<div class="card-head"><div><p class="eyebrow">Texts</p><h2>${esc(lead.business)}</h2><div class="small">${esc(lead.phone || '')}</div></div><button class="btn btn-ghost btn-sm" data-close>Close</button></div><div id="tbody"></div>`, { win: true, onClose: () => stop() });
   stop = textPanel($('#tbody', m.el), lead, opts);
   return m;
 }

@@ -1,6 +1,7 @@
 // Browser phone: calls go out and come in through the computer's mic and speakers (Twilio Voice JS SDK, vendored in /vendor).
 // One Device per tab, created after login. A call bar floats over every page while a call is live.
-import { api, esc, toast, makeDraggable } from './core.js';
+import { api, esc, toast, makeDraggable, isPhone } from './core.js';
+import { arriving, leaving, morphFrom } from './dialwin.js';
 import { dispoPanel } from './dispo.js';
 import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter, warmAudio } from './audioset.js';
 
@@ -104,7 +105,7 @@ function ensureBar() {
   bar.setAttribute('aria-label', 'Phone call');
   document.body.appendChild(bar);
   // Drag the call window by its top (the name area); it remembers where you left it. On a phone it stays docked.
-  const drag = makeDraggable(bar, { grab: () => true, key: 'dialwin', off: () => innerWidth <= 900 });
+  const drag = makeDraggable(bar, { grab: () => true, key: 'dialwin', off: () => isPhone() });
   bar.addEventListener('dblclick', (e) => { if (e.target.closest('.cb-grip')) drag.reset(); });
   bar.addEventListener('click', (e) => {
     const c = e.target.closest('[data-copy]');
@@ -115,18 +116,19 @@ function ensureBar() {
   return bar;
 }
 function hideBar(delay = 0) {
-  setTimeout(() => { if (!st.call && bar) { bar.classList.add('out'); setTimeout(() => { if (!st.call) { bar?.remove(); bar = null; } }, 250); } }, delay);
+  setTimeout(() => { if (!st.call && bar) { leaving(bar); bar.remove(); bar = null; } }, delay);
 }
 
 // The result picker inside the call window: the call ends, the same window turns into "How did it go?", Save closes it.
 // opts are dispoPanel's, plus onDone(saved). Returns the panel (or null when the list could not load).
 export async function wrapUp(opts = {}) {
   const b = ensureBar();
+  const from = b.getBoundingClientRect();
   b.classList.remove('out', 'min');
   b.dataset.state = 'wrap';
   b.innerHTML = '<div class="cb-grip" title="Drag anywhere on this window to move it. Double click here to put it back."><i></i></div><div class="cb-wrap"></div>';
   const p = await dispoPanel(b.querySelector('.cb-wrap'), { ...opts, bare: true, onDone: (saved) => { hideBar(0); opts.onDone?.(saved); } });
-  if (!p) hideBar(0);
+  if (!p) hideBar(0); else morphFrom(b, from);
   return p;
 }
 export const closeCallWindow = () => hideBar(0);
@@ -158,6 +160,11 @@ function syncTools(b, view) {
   b.appendChild(t);
 }
 function renderBar(view) {
+  const fresh = !bar || !document.body.contains(bar);
+  renderBarNow(view);
+  if (fresh) arriving(bar);
+}
+function renderBarNow(view) {
   const b = ensureBar();
   b.classList.remove('out');
   b.dataset.state = view.state;

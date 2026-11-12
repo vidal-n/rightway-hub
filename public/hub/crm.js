@@ -1,5 +1,5 @@
 // CRM screens: pipeline board, lead details, CSV import, power dialer, settings.
-import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable, editGoal, trayAdd, trayRemove } from './core.js';
+import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable, isPhone, editGoal, trayAdd, trayRemove } from './core.js';
 import { staffShell, settingsTabs } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
 import { textModal } from './texts.js';
@@ -11,6 +11,7 @@ import { hoverCards, hoverHtml } from './hovercard.js';
 import { isPersonName, titleLike } from '/js/names.js';
 import { placeCall, startPhone, onPhoneState, phoneState, hangUp, contactRows, initialsOf, takeCallDraft, wrapUp } from './phone.js';
 import { warmAudio, holdMic, dropMic } from './audioset.js';
+import { arriving, leaving } from './dialwin.js';
 import { testLeads, testIntel } from '/js/testleads.js';
 import { testTextModal, testBookModal, testLeadModal, testSummaryHtml } from './testdial.js';
 import { practiceModal } from './practice.js';
@@ -1011,7 +1012,7 @@ export async function dialerPage(app, user) {
   const testBook = (l) => testBookModal(l, () => { const id = (DISP.find((d) => d.acts === 'booked') || { id: 'booked' }).id; testHit(l, 'Audit booked (pretend)'); afterBooking(l, id); });
   const testText = (l) => testTextModal(l, { onSent: (t) => testHit(l, `Texted: ${t.slice(0, 60)}`) });
   // On a phone (600px or less) power dialing takes over the whole screen: countdown, call window and result sheet are each full screen. Everything else keeps its normal layout.
-  const phoneNarrow = () => matchMedia('(max-width: 600px)').matches;
+  const phoneNarrow = () => isPhone();
   const setPdx = () => {
     const on = power && phoneNarrow();
     document.body.classList.toggle('pdx', on);
@@ -1035,7 +1036,7 @@ export async function dialerPage(app, user) {
     }
     if (!on) shut?.remove();
   };
-  const powerStop = () => { power = false; dropMic(); clearInterval(pdTimer); if (phase === 'countdown') phase = 'idle'; pdBox?.remove(); pdBox = null; setPdx(); const b = document.getElementById('pdgo'); if (b) b.textContent = 'Start power dial'; };
+  const powerStop = () => { power = false; dropMic(); clearInterval(pdTimer); if (phase === 'countdown') phase = 'idle'; if (pdBox) { leaving(pdBox); pdBox.remove(); } pdBox = null; setPdx(); const b = document.getElementById('pdgo'); if (b) b.textContent = 'Start power dial'; };
   // Leaving the dialer pauses power dialing instead of ending it: a chip waits in the tray, one click comes back and carries on.
   window.addEventListener('hashchange', () => {
     if (!power) return;
@@ -1064,7 +1065,8 @@ export async function dialerPage(app, user) {
     if (!pdBox) {
       pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox);
       // Drag it by the top bar or the name area. It remembers where you put it. The window is redrawn every second, so the grab test runs on the window itself.
-      makeDraggable(pdBox, { grab: () => true, key: 'dialwin', off: () => innerWidth <= 900 });
+      makeDraggable(pdBox, { grab: () => true, key: 'dialwin', off: () => isPhone() });
+      pdBox.dataset.new = '1';
     }
     if (!next.length) { pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial</span><b>${pdCalls} calls · ${sessClock()}</b></div><div class="pd-list"><p style="margin:0">Queue clear. Pick another quality tab or time zone.</p></div><div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdx">Close</button></div>`; $('#pdx', pdBox).onclick = powerStop; return; }
     let left = pdWait;
@@ -1085,6 +1087,7 @@ export async function dialerPage(app, user) {
       $('#pdw', pdBox).onchange = (e) => { setWait(e.target.value); left = Math.min(left, pdWait); draw(); };
     };
     draw();
+    if (pdBox.dataset.new) { delete pdBox.dataset.new; arriving(pdBox); }
     pdTimer = setInterval(() => {
       if (!power || phase !== 'countdown' || busyPhase()) { clearInterval(pdTimer); return; }
       left--; if (left <= 0) { clearInterval(pdTimer); dialFirst(); } else draw();
@@ -1095,13 +1098,15 @@ export async function dialerPage(app, user) {
     if (!power || phoneState().onCall) return;
     clearInterval(pdTimer);
     phase = 'idle';
-    if (!pdBox) { pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox); makeDraggable(pdBox, { grab: () => true, key: 'dialwin', off: () => innerWidth <= 900 }); }
+    const born = !pdBox;
+    if (!pdBox) { pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox); makeDraggable(pdBox, { grab: () => true, key: 'dialwin', off: () => isPhone() }); }
     pdBox.className = 'pd';
     pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial · <b>${pdCalls}</b> calls · <b>${sessClock()}</b></span></div>
       <div class="pd-list"><p style="margin:0"><b>Waiting for the result.</b> Pick how the call went and the next one starts ${pdWait} second${pdWait === 1 ? '' : 's'} after.</p></div>
       <div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdre">Pick the result</button><button class="btn btn-ghost btn-sm" id="pdx2">Stop power dial</button></div>`;
     $('#pdre', pdBox).onclick = reopen;
     $('#pdx2', pdBox).onclick = powerStop;
+    if (born) arriving(pdBox);
   };
   const dialFirst = () => {
     const btn = document.getElementById('dhub');
@@ -1110,7 +1115,7 @@ export async function dialerPage(app, user) {
     pdCalls++;
     // One window: the countdown box goes away while the call window is up, so only one clock runs on screen.
     clearInterval(pdTimer);
-    pdBox?.remove(); pdBox = null;
+    if (pdBox) { leaving(pdBox); pdBox.remove(); } pdBox = null;
     phase = 'calling';
     btn.click();
   };

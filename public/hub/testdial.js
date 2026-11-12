@@ -9,7 +9,7 @@ export function testTextModal(lead, { onSent } = {}) {
   const m = modal(`<div class="card-head"><div><h2 style="margin:0">Text ${esc(lead.business)}</h2><p class="small muted" style="margin:2px 0 0">Practice text. Nothing is sent. The pretend owner answers.</p></div><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     <div class="pr-log" id="ttlog"><p class="muted">No texts yet.</p></div>
     <div class="pr-in"><textarea id="ttin" rows="2" placeholder="Type a text" aria-label="Text"></textarea>
-      <div class="row" style="gap:8px"><button type="button" class="btn btn-primary btn-sm" id="ttsend">Send (pretend)</button><span class="small muted">First text should say who you are and "Reply STOP to opt out".</span></div></div>`);
+      <div class="row" style="gap:8px"><button type="button" class="btn btn-primary btn-sm" id="ttsend">Send (pretend)</button><span class="small muted">First text should say who you are and "Reply STOP to opt out".</span></div></div>`, { win: true });
   const el = m.el;
   const paint = () => { $('#ttlog', el).innerHTML = log.map((t) => `<div class="pr-b ${t.me ? 'rep' : 'lead'}"><small>${t.me ? 'You' : esc(lead.contact_name || 'Owner')}</small>${esc(t.text)}</div>`).join('') || '<p class="muted">No texts yet.</p>'; const l = $('#ttlog', el); l.scrollTop = l.scrollHeight; };
   const send = () => {
@@ -29,7 +29,7 @@ export function testBookModal(lead, onDone) {
   const m = modal(`<div class="card-head"><div><h2 style="margin:0">Book ${esc(lead.business)}</h2><p class="small muted" style="margin:2px 0 0">Practice booking. No calendar event, no Meet link, no email.</p></div><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     <label class="field"><span>Their time</span><input type="datetime-local" id="tbwhen" value="${val}"></label>
     <label class="field"><span>Who runs the call</span><select id="tbwho"><option>First free closer</option><option>Me</option></select></label>
-    <div class="row" style="gap:8px;margin-top:12px"><button type="button" class="btn btn-primary" id="tbgo">Book it (pretend)</button></div>`);
+    <div class="row" style="gap:8px;margin-top:12px"><button type="button" class="btn btn-primary" id="tbgo">Book it (pretend)</button></div>`, { win: true });
   $('#tbgo', m.el).addEventListener('click', () => { const when = $('#tbwhen', m.el).value; if (!when) return toast('Pick a time.', true); m.close?.(); toast('Practice booking saved. Nothing was created.'); onDone?.(when); });
   return m;
 }
