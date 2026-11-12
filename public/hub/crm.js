@@ -10,7 +10,7 @@ import { autoScanCard } from './scans.js';
 import { hoverCards, hoverHtml } from './hovercard.js';
 import { isPersonName, titleLike } from '/js/names.js';
 import { placeCall, startPhone, onPhoneState, phoneState, hangUp, contactRows, initialsOf, takeCallDraft, wrapUp } from './phone.js';
-import { warmAudio } from './audioset.js';
+import { warmAudio, holdMic, dropMic } from './audioset.js';
 import { testLeads, testIntel } from '/js/testleads.js';
 import { testTextModal, testBookModal, testLeadModal, testSummaryHtml } from './testdial.js';
 import { practiceModal } from './practice.js';
@@ -1035,14 +1035,14 @@ export async function dialerPage(app, user) {
     }
     if (!on) shut?.remove();
   };
-  const powerStop = () => { power = false; clearInterval(pdTimer); if (phase === 'countdown') phase = 'idle'; pdBox?.remove(); pdBox = null; setPdx(); const b = document.getElementById('pdgo'); if (b) b.textContent = 'Start power dial'; };
+  const powerStop = () => { power = false; dropMic(); clearInterval(pdTimer); if (phase === 'countdown') phase = 'idle'; pdBox?.remove(); pdBox = null; setPdx(); const b = document.getElementById('pdgo'); if (b) b.textContent = 'Start power dial'; };
   // Leaving the dialer pauses power dialing instead of ending it: a chip waits in the tray, one click comes back and carries on.
   window.addEventListener('hashchange', () => {
     if (!power) return;
     const keep = { calls: pdCalls, start: pdStart };
     powerStop();
     trayAdd('powerdial', { title: 'Power dial paused', sub: `${keep.calls} call${keep.calls === 1 ? '' : 's'} so far. Click to carry on.`, hot: true,
-      onResume: () => { window.__rwPowerPause = keep; location.hash = '#/phone'; }, onDrop: () => { window.__rwPowerPause = null; } });
+      onResume: () => { holdMic(); window.__rwPowerPause = keep; location.hash = '#/phone'; }, onDrop: () => { window.__rwPowerPause = null; } });
   }, { once: true });
   if (window.__rwPowerPause) { const k = window.__rwPowerPause; window.__rwPowerPause = null; trayRemove('powerdial'); pdCalls = k.calls; pdStart = k.start; power = true; setPdx(); }
   // Esc: on the result window it means Later, on the countdown box it stops dialing. A live call is never ended by Esc.
@@ -1253,7 +1253,7 @@ export async function dialerPage(app, user) {
     $('#pdtestx', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
     $('#tsagain', view)?.addEventListener('click', () => startTest());
     $('#tsexit', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
-    $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
+    $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); if (!testMode && !power) holdMic(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
     prefetch(l);

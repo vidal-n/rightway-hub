@@ -103,7 +103,7 @@ export const deviceLabel = (d, i) => (d.label || '').trim() || `Microphone ${i +
 export function permissionHelp(ua = '') {
   const u = String(ua);
   const ios = /iPhone|iPad|iPod/.test(u) || (/Macintosh/.test(u) && /Mobile/.test(u));
-  if (ios) return ['Open Settings, then Safari, then Microphone, and choose Allow.', 'Or add the Hub to your Home Screen (Share, Add to Home Screen) and open it from there: it asks far less.', 'If you tapped Don\'t Allow before, open Settings, Safari, Advanced, Website Data, remove this site, then allow once more.'];
+  if (ios) return ['Always allow on iPad: tap the aA button in the address bar, then Website Settings, then Microphone, and choose Allow. (Settings, then Safari, then Microphone, then Allow does it for every site.)', 'Best: add the Hub to your Home Screen (Share, Add to Home Screen) and open it from the icon. It asks far less than a Safari tab.', 'Power dial keeps the mic open from the moment you tap Start until you stop, so it should only ask once per session.', 'If you tapped Don\'t Allow before, open Settings, Safari, Advanced, Website Data, remove this site, then allow once more.'];
   if (/Android/.test(u)) return ['Tap the lock icon in the address bar, then Permissions, then Microphone, and choose Allow.'];
   if (/Safari/.test(u) && !/Chrome|Chromium|Edg/.test(u)) return ['In Safari open Settings, Websites, Microphone, find this site and choose Allow.'];
   if (/Firefox/.test(u)) return ['When the prompt appears, tick "Remember this decision" and choose Allow.'];

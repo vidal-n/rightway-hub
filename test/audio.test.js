@@ -54,6 +54,7 @@ test('a missing Bluetooth mic falls back to default', () => {
 
 test('permission help is specific to the device', () => {
   assert.match(permissionHelp('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit Safari')[0], /Settings, then Safari/);
+  assert.ok(permissionHelp('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit Safari').some((t) => /aA/.test(t) && /Website Settings/.test(t)));
   assert.match(permissionHelp('Mozilla/5.0 (Linux; Android 14) Chrome/120')[0], /lock icon/);
   assert.match(permissionHelp('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit Version/17 Safari/605')[0], /Safari open Settings/);
   assert.match(permissionHelp('Mozilla/5.0 (Windows NT 10.0) Chrome/120 Safari/537')[0], /Site settings/);

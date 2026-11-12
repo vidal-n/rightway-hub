@@ -243,6 +243,26 @@ export async function releaseAudio(device) {
   try { await device?.audio?.unsetInputDevice(); } catch { /* ignore */ }
 }
 
+// Power dial keeps ONE mic stream open for the whole session. Safari on iPad asks again every time the mic is let go and
+// opened fresh, and its audio route also drops back to playback only, so the next call can start with nothing to hear.
+// It has to start inside the tap (Start power dial), before any await. Returns true when the mic is open.
+let held = null;
+export function holdMic() {
+  if (held && held.getTracks().some((t) => t.readyState === 'live')) return Promise.resolve(true);
+  if (!navigator.mediaDevices?.getUserMedia) return Promise.resolve(false);
+  const mine = openMic(loadAudio()).then((m) => {
+    held = m.stream;
+    for (const t of held.getTracks()) t.addEventListener('ended', () => { if (held === m.stream) held = null; });
+    return true;
+  }).catch((e) => { held = null; toast(micProblem(e), true); return false; });
+  return mine;
+}
+export function dropMic() {
+  const s = held; held = null;
+  try { s?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+}
+export const micHeld = () => Boolean(held);
+
 // The mic vanished in the middle of a call (headset died, cable pulled): move to the default one instead of going silent.
 let lostAt = 0;
 document.addEventListener('rw-audio-lost', async () => {
@@ -364,7 +384,7 @@ export function audioPanel({ device = null } = {}) {
         <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="btn btn-ghost btn-sm" id="aspk">Play test sound</button><span class="small muted" id="aspkhint">You should hear two soft tones.</span></div>
       </section>
       <section class="aud-sec"><h3>Microphone permission</h3>
-        <p class="small"><b class="aud-perm ${perm}">${{ granted: 'Allowed', denied: 'Blocked', prompt: 'Not asked yet', unknown: 'Unknown' }[perm]}</b> ${perm === 'granted' ? 'The browser will not ask again on this device.' : perm === 'denied' ? 'Calls cannot hear you until you allow it.' : 'Allow it once and choose to remember.'}</p>
+        <p class="small"><b class="aud-perm ${perm}">${{ granted: 'Allowed', denied: 'Blocked', prompt: 'Not asked yet', unknown: 'Unknown' }[perm]}</b> ${micHeld() ? 'The mic is open for power dial and stays open until you stop it, so there are no new prompts.' : perm === 'granted' ? 'Allowed. Safari can still ask again after a reload; use the steps below to make it stick.' : perm === 'denied' ? 'Calls cannot hear you until you allow it.' : 'Allow it once and choose to remember.'}</p>
         <div class="row" style="gap:8px"><button type="button" class="btn btn-primary btn-sm" id="aallow">${perm === 'granted' ? 'Check again' : 'Allow microphone'}</button></div>
         <ul class="small muted aud-help">${permissionHelp(navigator.userAgent).map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
       </section>

@@ -2568,3 +2568,29 @@ html, body { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-siz
 @keyframes splashFade { to { opacity: 1; } }
 @keyframes splashBar { to { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .splash-logo, .splash-ring, .splash-bar i { animation: none; } .splash-bar i { width: 100%; } }
+
+/* Fixed app frame (Nov 2026, V: no scrolling outside the margins, top bar stays put): the page itself never scrolls or bounces.
+   The rail, command bar and quick bar are fixed; only .vscroll (the page body) scrolls. Portal and public pages keep normal scrolling. */
+html, body { overscroll-behavior: none; }
+html:has(.hub), html:has(.hub) body { height: 100%; overflow: hidden; position: static; }
+.hub { height: 100dvh; min-height: 0; overflow: hidden; }
+.hub .rail { position: relative; height: 100dvh; top: auto; }
+.hub .deck { height: 100dvh; min-height: 0; overflow: hidden; }
+.hub .cmd, .hub .qbar { flex: none; position: relative; top: auto; touch-action: manipulation; }
+.hub .qbar { overscroll-behavior-x: contain; }
+.hub .vscroll { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-gutter: stable; }
+@media (max-width: 900px) {
+  .hub .rail { position: fixed; top: 0; bottom: 0; left: 0; height: auto; }
+}
+
+/* Nothing pokes outside the margins (Nov 2026): long ids, urls and tables wrap or scroll inside their own card on every device. */
+.hub .main .card, .hub .main .item, .hub .main .item > *, .hub .main .list > li, .hub .main details, .hub .main .form-grid > * { min-width: 0; }
+.hub .main :is(.item-sub, .mono, code, p, li, dd, dt, td, th, label, summary, .small, .muted, h1, h2, h3, h4) { overflow-wrap: anywhere; }
+.hub .main :is(pre, code, textarea, input, select) { max-width: 100%; }
+.hub .main img, .hub .main video, .hub .main canvas, .hub .main iframe:not(#cv-frame):not(.pview iframe) { max-width: 100%; }
+@media (max-width: 900px) {
+  .hub .main :not(.table-wrap):not(.tbl-wrap) > table.table, .hub .main :not(.table-wrap):not(.tbl-wrap) > table.tbl { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+.hub .main { overflow-wrap: break-word; }
+.hub .main .btn { max-width: 100%; white-space: normal; text-align: center; }
+.hub .main .form-grid > *, .hub .main .grid > *, .hub .main .stats > * { min-width: 0; }

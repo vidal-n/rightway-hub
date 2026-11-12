@@ -122,7 +122,7 @@ export function staffShell(app, user, active, inner) {
           </div>
         </header>
         <div class="qbar" id="qbar-top" aria-label="Quick links"></div>
-        <main class="main" id="view">${inner || '<div class="skeleton"></div>'}</main>
+        <div class="vscroll" id="vscroll"><main class="main" id="view">${inner || '<div class="skeleton"></div>'}</main></div>
       </div>
       <nav class="bbar" id="bbar" aria-label="Quick menu"></nav>
     </div>`;
