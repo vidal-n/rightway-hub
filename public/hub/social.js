@@ -157,9 +157,14 @@ export async function socialTab(el, c) {
     $$('[data-revoke]', host).forEach((b) => b.addEventListener('click', async () => { if (!confirm('Stop sharing this link? The client will no longer be able to open it.')) return; try { await api(`/api/social/shares/${b.dataset.revoke}`, { method: 'DELETE' }); await refresh(); } catch (e) { toast(e.message, true); } }));
   }
 
+  // Built once and put back on every redraw, so changing the month or filters does not ask Meta's status again.
+  let connHost = null;
   function connCard(host) {
-    host.innerHTML = `<div class="card-head"><h2>Publishing</h2><span class="badge warn">Manual for now</span></div>
-      <p class="small">Posts are copied or downloaded from the editor, put up by hand, then marked posted with the link. Automatic publishing to Facebook and Instagram turns on after Meta approves the Hub's app. Meta's rules say the app must pass review before it can post for other businesses.</p>`;
+    if (!connHost) {
+      connHost = document.createElement('div'); connHost.className = 'card'; connHost.id = 'spconn';
+      import('./meta.js').then((m) => m.metaCard(connHost, c)).catch((e) => { connHost.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; });
+    }
+    host.replaceWith(connHost);
   }
 
   try { await load(); } catch (e) { el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }

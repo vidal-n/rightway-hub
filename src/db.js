@@ -46,6 +46,22 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS social_shares (
     token TEXT PRIMARY KEY, client_id TEXT NOT NULL, label TEXT, project TEXT, created_by TEXT, created_at INTEGER NOT NULL, last_seen INTEGER, views INTEGER NOT NULL DEFAULT 0)`,
   `CREATE INDEX IF NOT EXISTS social_shares_client ON social_shares (client_id)`,
+  `CREATE TABLE IF NOT EXISTS meta_links (
+    token TEXT PRIMARY KEY, client_id TEXT NOT NULL, label TEXT, created_by TEXT, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+    views INTEGER NOT NULL DEFAULT 0, last_seen INTEGER, revoked INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE INDEX IF NOT EXISTS meta_links_client ON meta_links (client_id)`,
+  `CREATE TABLE IF NOT EXISTS meta_states (state TEXT PRIMARY KEY, link_token TEXT NOT NULL, at INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS meta_connections (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, link_token TEXT, fb_user_id TEXT NOT NULL, fb_name TEXT, user_token TEXT,
+    expires_at INTEGER, granted TEXT, declined TEXT, status TEXT NOT NULL DEFAULT 'ok', note TEXT, checked_at INTEGER,
+    created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS meta_conn_client ON meta_connections (client_id)`,
+  `CREATE INDEX IF NOT EXISTS meta_conn_user ON meta_connections (fb_user_id)`,
+  `CREATE TABLE IF NOT EXISTS meta_assets (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, connection_id TEXT NOT NULL, kind TEXT NOT NULL, ext_id TEXT NOT NULL, name TEXT,
+    extra TEXT, page_token TEXT, can_post INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS meta_assets_client ON meta_assets (client_id)`,
+  `CREATE INDEX IF NOT EXISTS meta_assets_conn ON meta_assets (connection_id)`,
   `CREATE TABLE IF NOT EXISTS scans (
     id TEXT PRIMARY KEY, client_id TEXT NOT NULL, keyword TEXT, created_at INTEGER NOT NULL, summary TEXT, data TEXT)`,
   `CREATE INDEX IF NOT EXISTS scans_client ON scans (client_id, created_at)`,
