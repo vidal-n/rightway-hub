@@ -2594,3 +2594,24 @@ html:has(.hub), html:has(.hub) body { height: 100%; overflow: hidden; position: 
 .hub .main { overflow-wrap: break-word; }
 .hub .main .btn { max-width: 100%; white-space: normal; text-align: center; }
 .hub .main .form-grid > *, .hub .main .grid > *, .hub .main .stats > * { min-width: 0; }
+
+/* iPad Home Screen app (Nov 2026, V: bottom of the screen cut short, status bar over the title): the frame is pinned to the real screen edges
+   (not 100dvh, which iPad standalone mode reports too short) and keeps clear of the status bar and the home bar with safe-area padding. */
+.hub { position: fixed; inset: 0; height: auto; grid-template-rows: minmax(0, 1fr); }
+.hub .rail { height: 100%; padding-top: calc(16px + env(safe-area-inset-top)); padding-bottom: calc(14px + env(safe-area-inset-bottom)); padding-left: calc(12px + env(safe-area-inset-left)); }
+.hub .deck { height: 100%; position: relative; }
+.hub .cmd { padding-top: calc(10px + env(safe-area-inset-top)); padding-right: calc(clamp(16px, 3vw, 32px) + env(safe-area-inset-right)); }
+.hub .main { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+@media (max-width: 900px) {
+  .hub .rail { position: fixed; height: auto; padding-top: calc(14px + env(safe-area-inset-top)); padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .hub .cmd { padding-top: calc(8px + env(safe-area-inset-top)); padding-right: calc(12px + env(safe-area-inset-right)); }
+  .hub .main { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+}
+/* Pull down to refresh */
+.ptr { position: absolute; left: 50%; top: 0; z-index: 30; transform: translate(-50%, calc(var(--p, 0) * 1px - 44px)); pointer-events: none; opacity: 0; display: flex; align-items: center; gap: 8px; clip-path: inset(0 round 99px);
+  padding: 7px 14px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); font: 600 12.5px var(--body); color: var(--ink-2); white-space: nowrap; }
+.ptr.spin { opacity: 1; }
+.ptr-i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--mint-strong); border-top-color: transparent; transform: rotate(calc(var(--p, 0) * 5deg)); transition: transform .1s; }
+.ptr.ready .ptr-i { background: var(--mint-strong); }
+.ptr.spin .ptr-i { animation: ptr-spin .7s linear infinite; background: none; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }

@@ -131,6 +131,7 @@ export function staffShell(app, user, active, inner) {
   const foldRail = (on, save = true) => { document.body.classList.toggle('rail-collapsed', on); if (save) { try { localStorage.setItem('rw-rail', on ? '1' : '0'); } catch { /* ignore */ } } const b = $('#rail-fold'); if (b) { b.setAttribute('aria-label', on ? 'Open the menu' : 'Collapse the menu'); b.setAttribute('aria-pressed', String(on)); } };
   { let on = false; try { on = localStorage.getItem('rw-rail') === '1'; } catch { /* ignore */ } foldRail(on, false); }
   $('#rail-fold')?.addEventListener('click', () => foldRail(!document.body.classList.contains('rail-collapsed')));
+  import('./pull.js').then((m) => m.mountPull($('#vscroll'))).catch(() => {});
   import('./quickbar.js').then((m) => m.mountQuickBar($('#qbar-top'), user, PAGES.filter(([n, href, role]) => (!role || user.role === role) && (/^#\/(work|clients|client)\b/.test(href) ? can(user, 'deliver') : href === '/scan.html' ? can(user, 'close') : true)))).catch(() => {});
   const side = $('#side'), scrim = $('#scrim');
   const setOpen = (on) => {
