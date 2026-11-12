@@ -1,5 +1,5 @@
 // CRM screens: pipeline board, lead details, CSV import, power dialer, settings.
-import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable, editGoal } from './core.js';
+import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable, editGoal, trayAdd, trayRemove } from './core.js';
 import { staffShell, settingsTabs } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
 import { textModal } from './texts.js';
@@ -942,7 +942,15 @@ export async function dialerPage(app, user) {
   const setWait = (v) => { pdWait = Math.min(10, Math.max(1, Math.round(Number(v)) || 5)); try { localStorage.setItem('rw-pd-wait', String(pdWait)); } catch { /* ignore */ } document.querySelectorAll('select.pd-wait').forEach((x) => { x.value = String(pdWait); }); };
   let pdBox = null;
   const powerStop = () => { power = false; clearInterval(pdTimer); pdBox?.remove(); pdBox = null; const b = document.getElementById('pdgo'); if (b) b.textContent = 'Start power dial'; };
-  window.addEventListener('hashchange', powerStop, { once: true });
+  // Leaving the dialer pauses power dialing instead of ending it: a chip waits in the tray, one click comes back and carries on.
+  window.addEventListener('hashchange', () => {
+    if (!power) return;
+    const keep = { calls: pdCalls, start: pdStart };
+    powerStop();
+    trayAdd('powerdial', { title: 'Power dial paused', sub: `${keep.calls} call${keep.calls === 1 ? '' : 's'} so far. Click to carry on.`, hot: true,
+      onResume: () => { window.__rwPowerPause = keep; location.hash = '#/phone'; }, onDrop: () => { window.__rwPowerPause = null; } });
+  }, { once: true });
+  if (window.__rwPowerPause) { const k = window.__rwPowerPause; window.__rwPowerPause = null; trayRemove('powerdial'); pdCalls = k.calls; pdStart = k.start; power = true; }
   const sessClock = () => { const t = Math.floor((Date.now() - pdStart) / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
   const powerStep = () => {
     clearInterval(pdTimer);
@@ -1114,7 +1122,7 @@ export async function dialerPage(app, user) {
     $$('[data-cat]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, cat: b.dataset.cat }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $$('[data-tier]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, tier: b.dataset.tier }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
     $('#pdwh', view)?.addEventListener('change', (e) => setWait(e.target.value));
-    $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); startPhone().catch(() => {}); power = !power; if (power) { pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
+    $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); startPhone().catch(() => {}); power = !power; if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
     prefetch(l);

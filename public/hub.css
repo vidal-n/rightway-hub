@@ -2048,3 +2048,4 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 @media (min-width: 901px) {
   .callbar { top: 76px; bottom: auto; width: 400px; max-height: calc(100vh - 92px); }
 }
+.flow { align-items: stretch; } .flow > .fstep { margin: 0; }
