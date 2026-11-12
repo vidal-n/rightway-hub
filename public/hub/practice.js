@@ -10,6 +10,9 @@ export function practiceView(host, { persona = 'friendly', lead = {}, fixed = fa
   let busyNow = false;
   let ended = false;
   let ai = null;
+  let canAi = false;
+  let useAi = false;
+  try { useAi = localStorage.getItem('rw-practice-ai') === '1'; } catch { /* ignore */ }
   let speak = false;
   let rec = null;
   const say = (text) => {
@@ -21,7 +24,8 @@ export function practiceView(host, { persona = 'friendly', lead = {}, fixed = fa
     const p = personaOf(pid);
     host.innerHTML = `<div class="pr${compact ? ' compact' : ''}">
       ${fixed ? '' : `<label class="field"><span>Who are you calling?</span><select id="prp">${PERSONAS.map((x) => `<option value="${x.id}"${x.id === pid ? ' selected' : ''}>${esc(x.name)}, ${esc(x.role)} (${esc(x.level)})</option>`).join('')}</select></label>`}
-      <p class="small muted pr-meta">${esc(p.name)}, ${esc(p.role)} (${esc(p.mood)}).${ai === false ? ' Basic mode: add an Anthropic key for the full AI owner.' : ''}</p>
+      <p class="small muted pr-meta">${esc(p.name)}, ${esc(p.role)} (${esc(p.mood)}).</p>
+      ${canAi ? `<label class="row small" style="gap:6px"><input type="checkbox" id="prai"${useAi ? ' checked' : ''}> Use real AI (costs a few cents a call). Off is free.</label>` : '<p class="small muted">Free practice owner. No cost.</p>'}
       <div class="pr-log" id="prlog" aria-live="polite">${bubbles() || '<p class="muted">Calling...</p>'}</div>
       <div id="prfb" class="pr-fb" hidden></div>
       <div class="pr-in"${ended ? ' hidden' : ''}>
@@ -43,7 +47,7 @@ export function practiceView(host, { persona = 'friendly', lead = {}, fixed = fa
   const ask = async () => {
     busyNow = true;
     try {
-      const r = await api('/api/practice/turn', { method: 'POST', body: { persona: pid, lead, turns } });
+      const r = await api('/api/practice/turn', { method: 'POST', body: { persona: pid, lead, turns, useAi } });
       ai = r.ai;
       turns.push({ role: 'lead', text: r.reply });
       say(r.reply);
@@ -60,12 +64,13 @@ export function practiceView(host, { persona = 'friendly', lead = {}, fixed = fa
     window.speechSynthesis?.cancel?.(); rec?.stop?.();
     ended = true; busyNow = true; paint();
     const fb = $('#prfb', host); fb.hidden = false; fb.textContent = 'Reading the call...';
-    try { const r = await api('/api/practice/coach', { method: 'POST', body: { persona: pid, lead, turns } }); fb.innerHTML = `<b>Coach${r.ai ? '' : ' (basic)'}</b><div class="pr-fbt">${esc(r.feedback)}</div>`; }
+    try { const r = await api('/api/practice/coach', { method: 'POST', body: { persona: pid, lead, turns, useAi } }); fb.innerHTML = `<b>Coach${r.ai ? '' : ' (basic)'}</b><div class="pr-fbt">${esc(r.feedback)}</div>`; }
     catch (e) { fb.textContent = e.message; }
     busyNow = false;
   };
   const wire = () => {
     $('#prp', host)?.addEventListener('change', (e) => { pid = e.target.value; turns = []; ended = false; paint(); ask(); });
+    $('#prai', host)?.addEventListener('change', (e) => { useAi = e.target.checked; try { localStorage.setItem('rw-practice-ai', useAi ? '1' : '0'); } catch { /* ignore */ } });
     $('#prsend', host)?.addEventListener('click', send);
     $('#prtext', host)?.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
     $('#prtts', host)?.addEventListener('change', (e) => { speak = e.target.checked; if (!speak) window.speechSynthesis?.cancel?.(); });
@@ -82,6 +87,7 @@ export function practiceView(host, { persona = 'friendly', lead = {}, fixed = fa
       try { rec.start(); } catch { rec = null; }
     });
   };
+  api('/api/practice/status').then((r) => { canAi = Boolean(r.ai); paint(); }).catch(() => {});
   paint();
   ask();
   return { stop: () => { window.speechSynthesis?.cancel?.(); try { rec?.stop(); } catch { /* ignore */ } } };

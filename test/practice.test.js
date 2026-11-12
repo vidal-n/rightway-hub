@@ -52,3 +52,31 @@ test('practice routes answer for staff, in basic mode without a key', async () =
   const st = await call('GET', '/api/practice/status');
   assert.equal(st.ai, false);
 });
+
+test('practice is free unless an owner switches on real AI', async () => {
+  resetSchemaCache();
+  const env = { DB: d1(), MEDIA: r2(), ACCESS_KEY: 'owner-key-123', ANTHROPIC_API_KEY: 'sk-test' };
+  let cookie = '';
+  const real = globalThis.fetch;
+  let outside = 0;
+  const call = async (method, path, body) => {
+    const h = { 'x-rw': '1', ...(cookie ? { cookie } : {}), ...(body ? { 'content-type': 'application/json' } : {}) };
+    const res = await worker.fetch(new Request(`https://hub.test${path}`, { method, headers: h, body: body ? JSON.stringify(body) : undefined }), env);
+    const c = res.headers.get('set-cookie'); if (c) cookie = c.split(';')[0];
+    return res.json();
+  };
+  await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  globalThis.fetch = async (...a) => { outside++; return real(...a); };
+  try {
+    const turns = [{ role: 'lead', text: 'Hello?' }, { role: 'rep', text: 'Hi Mike' }];
+    let r = await call('POST', '/api/practice/turn', { persona: 'friendly', turns });
+    assert.equal(r.ai, false);
+    r = await call('POST', '/api/practice/turn', { persona: 'friendly', turns, useAi: false });
+    assert.equal(r.ai, false);
+    r = await call('POST', '/api/practice/coach', { persona: 'friendly', turns });
+    assert.equal(r.ai, false);
+    assert.equal(outside, 0);
+    const st = await call('GET', '/api/practice/status');
+    assert.equal(st.ai, true);
+  } finally { globalThis.fetch = real; }
+});
