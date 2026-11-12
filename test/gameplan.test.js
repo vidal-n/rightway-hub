@@ -47,3 +47,16 @@ test('an older saved disposition list gets Phone menu added once', async () => {
   r = await call('GET', '/api/dispositions');
   assert.equal(r.dispositions.some((d) => d.acts === 'phone_menu'), false);
 });
+
+test('Cold call: free competitor analysis is its own script group and says what it is', () => {
+  assert.ok(SCRIPT_GROUPS.find((g) => g[0] === 'analysis'));
+  const s = buildScript({ business: 'Joe Plumbing', contact_name: 'Joe Smith', city: 'Miami', industry: 'Plumbing' }, null, { rep: 'Sam', voice: 'I' });
+  const ids = s.steps.filter((x) => x.group === 'analysis').map((x) => x.id);
+  assert.deepEqual(ids, ['a_open', 'a_hook', 'a_why', 'a_teach', 'a_book', 'a_after', 'a_lock', 'a_gate', 'a_vm']);
+  const all = s.steps.filter((x) => x.group === 'analysis').map((x) => x.lines.join(' ')).join(' ');
+  assert.match(all, /free competitor analysis/);
+  assert.match(all, /you keep the analysis/);
+  assert.doesNotMatch(all, /\{\w+\}/);
+  assert.doesNotMatch(all, /[–—]/);
+  assert.equal(scriptSteps('analysis').length, 9);
+});

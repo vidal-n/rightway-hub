@@ -121,13 +121,13 @@ export async function trainingPage(app, user, sub, arg) {
 
 function scripts(view, user, which) {
   const voice = voiceFor(user);
-  which = ['clarity', 'plan'].includes(which) ? which : 'cold';
-  const NAMES = { cold: 'Cold call script', clarity: 'Google clarity audit script', plan: 'Google Game Plan script (website audit)' };
+  which = ['clarity', 'plan', 'analysis'].includes(which) ? which : 'cold';
+  const NAMES = { cold: 'Cold call script', analysis: 'Cold call: free competitor analysis', clarity: 'Google clarity audit script', plan: 'Google Game Plan script (website audit)' };
   const steps = scriptSteps(which, undefined, voice);
   view.innerHTML = `${head(NAMES[which], 'Scripts')}${tabs('scripts', user)}
     <div class="row" style="justify-content:space-between;margin-bottom:16px">
-      <div class="seg"><a class="btn btn-sm ${which === 'cold' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'plan' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/plan">Game Plan</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
-      <div class="row">${which === 'plan' ? '' : `<a class="btn btn-ghost btn-sm" href="${(voice === 'I' ? PDF : PDF_TEAM)[which]}" target="_blank" rel="noopener">${icon.down}Large print PDF</a>`}
+      <div class="seg"><a class="btn btn-sm ${which === 'cold' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'analysis' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/analysis">Competitor analysis</a><a class="btn btn-sm ${which === 'plan' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/plan">Game Plan</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
+      <div class="row">${which === 'plan' || which === 'analysis' ? '' : `<a class="btn btn-ghost btn-sm" href="${(voice === 'I' ? PDF : PDF_TEAM)[which]}" target="_blank" rel="noopener">${icon.down}Large print PDF</a>`}
         ${user.role === 'admin' ? `<div class="seg"><button class="btn btn-sm ${voice === 'I' ? 'btn-primary' : 'btn-ghost'}" data-voice="I">Owner copy (I)</button><button class="btn btn-sm ${voice === 'we' ? 'btn-primary' : 'btn-ghost'}" data-voice="we">Team copy (we)</button></div>` : ''}
         <label class="row small" style="gap:8px"><input type="checkbox" id="rd"${done.has(`script:${which}`) ? ' checked' : ''}> I have read it</label></div></div>
     <p class="small muted" style="margin:0 0 16px">The live version with the lead's real names and numbers is in call prep and the presenter notes. Green blanks fill in there. Black boxes are the screen cues. Yellow DO notes are for you, never out loud.</p>

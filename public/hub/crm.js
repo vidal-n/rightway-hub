@@ -618,6 +618,7 @@ export async function leadModal(id, onChange) {
       ${l.website ? `<a class="btn btn-ghost" href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}" target="_blank" rel="noopener">Website</a>` : ''}
       <a class="btn btn-ghost" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''} ${l.state || ''}`)}" target="_blank" rel="noopener">Google Maps</a>
       ${l.phone ? '<button class="btn btn-ghost" id="ltexts">Texts</button>' : ''}
+      ${closer ? `<a class="btn btn-primary" href="#/present/lead/${esc(l.id)}" id="lpresent" title="Clean screen share view for this business">Present</a><button class="btn btn-ghost" id="lpack" title="Link to the free competitor analysis">Copy analysis link</button>` : ''}
       <button class="btn btn-ghost" id="ledit">Edit</button>
     </div></div>
     ${l.dnc ? '<p class="badge bad" style="margin-bottom:12px">Do not call</p>' : ''}
@@ -719,6 +720,7 @@ export async function leadModal(id, onChange) {
     note: [l.contact_name && `Contact: ${l.contact_name}`, l.phone && `Phone: ${l.phone}`, l.website && `Site: ${l.website}`].filter(Boolean).join('\n'),
   })));
   if (l.email) import('./gstate.js').then((g) => g.hasGoogle('mail')).then((gm) => import(gm ? './mail.js' : './hubmail.js')).then((x) => x.mailWith($('#lmail', m.el), l.email, { name: l.contact_name || l.business })).catch(() => {});
+  $('#lpack', m.el)?.addEventListener('click', async (e) => { busy(e.currentTarget, true, 'Making'); try { const r = await api(`/api/leads/${l.id}/pack`, { method: 'POST', body: {} }); copy(r.link, 'Analysis link copied'); } catch (err) { toast(err.message, true); } busy(e.currentTarget, false); });
   $('#ledit', m.el).addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); });
   $$('[data-out]', m.el).forEach((b) => b.addEventListener('click', async () => {
     const outcome = b.dataset.out;
@@ -1058,6 +1060,9 @@ export async function dialerPage(app, user) {
   const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier' && k !== 'cat').map(([k, v]) => `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`).join(' · ');
   let lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true };
   let layOpen = false;
+  // iPhone layout (max 600px wide): the same dialer as three tabs on one screen. Call (who, call button, results), Script (research and script), Up next (queue, filters, appointments).
+  let dmTab = 'call';
+  try { dmTab = sessionStorage.getItem('rw-dm-tab') || 'call'; } catch { /* ignore */ }
   // Click anywhere else, or press Escape, to close the layout menu.
   const shutLay = () => { layOpen = false; const b = document.getElementById('dlaybody'); if (b) b.hidden = true; document.getElementById('dlaybtn')?.setAttribute('aria-expanded', 'false'); };
   const layOutside = (e) => { if (!document.body.contains(view)) { document.removeEventListener('click', layOutside); document.removeEventListener('keydown', layEsc); return; } if (layOpen && !e.target.closest('.dlayout')) shutLay(); };
@@ -1071,7 +1076,7 @@ export async function dialerPage(app, user) {
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
           <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
           ${me.twilio ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
-      ${dialTabs('queue', user)}
+      <div class="dm-top-tabs">${dialTabs('queue', user)}</div>
       <div class="dropfilters">
         <label class="dropf" data-sec="tiers"><span>Quality</span><select id="dtier" data-tier-sel aria-label="Quality">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
           .map(([k, n]) => `<option value="${k}"${(flt.tier || '') === k ? ' selected' : ''}>${esc(n)} (${k ? (q.tiers?.[k] ?? 0) : Object.values(q.tiers || {}).reduce((a, b) => a + b, 0)})</option>`).join('')}</select></label>
@@ -1090,13 +1095,14 @@ export async function dialerPage(app, user) {
               .map(([k, n]) => `<label><input type="checkbox" data-lay="${k}"${lay[k] ? ' checked' : ''}> ${n}</label>`).join('')}
             <button type="button" class="btn btn-ghost btn-sm" id="dlayreset">Show everything</button></div></div></div>
       <div id="lowbal"></div>
+      ${!l ? '' : `<nav class="dm-nav" role="tablist" aria-label="Dialer screens">${[['call', 'Call'], ['script', 'Script'], ['queue', `Up next${q.queue.length - idx - 1 > 0 ? ` ${q.queue.length - idx - 1}` : ''}`]].map(([k, n]) => `<button type="button" role="tab" data-dm="${k}" class="${dmTab === k ? 'is-on' : ''}" aria-selected="${dmTab === k}">${n}</button>`).join('')}</nav>`}
       ${upcoming.length ? `<div class="card upcoming" data-sec="upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(bothTimes(m.meet_at, validZone(m.timezone) || yourZone(), yourZone()))} ${esc(m.business)}</span>
         ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}${can(window.__rwUser, 'close') ? `<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>` : ''}`).join('')}</div>` : ''}
       ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
       <div class="dial-grid${lay.queue ? '' : ' no-queue'}${lay.prep ? '' : ' no-prep'}${lay.compact ? ' tight' : ''}">
-        <aside class="dial-queue card" aria-label="Up next"><div class="card-head"><h3>Up next</h3><span class="small muted">${Math.max(0, q.queue.length - idx - 1)} after this</span></div>
+        <aside class="dial-queue card dm-sec" data-dm-sec="queue" aria-label="Up next"><div class="dm-only dm-queue-tabs">${dialTabs('queue', user)}</div><div class="card-head"><h3>Up next</h3><span class="small muted">${Math.max(0, q.queue.length - idx - 1)} after this</span></div>
           <ol>${q.queue.slice(idx, idx + 10).map((x, i) => `<li><button type="button" data-jump="${idx + i}" class="${i === 0 ? 'is-on' : ''}">${gradeBadge(x.grade, x.score)}<span class="dq-t"><b>${esc(x.business)}</b><small>${esc([x.city, x.state].filter(Boolean).join(', '))}${x.local_time ? ` · ${esc(x.local_time)}` : ''}</small>${catChip(callCategory(x))}</span></button></li>`).join('')}</ol></aside>
-        <div class="dial-left">
+        <div class="dial-left dm-sec" data-dm-sec="call">
           <div class="card dial-card">
             <p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · attempt ${l.attempts + 1}` : ''}${l.next_action ? ` · ${esc(l.next_action)}` : ''}</p>
             <div class="row" style="gap:12px;flex-wrap:nowrap"><span id="dgrade">${gradeBadge(l.grade, l.score)}</span><h2 style="font-size:28px;margin:0;min-width:0">${esc(l.business)}</h2></div>
@@ -1128,10 +1134,12 @@ export async function dialerPage(app, user) {
             ${l.notes ? fold('dold', 'Earlier notes', `<div class="caption">${esc(l.notes)}</div>`, false) : ''}
           </div>
         </div>
-        <div class="card dial-prep" id="dprep"></div>
+        <div class="card dial-prep dm-sec" data-dm-sec="script" id="dprep"></div>
       </div>`}`;
     wireFolds(view);
-    $$('[data-jump]', view).forEach((b) => b.addEventListener('click', () => { idx = Number(b.dataset.jump); render(); }));
+    view.dataset.dm = l ? dmTab : 'empty';
+    $$('[data-dm]', view).forEach((b) => b.addEventListener('click', () => { dmTab = b.dataset.dm; try { sessionStorage.setItem('rw-dm-tab', dmTab); } catch { /* ignore */ } view.dataset.dm = dmTab; $$('[data-dm]', view).forEach((x) => { const on = x.dataset.dm === dmTab; x.classList.toggle('is-on', on); x.setAttribute('aria-selected', String(on)); }); scrollTo(0, 0); }));
+    $$('[data-jump]', view).forEach((b) => b.addEventListener('click', () => { idx = Number(b.dataset.jump); if (matchMedia('(max-width: 600px)').matches) { dmTab = 'call'; try { sessionStorage.setItem('rw-dm-tab', 'call'); } catch { /* ignore */ } } render(); }));
     // Customize layout: tick boxes change the page in place (no redraw), so the menu stays open while you choose.
     const applyLay = () => {
       view.dataset.hide = ['tiers', 'cats', 'upcoming', 'links', 'notes'].filter((k) => !lay[k]).join(' ');

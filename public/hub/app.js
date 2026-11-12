@@ -108,11 +108,13 @@ async function route() {
   if (!state.users) return setupView();
   if (!state.user) return loginView();
   const u = state.user;
+  if (parts[0] !== 'present') document.body.classList.remove('presenting');
   if (u.role === 'client') {
     if (u.viewAs) previewBar(u);
     return portal(app, u, parts[0] || 'home', { ...state, sub: parts[1] });
   }
   initPhone();
+  if (parts[0] === 'present' && parts[2] && can(u, 'close')) return import('./presentmode.js').then((m) => m.presentView(app, u, parts[1] === 'client' ? 'client' : 'lead', decodeURIComponent(parts[2]), parts[3] || ''));
   // Phone holds the dialer, texts, calls and voicemail. Old #/dialer and #/inbox links still work.
   if (parts[0] === 'phone' || parts[0] === 'dialer' || parts[0] === 'inbox') {
     const sub = parts[0] === 'inbox' ? (parts[1] === 'calls' ? 'calls' : 'texts') : parts[1] || '';

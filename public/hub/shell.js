@@ -6,6 +6,7 @@ import { can, jobLabel } from '/js/jobs.js';
 import { STATUSES, statusLabel, statusTone, statusesFor } from '/js/callstats.js';
 import { avatarHtml, wireAvatars, pickAvatar, removeAvatar } from './avatar.js';
 import { syncAudio } from './audioset.js';
+import { presentButton, presentPicker } from './presentmode.js';
 
 export const initials = (u) => String(u.name || u.email || '?').trim().split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 
@@ -111,6 +112,7 @@ export function staffShell(app, user, active, inner) {
           <div class="cmd-title" data-grp="${esc(groupOf(active))}"><small>${esc(grp ? grp[1] : 'Hub')}</small><b>${esc(item ? item[3] : '')}</b></div>
           <button type="button" class="cmd-search" id="cmdk" aria-label="Search">${icon.search}<span>Search leads, clients, pages</span><kbd>Ctrl K</kbd></button>
           <div class="cmd-right">
+            ${can(user, 'close') ? presentButton() : ''}
             <button type="button" class="stpill" data-stpill aria-label="Your status">${pillHtml()}</button>
             <a class="cmd-ico warn" href="#/settings" data-wallet hidden aria-label="A wallet is low">${icon.money}</a>
             <button type="button" class="cmd-ico" id="notifbtn" aria-label="Notifications" aria-haspopup="dialog" title="Notifications">${icon.bell}<b class="nbadge" data-badge="alerts" hidden></b></button>
@@ -145,6 +147,7 @@ export function staffShell(app, user, active, inner) {
   wireAvatars(app);
   $('#notifbtn').addEventListener('click', (e) => { const btn = e.currentTarget; import('./notifpanel.js').then((m) => m.notifPanel(btn)).catch((err) => toast(err.message, true)); });
   $('#cmdk').addEventListener('click', () => palette(user));
+  $('#presbtn')?.addEventListener('click', () => presentPicker());
   $$('[data-stpill]', app).forEach((b) => b.addEventListener('click', () => statusMenu(b)));
   $$('[data-pbub]', app).forEach((b) => b.addEventListener('click', () => profileMenu(b, user, logout)));
   paintWallet(app);
