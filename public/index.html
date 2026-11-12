@@ -10,7 +10,23 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Rightway">
-  <script>try { if (navigator.standalone) document.documentElement.classList.add('ios-standalone'); } catch (e) {}</script>
+  <script>
+    // iOS Home Screen app: the page box can end short of the real screen bottom (the home bar strip). Measure the gap so the Hub frame
+    // can stretch over it and keep its controls clear of the home bar. The home bar itself is the system's; a web app cannot hide it.
+    try {
+      if (navigator.standalone) {
+        var de = document.documentElement; de.classList.add('ios-standalone');
+        var fit = function () {
+          var long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height);
+          var gap = Math.round((innerWidth > innerHeight ? short : long) - innerHeight);
+          if (gap < 0 || gap > 60) return;
+          de.style.setProperty('--rw-gap', gap + 'px');
+          de.style.setProperty('--sab', 'max(env(safe-area-inset-bottom, 0px), ' + gap + 'px)');
+        };
+        fit(); addEventListener('resize', fit); addEventListener('orientationchange', function () { setTimeout(fit, 300); });
+      }
+    } catch (e) {}
+  </script>
   <title>Rightway Hub</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
