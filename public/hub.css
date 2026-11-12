@@ -2615,3 +2615,12 @@ html:has(.hub), html:has(.hub) body { height: 100%; overflow: hidden; position: 
 .ptr.ready .ptr-i { background: var(--mint-strong); }
 .ptr.spin .ptr-i { animation: ptr-spin .7s linear infinite; background: none; }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
+
+/* iPad Home Screen app: the page box ends one safe-area (the home bar strip, about 20px) above the real screen bottom, which left a dark band
+   under the menu and cut the page short. Stretch the frame down over that strip; the bottom padding above already keeps content clear of the home bar. */
+@media (display-mode: standalone) {
+  .hub { bottom: calc(0px - env(safe-area-inset-bottom, 0px)); }
+}
+@supports (-webkit-touch-callout: none) {
+  html.ios-standalone .hub { bottom: calc(0px - env(safe-area-inset-bottom, 0px)); }
+}
