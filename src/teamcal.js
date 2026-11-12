@@ -4,6 +4,8 @@
 // a closer the Hub checks that closer's other audits, their Hub appointments and their Google busy times, so nobody gets double booked.
 // The copies are kept in step by the cron (masterTick) as well as right away, so every booking path is covered.
 import { whenIn, validZone } from '../public/js/apptime.js';
+import { outsideHours, overLimit, tooClose } from '../public/js/avail.js';
+import { availOf } from './avail.js';
 import { HttpError, json } from './util.js';
 import { all, first, run, now, getSettings, setSetting, token } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
@@ -57,7 +59,22 @@ async function masterOwner(env, m) {
 export async function closerConflict(env, closerId, start, minutes = 30, { leadId = null, eventId = null, google = true } = {}) {
   if (!closerId || !start) return null;
   const end = start + minutes * 60e3;
-  const who = firstName((await userRow(env, closerId))?.name) || 'They';
+  const person = await userRow(env, closerId);
+  const who = firstName(person?.name) || 'They';
+  // Their own open hours, daily limit and gap between calls (Settings, My available slots).
+  const av = google ? availOf(person) : null;
+  if (av) {
+    const off = outsideHours(av, start, minutes);
+    if (off) return `${who} is not available then. ${off}`;
+    if (av.max || av.gap) {
+      const near = await all(env, `SELECT meet_at AS t FROM leads WHERE meet_at > ? AND meet_at < ? AND (closer_id = ? OR (closer_id IS NULL AND meet_by = ?))${leadId ? ' AND id != ?' : ''}`,
+        start - 36 * 3600e3, start + 36 * 3600e3, closerId, closerId, ...(leadId ? [leadId] : []));
+      const evsNear = await all(env, `SELECT start_at AS t FROM events WHERE owner_id = ? AND start_at > ? AND start_at < ?${eventId ? ' AND id != ?' : ''}`, closerId, start - 36 * 3600e3, start + 36 * 3600e3, ...(eventId ? [eventId] : [])).catch(() => []);
+      const others = [...near, ...evsNear].map((r) => r.t);
+      const full = overLimit(av, start, others) || tooClose(av, start, minutes, others);
+      if (full) return `${who}: ${full}`;
+    }
+  }
   const leads = await all(env, `SELECT id, business, meet_at FROM leads WHERE meet_at > ? AND meet_at < ? AND (closer_id = ? OR (closer_id IS NULL AND meet_by = ?))${leadId ? ' AND id != ?' : ''}`,
     start - 4 * 3600e3, end, closerId, closerId, ...(leadId ? [leadId] : []));
   const hit = leads.find((l) => l.meet_at < end && l.meet_at + minutes * 60e3 > start);

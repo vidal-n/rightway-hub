@@ -1,5 +1,7 @@
 // Google Calendar and Google Meet: connect a Google account, book meetings with a Meet link from a lead,
 // and a public booking page that reads real availability. Keys: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET.
+import { availOf } from './avail.js';
+import { outsideHours } from '../public/js/avail.js';
 import { HttpError, json } from './util.js';
 import { all, first, run, now, token, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin, cleanEmail } from './auth.js';
@@ -355,7 +357,10 @@ async function openTimes(env, cfg, owner) {
   if (!list) return { slots: openSlots({ ...cfg, from: now(), busy: await bookingBusy(env, cfg, owner) }), free: null };
   const from = now(), to = from + (cfg.days + 1) * 864e5;
   const free = new Map();
-  for (const cid of list) for (const t of openSlots({ ...cfg, from, busy: await closerBusy(env, cid, from, to, cfg.minutes) })) { if (!free.has(t)) free.set(t, []); free.get(t).push(cid); }
+  for (const cid of list) {
+    const av = availOf(await first(env, 'SELECT avail FROM users WHERE id = ?', cid));
+    for (const t of openSlots({ ...cfg, from, busy: await closerBusy(env, cid, from, to, cfg.minutes) })) { if (av && outsideHours(av, t, cfg.minutes)) continue; if (!free.has(t)) free.set(t, []); free.get(t).push(cid); }
+  }
   return { slots: [...free.keys()].sort((x, y) => x - y), free };
 }
 // Of the people free at that time, the one with the fewest upcoming audits.

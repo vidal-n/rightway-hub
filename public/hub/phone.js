@@ -1,6 +1,6 @@
 // Browser phone: calls go out and come in through the computer's mic and speakers (Twilio Voice JS SDK, vendored in /vendor).
 // One Device per tab, created after login. A call bar floats over every page while a call is live.
-import { api, esc, toast } from './core.js';
+import { api, esc, toast, makeDraggable } from './core.js';
 import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter, warmAudio } from './audioset.js';
 
 const SDK = '/vendor/twilio-voice-2.18.5.min.js';
@@ -81,6 +81,15 @@ function ringback(on) {
   } catch { ring = null; }
 }
 
+// ---------- contact card (call window and power dial window) ----------
+// Person first, business under it, then the facts a rep wants while talking: phone and their local time, the email the scrub found, phone type, place.
+export const initialsOf = (t) => String(t || '').replace(/[^A-Za-z0-9 ]/g, ' ').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '#';
+export function contactRows(rows = []) {
+  const list = rows.filter((r) => r && r.v);
+  if (!list.length) return '';
+  return `<div class="cb-info">${list.map((r) => `<div class="cb-row"><i>${esc(r.k)}</i><span>${r.href ? `<a href="${esc(r.href)}"${/^https?:/.test(r.href) ? ' target="_blank" rel="noopener"' : ''}>${esc(r.v)}</a>` : esc(r.v)}${r.tag ? `<em class="tag ${esc(r.tone || '')}">${esc(r.tag)}</em>` : ''}${r.copy ? `<button type="button" class="cb-copy" data-copy="${esc(r.copy)}" aria-label="Copy ${esc(r.k)}">Copy</button>` : ''}</span></div>`).join('')}</div>`;
+}
+
 // ---------- call bar ----------
 let bar = null;
 let tick = null;
@@ -91,25 +100,59 @@ function ensureBar() {
   bar.setAttribute('role', 'region');
   bar.setAttribute('aria-label', 'Phone call');
   document.body.appendChild(bar);
+  // Drag the call window by its top (the name area); it remembers where you left it. On a phone it stays docked.
+  makeDraggable(bar, { grab: (e) => Boolean(e.target.closest('.cb-top, .cb-grip')), key: 'callbar', off: () => innerWidth <= 900 });
+  bar.addEventListener('click', (e) => {
+    const c = e.target.closest('[data-copy]');
+    if (c) navigator.clipboard?.writeText(c.dataset.copy).then(() => toast('Copied'));
+  });
   return bar;
 }
 function hideBar(delay = 0) {
   setTimeout(() => { if (!st.call && bar) { bar.classList.add('out'); setTimeout(() => { if (!st.call) { bar?.remove(); bar = null; } }, 250); } }, delay);
 }
 
+// What the rep types and taps during a call survives the window redrawing and is read when the result popup opens.
+let draft = { note: '', when: '' };
+export const takeCallDraft = () => { const d = draft; draft = { note: '', when: '' }; return d; };
+function syncTools(b, view) {
+  let t = b.querySelector(':scope > .cb-tools');
+  if (!view.tools) { t?.remove(); return; }
+  if (t) return;
+  const tl = view.tools;
+  t = document.createElement('div');
+  t.className = 'cb-tools';
+  t.innerHTML = `<textarea class="cb-notein" rows="3" placeholder="Notes while you talk. They fill in the result box when you hang up." aria-label="Call notes"></textarea>
+    ${tl.chips?.length ? `<div class="cb-sub">If they say call back</div><div class="cb-chips">${tl.chips.map(([n, v], i) => `<button type="button" class="cb-chip" data-chip="${i}" data-v="${esc(v)}">${esc(n)}</button>`).join('')}</div>` : ''}
+    ${tl.actions?.length ? `<div class="cb-quick">${tl.actions.map(([n], i) => `<button type="button" class="cb-q" data-q="${i}">${esc(n)}</button>`).join('')}</div>` : ''}`;
+  const note = t.querySelector('.cb-notein');
+  note.value = draft.note;
+  note.addEventListener('input', () => { draft.note = note.value; });
+  t.addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-chip]');
+    if (chip) { const on = !chip.classList.contains('on'); t.querySelectorAll('.cb-chip').forEach((c) => c.classList.remove('on')); chip.classList.toggle('on', on); draft.when = on ? chip.dataset.v : ''; return; }
+    const q = e.target.closest('[data-q]');
+    if (q) tl.actions[Number(q.dataset.q)]?.[1]?.();
+  });
+  b.appendChild(t);
+}
 function renderBar(view) {
   const b = ensureBar();
   b.classList.remove('out');
   b.dataset.state = view.state;
+  let main = b.querySelector(':scope > .cb-main');
+  if (!main) { b.querySelectorAll(':scope > :not(.cb-tools)').forEach((n) => n.remove()); main = document.createElement('div'); main.className = 'cb-main'; b.prepend(main); }
   const live = view.state === 'live';
+  const person = view.who?.known ? view.who.name : '';
   const longLabel = String(view.label || '').length > 14; // long messages go on their own line so the name is never squeezed out
-  b.innerHTML = `
+  main.innerHTML = `
     <div class="cb-top">
-      <div class="cb-av${view.state === 'ringing' || view.state === 'incoming' || view.state === 'dialing' ? ' pulse' : ''}">${picon.phone}</div>
-      <div class="cb-who"><b>${esc(view.name || pretty(view.number))}</b>${view.who ? `<em class="cb-p">${view.who.known ? `${esc(view.who.name)} <u>${esc(view.who.role)}</u>` : esc(view.who.line)}</em>` : ''}<span>${esc(view.name ? pretty(view.number) : '')}${view.from ? `${view.name ? ' · ' : ''}${view.incoming ? 'to' : 'from'} ${esc(pretty(view.from))}` : ''}</span></div>
+      <div class="cb-av${view.state === 'ringing' || view.state === 'incoming' || view.state === 'dialing' ? ' pulse' : ''}">${person || view.name ? esc(initialsOf(person || view.name)) : picon.phone}</div>
+      <div class="cb-who"><b>${esc(person || view.name || pretty(view.number))}</b>${person ? `<em class="cb-p">${esc(view.name || '')}${view.who.role ? ` <u>${esc(view.who.role)}</u>` : ''}</em>` : view.who ? `<em class="cb-p">${esc(view.who.line)}</em>` : ''}<span>${esc(view.name ? pretty(view.number) : '')}${view.from ? `${view.name ? ' · ' : ''}${view.incoming ? 'to' : 'from'} ${esc(pretty(view.from))}` : ''}</span></div>
       <div class="cb-status" aria-live="polite">${longLabel ? '' : esc(view.label)}</div>
     </div>
     ${longLabel ? `<div class="cb-note" aria-live="polite">${esc(view.label)}</div>` : ''}
+    ${contactRows(view.info)}
     ${view.cat ? `<div class="cb-cat"><i class="cc cc-${esc(view.cat.id)}">${esc(view.cat.label)}</i><span>${esc(view.cat.lead)}</span></div>` : ''}
     ${view.recording && view.state !== 'ended' ? '<div class="cb-rec"><i></i>Recording</div>' : ''}
     ${live ? '<div class="cb-level" aria-hidden="true"><i></i></div>' : ''}
@@ -123,6 +166,7 @@ function renderBar(view) {
       ${['dialing', 'ringing', 'live', 'incoming'].includes(view.state) && view.kind !== 'bridge' ? `<button type="button" class="cb-btn" data-act="audio" title="Mic, speaker and noise">${picon.mic}<span>Audio</span></button>` : ''}
       ${['dialing', 'ringing', 'live'].includes(view.state) ? `<button type="button" class="cb-btn cb-hang" data-act="hang">${picon.hang}<span>${view.kind === 'monitor' ? 'Leave' : view.kind === 'bridge' ? 'Done' : 'Hang up'}</span></button>` : ''}
     </div>`;
+  syncTools(b, view);
 }
 
 const END_LABEL = { 'no-answer': 'No answer', busy: 'Busy', failed: 'Call failed', canceled: 'Call canceled' };
@@ -212,14 +256,16 @@ function track(call, view, { onEnd, act } = {}) {
 }
 
 // Outgoing: checks the number on the server, then connects through the browser.
-export async function placeCall({ to, leadId, from, name, who, cat, onEnd } = {}) {
+export async function placeCall({ to, leadId, from, name, who, cat, info, tools, onEnd } = {}) {
   if (st.call) throw new Error('You are already on a call. Hang up first.');
   warmAudio();   // before any await: iPhone and iPad only start audio inside the tap that began the call
   // "Use my phone": the Hub rings your mobile, then connects the lead. Works with the screen locked or in another app.
-  if (callMode() === 'phone' && leadId && !to) return bridgeCall({ leadId, from, name, who, cat, onEnd });
+  if (callMode() === 'phone' && leadId && !to) return bridgeCall({ leadId, from, name, who, cat, info, onEnd });
+  draft = { note: '', when: '' };
+  document.querySelector('.callbar > .cb-tools')?.remove();
   const prep = await api('/api/voice/prepare', { method: 'POST', body: { to, leadId, from } });
   const d = await startPhone();
-  const view = { state: 'dialing', label: 'Calling...', name: name || prep.name, who, cat, number: prep.to, from: prep.from, kind: 'out', recording: Boolean(prep.recording) };
+  const view = { state: 'dialing', label: 'Calling...', name: name || prep.name, who, cat, info, tools, number: prep.to, from: prep.from, kind: 'out', recording: Boolean(prep.recording) };
   renderBar(view);
   st.call = { pending: true };
   let call;
@@ -231,10 +277,10 @@ export async function placeCall({ to, leadId, from, name, who, cat, onEnd } = {}
 
 // The ring-my-mobile route: the Hub calls the rep's saved mobile, and when it is answered it dials the lead.
 const BRIDGE_END = { completed: 1, 'no-answer': 1, busy: 1, failed: 1, canceled: 1, you_busy: 1, 'you_no-answer': 1, you_failed: 1, you_canceled: 1 };
-async function bridgeCall({ leadId, from, name, who, cat, onEnd }) {
+async function bridgeCall({ leadId, from, name, who, cat, info, onEnd }) {
   const r = await api('/api/dialer/call', { method: 'POST', body: { leadId, from } });
   const id = r.activityId;
-  const view = { state: 'ringing', label: 'Your phone is ringing. Answer it.', name: name || 'Lead', who, cat, number: '', from: '', kind: 'bridge' };
+  const view = { state: 'ringing', label: 'Your phone is ringing. Answer it.', name: name || 'Lead', who, cat, info, number: '', from: '', kind: 'bridge' };
   renderBar(view);
   let poll = null, done = false;
   const call = { bridge: true, disconnect: () => finish('') };

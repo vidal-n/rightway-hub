@@ -13,16 +13,19 @@ export const keyed = (list) => list.map((d, i) => ({ ...d, key: i < 9 ? String(i
 export const needsTime = (d) => d && (d.acts === 'callback' || d.acts === 'booked');
 
 // The popup after a call ends. onSave gets { dispo, note, callbackAt, newLead } and does the saving; it may throw to keep the popup open.
-export async function dispositionModal({ title = 'How did the call go?', sub = '', answered = false, askLead = false, number = '', onSave, onSkip } = {}) {
+export async function dispositionModal({ title = 'How did the call go?', sub = '', answered = false, askLead = false, number = '', person = '', business = '', facts = [], note = '', callbackAt = '', onSave, onSkip } = {}) {
   let list;
   try { list = keyed((await loadDispos()).dispositions); } catch (e) { toast(e.message, true); return; }
-  const suggest = answered ? '' : (list.find((d) => d.acts === 'no_answer') || {}).id;
+  // A callback time tapped during the call picks the callback result for them.
+  const suggest = callbackAt ? (list.find((d) => d.acts === 'callback') || {}).id : answered ? '' : (list.find((d) => d.acts === 'no_answer') || {}).id;
   let pick = suggest || '';
+  const initials = String(person || business || '#').replace(/[^A-Za-z0-9 ]/g, ' ').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '#';
   const m = modal(`
-    <div class="card-head"><div><h2 style="margin:0">${esc(title)}</h2>${sub ? `<p class="small muted" style="margin:4px 0 0">${esc(sub)}</p>` : ''}</div><button class="btn btn-ghost btn-sm" data-close>Skip</button></div>
+    <div class="card-head"><div class="dp-who">${person || business ? `<span class="pd-av">${esc(initials)}</span>` : ''}<div style="min-width:0"><h2 style="margin:0">${esc(person || title)}</h2>${person || business ? `<div class="pd-biz">${esc(person ? business || title : '')}</div>` : ''}${sub ? `<p class="small muted" style="margin:4px 0 0">${esc(sub)}</p>` : ''}</div></div><button class="btn btn-ghost btn-sm" data-close>Skip</button></div>
+    ${facts.filter((f) => f && f.v).length ? `<div class="dp-facts">${facts.filter((f) => f && f.v).map((f) => `<span><i>${esc(f.k)}</i>${esc(f.v)}</span>`).join('')}</div>` : ''}
     <div class="dispo-grid">${list.map((d) => `<button type="button" class="dispo-btn${d.id === pick ? ' on' : ''}" data-d="${esc(d.id)}">${d.key ? `<span class="kbd">${d.key}</span>` : ''}${esc(d.label)}</button>`).join('')}</div>
-    <label class="field dispo-when" style="margin-top:12px${needsTime(list.find((d) => d.id === pick)) ? '' : ';display:none'}"><span>Callback or audit time</span><input type="datetime-local" id="dpwhen"></label>
-    <label class="field" style="margin-top:12px"><span>Note</span><textarea id="dpnote" rows="3" placeholder="What they said, job value, who handles marketing"></textarea></label>
+    <label class="field dispo-when" style="margin-top:12px${needsTime(list.find((d) => d.id === pick)) ? '' : ';display:none'}"><span>Callback or audit time</span><input type="datetime-local" id="dpwhen" value="${esc(callbackAt)}"></label>
+    <label class="field" style="margin-top:12px"><span>Note</span><textarea id="dpnote" rows="3" placeholder="What they said, job value, who handles marketing">${esc(note)}</textarea></label>
     ${askLead ? `<details class="dispo-lead" style="margin-top:12px"><summary>Add ${esc(number || 'this number')} as a new lead</summary>
       <div class="form-grid" style="margin-top:10px"><label class="field"><span>Business name</span><input id="dpbiz" placeholder="Shore Plumbing"></label>
       <label class="field"><span>Contact</span><input id="dpcontact" placeholder="Mike"></label><label class="field"><span>State</span><input id="dpstate" placeholder="FL" maxlength="20"></label></div></details>` : ''}

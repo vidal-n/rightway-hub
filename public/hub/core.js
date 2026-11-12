@@ -98,13 +98,70 @@ export async function resizeImage(file, max = 1600, quality = 0.85) {
   }
 }
 
+// Move a window by its title area. `grab(e)` says whether the press started on a handle. The window is nudged with the CSS `translate`
+// property, so it keeps its own layout, and it can never be dragged fully off screen. With `key` the spot is remembered on this computer.
+export function makeDraggable(el, { grab, key = '', off = () => false, onMove } = {}) {
+  const KEY = key ? `rw-pos-${key}` : '';
+  const put = (x, y) => { el.style.translate = x || y ? `${x}px ${y}px` : ''; };
+  let x = 0, y = 0;
+  if (KEY) { try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); if (v) { x = Number(v.x) || 0; y = Number(v.y) || 0; } } catch { /* ignore */ } put(x, y); keepOnScreen(); }
+  function keepOnScreen() {
+    const r = el.getBoundingClientRect();
+    if (!r.width) return;
+    const m = 60;                              // always leave this much of the window on screen
+    let dx = 0, dy = 0;
+    if (r.right < m) dx = m - r.right; else if (r.left > innerWidth - m) dx = innerWidth - m - r.left;
+    if (r.top < 0) dy = -r.top; else if (r.top > innerHeight - m) dy = innerHeight - m - r.top;
+    if (dx || dy) { x += dx; y += dy; put(x, y); }
+  }
+  let drag = null;
+  el.addEventListener('pointerdown', (e) => {
+    if (off() || e.button > 0 || !grab || !grab(e) || e.target.closest('button, a, input, select, textarea, label, [contenteditable], [data-nodrag]')) return;
+    drag = { sx: e.clientX, sy: e.clientY, x, y, id: e.pointerId, moved: false };
+    try { el.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    el.classList.add('dragging');
+  });
+  el.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+    if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+    drag.moved = true;
+    x = drag.x + dx; y = drag.y + dy; put(x, y); keepOnScreen(); onMove?.(true);
+  });
+  const end = (e) => {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    const moved = drag.moved;
+    drag = null; el.classList.remove('dragging');
+    try { el.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (moved) { if (KEY) { try { localStorage.setItem(KEY, JSON.stringify({ x, y })); } catch { /* ignore */ } } setTimeout(() => onMove?.(false), 0); }
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  window.addEventListener('resize', keepOnScreen);
+  return { reset() { x = 0; y = 0; put(0, 0); if (KEY) { try { localStorage.removeItem(KEY); } catch { /* ignore */ } } } };
+}
+
 export function modal(html, { onClose } = {}) {
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
   bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`;
   let closed = false;
+  let dragging = false;
   const close = () => { if (closed) return; closed = true; bg.remove(); onClose?.(); };
-  bg.addEventListener('click', (e) => { if (e.target === bg || e.target.closest('[data-close]')) close(); });
+  // A drag that ends over the dark backdrop must not count as a click on it.
+  bg.addEventListener('click', (e) => { if (dragging) return; if (e.target === bg || e.target.closest('[data-close]')) close(); });
+  // Every pop up can be moved by its title bar (or its top edge when it has no title bar).
+  const box = bg.firstElementChild;
+  makeDraggable(box, {
+    grab: (e) => {
+      const r = box.getBoundingClientRect();
+      const head = box.querySelector('.card-head, .modal-head, .aud-head, h2');
+      const top = head && head.getBoundingClientRect().top - r.top < 140;
+      return (top && head.contains(e.target)) || e.clientY - r.top < 28;
+    },
+    off: () => innerWidth < 700, onMove: (v) => { dragging = v; },
+  });
+  box.classList.add('movable');
   document.addEventListener('keydown', function onKey(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } });
   // Going to another page closes the panel, so it never sits on top of the next page.
   window.addEventListener('hashchange', close, { once: true });

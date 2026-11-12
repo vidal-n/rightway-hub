@@ -1,5 +1,5 @@
 // CRM screens: pipeline board, lead details, CSV import, power dialer, settings.
-import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal } from './core.js';
+import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable } from './core.js';
 import { staffShell, settingsTabs } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
 import { textModal } from './texts.js';
@@ -7,14 +7,14 @@ import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
 import { loadDispos, keyed, dispositionModal } from './dispo.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
-import { placeCall, startPhone, onPhoneState } from './phone.js';
+import { placeCall, startPhone, onPhoneState, contactRows, initialsOf, takeCallDraft } from './phone.js';
 import { warmAudio } from './audioset.js';
 import { filterLeads } from '/js/leadfilter.js';
 import { quoteFor, callCategory, whoIs, CALL_CATS } from '/js/leadintel.js';
 import { SCOPE, effort, hoursOf } from '/js/scope.js';
 import { can, canRunCalls } from '/js/jobs.js';
-import { PHONE_TYPE_LABEL } from '/js/scrub.js';
-import { bothTimes, validZone } from '/js/apptime.js';
+import { PHONE_TYPE_LABEL, EMAIL_STATUS_LABEL } from '/js/scrub.js';
+import { bothTimes, validZone, fromInputs, inputsIn } from '/js/apptime.js';
 const yourZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
 import { licenseSearchUrl, sunbizSearchUrl } from '/js/freedata.js';
 import { registryFor } from '/js/registries.js';
@@ -827,6 +827,31 @@ function importModal(onDone) {
 const DIAL_KEY = 'rw-dial-filter';
 // Call category chip: what to lead with on this call, from what we know about the business.
 const catChip = (c) => `<i class="cc cc-${esc(c.id)}" title="${esc(c.lead)}">${esc(c.label)}</i>`;
+// What the call windows show about a lead: the facts the scrub gathered, ready while talking.
+const callInfo = (l) => {
+  const w = whoIs(l);
+  const bad = ['bad', 'no_mail_server'].includes(l.email_status);
+  const place = [l.city, l.state].filter(Boolean).join(', ');
+  return [
+    { k: 'Phone', v: l.phone || '', tag: l.phone_type ? (PHONE_TYPE_LABEL[l.phone_type] || l.phone_type) : '', copy: l.phone || '' },
+    { k: 'Their time', v: l.tz_known && l.local_time ? l.local_time : '' },
+    { k: 'Email', v: l.email || '', href: l.email ? `mailto:${l.email}` : '', tag: l.email && l.email_status ? (EMAIL_STATUS_LABEL[l.email_status] || '') : '', tone: bad ? 'bad' : l.email_status === 'role' ? 'warn' : '', copy: l.email || '' },
+    { k: 'Owner', v: w.known && w.role === 'Owner' ? w.name : '' },
+    { k: 'Place', v: place },
+    { k: 'Website', v: l.website ? String(l.website).replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '') : '', href: l.website ? (/^https?:/.test(l.website) ? l.website : `https://${l.website}`) : '' },
+    { k: 'Google', v: l.reviews != null ? `${l.reviews} reviews${l.rating ? ` · ${l.rating}★` : ''}` : '' },
+  ];
+};
+// One tap callback times for the call window, set on the lead's clock where it is known (10 AM their time), filled into the result box in your clock.
+const callbackChips = (l) => {
+  const mine = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+  const zone = validZone(l.timezone) || mine;
+  const local = (ms) => { const v = inputsIn(ms, mine); return `${v.date}T${v.time}`; };
+  const at = (days, hhmm) => { const d = inputsIn(Date.now() + days * 864e5, zone).date; const ms = fromInputs(d, hhmm, zone); return ms ? local(ms) : ''; };
+  const hour = new Date(Math.ceil((Date.now() + 3600e3) / 300e3) * 300e3);
+  const their = validZone(l.timezone) && l.tz_known ? ' their time' : '';
+  return [['In 1 hour', local(hour.getTime())], [`Tomorrow 10 AM${their}`, at(1, '10:00')], [`Tomorrow 2 PM${their}`, at(1, '14:00')], [`Next week 10 AM${their}`, at(7, '10:00')]].filter(([, v]) => v);
+};
 const whoHtml = (w) => (w.known ? `<b>${esc(w.name)}</b><span class="cc-role">${esc(w.role)}</span>${w.also ? `<span class="small muted">also ${esc(w.also)}</span>` : ''}` : `<b class="muted">${esc(w.line)}</b>`);
 export async function dialerPage(app, user) {
   setRep(user);
@@ -856,7 +881,11 @@ export async function dialerPage(app, user) {
     clearInterval(pdTimer);
     if (!power) return;
     const next = q.queue.slice(idx, idx + 3);
-    if (!pdBox) { pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox); }
+    if (!pdBox) {
+      pdBox = document.createElement('div'); pdBox.className = 'pd'; document.body.appendChild(pdBox);
+      // Drag it by the top bar or the name area. It remembers where you put it. The window is redrawn every second, so the grab test runs on the window itself.
+      makeDraggable(pdBox, { grab: (e) => Boolean(e.target.closest('.pd-head, .pd-who')), key: 'powerdial', off: () => innerWidth <= 900 });
+    }
     if (!next.length) { pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial</span><b>${pdCalls} calls · ${sessClock()}</b></div><div class="pd-list"><p style="margin:0">Queue clear. Pick another quality tab or time zone.</p></div><div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdx">Close</button></div>`; $('#pdx', pdBox).onclick = powerStop; return; }
     let left = pdWait;
     const draw = () => {
@@ -864,7 +893,7 @@ export async function dialerPage(app, user) {
       pdBox.innerHTML = `<div class="pd-head">${icon.phone}<span>Power dial · <b>${pdCalls}</b> calls · <b>${sessClock()}</b></span><span class="pd-count">${left}</span></div>
         <div class="pd-bar" style="width:${(100 * (pdWait - left)) / pdWait}%"></div>
         <div class="pd-list">${next.map((l, i) => `<div class="pd-card${i === 0 ? ' first' : ''}"><span class="g ${esc(l.grade || '')}">${esc(l.grade || '?')}</span>
-          <div style="min-width:0"><b>${esc(l.business)}</b><span class="small">${esc([whoIs(l).name || 'Ask for the owner', l.city, l.local_time ? `${l.local_time} their time` : ''].filter(Boolean).join(' · '))}</span>${catChip(callCategory(l))}</div>
+          <div style="min-width:0"><b>${esc(whoIs(l).name || 'Ask for the owner')}</b><span class="small">${esc([l.business, l.city, l.local_time ? `${l.local_time} their time` : ''].filter(Boolean).join(' · '))}</span>${l.email ? `<span class="small">${esc(l.email)}</span>` : ''}${catChip(callCategory(l))}</div>
           <span class="small">${i === 0 ? 'Calling next' : `Then #${i + 1}`}</span></div>`).join('')}</div>
         <div class="pd-foot"><button class="btn btn-primary btn-sm" id="pdnow">Call now</button><button class="btn btn-ghost btn-sm" id="pdskip">Skip</button><button class="btn btn-ghost btn-sm" id="pdpause">Pause</button>
           <label class="row small" style="gap:6px;margin-left:auto">Wait <select id="pdw" style="width:auto;min-height:32px;padding:4px 8px">${[3, 5, 8, 12].map((v) => `<option${v === pdWait ? ' selected' : ''}>${v}</option>`).join('')}</select> s</label></div>`;
@@ -885,8 +914,9 @@ export async function dialerPage(app, user) {
       pdBox.className = 'pd compact'; pdBox.querySelector('.pd-count').textContent = 'LIVE';
       const hs = pdBox.querySelector('.pd-head > span'); if (hs) hs.innerHTML = `Power dial · <b>${pdCalls}</b> calls · <b>${sessClock()}</b>`;
       pdBox.querySelector('.pd-live')?.remove();
-      if (l) pdBox.querySelector('.pd-head').insertAdjacentHTML('afterend', `<div class="pd-live"><h3>${esc(l.business)}</h3><div class="dial-who">${whoHtml(w)}</div>
-        <div class="pd-ph">${esc(l.phone || '')}${l.local_time ? ` <span class="small muted">${esc(l.local_time)} their time</span>` : ''}</div>
+      if (l) pdBox.querySelector('.pd-head').insertAdjacentHTML('afterend', `<div class="pd-live"><div class="pd-who"><span class="pd-av">${esc(initialsOf(w.known ? w.name : l.business))}</span>
+        <div style="min-width:0"><h3 class="pd-name">${esc(w.known ? w.name : 'Ask for the owner')}${w.known && w.role ? ` <span class="cc-role">${esc(w.role)}</span>` : ''}</h3><div class="pd-biz">${esc(l.business)}</div></div></div>
+        ${contactRows(callInfo(l))}
         <div class="dial-cat">${catChip(c)}<span>${esc(c.lead)}</span></div></div>`);
     }
     btn.click();
@@ -917,7 +947,13 @@ export async function dialerPage(app, user) {
   // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.
   setTimeout(() => api('/api/balances/status').then((b) => { const el = document.getElementById('lowbal'); if (el && b.low?.length) el.innerHTML = `<div class="card" style="border-color:#E8A33D;margin-bottom:12px"><b>${b.low.map((x) => esc(x.name)).join(' and ')} balance ${b.low.some((x) => x.empty) ? 'is empty' : 'is low'}.</b> <span class="small">${b.low.some((x) => x.key === 'twilio') ? 'Calls and texts stop when Twilio runs out. ' : ''}${b.low.some((x) => x.key === 'dataforseo') ? 'Research and scans stop when DataForSEO runs out. ' : ''}An owner can add funds from the Dashboard.</span></div>`; }).catch(() => {}), 50);
   const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier' && k !== 'cat').map(([k, v]) => `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`).join(' · ');
-  let lay = { queue: true, prep: true, compact: false };
+  let lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true };
+  let layOpen = false;
+  // Click anywhere else, or press Escape, to close the layout menu.
+  const shutLay = () => { layOpen = false; const b = document.getElementById('dlaybody'); if (b) b.hidden = true; document.getElementById('dlaybtn')?.setAttribute('aria-expanded', 'false'); };
+  const layOutside = (e) => { if (!document.body.contains(view)) { document.removeEventListener('click', layOutside); document.removeEventListener('keydown', layEsc); return; } if (layOpen && !e.target.closest('.dlayout')) shutLay(); };
+  const layEsc = (e) => { if (e.key === 'Escape' && layOpen) shutLay(); };
+  document.addEventListener('click', layOutside); document.addEventListener('keydown', layEsc);
   try { lay = { ...lay, ...JSON.parse(localStorage.getItem('rw-dial-layout') || '{}') }; } catch { /* ignore */ }
   const render = () => {
     const l = q.queue[idx];
@@ -927,18 +963,23 @@ export async function dialerPage(app, user) {
           <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
           ${me.twilio ? `<button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
       ${dialTabs('queue', user)}
-      <div class="tiers">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
+      <div class="tiers" data-sec="tiers">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
         .map(([k, n, t]) => `<button type="button" data-tier="${k}" title="${esc(t)}" class="${(flt.tier || '') === k ? 'is-on' : ''}">${n}<b>${k ? (q.tiers?.[k] ?? 0) : Object.values(q.tiers || {}).reduce((a, b) => a + b, 0)}</b></button>`).join('')}</div>
-      <div class="tiers cats" aria-label="Call type"><span class="small muted">Call type</span>${[['', 'All', 'every call type'], ...CALL_CATS.map((c) => [c.id, c.label, c.lead])]
+      <div class="tiers cats" data-sec="cats" aria-label="Call type"><span class="small muted">Call type</span>${[['', 'All', 'every call type'], ...CALL_CATS.map((c) => [c.id, c.label, c.lead])]
         .filter(([k]) => !k || q.cats?.[k] || (flt.cat || '') === k)
         .map(([k, n, t]) => `<button type="button" data-cat="${k}" title="${esc(t)}" class="${(flt.cat || '') === k ? 'is-on' : ''}">${esc(n)}<b>${k ? (q.cats?.[k] ?? 0) : Object.values(q.cats || {}).reduce((a, b) => a + b, 0)}</b></button>`).join('')}</div>
       ${fold('dfilters', 'More filters and research status', `<div class="row small" style="margin:-4px 0 10px;gap:8px">Data: <div class="seg">${[['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Has an email']].map(([k, n]) => `<button type="button" data-dq="${k}" class="${(flt.data || '') === k ? 'is-on' : ''}">${n}</button>`).join('')}</div></div>
       <div id="rsx" class="small muted" style="margin:6px 0 0"></div>
       ${filterText ? `<div class="row small" style="margin:6px 0 0">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}`, Boolean(filterText))}
       <div class="dstrip" aria-label="Today"><span><b>${q.stats.dials}</b> dials <i>of 60</i></span><span><b>${q.stats.talks}</b> owner talks</span><span><b>${q.stats.booked}</b> booked</span><span><b>${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</b> contact rate</span>
-        <details class="dlayout"><summary>Layout</summary><div class="dlayout-body"><label><input type="checkbox" id="lay-q"${lay.queue ? ' checked' : ''}> Up next list</label><label><input type="checkbox" id="lay-p"${lay.prep ? ' checked' : ''}> Script and research</label><label><input type="checkbox" id="lay-c"${lay.compact ? ' checked' : ''}> Tighter spacing</label></div></details></div>
+        <div class="dlayout"><button type="button" class="dl-btn" id="dlaybtn" aria-expanded="${layOpen}" aria-haspopup="true">Customize layout</button>
+          <div class="dlayout-body" id="dlaybody" role="group" aria-label="Customize layout"${layOpen ? '' : ' hidden'}>
+            <p class="small muted" style="margin:0">Show or hide. Saved for you on this computer.</p>
+            ${[['queue', 'Up next list'], ['prep', 'Script and research'], ['tiers', 'Quality tabs'], ['cats', 'Call type tabs'], ['upcoming', 'Coming up appointments'], ['links', 'Map, profile and website buttons'], ['notes', 'Note and callback time'], ['compact', 'Tighter spacing']]
+              .map(([k, n]) => `<label><input type="checkbox" data-lay="${k}"${lay[k] ? ' checked' : ''}> ${n}</label>`).join('')}
+            <button type="button" class="btn btn-ghost btn-sm" id="dlayreset">Show everything</button></div></div></div>
       <div id="lowbal"></div>
-      ${upcoming.length ? `<div class="card upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(bothTimes(m.meet_at, validZone(m.timezone) || yourZone(), yourZone()))} ${esc(m.business)}</span>
+      ${upcoming.length ? `<div class="card upcoming" data-sec="upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(bothTimes(m.meet_at, validZone(m.timezone) || yourZone(), yourZone()))} ${esc(m.business)}</span>
         ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}${can(window.__rwUser, 'close') ? `<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>` : ''}`).join('')}</div>` : ''}
       ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
       <div class="dial-grid${lay.queue ? '' : ' no-queue'}${lay.prep ? '' : ' no-prep'}${lay.compact ? ' tight' : ''}">
@@ -953,12 +994,13 @@ export async function dialerPage(app, user) {
             ${(() => { const c = callCategory(l); return `<div class="dial-cat">${catChip(c)}<span>${esc(c.lead)}</span>${c.facts.length || c.tags.length ? `<small class="muted">${esc([...c.facts, ...c.tags.map((t) => t.label)].join(' · '))}</small>` : ''}</div>`; })()}
             <div class="row" style="margin:12px 0"><span class="badge">${l.tz_known ? `Their time: ${esc(l.local_time)}` : 'Time zone unknown: callable 11am to 8pm Eastern only'}</span>${l.sms_consent ? '<span class="badge">Agreed to texts</span>' : ''}${l.reviews != null ? `<span class="badge gray">${l.reviews} reviews${l.rating ? ` · ${l.rating}★` : ''}</span>` : ''}</div>
             <div class="dial-phone">${esc(l.phone || '')}</div>
+            <div class="pd-live dial-infobox" style="padding:0;margin-top:10px">${contactRows(callInfo(l).filter((x) => ['Email', 'Owner', 'Website', 'Google'].includes(x.k)))}</div>
             <div class="row" style="margin-top:14px">
               ${me.twilio ? `<button class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" id="dhub">${icon.phone}Call</button>` : ''}
               <a class="btn ${me.twilio ? 'btn-ghost' : 'btn-mint btn-xl'}" style="width:auto;${me.twilio ? '' : 'flex:1 1 200px'}" href="${telHref(l.phone)}" id="dtel">${me.twilio ? '' : icon.phone}Call from my phone</a>
             </div>
             ${me.twilio ? `<div class="row" style="margin-top:10px;align-items:flex-end">${nums.numbers.length > 1 ? callerSelect(nums.numbers) : ''}<span id="pbadge" style="margin-bottom:10px">${phoneBadge()}</span></div>` : ''}
-            <div class="row" style="margin-top:12px">
+            <div class="row" data-sec="links" style="margin-top:12px">
               <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.industry || l.category || ''} ${l.city || ''} ${l.state || ''}`)}">Map pack</a>
               <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''}`)}">Their profile</a>
               ${l.website ? `<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}">Website</a>` : ''}
@@ -969,8 +1011,8 @@ export async function dialerPage(app, user) {
           <div class="card">
             <h3>How did it go?</h3>
             <div class="outcomes big">${DISP.map((d) => `<button class="btn btn-ghost" data-out="${esc(d.id)}">${d.key ? `<span class="kbd">${d.key}</span>` : ''}${esc(d.label)}</button>`).join('')}</div>
-            ${fold('dnotes', 'Note and callback time', `<label class="field"><span>Callback or audit time</span><input type="datetime-local" id="dwhen"></label>
-            <label class="field" style="margin-top:10px"><span>Note</span><textarea id="dnote" rows="3" placeholder="Job value, capacity, who handles marketing, what they said"></textarea></label>`, true)}
+            <div data-sec="notes">${fold('dnotes', 'Note and callback time', `<label class="field"><span>Callback or audit time</span><input type="datetime-local" id="dwhen"></label>
+            <label class="field" style="margin-top:10px"><span>Note</span><textarea id="dnote" rows="3" placeholder="Job value, capacity, who handles marketing, what they said"></textarea></label>`, true)}</div>
             <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" id="dskip">Skip for now</button><button class="btn btn-ghost btn-sm" id="dbook">Booked: send Meet invite</button><span class="small">Keys 1 to 9 log an outcome.</span></div>
             ${l.notes ? fold('dold', 'Earlier notes', `<div class="caption">${esc(l.notes)}</div>`, false) : ''}
           </div>
@@ -979,7 +1021,18 @@ export async function dialerPage(app, user) {
       </div>`}`;
     wireFolds(view);
     $$('[data-jump]', view).forEach((b) => b.addEventListener('click', () => { idx = Number(b.dataset.jump); render(); }));
-    [['lay-q', 'queue'], ['lay-p', 'prep'], ['lay-c', 'compact']].forEach(([id, k]) => $(`#${id}`, view)?.addEventListener('change', (e) => { lay[k] = e.target.checked; try { localStorage.setItem('rw-dial-layout', JSON.stringify(lay)); } catch { /* ignore */ } render(); }));
+    // Customize layout: tick boxes change the page in place (no redraw), so the menu stays open while you choose.
+    const applyLay = () => {
+      view.dataset.hide = ['tiers', 'cats', 'upcoming', 'links', 'notes'].filter((k) => !lay[k]).join(' ');
+      const g = $('.dial-grid', view);
+      if (g) { g.classList.toggle('no-queue', !lay.queue); g.classList.toggle('no-prep', !lay.prep); g.classList.toggle('tight', Boolean(lay.compact)); }
+    };
+    const saveLay = () => { try { localStorage.setItem('rw-dial-layout', JSON.stringify(lay)); } catch { /* ignore */ } };
+    const openLay = (on) => { layOpen = on; const b = $('#dlaybody', view); if (b) b.hidden = !on; $('#dlaybtn', view)?.setAttribute('aria-expanded', String(on)); };
+    $('#dlaybtn', view)?.addEventListener('click', (e) => { e.stopPropagation(); openLay(!layOpen); });
+    $$('[data-lay]', view).forEach((c) => c.addEventListener('change', () => { lay[c.dataset.lay] = c.checked; saveLay(); applyLay(); }));
+    $('#dlayreset', view)?.addEventListener('click', () => { lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true }; saveLay(); applyLay(); $$('[data-lay]', view).forEach((c) => { c.checked = Boolean(lay[c.dataset.lay]); }); });
+    applyLay();
     $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto2', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
     $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
     $$('[data-dq]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, data: b.dataset.dq }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
@@ -1000,9 +1053,14 @@ export async function dialerPage(app, user) {
       const btn = e.currentTarget;
       busy(btn, true);
       try {
-        await placeCall({ leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), onEnd: ({ answered }) => {
+        await placeCall({ leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
+          tools: { chips: callbackChips(l), actions: [['Text them', () => textModal(l, { rep: REP })], ['Book audit', () => bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true))], ['Full details', () => leadModal(l.id, () => {})]] },
+          onEnd: ({ answered }) => {
+          const dr = takeCallDraft();
           if (q.queue[idx]?.id !== l.id) return;
-          dispositionModal({ title: l.business, sub: answered ? 'Pick how it went. It moves the lead to the right next step.' : 'No one picked up? Pick the result.', answered,
+          const w = whoIs(l);
+          dispositionModal({ title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), note: dr.note, callbackAt: dr.when,
+            sub: answered ? 'Pick how it went. It moves the lead to the right next step.' : 'No one picked up? Pick the result.', answered,
             onSave: async (r) => {
               const note = $('#dnote', view); if (note && r.note) note.value = [note.value, r.note].filter(Boolean).join('\n');
               const w = $('#dwhen', view); if (w && r.callbackAt) w.value = r.callbackAt;
@@ -1072,6 +1130,7 @@ export async function settingsPage(app, user) {
         <a class="btn btn-primary" href="#/google">${g?.connected ? 'Open the Google page' : 'Connect my Google'}</a></div>
       <div class="card"><div class="card-head"><h2>Your phone for the dialer</h2></div>
         <form id="myphone" class="row"><input name="phone" value="${esc(me.user.phone || '')}" placeholder="Your mobile number" style="flex:1 1 220px"><button class="btn btn-primary" type="submit">Save</button></form></div>
+      <div class="card" id="myavail"></div>
       <div class="card" id="teamcal"></div>
       <p class="small muted">Everything else in Settings is for owners.</p>`;
     $('#myphone', view).addEventListener('submit', async (e) => {
@@ -1079,6 +1138,7 @@ export async function settingsPage(app, user) {
       try { await api('/api/me/phone', { method: 'PUT', body: { phone: e.target.phone.value } }); toast('Saved'); } catch (err) { toast(err.message, true); }
     });
     import('./teamcal.js').then((x) => x.teamCalCard($('#teamcal', view), user)).catch(() => {});
+    import('./avail.js').then((x) => x.availCard($('#myavail', view))).catch(() => {});
     return;
   }
   const { DEFAULT_SCRIPT, DEFAULT_OBJECTIONS, SCRIPT_KEYS } = await import('/js/leadintel.js');
@@ -1125,7 +1185,8 @@ export async function settingsPage(app, user) {
         <label class="field span-all"><span>Meeting link when Google is not connected (Zoom or a Meet room; empty means you call them)</span><input name="link" placeholder="https://" value="${esc(bk.link || '')}"${isAdmin ? '' : ' disabled'}></label>
         ${isAdmin ? `<div class="span-all row end">${g?.connected ? '<label class="row small" style="gap:6px"><input type="checkbox" name="ownerSelf"> Book on my Google Calendar</label>' : ''}<button class="btn btn-primary" type="submit">Save booking settings</button></div>` : ''}
       </form></div>
-    <div class="card" id="teamcal"></div>
+    <div class="card" id="myavail"></div>
+      <div class="card" id="teamcal"></div>
     <div class="card"><div class="card-head"><h2>Call script</h2></div>
       <p class="muted">The dialer and the presentation fill these in for each lead. One line per thing to say. Start a line with "Or:" for an alternative, and wrap coaching notes in (parentheses).</p>
       <p class="small mono">{first} {rep} {my_number} {business} {city} {industry} {keyword} {scan_line} {hook_impact} {opener_reason} {vm_scan} {rank} {top_name} {top_name_or_them} {top_reviews} {top3_of_points} {top10_of_points} {reviews} {rating} {price} {setup} {today_total} {services_list} {price_anchor} {drop_offer} {ticket} {breakeven} {breakeven_jobs} {problems} {slot1} {slot2} {email_or_phone} {email_or_ask}</p>
@@ -1178,6 +1239,7 @@ export async function settingsPage(app, user) {
   }).catch(() => {});
   stripeSetup($('#stripesetup', view), user);
   import('./teamcal.js').then((x) => x.teamCalCard($('#teamcal', view), user)).catch(() => {});
+  import('./avail.js').then((x) => x.availCard($('#myavail', view))).catch(() => {});
   autoScanCard($('#autoscan', view), user);
   $$('[data-copy]', view).forEach((b) => b.addEventListener('click', () => copy(b.dataset.copy, 'Copied')));
   $('#gdisc', view)?.addEventListener('click', async () => { try { await api('/api/google/disconnect', { method: 'POST' }); toast('Disconnected'); settingsPage(app, user); } catch (err) { toast(err.message, true); } });
