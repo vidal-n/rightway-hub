@@ -243,7 +243,7 @@ export function busy(btn, on, label) {
 export const KIND_LABEL = {
   setup: 'Setup', post: 'Google posts', photos: 'Photos', replies: 'Review replies', qa: 'Q&A', page: 'Local pages', content: 'Content',
   link: 'Links and citations', onpage: 'On-page', technical: 'Technical and schema', competitors: 'Competitors', calls: 'Calls and leads',
-  monitor: 'Review monitoring', reputation: 'Reputation', reviews: 'Reviews', report: 'Report', meeting: 'Meeting', planning: 'Quarterly plan', custom: 'Other',
+  monitor: 'Review monitoring', reputation: 'Reputation', yelp: 'Yelp', social: 'Social posts', webcare: 'Website care', reviews: 'Reviews', report: 'Report', meeting: 'Meeting', planning: 'Quarterly plan', custom: 'Other',
 };
 
 const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;

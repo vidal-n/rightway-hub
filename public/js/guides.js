@@ -182,6 +182,42 @@ export const DEFAULT_GUIDES = {
     ],
     done: 'Closes when the meeting is marked held with notes.',
   },
+  yelp: {
+    title: 'Yelp page post', minutes: 15, proof: 'either', due: 'spread', access: ['yelp'],
+    need: ['Business owner login for their Yelp page (or an invite to manage it)', 'A real photo and a short update from the client'],
+    steps: [
+      'Open the client\'s Yelp business page from biz.yelp.com. Check the name, address, phone, hours and website match the Hub\'s business details block exactly.',
+      'Pick a real photo from their uploads and write a short update: a job, a service, a seasonal tip. No offers that break Yelp rules, and never ask for or pay for reviews.',
+      'Add the update (Yelp calls these posts or updates) and add the photo.',
+      'Open the page on Yelp and copy the link, or take a screenshot of the new post.',
+      'Attach the link or screenshot here and close the task.',
+    ],
+    done: 'The Yelp post is live and the link or screenshot is attached.',
+  },
+  social: {
+    title: 'Facebook and Instagram post', minutes: 15, proof: 'either', due: 'spread', access: ['social'],
+    need: ['Access to their Facebook Page and Instagram (Facebook connect link, or a team login)', 'An approved post: the Social tab has captions and hashtags ready'],
+    steps: [
+      'Open My work, Posts to publish, or the client\'s Social tab. Pick the next post that is verified.',
+      'Check the photo and the caption for each channel. Fix anything that is wrong or not true. Only real jobs, real reviews and real facts.',
+      'Copy the caption, post it on Facebook and Instagram at the time shown, and add the first comment if there is one.',
+      'Back in the Social tab, tap Mark posted and add the links.',
+      'Attach the link or a screenshot here and close the task.',
+    ],
+    done: 'The post is live on the client\'s pages and marked posted with a link or screenshot.',
+  },
+  webcare: {
+    title: 'Website hosting and care check', minutes: 30, proof: 'note', due: 12, access: ['website'],
+    need: ['Website login', 'Hosting login'],
+    steps: [
+      'Open the site and check it loads fast on a phone. Check the contact form sends and the tap to call link works.',
+      'In the hosting panel or WordPress: confirm the backup ran, update the core, theme and plugins, and check for security warnings.',
+      'Make the small edits the client asked for this month (text, photos, hours, a new staff member).',
+      'Check Search Console for new errors on the site.',
+      'Write what you did in the note and close.',
+    ],
+    done: 'Backups, updates and the client\'s small edits are done. Note says what changed.',
+  },
   planning: {
     title: 'Quarterly planning session', minutes: 60, proof: 'none', due: 20, access: [],
     need: ['Three months of scans and reports'],
@@ -276,6 +312,8 @@ export const ACCESS_ITEMS = [
     how: 'The client adds hello@rightwaygrowth.com as a Viewer (Admin, Property access management).' },
   { key: 'tracking', label: 'Call tracking number', plans: ['authority', 'leader'],
     how: 'Buy one in the Calls tab. Put it on the Google profile as the main number with their own line as an additional number.' },
+  { key: 'yelp', label: 'Yelp business page', plans: [],
+    how: 'Only if we manage their Yelp: the client claims the page at biz.yelp.com and adds hello@rightwaygrowth.com as a manager, or shares the login.' },
   { key: 'social', label: 'Facebook and Instagram', plans: [],
     how: 'Only if we share posts there: the client adds us under Page settings, Page access.' },
 ];

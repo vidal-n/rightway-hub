@@ -17,6 +17,7 @@ import { practiceModal } from './practice.js';
 import { filterLeads } from '/js/leadfilter.js';
 import { quoteFor, callCategory, whoIs, personOf, CALL_CATS } from '/js/leadintel.js';
 import { refLines } from '/js/planref.js';
+import { WEB_TIERS, webTierById, webLines, money as webMoney } from '/js/webprice.js';
 import { SCOPE, effort, hoursOf } from '/js/scope.js';
 import { can, canRunCalls } from '/js/jobs.js';
 import { PHONE_TYPE_LABEL, EMAIL_STATUS_LABEL } from '/js/scrub.js';
@@ -667,6 +668,8 @@ export async function leadModal(id, onChange) {
         </div>
         <div id="lout"></div>
         <details style="margin-top:16px"><summary class="small" style="cursor:pointer;font-weight:600">Website project (separate work order)</summary>
+          <label class="field" style="margin-top:8px"><span>Size (fills a starting price you can change)</span><select id="wtier"><option value="">Pick a size</option>${WEB_TIERS.map((t) => `<option value="${t.id}">${esc(t.label)}: ${esc(webMoney(t.build))} + ${esc(webMoney(t.care))} a month</option>`).join('')}<option value="custom">More than 15 pages or custom</option></select></label>
+          <div class="card small" id="wguide" style="margin-top:8px;box-shadow:none"></div>
           <div class="row" style="margin-top:8px;gap:8px">
             <label class="field" style="flex:1 1 120px"><span>Build fee $</span><input id="wsetup" inputmode="decimal" placeholder="1500"></label>
             <label class="field" style="flex:1 1 120px"><span>Monthly care $ (optional)</span><input id="wmonthly" inputmode="decimal" placeholder="0"></label></div>
@@ -772,6 +775,16 @@ export async function leadModal(id, onChange) {
   $('#lmonthly', m.el)?.addEventListener('input', fx);
   fx();
   $('#lquote', m.el)?.addEventListener('click', async (e) => { busy(e.target, true); try { await saveQuote(); toast('Quote saved'); changed = true; } catch (err) { toast(err.message, true); } finally { busy(e.target, false); } });
+  const wguide = (pages) => { const g = $('#wguide', m.el); if (g) g.innerHTML = `<b>Website guide (internal, never shown to the client)</b><ul class="list" style="margin:6px 0 0">${webLines(pages).map((t) => `<li class="item"><div class="item-sub">${esc(t)}</div></li>`).join('')}</ul>`; };
+  wguide(8);
+  $('#wtier', m.el)?.addEventListener('change', (e) => {
+    const t = webTierById(e.target.value);
+    wguide(t ? t.pages[1] : e.target.value === 'custom' ? 20 : 8);
+    if (!t) return;
+    $('#wsetup', m.el).value = t.build;
+    $('#wmonthly', m.el).value = t.care;
+    $('#wscope', m.el).value = [`${t.label} website: ${t.note.replace(/\.$/, '')}`, 'Mobile friendly design', 'Contact form and tap to call', 'Basic on-page setup for Google', 'Hosting, backups, updates and small edits each month', 'You own the site after 12 months of care'].join('\n');
+  });
   $('#lwweb', m.el)?.addEventListener('click', async (e) => {
     busy(e.target, true);
     try {

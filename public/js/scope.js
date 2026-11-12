@@ -23,6 +23,9 @@ export const SCOPE = {
   tracking: { monthly: () => [['calls', 'Call tracking and lead report', 1]], setup: () => ['Technical website audit', 'Call tracking number set up and forwarding'] },
   reputation: { monthly: () => [['monitor', 'Review monitoring check', 1], ['reputation', 'Reputation report', 1]], setup: () => [] },
   locations: { monthly: () => [], setup: () => ['Every location added with its own keywords and baseline scan'], quarterly: [['planning', 'Quarterly planning session', 1]] },
+  yelp: { unit: 'Yelp posts a month', def: 4, min: 2, max: 12, monthly: (n) => [['yelp', 'Yelp page post', n]], setup: () => ['Yelp business page claimed and details matched'] },
+  social: { unit: 'social posts a month', def: 12, min: 4, max: 30, monthly: (n) => [['social', 'Facebook and Instagram post', n]], setup: () => ['Facebook and Instagram access and posting plan set'] },
+  webcare: { monthly: () => [['webcare', 'Website hosting and care check', 1]], setup: () => ['Hosting and website access confirmed'] },
   report: { monthly: () => [['report', 'Monthly ranking report', 1], ['meeting', 'Monthly results meeting', 1]], setup: () => [] },
 };
 
@@ -128,7 +131,7 @@ export function scopeLine(item) {
 export function scopeFromPlan(plan, planMonthly = []) {
   const rank = Math.max(0, PLAN_ORDER.indexOf(plan));
   const countOf = (kind) => planMonthly.find((r) => r[0] === kind)?.[2];
-  return cleanScope(SERVICE_LIST.filter((s) => s.core || PLAN_ORDER.indexOf(s.min) <= rank).filter((s) => s.id !== 'locations' || plan === 'leader').map((s) => {
+  return cleanScope(SERVICE_LIST.filter((s) => s.core || PLAN_ORDER.indexOf(s.min) <= rank).filter((s) => !s.extra).filter((s) => s.id !== 'locations' || plan === 'leader').map((s) => {
     const kind = { posts: 'post', pages: 'page', links: 'link', content: 'content', onpage: 'onpage' }[s.id];
     return { id: s.id, qty: kind ? countOf(kind) || SCOPE[s.id].def : 1 };
   }));

@@ -10,6 +10,7 @@ import { logClaude } from './costs.js';
 import { notify } from './notify.js';
 import { cleanItem, readyForReview, fillCaptions, clientCanSee, templateIdeas, platformIds, STATUS, PLATFORM, progress } from '../public/js/social.js';
 import { clientMeta } from './meta.js';
+import { monthKey } from './plans.js';
 
 const MAX_IMG = 10 * 1024 * 1024;
 const MAX_VID = 50 * 1024 * 1024;
@@ -89,6 +90,13 @@ route('PATCH', '/api/social/:id', async ({ env, user, params, body: readBody, de
     const where = (merged.channels || []).map((id) => PLATFORM[id]?.label).filter(Boolean).join(', ');
     const link = Object.values(links).find((v) => /^https?:\/\//.test(v || '')) || null;
     await run(env, 'INSERT INTO log (id, client_id, text, link, at, by) VALUES (?, ?, ?, ?, ?, ?)', newId('l_'), it.client_id, `Posted${where ? ` to ${where}` : ''}: ${merged.title || 'a new post'}`, link, now(), user.id).catch(() => {});
+    // Clients enrolled in social posts have "Facebook and Instagram post" tasks: a post marked posted checks one off (with its link as proof, or waits for a screenshot).
+    const st = await first(env, "SELECT id, note FROM tasks WHERE client_id = ? AND kind = 'social' AND status IN ('todo','doing') AND month <= ? ORDER BY month, sort LIMIT 1", it.client_id, monthKey()).catch(() => null);
+    if (st) {
+      const note = st.note || `Post: ${String(merged.title || '').slice(0, 80)}`;
+      if (link) await run(env, "UPDATE tasks SET status = 'done', done_at = ?, done_by = ?, link = ?, note = ? WHERE id = ?", now(), user.id, link, note, st.id).catch(() => {});
+      else await run(env, "UPDATE tasks SET status = 'doing', note = ? WHERE id = ?", note, st.id).catch(() => {});
+    }
   }
   if (c.status === 'review' && it.status !== 'review') {
     const cl = await loadClient(env, it.client_id);

@@ -1,10 +1,12 @@
 // Rightway Growth work orders (service agreements). Two kinds:
 //   seo:     the one agreement for every Google and local SEO client. Only the buildout and monthly amounts change.
-//   website: websites are a separate service with their own agreement (build fee, optional monthly care, the scope lines).
+//   website: websites are a separate service with their own agreement (build fee, monthly hosting and care, the scope lines). With care, the client owns the site after 12 months of care (webprice.js).
 // Pure: builds text and HTML strings, no DOM or network, so the Worker (snapshot on send), the sign page, the printable
 // blank copy and the tests all use the same words.
 
-export const AGREEMENT_VERSION = 2;
+import { OWNERSHIP_TEXT } from './webprice.js';
+
+export const AGREEMENT_VERSION = 3;
 
 export const COMPANY = {
   name: 'Rightway Growth LLC',
@@ -59,6 +61,7 @@ export function agreementSections({ kind = 'seo', setupCents, monthlyCents, scop
 
 function websiteSections({ setupCents, monthlyCents, scope }) {
   const lines = (Array.isArray(scope) ? scope : String(scope || '').split('\n')).map((s) => String(s).trim()).filter(Boolean).slice(0, 12);
+  const hasCare = monthlyCents == null || Number(monthlyCents) > 0;
   const care = monthlyCents == null ? `${usd(null)} per month (if selected)` : Number(monthlyCents) > 0 ? `${usd(monthlyCents)} per month` : 'Not included';
   return [
     ['Project', ['Company agrees to design and build a website for Client. The project includes:'], lines.length ? lines : ['________________________________________', '________________________________________', '________________________________________'],
@@ -67,8 +70,12 @@ function websiteSections({ setupCents, monthlyCents, scope }) {
       'Monthly hosting and care, when included, starts thirty (30) days after signing and is billed automatically through Stripe. The build fee is non-refundable once design work has started.'],
     ['Timeline and Revisions', ['Company gives an estimated launch date once it has Client\'s content and access. Time spent waiting on Client moves that date. Two rounds of design revisions are included; more are added only in writing.']],
     ['Client Responsibilities', ['Client provides its logo, photos, text, service details and access to its domain and any existing site, and reviews each draft promptly.']],
-    ['Hosting and Care', ['Monthly hosting and care runs month to month. Either party can end it with thirty (30) days\' written notice, and Company will hand over the site files and access.']],
-    ['Ownership', ['Once the build fee is paid in full, Client owns the website design and content made for Client. Themes, plugins, fonts and stock photos stay under their own licenses.']],
+    ['Hosting and Care', hasCare
+      ? ['Company hosts the website and, for the monthly fee, keeps it backed up, secure and updated and makes small edits Client asks for. Hosting and care runs month to month. Either party can end it with thirty (30) days\' written notice. When the site and its files are handed over is covered under Ownership.']
+      : ['Hosting and care are not included. Company will hand over the site files and access once the build fee is paid in full.']],
+    ['Ownership', hasCare
+      ? [OWNERSHIP_TEXT, 'Client owns its own logo, photos and text at all times. Themes, plugins, fonts and stock photos stay under their own licenses.']
+      : ['Once the build fee is paid in full, Client owns the website design and content made for Client. Themes, plugins, fonts and stock photos stay under their own licenses.']],
     ['No Guarantees', ['Company does not guarantee rankings, traffic, leads or sales from the website.']],
     ['Limitation of Liability', ['Company\'s total liability under this Agreement will not exceed the total amount Client paid under it. Company is not liable for indirect, incidental, special, consequential or punitive damages.']],
     ['Electronic Signature and Entire Agreement', ['Client agrees that its electronic signature and initials below are legally binding. This Agreement is the entire agreement between the parties about this website.']],

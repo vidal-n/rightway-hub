@@ -3,7 +3,9 @@
 import { $, $$, esc, api, toast, icon } from './core.js';
 import { staffShell } from './shell.js';
 import { docHtml, objectionGroups, rich } from '/js/scriptprint.js';
-import { jobLabel } from '/js/jobs.js';
+import { jobLabel, can } from '/js/jobs.js';
+import { PLAN_KEYS, PLAN_REF, INCLUDED_ALL, itemLine, refMoney } from '/js/planref.js';
+import { WEB_TIERS, WEB_MIN, CARE_MONTHLY, OWN_AFTER_MONTHS, money as wmoney, webValue } from '/js/webprice.js';
 import { DEFAULT_GUIDES, PROOF_LABEL } from '/js/guides.js';
 
 const PDF = { cold: '/training/RightWay-Growth-Cold-Call-Script.pdf', analysis: '/training/RightWay-Growth-Competitor-Analysis-Script.pdf', plan: '/training/RightWay-Growth-Game-Plan-Script.pdf', clarity: '/training/RightWay-Growth-Google-Clarity-Audit-Script.pdf' };
@@ -88,7 +90,7 @@ async function toggleDone(key, on) {
   if (on) done.add(key); else done.delete(key);
   try { await api('/api/me/training', { method: 'PUT', body: { done: [...done] } }); } catch (e) { toast(e.message, true); }
 }
-const tabs = (active, user) => `<nav class="tabs">${[['', 'Overview'], ['tour', 'Hub tour'], ['scripts', 'Scripts'], ['warmup', 'Warm up'], ['drills', 'Objection drills'], ['playbooks', 'Playbooks'], ['guides', 'Fulfillment guides'], ...(user.role === 'admin' ? [['setup', 'Owner setup']] : []), ['resources', 'Resources']]
+const tabs = (active, user) => `<nav class="tabs">${[['', 'Overview'], ['tour', 'Hub tour'], ['scripts', 'Scripts'], ['warmup', 'Warm up'], ['drills', 'Objection drills'], ['playbooks', 'Playbooks'], ['guides', 'Fulfillment guides'], ...(can(user, 'close') ? [['pricing', 'Pricing']] : []), ...(user.role === 'admin' ? [['setup', 'Owner setup']] : []), ['resources', 'Resources']]
   .map(([k, n]) => `<a href="#/training${k ? `/${k}` : ''}" class="${active === k ? 'is-active' : ''}">${n}</a>`).join('')}</nav>`;
 const head = (title, eyebrow = 'Training') => `<div class="page-head"><div><p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(title)}</h1></div></div>`;
 
@@ -102,6 +104,7 @@ export async function trainingPage(app, user, sub, arg) {
   if (sub === 'guides') return guides(view, user);
   if (sub === 'setup') return setup(view, user);
   if (sub === 'resources') return resources(view, user);
+  if (sub === 'pricing') return pricing(view, user);
   if (sub === 'tour') return tourRef(view, user);
   const n = (keys) => keys.filter((k) => done.has(k)).length;
   const pbKeys = PLAYBOOKS.map((p) => `pb:${p[0]}`);
@@ -118,6 +121,7 @@ export async function trainingPage(app, user, sub, arg) {
       ${card('#/training/playbooks', 'note', 'Playbooks', 'How we run the calling day, the audit, closing, onboarding and the monthly work.', `<span class="tr-done">${n(pbKeys)} of ${pbKeys.length} done</span>`)}
       ${card('#/training/guides', 'check', 'Fulfillment guides', 'Step by step for every task in My work, with the proof each one needs.')}
       ${user.role === 'admin' ? card('#/training/setup', 'key', 'Owner setup', 'The six things only an owner can do: wallets, keys, Stripe, Google, website.', `<span class="tr-done">${n(SETUP.map((x) => `setup:${x[0]}`))} of ${SETUP.length} done</span>`) : ''}
+      ${can(user, 'close') ? card('#/training/pricing', 'chart', 'Pricing reference', 'Where to start a price: the plan guide, website pricing, bundles and the residual model. Closers and owners only.') : ''}
       ${card('#/training/resources', 'link', 'Resources', 'Google guidelines, booking page, work order, dashboards.')}
     </div>`;
 }
@@ -217,6 +221,36 @@ function setup(view, user) {
       <input type="checkbox" data-su="${k}"${done.has(`setup:${k}`) ? ' checked' : ''} style="margin-top:3px"><div><b>${i + 1}. ${esc(t)}</b><p class="small" style="margin:4px 0 0">${esc(how)}</p></div></div>`).join('')}
       <p class="small muted" style="margin:14px 0 0">Wallet balances show on the Dashboard and in Settings. A yellow wallet button appears in the top bar when one runs low.</p></div>`;
   $$('[data-su]', view).forEach((c) => c.addEventListener('change', () => toggleDone(`setup:${c.dataset.su}`, c.checked)));
+}
+
+// Closers and owners only (the file is also locked on the server). Same numbers as the spreadsheet and the plan guide in the presenter view.
+function pricing(view, user) {
+  if (!can(user, 'close')) { view.innerHTML = `${head('Pricing')}<div class="card"><p>Pricing is for closers and owners.</p></div>`; return; }
+  const v = webValue(WEB_TIERS[2].build);
+  view.innerHTML = `${head('Pricing reference')}${tabs('pricing', user)}
+    <div class="card" style="max-width:980px">
+      <p style="margin:0 0 6px"><b>Internal. Never show this to a client.</b> It tells you where to start a price so we do not over or undercharge. The price a client pays is always the custom number you type.</p>
+      <p class="small muted" style="margin:0 0 12px">Local SEO first. Starter is the entry (loss leader), every plan above it is the upsell after results. Websites are sold after results, and the monthly care is the residual.</p>
+      <a class="btn btn-primary btn-sm" href="/training/pricing/Rightway-Pricing-Reference.xlsx" download>${icon.down} Download the spreadsheet</a>
+      <span class="small muted" style="margin-left:8px">Plans, websites, bundles and a residual projection with formulas.</span>
+    </div>
+    <div class="card" style="max-width:980px;margin-top:14px"><h3 style="margin-top:0">Plan guide</h3>
+      <div class="table-wrap"><table class="table"><thead><tr><th>Plan</th><th>Monthly to start</th><th>What it covers</th></tr></thead><tbody>
+      ${PLAN_KEYS.map((k) => { const p = PLAN_REF[k]; return `<tr><td><b>${esc(p.name)}</b>${k === 'starter' ? '<br><span class="small muted">entry, loss leader</span>' : ''}</td><td>${esc(refMoney(p.monthly))}</td><td class="small">${esc(p.items.map(itemLine).join('; '))}</td></tr>`; }).join('')}
+      </tbody></table></div>
+      <p class="small muted" style="margin:10px 0 0">On every plan: ${esc(INCLUDED_ALL.map((x) => x.name.toLowerCase()).join(', '))}.</p>
+    </div>
+    <div class="card" style="max-width:980px;margin-top:14px"><h3 style="margin-top:0">Website pricing</h3>
+      <div class="table-wrap"><table class="table"><thead><tr><th>Size</th><th>Build fee</th><th>Care a month</th><th>Year one</th><th></th></tr></thead><tbody>
+      ${WEB_TIERS.map((t) => `<tr><td><b>${esc(t.label)}</b></td><td>${esc(wmoney(t.build))}</td><td>${esc(wmoney(t.care))}</td><td>${esc(wmoney(webValue(t.build, t.care).yearOne))}</td><td class="small muted">${t.given.build && t.given.care ? "V's numbers" : t.given.build ? "Build is V's, care suggested" : 'Suggested, confirm'}</td></tr>`).join('')}
+      </tbody></table></div>
+      <ul class="small" style="margin:10px 0 0;padding-left:18px">
+        <li>The market floor is ${esc(wmoney(WEB_MIN))}. Never go under it. More than 15 pages or custom features: type your own price above the 11 to 15 page price.</li>
+        <li>${esc(wmoney(CARE_MONTHLY))} a month covers hosting and care. A 7 to 10 page site is ${esc(wmoney(v.yearOne))} in year one and ${esc(wmoney(CARE_MONTHLY * 12))} a year after that.</li>
+        <li>After ${OWN_AFTER_MONTHS} months of care they own the site. They still pay for hosting wherever it lives. If they want us to keep managing it, it stays ${esc(wmoney(CARE_MONTHLY))} a month.</li>
+        <li>Bundle the website care with the SEO monthly. Yelp and social posts go on only when you check them off in the client's scope of work.</li>
+      </ul>
+    </div>`;
 }
 
 function resources(view, user) {

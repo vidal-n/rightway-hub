@@ -56,6 +56,9 @@ export function refFor(services = []) {
   if (by.tracking != null) bump(2, 'call tracking and lead report');
   if (by.reputation != null) bump(2, 'review monitoring and reputation report');
   if (by.locations != null) bump(3, 'more than one location or service area');
+  // Yelp and social follow the chart's own steps. Website care is priced on the website model (webprice.js), so it does not move the plan.
+  if (by.yelp != null) bump(by.yelp <= 4 ? 0 : by.yelp <= 6 ? 1 : by.yelp <= 8 ? 2 : 3, `${by.yelp} Yelp posts a month`);
+  if (by.social != null) bump(by.social <= 12 ? 1 : by.social <= 16 ? 2 : 3, `${by.social} Facebook and Instagram posts a month`);
   const cur = planAt(level);
   const next = level < PLAN_KEYS.length - 1 ? planAt(level + 1) : null;
   return { key: cur.key, name: cur.name, monthly: cur.monthly, why, entry: PLAN_REF.starter, next, adds: next ? adds(cur, next) : [], items: cur.items };
@@ -81,7 +84,8 @@ export function refLines(services = []) {
     r.why.length ? `What puts this scope there: ${r.why.join('; ')}.` : 'Nothing in this scope pushes it above the entry plan.',
     r.key === 'starter' ? '' : `Entry plan if they push back (the loss leader): ${r.entry.name} at ${refMoney(r.entry.monthly)} a month, the foundation only.`,
     r.next ? `Upsell after results: ${r.next.name} at ${refMoney(r.next.monthly)} a month adds ${r.adds.join('; ')}.` : 'This is the top plan. Upsell after results is the separate services below.',
-    `Also sold separately once they ask what is next: ${UPSELL_AFTER.join(', ')}.`,
+    `Social posts and Yelp (the chart's averages): Starter 4 Yelp posts, Growth 12 social and 6 Yelp, Authority 16 social and 8 Yelp, Market Leader 20 social and 12 Yelp. They only go on a client's work when you check them off in the scope.`,
+    `Also sold separately once they ask what is next: ${UPSELL_AFTER.join(', ')}. Website pricing is on the website model (build fee plus $149 a month for hosting and care).`,
     'Internal only. The client sees the services and the one custom price you type, never this guide.',
   ];
   return out.filter(Boolean);

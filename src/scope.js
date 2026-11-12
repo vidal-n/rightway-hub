@@ -11,7 +11,7 @@ import { dueDate } from '../public/js/guides.js';
 import { savedGuides } from './work.js';
 
 // Kinds the scope manages. Anything else on a client's task list (custom tasks, setup, planning) is never touched here.
-const MANAGED = ['qa', 'post', 'photos', 'replies', 'onpage', 'technical', 'page', 'link', 'competitors', 'content', 'calls', 'monitor', 'reputation', 'report', 'meeting'];
+const MANAGED = ['qa', 'post', 'photos', 'replies', 'onpage', 'technical', 'page', 'link', 'competitors', 'content', 'calls', 'monitor', 'reputation', 'yelp', 'social', 'webcare', 'report', 'meeting'];
 
 // Bring this month's tasks in line with the scope: add what is missing, drop what no longer applies (only tasks nobody touched: still to do, no timer).
 export async function syncScopeTasks(env, c, month = monthKey()) {

@@ -74,6 +74,14 @@ export default {
       }
     }
     if (!url.pathname.startsWith('/api/')) {
+      // The pricing reference is for closers and owners only: it is never served to a client or a visitor.
+      if (url.pathname.startsWith('/training/pricing/')) {
+        if (!(await staffSession(request, env))) return new Response('Closers and owners only. Log in to the Hub first.', { status: 403, headers: { 'cache-control': 'no-store' } });
+        const r = env.ASSETS ? await env.ASSETS.fetch(request) : new Response('Not found', { status: 404 });
+        const h = new Headers(r.headers);
+        h.set('cache-control', 'private, no-store');
+        return new Response(r.body, { status: r.status, headers: h });
+      }
       return env.ASSETS ? env.ASSETS.fetch(request) : new Response('Not found', { status: 404 });
     }
     try {

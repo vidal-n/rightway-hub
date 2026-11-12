@@ -5,6 +5,7 @@ import { ninetyDayPlan, reviewTarget } from './fulfill.js';
 import { SERVICE_LIST, WEBSITE_SERVICE_IDS, WEBSITE_PROBLEM_KEYS } from './plancopy.js';
 import { INCLUDED_ALL, refFor, refLines, refMoney } from './planref.js';
 import { urgencyFor, LF8 } from './lifeforce.js';
+import { webLines } from './webprice.js';
 import { buildPack } from './pack.js';
 import { qrSvg } from './qr.js';
 import { parseListings, listingsLine, listingsTable } from './listings.js';
@@ -72,7 +73,7 @@ function slides() {
   const lf = urgencyFor({ business: lead.business, industry: info.label, grid: intel?.grid || null, you: { reviews: L.reviews ?? null, rating: L.rating ?? null, rank: intel?.rank ?? null }, top: topC ? { name: topC.title, reviews: topC.reviews, rating: topC.rating, wins: topC.wins } : null });
   const lfNotes = lf.asks.map((a) => `• ${LF8.find((x) => x.id === a.id).name}: "${a.ask}"`).join('\n');
   // Closer only: website findings and what to sell after results. Never on screen.
-  const siteNotes = `\n\nWEBSITE (closer only, not on screen, sold separately after results):\n${intel?.speed?.score != null ? `Mobile speed ${intel.speed.score} of 100. ` : ''}${siteProbs.length ? siteProbs.map((x) => `• ${x.title}: ${x.detail}`).join('\n') : 'No website problems found.'}${hiddenSvc.length ? `\nIn the quote but not shown: ${hiddenSvc.map((x) => `${x.name} (${x.qty} a month)`).join(', ')}.` : ''}`;
+  const siteNotes = `\n\nWEBSITE (closer only, not on screen, sold separately after results):\n${webLines(8).map((x) => `• ${x}`).join('\n')}\n${intel?.speed?.score != null ? `Mobile speed ${intel.speed.score} of 100. ` : ''}${siteProbs.length ? siteProbs.map((x) => `• ${x.title}: ${x.detail}`).join('\n') : 'No website problems found.'}${hiddenSvc.length ? `\nIn the quote but not shown: ${hiddenSvc.map((x) => `${x.name} (${x.qty} a month)`).join(', ')}.` : ''}`;
   const out = [];
   const add = (key, title, html, notes, dark = false) => out.push({ key, title, html, notes, dark });
   // Presenter notes come straight from the one pitch (the Google clarity call), so the deck and the phone script never drift apart.

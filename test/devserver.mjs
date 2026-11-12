@@ -9,9 +9,16 @@ import { d1, r2 } from './shims.mjs';
 
 const root = fileURLToPath(new URL('../public/', import.meta.url));
 const port = Number(process.argv[2] || 8787);
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+
+// Stand-in for the Cloudflare static assets binding, so the Worker can serve the few files it gates (the pricing reference).
+const assetFile = async (request) => {
+  const rel = normalize(new URL(request.url).pathname).replace(/^(\.\.[/\\])+/, '');
+  try { return new Response(await readFile(join(root, rel)), { headers: { 'content-type': types[extname(rel)] || 'application/octet-stream' } }); } catch { return new Response('Not found', { status: 404 }); }
+};
 
 const env = {
+  ASSETS: { fetch: assetFile },
   DATAFORSEO_LOGIN: process.env.DATAFORSEO_LOGIN,
   DATAFORSEO_PASSWORD: process.env.DATAFORSEO_PASSWORD,
   ACCESS_KEY: process.env.ACCESS_KEY,
@@ -41,7 +48,7 @@ if (process.env.SEED_COSTS && env.DB) {
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${port}`);
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/r/')) {
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/r/') || url.pathname.startsWith('/training/pricing/')) {
     const chunks = [];
     for await (const c of req) chunks.push(c);
     const request = new Request(url, { method: req.method, headers: req.headers, body: ['GET', 'HEAD'].includes(req.method) ? undefined : Buffer.concat(chunks) });

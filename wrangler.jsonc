@@ -6,7 +6,9 @@
   "compatibility_date": "2024-11-01",
   "assets": {
     "directory": "./public",
-    "binding": "ASSETS"
+    "binding": "ASSETS",
+    // Files here are not public: the Worker runs first and only hands them to closers and owners (the pricing reference).
+    "run_worker_first": ["/training/pricing/*"]
   },
   "observability": { "enabled": true },
   // Database (Cloudflare D1). Tables are created by the app on first use.
