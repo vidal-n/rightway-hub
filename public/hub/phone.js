@@ -3,7 +3,7 @@
 import { api, esc, toast, makeDraggable, isPhone } from './core.js';
 import { arriving, leaving, morphFrom } from './dialwin.js';
 import { dispoPanel } from './dispo.js';
-import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter, warmAudio } from './audioset.js';
+import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter, warmAudio, prepareTones, sendTone } from './audioset.js';
 
 const SDK = '/vendor/twilio-voice-2.18.5.min.js';
 const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -271,7 +271,15 @@ function track(call, view, { onEnd, act } = {}) {
   ensureBar().onclick = (ev) => {
     const btn = ev.target.closest('button');
     if (!btn || st.call !== call) return;
-    if (btn.dataset.dtmf) { call.sendDigits(btn.dataset.dtmf); return; }
+    if (btn.dataset.dtmf) {
+      // Outbound calls run in a conference, which does not pass the browser's own digits on, so the tones go in with the voice audio.
+      // Other calls (inbound, bridged) take the normal digits.
+      const k = btn.dataset.dtmf;
+      if (view.kind === 'out' && sendTone(k)) return;
+      try { call.sendDigits(k); } catch { /* ignore */ }
+      if (view.kind === 'out') toast('Keypad is still starting. Press it again in a second.', true);
+      return;
+    }
     if (btn.dataset.mode && btn.dataset.mode !== view.mode) {
       const mode = btn.dataset.mode;
       api(`/api/voice/monitor/${act}`, { method: 'POST', body: { mode } }).then(() => set({ mode, label: MODE_LABEL[mode] })).catch((e) => toast(e.message, true));
@@ -281,7 +289,7 @@ function track(call, view, { onEnd, act } = {}) {
     if (action === 'audio') { audioPanel({ device: st.device }); return; }
     if (action === 'hang') call.disconnect();
     if (action === 'mute') call.mute(!call.isMuted());
-    if (action === 'pad') set({ pad: !view.pad });
+    if (action === 'pad') { const opening = !view.pad; set({ pad: opening }); if (opening && view.kind === 'out') prepareTones(st.device).catch(() => {}); }
     if (action === 'accept') { warmAudio(); set({ state: 'dialing', label: 'Connecting...', incoming: true }); prepareAudio(st.device).catch(() => {}).finally(() => call.accept()); }
     if (action === 'decline') { call.reject(); end('Declined'); }
   };

@@ -67,6 +67,7 @@ function getCtx() {
 }
 export function warmAudio() { try { getCtx()?.resume?.().catch(() => {}); } catch { /* ignore */ } }
 
+const DTMF = { 1: [697, 1209], 2: [697, 1336], 3: [697, 1477], 4: [770, 1209], 5: [770, 1336], 6: [770, 1477], 7: [852, 1209], 8: [852, 1336], 9: [852, 1477], '*': [941, 1209], 0: [941, 1336], '#': [941, 1477] };
 class RwProcessor {
   constructor() { this.cfg = loadAudio(); this.ctx = null; this.nodes = null; this.engine = 'none'; this.beat = 0; this.gateOpen = true; this.info = {}; this.timer = null; this.wake = null; }
   get label() { return { ai: 'Running', basic: 'Basic filter (backup)', none: 'Off', failed: 'Off (could not start)' }[this.engine] || 'Off'; }
@@ -148,6 +149,20 @@ class RwProcessor {
     if (this.ctx.state !== 'running') { this.ctx.resume().catch(() => {}); return; }
     if (performance.now() - this.beat > 3000) this.useBasic('The voice engine stopped, so the backup filter took over.');
   }
+  // In-band keypad tones (DTMF). Twilio conferences do not pass the browser's out-of-band digits to the other person,
+  // so the two tones are mixed into the same audio the mic sends. Returns false when the engine is not running yet.
+  tone(digit) {
+    const f = DTMF[digit]; const n = this.nodes; const ctx = this.ctx;
+    if (!f || !n || !ctx || ctx.state !== 'running') return false;
+    const t = ctx.currentTime, len = 0.18;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, t); env.gain.linearRampToValueAtTime(0.28, t + 0.015); env.gain.setValueAtTime(0.28, t + len - 0.02); env.gain.linearRampToValueAtTime(0, t + len);
+    env.connect(n.anOut);
+    const mon = ctx.createGain(); mon.gain.value = 0.05; env.connect(mon); mon.connect(ctx.destination);   // soft beep so you hear the key press
+    for (const hz of f) { const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = hz; o.connect(env); o.start(t); o.stop(t + len + 0.02); o.onended = () => { try { o.disconnect(); } catch { /* ignore */ } }; }
+    setTimeout(() => { try { env.disconnect(); mon.disconnect(); } catch { /* ignore */ } }, (len + 0.1) * 1000);
+    return true;
+  }
   teardown() {
     clearInterval(this.timer); this.timer = null;
     if (this.wake) { ['visibilitychange', 'pageshow', 'touchend', 'click'].forEach((ev) => document.removeEventListener(ev, this.wake)); this.wake = null; }
@@ -169,6 +184,7 @@ class RwProcessor {
 }
 let proc = null;
 let procOn = false;
+let tonesOn = false;                 // keypad open on a call: the processor stays on so tones can be mixed in
 let curDevice = null;
 
 // What the cleanup is doing right now (the panel shows it).
@@ -178,10 +194,18 @@ export const liveLevels = () => (proc && proc.nodes ? proc.levels() : null);
 // Turn the processor on or off to match the settings (it is only in the way when nothing needs it).
 async function syncProcessor(a, p) {
   try {
-    if (p.processor && !procOn) { proc ||= new RwProcessor(); await a.addProcessor(proc); procOn = true; }
-    else if (!p.processor && procOn && proc) { await a.removeProcessor(proc); procOn = false; }
+    if ((p.processor || tonesOn) && !procOn) { proc ||= new RwProcessor(); await a.addProcessor(proc); procOn = true; }
+    else if (!p.processor && !tonesOn && procOn && proc) { await a.removeProcessor(proc); procOn = false; }
   } catch { procOn = false; }
 }
+// Keypad: turn the processor on (mid call is fine) so tones can be mixed into the mic audio. Call when the keypad opens.
+export async function prepareTones(device) {
+  const a = device?.audio; if (!a) return;
+  tonesOn = true;
+  await syncProcessor(a, plan(loadAudio()));
+}
+// Send one key. true = played into the call audio.
+export function sendTone(digit) { return Boolean(proc && procOn && proc.tone(String(digit))); }
 // A settings change in the middle of a call.
 export async function applyLive(device) {
   const a = device?.audio; if (!a) return;
@@ -238,6 +262,7 @@ export async function prepareAudio(device) {
 let usedInput = false;
 // After a call: let go of the mic so the browser's recording dot goes away.
 export async function releaseAudio(device) {
+  if (tonesOn) { tonesOn = false; try { if (!plan(loadAudio()).processor && procOn && proc) { await device?.audio?.removeProcessor(proc); procOn = false; } } catch { /* ignore */ } }
   if (!usedInput) return;
   usedInput = false;
   try { await device?.audio?.unsetInputDevice(); } catch { /* ignore */ }
