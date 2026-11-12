@@ -16,6 +16,9 @@ export const PERSONAS = [
   { id: 'busy', name: 'Tony', role: 'electrician', level: 'Hard', mood: 'rushed and a little rude', open: 'Yeah, who is this?',
     objections: ["I'm busy right now.", 'Make it quick.', "We're too small for this.", 'Call me in a few months.'],
     yes: "Ugh. Okay. Send the invite, I'll see if I'm free." },
+  { id: 'voicemail', name: 'Voicemail', role: 'voicemail greeting', level: 'Easy', mood: 'an automated voicemail greeting that records a message', open: "You've reached the business. We can't take your call right now. Leave a message after the tone.",
+    objections: ['(beep) Your message is being recorded.', 'Your message is being recorded. Press pound when you are done.'],
+    yes: 'Your message has been saved. Goodbye.' },
 ];
 export const personaOf = (id) => PERSONAS.find((p) => p.id === id) || PERSONAS[0];
 

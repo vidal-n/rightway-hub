@@ -159,8 +159,12 @@ async function tourRef(view, user) {
 async function warmup(view, user) {
   const { practiceView } = await import('./practice.js');
   view.innerHTML = `${head('Warm up')}${tabs('warmup', user)}
-    <p class="muted" style="max-width:640px">A pretend business owner picks up. Say your opener, handle the objections, and ask for the booking with two times. When you end the call, the coach scores it. Nothing is dialed or saved. Want the whole power dial flow too? Use Test power dial on the dialer.</p>
+    <div class="card" style="max-width:720px;margin-bottom:16px"><h3 style="margin-top:0">Warm up dialer</h3>
+      <p class="muted" style="margin:0 0 10px">The whole power dialer with seven pretend leads: Up next, script and research, the countdown, ringing, the call window, a pretend owner who picks up, rings out or goes to voicemail, texting, booking, your result buttons and a score at the end. Nothing is dialed, texted, booked or saved, and it costs nothing.</p>
+      <button type="button" class="btn btn-primary" id="wustart">Start the warm up dialer</button></div>
+    <p class="muted" style="max-width:640px">Or just talk to one pretend owner here. Say your opener, handle the objections, and ask for the booking with two times. When you end the call, the coach scores it. Nothing is dialed or saved.</p>
     <div class="card" style="max-width:720px"><div id="wuhost"></div></div>`;
+  $('#wustart', view).addEventListener('click', () => { try { sessionStorage.setItem('rw-warmup', '1'); } catch { /* ignore */ } location.hash = '#/dialer'; });
   practiceView($('#wuhost', view), { persona: 'friendly', lead: { business: 'Test Plumbing Co', city: 'Miami' } });
 }
 function drills(view, user, set) {

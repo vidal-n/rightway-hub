@@ -7,7 +7,7 @@ import { d1, r2 } from './shims.mjs';
 
 test('practice personas read cleanly and have no dashes', () => {
   assert.ok(PERSONAS.length >= 4);
-  for (const p of PERSONAS) { assert.ok(p.objections.length >= 3); assert.doesNotMatch(JSON.stringify(p), /[–—]/); }
+  for (const p of PERSONAS) { assert.ok(p.objections.length >= (p.id === 'voicemail' ? 2 : 3)); assert.doesNotMatch(JSON.stringify(p), /[–—]/); }
   const sp = systemPrompt('skeptical', { business: 'Joe Roofing', city: 'Miami' });
   assert.match(sp, /Dana/); assert.match(sp, /Joe Roofing/); assert.match(sp, /Never use dashes/);
   assert.equal(personaOf('nope').id, PERSONAS[0].id);

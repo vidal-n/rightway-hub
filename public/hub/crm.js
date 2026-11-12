@@ -11,7 +11,8 @@ import { hoverCards, hoverHtml } from './hovercard.js';
 import { isPersonName, titleLike } from '/js/names.js';
 import { placeCall, startPhone, onPhoneState, phoneState, hangUp, contactRows, initialsOf, takeCallDraft } from './phone.js';
 import { warmAudio } from './audioset.js';
-import { testLeads } from '/js/testleads.js';
+import { testLeads, testIntel } from '/js/testleads.js';
+import { testTextModal, testBookModal, testLeadModal, testSummaryHtml } from './testdial.js';
 import { practiceModal } from './practice.js';
 import { filterLeads } from '/js/leadfilter.js';
 import { quoteFor, callCategory, whoIs, personOf, CALL_CATS } from '/js/leadintel.js';
@@ -977,8 +978,14 @@ export async function dialerPage(app, user) {
   let skipDispo = null;
   // Test power dial: pretend leads and a pretend call so anyone can watch the whole flow. Nothing is dialed, saved or counted.
   let testMode = false;
+  let testLog = [];
+  const testHist = new Map();
+  const testHit = (l, text) => { const a = testHist.get(l.id) || []; a.push(text); testHist.set(l.id, a); };
   const dialOn = () => Boolean(me.twilio) || testMode;
   const testNote = (what) => toast(`Test mode: ${what} is for real leads. Nothing happens here.`);
+  const testScore = new Map();
+  const testBook = (l) => testBookModal(l, () => { const id = (DISP.find((d) => d.acts === 'booked') || { id: 'booked' }).id; testHit(l, 'Audit booked (pretend)'); logOutcome(id, $(`[data-out="${id}"]`, view), true); });
+  const testText = (l) => testTextModal(l, { onSent: (t) => testHit(l, `Texted: ${t.slice(0, 60)}`) });
   // On a phone (600px or less) power dialing takes over the whole screen: countdown, call window and result sheet are each full screen. Everything else keeps its normal layout.
   const phoneNarrow = () => matchMedia('(max-width: 600px)').matches;
   const setPdx = () => {
@@ -1067,7 +1074,7 @@ export async function dialerPage(app, user) {
   const researching = new Set();
   const prefetch = async (l) => {
     if (!l || intelCache.has(l.id) || researching.has(l.id)) return;
-    if (testMode) { intelCache.set(l.id, null); return; }
+    if (testMode) { intelCache.set(l.id, testIntel(l)); return; }
     researching.add(l.id);
     try {
       const d = await api(`/api/leads/${l.id}`);
@@ -1098,15 +1105,22 @@ export async function dialerPage(app, user) {
   const layEsc = (e) => { if (e.key === 'Escape' && layOpen) shutLay(); };
   document.addEventListener('click', layOutside); document.addEventListener('keydown', layEsc);
   try { lay = { ...lay, ...JSON.parse(localStorage.getItem('rw-dial-layout') || '{}') }; } catch { /* ignore */ }
+  const startTest = () => {
+    testMode = true; idx = 0; pdStart = 0; pdCalls = 0; testLog = []; testHist.clear(); testScore.clear(); intelCache.clear();
+    const tl = testLeads(); const tiers = { hot: 0, good: 0, maybe: 0, low: 0, fresh: 0 }; const cats = {}; tl.forEach((x) => { tiers[{ A: 'hot', B: 'good', C: 'maybe', D: 'low' }[x.grade] || 'fresh']++; const c = callCategory(x).id; cats[c] = (cats[c] || 0) + 1; });
+    q = { ...q, queue: tl, tiers, cats, waitingForHours: 0, stats: { dials: 0, talks: 0, booked: 0, goal: q.stats?.goal || 60 } };
+    render();
+  };
   const render = () => {
     const l = q.queue[idx];
+    if (!l && testMode && power) powerStop();
     view.innerHTML = `
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
-          <label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label><a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
+          ${testMode ? '' : `<label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label>`}<a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
           <button class="btn btn-ghost btn-sm" id="pdtest" title="Try power dialing with pretend leads and a pretend call. Nothing is dialed or saved.">${testMode ? 'Exit test' : 'Test power dial'}</button>
           ${dialOn() ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
-      ${testMode ? '<div class="card test-banner"><b>Test mode.</b> Pretend leads and a pretend call. Press Start power dial to watch the whole flow: countdown, ringing, the call window, an AI owner who picks up so you can practice your opener, the result popup, then the next lead. Nothing is dialed, saved or counted. <a href="#/training/warmup">Warm up in Training</a>. <button type="button" class="btn btn-ghost btn-sm" id="pdtestx">Exit test</button></div>' : ''}
+      ${testMode ? '<div class="card test-banner"><b>Test mode.</b> Seven pretend leads run the whole dialer, from Start power dial to the result popup and the next lead. Nothing is dialed, texted, booked or saved, and it costs nothing. <a href="#/training/warmup">Warm up in Training</a>. <button type="button" class="btn btn-ghost btn-sm" id="pdtestx">Exit test</button></div>' : ''}
       ${dialTabs('queue', user)}
       <div class="dropfilters">
         <label class="dropf" data-sec="tiers"><span>Quality</span><select id="dtier" data-tier-sel aria-label="Quality">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
@@ -1128,7 +1142,7 @@ export async function dialerPage(app, user) {
       <div id="lowbal"></div>
       ${upcoming.length ? `<div class="card upcoming" data-sec="upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(bothTimes(m.meet_at, validZone(m.timezone) || yourZone(), yourZone()))} ${esc(m.business)}</span>
         ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}${can(window.__rwUser, 'close') ? `<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>` : ''}`).join('')}</div>` : ''}
-      ${!l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
+      ${!l && testMode ? testSummaryHtml(testLog) : !l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
       <div class="dial-grid${lay.queue ? '' : ' no-queue'}${lay.prep ? '' : ' no-prep'}${lay.compact ? ' tight' : ''}">
         <aside class="dial-queue card" aria-label="Up next"><div class="card-head"><h3>Up next</h3><span class="small muted">${Math.max(0, q.queue.length - idx - 1)} after this</span></div>
           <ol>${q.queue.slice(idx, idx + 10).map((x, i) => `<li><button type="button" data-jump="${idx + i}" class="${i === 0 ? 'is-on' : ''}">${gradeBadge(x.grade, x.score)}<span class="dq-t"><b>${esc(x.business)}</b><small>${esc([x.city, x.state].filter(Boolean).join(', '))}${x.local_time ? ` · ${esc(x.local_time)}` : ''}</small>${catChip(callCategory(x))}</span></button></li>`).join('')}</ol></aside>
@@ -1146,7 +1160,7 @@ export async function dialerPage(app, user) {
               ${dialOn() ? `<button class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" id="dhub">${icon.phone}Call</button>` : ''}
               <a class="btn ${dialOn() ? 'btn-ghost' : 'btn-mint btn-xl'}" style="width:auto;${dialOn() ? '' : 'flex:1 1 200px'}" href="${telHref(l.phone)}" id="dtel">${dialOn() ? '' : icon.phone}Call from my phone</a>
             </div>
-            ${me.twilio ? `<div class="row" style="margin-top:10px;align-items:flex-end">${nums.numbers.length > 1 ? callerSelect(nums.numbers) : ''}<span id="pbadge" style="margin-bottom:10px">${phoneBadge()}</span></div>` : ''}
+            ${me.twilio && !testMode ? `<div class="row" style="margin-top:10px;align-items:flex-end">${nums.numbers.length > 1 ? callerSelect(nums.numbers) : ''}<span id="pbadge" style="margin-bottom:10px">${testMode ? '' : phoneBadge()}</span></div>` : ''}
             <div class="row" data-sec="links" style="margin-top:12px">
               <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.industry || l.category || ''} ${l.city || ''} ${l.state || ''}`)}">Map pack</a>
               <a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/${encodeURIComponent(`${l.business} ${l.city || ''}`)}">Their profile</a>
@@ -1193,28 +1207,28 @@ export async function dialerPage(app, user) {
       if (testMode) return dialerPage(app, user);
       if (phoneState().onCall) return toast('Finish your call first.', true);
       powerStop();
-      testMode = true; idx = 0; pdStart = 0; pdCalls = 0;
-      q = { ...q, queue: testLeads() };
-      render();
+      startTest();
     });
     $('#pdtestx', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
+    $('#tsagain', view)?.addEventListener('click', () => startTest());
+    $('#tsexit', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
     $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
     prefetch(l);
     prefetch(q.queue[idx + 1]);
     $('#dskip', view).addEventListener('click', () => { idx++; render(); });
-    $('#dopen', view).addEventListener('click', () => (testMode ? testNote('Open lead') : leadModal(l.id, () => {})));
-    $('#dtext', view).addEventListener('click', () => (testMode ? testNote('Text') : textModal(l, { rep: REP })));
+    $('#dopen', view).addEventListener('click', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {})));
+    $('#dtext', view).addEventListener('click', () => (testMode ? testText(l) : textModal(l, { rep: REP })));
     const bookedId = (DISP.find((d) => d.acts === 'booked') || { id: 'booked' }).id;
-    $('#dbook', view).addEventListener('click', () => (testMode ? testNote('Booking') : bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true))));
+    $('#dbook', view).addEventListener('click', () => (testMode ? testBook(l) : bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true))));
     const callerVal = bindCaller(view);
     $('#dhub', view)?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       busy(btn, true);
       try {
-        await placeCall({ test: testMode, outcome: l.test_outcome, onLive: () => { if (testMode) practiceModal({ persona: l.persona, lead: l, onFinish: () => { if (phoneState().onCall) hangUp(); } }); }, leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
-          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : []), ['Text them', () => (testMode ? testNote('Text') : textModal(l, { rep: REP }))], ['Book audit', () => (testMode ? testNote('Booking') : bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true)))], ['Full details', () => (testMode ? testNote('Full details') : leadModal(l.id, () => {}))]] },
+        await placeCall({ test: testMode, outcome: l.test_outcome, onLive: () => { if (testMode) practiceModal({ persona: l.persona, lead: l, onScore: (n) => testScore.set(l.id, n), onFinish: () => { if (phoneState().onCall) hangUp(); } }); }, leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
+          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : []), ['Text them', () => (testMode ? testText(l) : textModal(l, { rep: REP }))], ['Book audit', () => (testMode ? testBook(l) : bookModal(l, () => logOutcome(bookedId, $(`[data-out="${bookedId}"]`, view), true)))], ['Full details', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {}))]] },
           onEnd: ({ answered }) => {
           const dr = takeCallDraft();
           if (q.queue[idx]?.id !== l.id) return;
@@ -1268,7 +1282,13 @@ export async function dialerPage(app, user) {
     const l = q.queue[idx];
     if (testMode) {
       if (phoneState().onCall) { skipDispo = l?.id; takeCallDraft(); hangUp(); }
-      toast(`Test result: ${dispoOf(outcome).label || outcome}. Nothing was saved.`);
+      const dd = dispoOf(outcome), acts = dd.acts;
+      const talk = ['conversation', 'booked', 'callback', 'not_interested'].includes(acts);
+      const booked = acts === 'booked';
+      testLog.push({ id: l?.id, label: dd.label || outcome, talk, booked, score: testScore.get(l?.id) ?? null });
+      testHit(l, `Result: ${dd.label || outcome}`);
+      q.stats.dials++; if (talk) q.stats.talks++; if (booked) q.stats.booked++;
+      toast(`Test result: ${dd.label || outcome}. Nothing was saved.`);
       idx++; render(); return;
     }
     const acts = dispoOf(outcome).acts;
@@ -1294,7 +1314,10 @@ export async function dialerPage(app, user) {
   };
   document.addEventListener('keydown', onKey);
   window.addEventListener('hashchange', () => document.removeEventListener('keydown', onKey), { once: true });
-  render();
+  // Training, Warm up starts the pretend dialer straight away.
+  let warm = false;
+  try { warm = sessionStorage.getItem('rw-warmup') === '1'; sessionStorage.removeItem('rw-warmup'); } catch { /* ignore */ }
+  if (warm) startTest(); else render();
 }
 
 // ---------- settings ----------

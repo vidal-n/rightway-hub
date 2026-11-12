@@ -4,7 +4,7 @@ import { PERSONAS, personaOf } from '/js/practice.js';
 
 const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-export function practiceView(host, { persona = 'friendly', lead = {}, fixed = false, compact = false, onFinish = null } = {}) {
+export function practiceView(host, { persona = 'friendly', lead = {}, fixed = false, compact = false, onFinish = null, onScore = null } = {}) {
   let turns = [];
   let pid = persona;
   let busyNow = false;
@@ -64,7 +64,7 @@ export function practiceView(host, { persona = 'friendly', lead = {}, fixed = fa
     window.speechSynthesis?.cancel?.(); rec?.stop?.();
     ended = true; busyNow = true; paint();
     const fb = $('#prfb', host); fb.hidden = false; fb.textContent = 'Reading the call...';
-    try { const r = await api('/api/practice/coach', { method: 'POST', body: { persona: pid, lead, turns, useAi } }); fb.innerHTML = `<b>Coach${r.ai ? '' : ' (basic)'}</b><div class="pr-fbt">${esc(r.feedback)}</div>`; }
+    try { const r = await api('/api/practice/coach', { method: 'POST', body: { persona: pid, lead, turns, useAi } }); fb.innerHTML = `<b>Coach${r.ai ? '' : ' (basic)'}</b><div class="pr-fbt">${esc(r.feedback)}</div>`; const sc = /Score:?\s*(\d+)/i.exec(r.feedback || ''); if (sc && onScore) onScore(Number(sc[1])); }
     catch (e) { fb.textContent = e.message; }
     busyNow = false;
   };
@@ -94,9 +94,9 @@ export function practiceView(host, { persona = 'friendly', lead = {}, fixed = fa
 }
 
 // A pop up for the Test power dial: the pretend owner picks up when the pretend call connects.
-export function practiceModal({ persona, lead, onFinish } = {}) {
+export function practiceModal({ persona, lead, onFinish, onScore } = {}) {
   const m = modal(`<div class="card-head"><div><h2 style="margin:0">Practice call</h2><p class="small muted" style="margin:2px 0 0">The AI owner picked up. Say your opener.</p></div><button class="btn btn-ghost btn-sm" data-close>Close</button></div><div id="prhost"></div>`);
   const host = m.el?.querySelector('#prhost') || document.querySelector('.modal-bg:last-of-type #prhost');
-  const v = practiceView(host, { persona, lead, fixed: true, compact: true, onFinish: () => { m.close?.(); onFinish?.(); } });
+  const v = practiceView(host, { persona, lead, fixed: true, compact: true, onScore, onFinish: () => { m.close?.(); onFinish?.(); } });
   return { ...m, stop: v.stop };
 }

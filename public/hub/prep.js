@@ -78,7 +78,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
           <div class="small">${esc(rec.why.join(' · '))}</div></div>
         <div class="row" style="margin-left:auto">
           <button class="btn btn-ghost btn-sm" data-act="research">${intel ? 'Refresh research' : 'Research now'}<span class="cost-hint" data-cost="research_call"></span></button>
-          ${can(window.__rwUser, 'close') ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
+          ${can(window.__rwUser, 'close') && !lead.test ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
           <a class="btn btn-ghost btn-sm" href="/scan.html?lead=${esc(lead.id)}" target="_blank" rel="noopener">Scan tool</a>` : ''}
           <button class="btn btn-ghost btn-sm" data-act="book">Book meeting</button>
           <button class="btn btn-ghost btn-sm" data-act="meetnow" title="Starts a Google Meet now, invites them by email, and opens it beside the Hub">Google Meet now</button>
@@ -122,6 +122,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
     $$('[data-body]', el).forEach((x) => { x.hidden = x.dataset.body !== b.dataset.step; });
   }));
   $('[data-act="research"]', el).addEventListener('click', async (e) => {
+    if (lead.test) return toast('Practice lead: the research shown is made up. No real search runs.');
     busy(e.target, true, 'Researching...');
     try {
       const r = await api(`/api/leads/${lead.id}/research`, { method: 'POST', body: { force: Boolean(intel) } });
@@ -131,9 +132,10 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
       prepPanel(el, next, r.intel, { rep, voice, onResearched, compact });
     } catch (err) { toast(err.message, true); busy(e.target, false); }
   });
-  $('[data-act="book"]', el).addEventListener('click', () => bookModal(lead));
+  $('[data-act="book"]', el).addEventListener('click', async () => { if (lead.test) { const { testBookModal } = await import('./testdial.js'); return testBookModal(lead); } bookModal(lead); });
   // Meet will not run inside another site (Google blocks it), so it opens in its own window next to the Hub.
   $('[data-act="meetnow"]', el)?.addEventListener('click', async (e) => {
+    if (lead.test) return toast('Practice lead: no Meet is started.');
     const b = e.currentTarget; busy(b, true);
     const win = window.open('about:blank', 'rw-meet', `width=${Math.min(1100, screen.availWidth - 80)},height=${Math.min(760, screen.availHeight - 80)},left=40,top=40`);
     try {
@@ -150,6 +152,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
     lst.innerHTML = `${L ? `<p class="small" style="margin:0 0 8px">${esc(listingsLine(L))} <span class="muted">Checked ${esc(fmt.ago(L.at))}${L.demo ? ' (demo data)' : ''}.</span></p>${listingsTable(L, { max: 15 })}` : '<p class="small muted" style="margin:0 0 8px">Not checked yet. Searches 15 directories for this business and flags wrong phone numbers, wrong ZIP codes and missing listings. About 3 cents.</p>'}
       <button class="btn btn-ghost btn-sm" data-act="lst" style="margin-top:8px">${L ? 'Check again' : 'Check listings'}<span class="cost-hint" data-cost="listing_check"></span></button>`;
     $('[data-act="lst"]', lst).addEventListener('click', async (e) => {
+      if (lead.test) return toast('Practice lead: no directory check runs.');
       busy(e.target, true, 'Checking 15 directories...');
       try { const r = await api(`/api/leads/${lead.id}/listings`, { method: 'POST' }); lead.listings = r; drawLst(r); toast('Listings checked'); }
       catch (err) { toast(err.message, true); busy(e.target, false); }
