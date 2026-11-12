@@ -16,6 +16,9 @@ import { cleanNewLead, queueScrub } from './scrub.js';
 import { contactFromImport } from '../public/js/names.js';
 import { resolveZone, canCallNow, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
 
+// A booking, however it was made: a call that ended in booked or a callback, or an audit booked from the lead, the booking page or the calendar.
+// Moved audits do not count again. Used by the dialer strip, the dashboard and the analytics.
+export const BOOKED_SQL = "CASE WHEN outcome IN ('booked','callback') OR (type = 'meeting' AND (body LIKE 'Audit booked for%' OR body LIKE 'Booked online%')) THEN 1 ELSE 0 END";
 export const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won', 'not_now', 'lost', 'dnc'];
 const CALLABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
 const DAY = 864e5;
@@ -539,8 +542,8 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   for (const l of rows) { if (!(l.last_call_at && t - l.last_call_at < 3 * 3600e3)) { const d = decorate(l); if (d.callable_now) { tiers[tierOf(d)]++; const c = callCategory(d).id; cats[c] = (cats[c] || 0) + 1; } } }
   const later = ready.length - now_.length;
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const stats = await first(env, `SELECT COUNT(*) AS dials, SUM(outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(outcome = 'booked') AS booked
-    FROM activities WHERE type = 'call' AND by = ? AND at >= ?`, user.id, today.getTime());
+  const stats = await first(env, `SELECT SUM(type = 'call') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
+      FROM activities WHERE type IN ('call','meeting') AND by = ? AND at >= ?`, user.id, today.getTime());
   return json({ queue: now_.slice(0, Number(url.searchParams.get('limit')) || 50), waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0, goal: await dialGoalOf(env, user.id) }, tiers, cats });
 });
 // Quality tiers: callbacks and booked follow ups always count as hot; not researched yet is its own queue.

@@ -3,7 +3,7 @@ import { json } from './util.js';
 import { all, first } from './db.js';
 import { requireStaff } from './auth.js';
 import { monthKey } from './plans.js';
-import { inCallingHours, apptScope } from './crm.js';
+import { inCallingHours, apptScope, BOOKED_SQL } from './crm.js';
 import { route } from './router.js';
 import { dialGoalOf } from './avail.js';
 
@@ -19,10 +19,10 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
   const month = monthKey();
   const appt = apptScope(user);
   const [mine, team, stages, leads, due, meetings, clients, tasks, posts, unread, orders, recent] = await Promise.all([
-    first(env, `SELECT COUNT(*) AS dials, SUM(outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(outcome = 'booked') AS booked
-      FROM activities WHERE type = 'call' AND by = ? AND at >= ?`, user.id, day),
-    first(env, `SELECT COUNT(*) AS dials, SUM(outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(outcome = 'booked') AS booked
-      FROM activities WHERE type = 'call' AND at >= ?`, week),
+    first(env, `SELECT SUM(type = 'call') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
+      FROM activities WHERE type IN ('call','meeting') AND by = ? AND at >= ?`, user.id, day),
+    first(env, `SELECT SUM(type = 'call') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
+      FROM activities WHERE type IN ('call','meeting') AND at >= ?`, week),
     all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage'),
     all(env, `SELECT timezone, tz_alt, grade FROM leads WHERE dnc = 0 AND stage IN (${OPEN.map(() => '?').join(',')})`, ...OPEN),
     all(env, `SELECT id, business, contact_name, next_action, next_action_at, stage, grade FROM leads WHERE dnc = 0 AND next_action_at IS NOT NULL AND next_action_at < ?

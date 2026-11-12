@@ -2065,3 +2065,17 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .pd-card b, .pd-card small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .tray-main b, .tray-main small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 @media (max-width: 1100px) { .dial-grid, .dial-grid.no-prep { grid-template-columns: 1fr; } }
+
+/* Phone and tablet dialer: nothing runs past the card margins or gets cut off. Long text wraps, tab rows wrap. */
+.dial-grid, .dial-grid > *, .dial-grid .card, .upcoming, .dstrip { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.upcoming { overflow-wrap: anywhere; }
+.upcoming .badge { white-space: normal; height: auto; max-width: 100%; line-height: 1.35; border-radius: 12px; padding: 6px 10px; text-align: left; overflow-wrap: anywhere; }
+.upcoming > b { flex-basis: 100%; }
+.dial-who, .dial-cat, .dial-phone, .dial-grid h2, .dial-grid h3, .dial-grid p, .dial-grid .small, .dial-grid .muted { overflow-wrap: anywhere; min-width: 0; }
+.dstrip { flex-wrap: wrap; }
+@media (max-width: 900px) {
+  .tabs { flex-wrap: wrap; overflow: visible; width: 100%; }
+  .tabs a { white-space: normal; text-align: center; flex: 1 1 auto; }
+  .tabs .tab-audio { flex: 1 1 auto; }
+  .dial-grid .dq-t b, .dial-grid .dq-t small, .pd-card b, .pd-card small { white-space: normal; overflow-wrap: anywhere; }
+}
