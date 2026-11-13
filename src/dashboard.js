@@ -6,6 +6,7 @@ import { monthKey } from './plans.js';
 import { inCallingHours, apptScope, BOOKED_SQL } from './crm.js';
 import { route } from './router.js';
 import { dialGoalOf } from './avail.js';
+import { dayFrom } from './day.js';
 
 const OPEN = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up'];
 
@@ -13,7 +14,7 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
   requireStaff(user);
   const t = Date.now();
   // The browser sends the start of its own day and week, so "today" means the rep's today.
-  const day = Number(url.searchParams.get('since')) || t - (t % 864e5);
+  const day = dayFrom(url.searchParams.get('since'), t);
   const week = Number(url.searchParams.get('week')) || day - 6 * 864e5;
   const end = day + 864e5;
   const month = monthKey();

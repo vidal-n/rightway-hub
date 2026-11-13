@@ -5,8 +5,9 @@ import { first, run, now } from './db.js';
 import { requireStaff } from './auth.js';
 import { route } from './router.js';
 import { personalPart } from '../public/js/audiocfg.js';
+import { dayKey } from './day.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => dayKey();
 
 export async function badges(env, user) {
   const safe = (p) => p.catch(() => null);

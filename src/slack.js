@@ -6,6 +6,7 @@
 // - A morning team summary goes to a channel.
 // The app is made from a manifest with the Hub's addresses filled in. The bot token and signing secret are pasted in the Hub and
 // stored sealed. Every request from Slack is checked with the signing secret. A plain incoming webhook still works without the app.
+import { dayKey } from './day.js';
 import { HttpError, json } from './util.js';
 import { all, first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
@@ -177,7 +178,7 @@ export async function commandReply(env, u, text, origin) {
   const [cmd, ...rest] = String(text || '').trim().split(/\s+/);
   const q = rest.join(' ').trim();
   const c = (cmd || 'work').toLowerCase();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayKey();
   if (c === 'help') {
     return ephemeral('Rightway Hub commands', [section('*/hub* or */hub work*: your open tasks, overdue first\n*/hub client sunrise*: a client\'s numbers\n*/hub lead joe* or */hub lead 954555*: find a lead\n*/hub stats*: agency numbers (owners)')]);
   }

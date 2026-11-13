@@ -991,7 +991,7 @@ export async function dialerPage(app, user) {
   try { auto = localStorage.getItem('rw-dial-auto2') === '1'; } catch { /* ignore */ }
   const qs = new URLSearchParams(Object.entries(flt).filter(([, v]) => v)).toString();
   let me, q, cal, nums = { numbers: [] };
-  try { [me, q, cal, nums] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] })), api('/api/dialer/numbers').catch(() => ({ numbers: [] }))]); }
+  try { [me, q, cal, nums] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150&since=${new Date().setHours(0, 0, 0, 0)}${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] })), api('/api/dialer/numbers').catch(() => ({ numbers: [] }))]); }
   catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   await refreshDispos();
   if (me.twilio) startPhone().catch(() => {});

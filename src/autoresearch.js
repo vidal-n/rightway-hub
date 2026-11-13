@@ -1,5 +1,6 @@
 // Every imported lead gets researched on its own (Google profile, 3 x 3 map grid, website, speed), then scored and graded, so the dialer
 // can split the queue by quality. One lead per cron run plus open dialer pages nudging it along; owners set a daily cap.
+import { dayKey } from './day.js';
 import { json, HttpError } from './util.js';
 import { first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
@@ -37,7 +38,7 @@ export async function researchTick(env, max = 1) {
   if (!env.DATAFORSEO_LOGIN) return 0;
   if (await isFreeMode(env)) cfg.depth = 'free';
   if (cfg.depth !== 'free' && !(await bgOk(env)).ok) return 0;   // today's spending limit reached
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayKey();
   let done = cfg.day === today ? cfg.done : 0;
   let n = 0;
   while (n < max && done < cfg.cap) {

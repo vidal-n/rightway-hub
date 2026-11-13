@@ -10,6 +10,7 @@ import { scoreLead, dupKeys, callCategory, personOf } from '../public/js/leadint
 import { resolveDispo } from './dispo.js';
 import { notifyLater } from './notify.js';
 import { dialGoalOf } from './avail.js';
+import { dayFrom } from './day.js';
 import { autoChatFor } from './chat.js';
 import { can } from '../public/js/jobs.js';
 import { cleanNewLead, queueScrub } from './scrub.js';
@@ -545,9 +546,9 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const cats = {};
   for (const l of rows) { if (!(l.last_call_at && t - l.last_call_at < 3 * 3600e3)) { const d = decorate(l); if (d.callable_now) { tiers[tierOf(d)]++; const c = callCategory(d).id; cats[c] = (cats[c] || 0) + 1; } } }
   const later = ready.length - now_.length;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dayBegin = dayFrom(url.searchParams.get('since'));
   const stats = await first(env, `SELECT SUM(type = 'call') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
-      FROM activities WHERE type IN ('call','meeting') AND by = ? AND at >= ?`, user.id, today.getTime());
+      FROM activities WHERE type IN ('call','meeting') AND by = ? AND at >= ?`, user.id, dayBegin);
   return json({ queue: now_.slice(0, Number(url.searchParams.get('limit')) || 50), waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0, goal: await dialGoalOf(env, user.id) }, tiers, cats });
 });
 // Quality tiers: callbacks and booked follow ups always count as hot; not researched yet is its own queue.

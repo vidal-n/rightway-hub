@@ -6,18 +6,12 @@ import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { getDispos } from './dispo.js';
 import { STATUS_KEYS, callStats, statusTime } from '../public/js/callstats.js';
+import { dayStart, TZ } from './day.js';
 
-const TZ = 'America/New_York';
 const STALE = 150e3; // no heartbeat for 2.5 minutes = not in the Hub
 const LIVE = ['ready', 'connecting', 'ringing', 'in-progress', 'ringing_you'];
 
-// Midnight in New York, as a timestamp.
-export function dayStart(t = now(), tz = TZ) {
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
-    .formatToParts(new Date(t)).map((x) => [x.type, x.value]));
-  const sinceMidnight = ((+p.hour * 60 + +p.minute) * 60 + +p.second) * 1000 + (t % 1000);
-  return t - sinceMidnight;
-}
+export { dayStart };
 const hourIn = (t, tz = TZ) => Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' }).format(new Date(t)));
 
 // The primary owner: the first owner account (the one that set the Hub up).
