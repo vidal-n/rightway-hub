@@ -1,7 +1,7 @@
 // The staff shell: a grouped side rail, a command bar (page, search, your status, wallet warning, alerts, settings, profile),
 // the presence heartbeat behind the Agents page, and the command palette (Ctrl K or /).
 import { $, $$, esc, api, toast, icon } from './core.js';
-import { navItems, wireNav, activeKey, customizeMenu, NAV, GROUPS, groupOf } from './nav.js';
+import { navItems, wireNav, activeKey, customizeMenu, NAV, wsList, wsTabs, wsFor, WORKSPACES } from './nav.js';
 import { can, jobLabel } from '/js/jobs.js';
 import { STATUSES, statusLabel, statusTone, statusesFor } from '/js/callstats.js';
 import { avatarHtml, wireAvatars, pickAvatar, removeAvatar } from './avatar.js';
@@ -97,31 +97,37 @@ export function staffShell(app, user, active, inner) {
   clearTimeout(window.__rwSettle);
   window.__rwSettle = setTimeout(() => document.body.classList.add('settled'), 900);
   const item = NAV.find((n) => n[0] === active);
-  const grp = GROUPS.find((g) => g[0] === groupOf(active));
+  const here = wsFor(location.hash || '#/');
+  const ws = WORKSPACES.find((w) => w[0] === here.ws) || WORKSPACES[0];
+  const tabs = wsTabs(user, ws[0]);
+  const tabNow = tabs.find((t) => t[1] === here.tab);
+  document.documentElement.dataset.ws = ws[0];
   app.innerHTML = `
     <div class="hub">
       <div class="side-scrim" id="scrim" hidden></div>
       <aside class="rail" id="side" aria-label="Main menu">
-        <div class="rail-head"><a class="rail-brand" href="#/"><img src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="140" height="24"></a>
-          <button type="button" class="cmd-ico rail-fold" id="rail-fold" aria-label="Collapse the menu" title="Collapse or open the menu">${icon.menu}</button>
+        <div class="rail-head"><a class="rail-brand" href="#/" aria-label="Rightway Growth, home"><img class="rb-full" src="/brand/rightway-logo-dark.svg" alt="Rightway Growth" width="140" height="24"><img class="rb-mark" src="/brand/rightway-mark-light.svg" alt="" width="30" height="30"></a>
+          <button type="button" class="cmd-ico rail-fold" id="rail-fold" aria-label="Collapse the menu" title="Collapse or open the menu" hidden>${icon.menu}</button>
           <button type="button" class="cmd-ico rail-close" id="menu-close" aria-label="Close menu">${icon.close}</button></div>
         <nav aria-label="Main">${railLinks(user, active)}</nav>
       </aside>
       <div class="deck">
         <header class="cmd">
           <button type="button" class="cmd-ico cmd-menu" id="menu-open" aria-label="Open menu">${icon.menu}</button>
-          <div class="cmd-title" data-grp="${esc(groupOf(active))}"><small>${esc(grp ? grp[1] : 'Hub')}</small><b>${esc(item ? item[3] : '')}</b></div>
+          <div class="cmd-title" data-ws="${esc(ws[0])}"><small>${esc(ws[1])}</small><b>${esc(tabNow ? tabNow[0] : item ? item[3] : ws[1])}</b></div>
           <button type="button" class="cmd-search" id="cmdk" aria-label="Search">${icon.search}<span>Search leads, clients, pages</span><kbd>Ctrl K</kbd></button>
           <div class="cmd-right">
             ${can(user, 'close') ? presentButton() : ''}
             <button type="button" class="stpill" data-stpill aria-label="Your status">${pillHtml()}</button>
             <a class="cmd-ico warn" href="#/settings" data-wallet hidden aria-label="A wallet is low">${icon.money}</a>
+            <button type="button" class="cmd-ico" id="sndbtn" aria-label="Sounds" title="Sounds on or off"></button>
             <button type="button" class="cmd-ico" id="notifbtn" aria-label="Notifications" aria-haspopup="dialog" title="Notifications">${icon.bell}<b class="nbadge" data-badge="alerts" hidden></b></button>
             <a class="cmd-ico hide-s" href="#/settings" aria-label="Settings">${icon.cog}</a>
             <button type="button" class="pbub" data-pbub title="${esc(user.name || user.email || 'Profile')}" aria-label="Profile menu">${avatarHtml(user, initials(user))}</button>
           </div>
         </header>
-        <div class="qbar" id="qbar-top" aria-label="Quick links"></div>
+        <div class="wsbar" id="wsbar"><nav class="ws-tabs" id="wstabs" aria-label="${esc(ws[1])} pages">${tabs.map(([label, href, , badge]) => `<a href="${href}" class="${tabNow && tabNow[1] === href ? 'is-active' : ''}"${tabNow && tabNow[1] === href ? ' aria-current="page"' : ''}>${esc(label)}${badge ? `<b class="nbadge" data-badge="${badge}" hidden></b>` : ''}</a>`).join('')}</nav>
+          <div class="qbar" id="qbar-top" aria-label="Quick links"></div></div>
         <div class="vscroll" id="vscroll"><main class="main" id="view">${inner || '<div class="skeleton"></div>'}</main></div>
       </div>
       <nav class="bbar" id="bbar" aria-label="Quick menu"></nav>
@@ -159,6 +165,11 @@ export function staffShell(app, user, active, inner) {
   $$('[data-stpill]', app).forEach((b) => b.addEventListener('click', () => statusMenu(b)));
   $$('[data-pbub]', app).forEach((b) => b.addEventListener('click', () => profileMenu(b, user, logout)));
   paintWallet(app);
+  // Overhaul helpers: swipe and snap tabs, chip rows as dropdowns, (i) explainers on numbers, sounds.
+  import('./wsnav.js').then((m) => m.wireWsNav()).catch(() => {});
+  import('./compact.js').then((m) => m.wireCompact()).catch(() => {});
+  import('./explain.js').then((m) => m.wireExplain()).catch(() => {});
+  import('./sound.js').then((m) => m.wireSoundBtn()).catch(() => {});
   import('./tour.js').then((m) => m.maybeTour(user)).catch(() => {});
   import('./resume.js').then((m) => { m.mountStrip(app, active); m.maybeResume(); }).catch(() => {});
   if (user.role === 'admin') import('./costhint.js').then((m) => m.startCostHints()).catch(() => {});
@@ -177,12 +188,14 @@ export function staffShell(app, user, active, inner) {
   return $('#view');
 }
 
-export function railLinks(user, active) {
-  const { shown } = navItems(user);
-  return GROUPS.map(([g, label]) => {
-    const items = shown.filter((n) => groupOf(n[0]) === g);
-    if (!items.length) return '';
-    return `<div class="rail-grp"><p>${esc(label)}</p>${items.map(([k, href, ic, name]) => `<a href="${href}" data-nav="${k}" class="${active === k ? 'is-active' : ''}">${icon[ic] || ''}<span>${esc(name)}</span>${['work', 'slack', 'phone', 'pipeline', 'alerts'].includes(k) ? `<b class="nbadge" data-badge="${k}" hidden></b>` : ''}</a>`).join('')}</div>`;
+export function railLinks(user) {
+  const here = wsFor(location.hash || '#/');
+  return wsList(user).map(([k, label, ic]) => {
+    const tabs = wsTabs(user, k);
+    const util = k === 'automate' || k === 'settings';
+    const badge = { home: 'alerts', sell: 'pipeline', inbox: 'inbox', deliver: 'work' }[k];
+    return `<div class="wsg${util ? ' util' : ''}${here.ws === k ? ' is-open' : ''}" data-wsg="${k}"><a href="${tabs[0][1]}" data-nav="${k}" class="ws-tile${here.ws === k ? ' is-active' : ''}"${here.ws === k ? ' aria-current="true"' : ''}>${icon[ic] || ''}<span>${esc(label)}</span>${badge ? `<b class="nbadge" data-badge="${badge}" hidden></b>` : ''}</a>
+      <div class="wsg-tabs">${tabs.map(([n, href]) => `<a href="${href}" class="${here.tab === href ? 'is-active' : ''}">${esc(n)}</a>`).join('')}</div></div>`;
   }).join('');
 }
 
@@ -204,6 +217,7 @@ function profileMenu(b, user, logout) {
     <a href="#/agents" role="menuitem">${icon.headset || icon.users}My numbers today</a>
     <a href="#/settings" role="menuitem">${icon.cog}Settings</a>
     <a href="#/notifications" role="menuitem">${icon.bell}Notifications</a>
+    <button type="button" data-pm="sound" role="menuitem">${icon.bell}Sounds: <span data-sndstate>on</span></button>
     <button type="button" data-audio role="menuitem">${icon.mic || icon.headset || icon.cog}Phone audio and noise</button>
     <button type="button" data-pm="photo" role="menuitem">${icon.camera}${user.avatar_at ? 'Change profile photo' : 'Add a profile photo'}</button>
     ${user.avatar_at ? `<button type="button" data-pm="nophoto" role="menuitem">${icon.trash}Remove photo</button>` : ''}
@@ -215,6 +229,10 @@ function profileMenu(b, user, logout) {
   setTimeout(() => document.addEventListener('click', close), 0);
   m.querySelector('[data-pm="nav"]').onclick = () => { close(); customizeMenu(user, () => location.reload()); };
   m.querySelector('[data-pm="out"]').onclick = logout;
+  import('./sound.js').then((snd) => {
+    const st = m.querySelector('[data-sndstate]'); if (st) st.textContent = snd.soundOn() ? 'on' : 'off';
+    m.querySelector('[data-pm="sound"]').onclick = () => { snd.setSound(!snd.soundOn()); close(); };
+  }).catch(() => {});
   wireAvatars(m);
   m.querySelectorAll('[data-pm="photo"]').forEach((x) => { x.onclick = () => { close(); pickAvatar(user, initials(user)); }; });
   const np = m.querySelector('[data-pm="nophoto"]'); if (np) np.onclick = () => { close(); removeAvatar(user, initials(user)); };

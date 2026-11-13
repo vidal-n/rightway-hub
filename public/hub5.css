@@ -1,0 +1,258 @@
+/* ===== Hub v5 (Nov 2026 overhaul): workspaces, flat paper, contrast where it matters =====
+   Loaded after hub.css, so these rules win. Ideas: workspace colour coding (Slack, Linear, HubSpot), ink first with mint as the
+   one "do this now" signal (Linear's base + accent + contrast idea), numbers in tabular figures, every number explains itself.
+   Colour means place: --wsc is the open workspace (set on <html data-ws>). Mint means act now. Red means something is wrong. */
+:root {
+  --bg: #F1F5F3; --surface: #FFFFFF; --surface-2: #F6F9F7; --ink: #0F1B17; --ink-2: #22322C; --muted: #4C5D56; --line: #D2DCD7; --line-2: #B9C7C0;
+  --r: 14px; --shadow: 0 1px 0 rgba(15, 27, 23, .04);
+  --ws-home: #1E9E70; --ws-sell: #E2492F; --ws-inbox: #2A63E8; --ws-clients: #6E4FE6; --ws-deliver: #E07A0C; --ws-insights: #0B93A6; --ws-money: #B58A00; --ws-automate: #4F625B; --ws-settings: #4F625B;
+  --wsc: var(--ws-home);
+  --wst: color-mix(in srgb, var(--wsc) 82%, #000);   /* the workspace colour dark enough for text on white */
+  --wsl: color-mix(in srgb, var(--wsc) 10%, var(--surface));
+  --rail: #0A1411; --rail-ink: #B7C8C0;
+  --spring: cubic-bezier(.32, 1.25, .5, 1); --sheet: cubic-bezier(.32, .72, 0, 1);
+}
+html[data-ws=home] { --wsc: var(--ws-home); } html[data-ws=sell] { --wsc: var(--ws-sell); } html[data-ws=inbox] { --wsc: var(--ws-inbox); }
+html[data-ws=clients] { --wsc: var(--ws-clients); } html[data-ws=deliver] { --wsc: var(--ws-deliver); } html[data-ws=insights] { --wsc: var(--ws-insights); }
+html[data-ws=money] { --wsc: var(--ws-money); } html[data-ws=automate] { --wsc: var(--ws-automate); } html[data-ws=settings] { --wsc: var(--ws-settings); }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #08110E; --surface: #0F1B17; --surface-2: #13221D; --ink: #EEF6F2; --ink-2: #C5D6CE; --muted: #9AB0A6; --line: #22362E; --line-2: #33493F;
+    --ws-home: #43D69F; --ws-sell: #FF7A5C; --ws-inbox: #6E9BFF; --ws-clients: #A08BFF; --ws-deliver: #FFA640; --ws-insights: #3FCEDF; --ws-money: #E9C24A; --ws-automate: #9AB0A6; --ws-settings: #9AB0A6;
+    --wst: var(--wsc); --wsl: color-mix(in srgb, var(--wsc) 14%, var(--surface)); --rail: #050C0A;
+  }
+}
+
+/* Flat canvas: the dotted grid is gone. */
+body.hubbg { background: var(--bg); background-image: none; }
+.hub .main { max-width: none; padding-top: 22px; }
+
+/* ---------- Rail: one tile per workspace ---------- */
+@media (min-width: 901px) {
+  .hub { grid-template-columns: 88px minmax(0, 1fr); }
+  body.rail-collapsed .hub { grid-template-columns: 88px minmax(0, 1fr); }
+  .hub .rail { background: var(--rail); padding: calc(12px + env(safe-area-inset-top)) 8px calc(12px + var(--sab)); gap: 4px; align-items: stretch; }
+  .rail-head { justify-content: center; border: 0; padding: 2px 0 10px; margin: 0; }
+  .rail-brand .rb-full { display: none; }
+  .rail-brand .rb-mark { display: block; width: 36px; height: 36px; border-radius: 10px; }
+  .rail nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .wsg-tabs { display: none; }
+  .wsg.util:first-of-type, .rail nav .wsg.util { margin-top: 0; }
+  .rail nav .wsg.util { order: 9; }
+  .rail nav .wsg[data-wsg=automate] { margin-top: auto; }
+  .rail nav a.ws-tile { flex-direction: column; justify-content: center; gap: 4px; padding: 10px 2px 8px; border-radius: 12px; font: 600 11.5px/1.1 var(--body); letter-spacing: 0; color: var(--rail-ink); text-align: center; }
+  .rail nav a.ws-tile svg { width: 22px; height: 22px; color: inherit; }
+  .rail nav a.ws-tile:hover { background: rgba(255, 255, 255, .07); color: #fff; }
+  .rail nav a.ws-tile.is-active { background: var(--wsc); color: #fff; box-shadow: 0 6px 18px color-mix(in srgb, var(--wsc) 40%, transparent); }
+  .rail nav a.ws-tile.is-active::before { display: none; }
+  .rail nav a.ws-tile .nbadge { position: absolute; top: 4px; right: 10px; margin: 0; font-size: 10px; line-height: 16px; min-width: 16px; padding: 0 4px; background: #FF5A4E; color: #fff; }
+  .rail nav a.ws-tile.is-active .nbadge { background: #fff; color: var(--ink); }
+  html[data-ws=money] .rail nav a.ws-tile.is-active, html[data-ws=deliver] .rail nav a.ws-tile.is-active { color: #120D02; }
+}
+/* Each workspace tile carries its colour on the icon. */
+.rail nav [data-wsg=home] .ws-tile:not(.is-active) svg { color: #5FE0B0; } .rail nav [data-wsg=sell] .ws-tile:not(.is-active) svg { color: #FF8A70; }
+.rail nav [data-wsg=inbox] .ws-tile:not(.is-active) svg { color: #86A9FF; } .rail nav [data-wsg=clients] .ws-tile:not(.is-active) svg { color: #B4A2FF; }
+.rail nav [data-wsg=deliver] .ws-tile:not(.is-active) svg { color: #FFB45C; } .rail nav [data-wsg=insights] .ws-tile:not(.is-active) svg { color: #5ED6E5; }
+.rail nav [data-wsg=money] .ws-tile:not(.is-active) svg { color: #EDCB5E; }
+.rail nav a.ws-tile[data-nav] svg { color: inherit; }
+
+/* Phone and tablet drawer: workspaces with their pages listed under them. */
+@media (max-width: 900px) {
+  .hub .rail { background: var(--rail); width: min(88vw, 320px); }
+  .rail-brand .rb-mark { display: none; }
+  .rail nav a.ws-tile { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; color: #E6F0EB; font: 650 16px var(--display); }
+  .rail nav a.ws-tile svg { width: 21px; height: 21px; }
+  .rail nav a.ws-tile.is-active { background: color-mix(in srgb, var(--wsc) 22%, transparent); color: #fff; }
+  .rail nav a.ws-tile.is-active::before { background: var(--wsc); }
+  .wsg-tabs { display: grid; gap: 1px; margin: 0 0 8px 44px; }
+  .wsg-tabs a { padding: 8px 10px !important; font: 600 14.5px var(--body) !important; color: var(--rail-ink) !important; border-radius: 8px; }
+  .wsg-tabs a.is-active { background: rgba(255, 255, 255, .08) !important; color: #fff !important; }
+  .wsg-tabs a.is-active::before { display: none; }
+}
+
+/* ---------- Command bar and the workspace signal strip ---------- */
+.hub .cmd { background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none; border-bottom: 0; box-shadow: inset 0 4px 0 var(--wsc); padding-top: calc(14px + env(safe-area-inset-top)); }
+.cmd-title small, .cmd-title[data-ws] small { font: 650 12.5px var(--body); letter-spacing: 0; text-transform: none; color: var(--wst); display: flex; align-items: center; gap: 6px; }
+.cmd-title small::before { content: ''; width: 8px; height: 8px; border-radius: 3px; background: var(--wsc); }
+.cmd-title b { font: 750 21px var(--display); letter-spacing: -.02em; }
+.cmd-search { border-radius: 10px; background: var(--surface-2); border-color: var(--line); }
+.cmd-ico, .stpill { border-color: var(--line); background: var(--surface); }
+.cmd-ico:hover, .cmd-search:hover { border-color: var(--wsc); }
+#sndbtn svg { width: 18px; height: 18px; }
+
+.wsbar { flex: none; display: flex; align-items: stretch; gap: 10px; padding: 0 clamp(12px, 2.4vw, 28px); background: var(--surface); border-bottom: 1px solid var(--line);
+  max-height: 60px; overflow: hidden; transition: max-height .28s var(--sheet), opacity .2s; position: relative; z-index: 40; }
+.wsbar.ws-hide { max-height: 0; opacity: 0; border-bottom-color: transparent; }
+.ws-tabs { display: flex; gap: 2px; min-width: 0; flex: 1 1 auto; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+.ws-tabs::-webkit-scrollbar { display: none; }
+.ws-tabs a { position: relative; flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 13px 14px 12px; font: 600 14.5px var(--body); color: var(--muted); text-decoration: none; white-space: nowrap; scroll-snap-align: start; transition: color .15s; }
+.ws-tabs a:hover { color: var(--ink); }
+.ws-tabs a::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 0; height: 3px; border-radius: 3px 3px 0 0; background: var(--wsc); transform: scaleX(0); transition: transform .3s var(--spring); }
+.ws-tabs a.is-active { color: var(--ink); }
+.ws-tabs a.is-active::after { transform: scaleX(1); }
+.ws-tabs a .nbadge { margin: 0; font-size: 10.5px; line-height: 17px; min-width: 17px; padding: 0 5px; background: var(--ws-sell); color: #fff; }
+.ws-tabs a .nbadge[hidden] { display: none; }
+.wsbar .qbar { flex: 0 1 auto; border: 0; background: none; padding: 0; min-height: 0; gap: 6px; }
+.wsbar .qbar .qb-cap { display: none; }
+.wsbar .qbar .qb-chip { font-size: 12.5px; padding: 5px 10px; }
+@media (max-width: 1180px) { .wsbar .qbar { display: none; } }
+@media (max-width: 900px) {
+  .wsbar { padding: 0 8px; }
+  .ws-tabs { scroll-snap-type: x mandatory; scroll-padding: 0 8px; }
+  .ws-tabs a { padding: 12px 12px 11px; font-size: 14px; }
+}
+.hub .qbar#qbar-top:empty { display: none; }
+
+/* ---------- Type: no mono capitals for labels ---------- */
+.eyebrow, .pmenu-cap, .pal-kind, .qb-cap, .rail-grp > p, .hello .eyebrow { font-family: var(--body) !important; letter-spacing: 0 !important; text-transform: none !important; }
+.hub .main .page-head .eyebrow { display: none; }
+.hub .main .page-head h1 { font: 760 clamp(28px, 3.2vw, 42px)/1.05 var(--display); letter-spacing: -.03em; }
+.hub .main h2 { font-weight: 700; letter-spacing: -.015em; }
+.stat-num, .tile .stat-num, .ins-tile b, .num, .mono.big { font-family: var(--display) !important; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.stat-num { font-weight: 750; }
+.stat-label { color: var(--muted); font-weight: 550; }
+.muted, .small { color: var(--muted); }
+
+/* ---------- Surfaces: flat, sharper, contrast from borders not shadows ---------- */
+.hub .main .card { border-radius: var(--r); box-shadow: var(--shadow); border-color: var(--line); }
+.hub .main .stat { border-radius: 12px; box-shadow: none; }
+.hub .main .stat[class*="tint-"] { background: var(--surface); border-color: var(--line); box-shadow: inset 4px 0 0 var(--wc); }
+.hub .main .stat[class*="tint-"] .stat-num { color: var(--ink); }
+.hub .main .stat.hero, .hub .main .tile.hero { background: var(--ink); color: #fff; }
+.hub .main .card[class*="wc-"] { border-top: 0; box-shadow: inset 0 3px 0 var(--wc), var(--shadow); }
+.btn { border-radius: 10px; font-weight: 650; }
+.btn-sm { border-radius: 9px; }
+.btn-ghost { border-color: var(--line-2); }
+.btn-ghost:hover { background: var(--wsl); border-color: var(--wsc); }
+.btn-mint { background: var(--mint); color: #0F1B17; box-shadow: inset 0 -2px 0 rgba(15, 27, 23, .12); }
+input, select, textarea { border-radius: 10px; background: var(--surface); border-color: var(--line-2); }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
+:focus-visible { outline: 2px solid var(--wsc); outline-offset: 2px; }
+.badge { font-weight: 650; }
+.badge.ok { background: #DDF6EA; color: #0B5C3F; } .badge.bad { background: #FBE1DD; color: #8E2414; } .badge.warn { background: #FCEFD2; color: #7A4D00; }
+@media (prefers-color-scheme: dark) {
+  .badge.ok { background: rgba(67, 214, 159, .16); color: #8FF0C8; } .badge.bad { background: rgba(255, 122, 92, .16); color: #FFB3A1; } .badge.warn { background: rgba(233, 194, 74, .16); color: #F4D98A; }
+}
+
+/* Page level tabs: an underline in the workspace colour, swipe on touch screens. */
+.hub .main .tabs { width: auto; background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 0; gap: 2px; scroll-snap-type: x proximity; scrollbar-width: none; }
+.hub .main .tabs::-webkit-scrollbar { display: none; }
+.hub .main .tabs a, .hub .main .tabs button { position: relative; border-radius: 0; padding: 10px 14px; background: none; color: var(--muted); font-weight: 650; scroll-snap-align: start; }
+.hub .main .tabs a:hover { background: none; color: var(--ink); }
+.hub .main .tabs a.is-active, .hub .main .tabs button.is-on { background: none; color: var(--ink); }
+.hub .main .tabs a::after, .hub .main .tabs button::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: var(--wsc); transform: scaleX(0); transition: transform .3s var(--spring); }
+.hub .main .tabs a.is-active::after, .hub .main .tabs button.is-on::after { transform: scaleX(1); }
+
+/* Pipeline board stage tops keep their colours; chips get firmer. */
+.chip { border-color: var(--line-2); }
+.chip.on, .tz.is-on { background: var(--ink) !important; color: #fff !important; border-color: var(--ink) !important; }
+.chip.on b, .tz.is-on b { color: var(--mint) !important; }
+
+/* Bottom bar on phones */
+@media (max-width: 900px) {
+  .bbar { background: var(--rail); border-top: 0; }
+  .bb-item { color: #A9BDB4; }
+  .bb-item.is-active { color: #fff; background: color-mix(in srgb, var(--wsc) 30%, transparent); }
+  .bb-item.is-active svg { color: var(--wsc); filter: brightness(1.35); }
+  .bb-item .nbadge { background: #FF5A4E; color: #fff; }
+}
+
+/* ---------- Chip rows that fold into a dropdown (public/hub/compact.js) ---------- */
+.cmp-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; max-width: 100%; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface);
+  font: 600 14px var(--body); color: var(--ink); cursor: pointer; }
+.cmp-btn .cmp-l { color: var(--muted); font-weight: 550; }
+.cmp-btn .cmp-v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46vw; }
+.cmp-btn::after { content: ''; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg) translate(-2px, -2px); margin-left: 2px; opacity: .6; }
+.cmp-btn[aria-expanded=true] { border-color: var(--wsc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--wsc) 18%, transparent); }
+.cmp-on { display: none !important; }
+.cmp-on.cmp-open { display: flex !important; flex-direction: column; align-items: stretch !important; flex-wrap: nowrap !important; gap: 2px !important; position: fixed; z-index: 160; max-height: min(60vh, 420px); overflow-y: auto;
+  width: max-content; min-width: 220px; max-width: min(92vw, 360px); padding: 6px !important; margin: 0 !important; background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(6, 14, 11, .22); animation: cmpIn .22s var(--sheet) both; }
+.cmp-on.cmp-open > * { width: 100%; justify-content: space-between; text-align: left; border-radius: 8px !important; margin: 0 !important; }
+.cmp-on.cmp-open > span.small, .cmp-on.cmp-open > .small { padding: 6px 8px 4px; }
+@keyframes cmpIn { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
+
+/* ---------- Metric explainers (public/hub/explain.js) ---------- */
+.xi { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-left: 6px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--surface); color: var(--muted);
+  font: 700 11px/1 var(--display); cursor: pointer; vertical-align: 2px; padding: 0; flex: none; transition: background .15s, color .15s, border-color .15s; }
+.xi:hover, .xi[aria-expanded=true] { background: var(--wsc); color: #fff; border-color: var(--wsc); }
+.xpop { position: fixed; z-index: 170; width: min(380px, calc(100vw - 20px)); max-height: min(70vh, 560px); overflow-y: auto; background: var(--surface); color: var(--ink); border: 1px solid var(--line-2);
+  border-radius: 14px; box-shadow: 0 24px 60px rgba(6, 14, 11, .28); padding: 16px 16px 12px; animation: cmpIn .24s var(--sheet) both; }
+.xpop h4 { margin: 0 0 4px; font: 750 17px var(--display); letter-spacing: -.01em; padding-right: 26px; }
+.xpop .xp-what { margin: 0 0 10px; color: var(--ink-2); font-size: 14px; }
+.xpop dl { margin: 0; display: grid; gap: 8px; }
+.xpop dt { font: 650 12px var(--body); color: var(--wst); }
+.xpop dd { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); }
+.xpop dd.xp-f { font: 500 12.5px/1.4 var(--mono); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.xpop .xp-x { position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; border-radius: 8px; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 18px; }
+.xpop .xp-miss { border-left: 3px solid var(--ws-sell); padding-left: 8px; }
+@media (max-width: 600px) { .xpop { left: 8px !important; right: 8px; bottom: calc(8px + var(--sab)); top: auto !important; width: auto; max-height: 72vh; border-radius: 18px; } }
+
+/* ---------- Charts added in the overhaul ---------- */
+.heat { display: grid; grid-template-columns: 38px repeat(var(--cols, 12), minmax(0, 1fr)); gap: 3px; font-size: 11.5px; }
+.heat > span { color: var(--muted); display: grid; place-items: center; font-weight: 600; }
+.heat > i { display: block; aspect-ratio: 1.3; border-radius: 4px; background: color-mix(in srgb, var(--ws-insights) calc(var(--v, 0) * 100%), var(--surface-2)); border: 1px solid var(--line); min-height: 16px; }
+.heat > i.none { background: repeating-linear-gradient(45deg, var(--surface-2), var(--surface-2) 3px, transparent 3px, transparent 6px); }
+.heat-key { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+.heat-key b { width: 90px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--surface-2), var(--ws-insights)); }
+.funnel { display: grid; gap: 6px; }
+.funnel .fr { display: grid; grid-template-columns: minmax(110px, 160px) minmax(0, 1fr) 90px; align-items: center; gap: 10px; font-size: 13.5px; }
+.funnel .fr > b { font: 700 15px var(--display); font-variant-numeric: tabular-nums; text-align: right; }
+.funnel .fb { height: 26px; border-radius: 6px; background: var(--surface-2); position: relative; overflow: hidden; }
+.funnel .fb i { position: absolute; inset: 0 auto 0 0; border-radius: 6px; background: linear-gradient(90deg, var(--wsc), color-mix(in srgb, var(--wsc) 70%, #fff)); transform-origin: left; animation: growX .8s var(--sheet) both; }
+.funnel .fb em { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); font: 650 12px var(--body); font-style: normal; color: var(--ink); mix-blend-mode: normal; }
+@keyframes growX { from { transform: scaleX(0); } }
+.curve svg { width: 100%; height: 180px; display: block; }
+.db-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 12px; margin: 0 0 14px; }
+.db-charts .card { padding: 16px; }
+.cov { display: grid; gap: 7px; }
+.cov .cr { display: grid; grid-template-columns: minmax(0, 1fr) 120px 44px; gap: 10px; align-items: center; font-size: 13px; }
+.cov .cb { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.cov .cb i { display: block; height: 100%; background: var(--wsc); border-radius: 4px; animation: growX .7s var(--sheet) both; transform-origin: left; }
+.cov .cr b { text-align: right; font: 700 13px var(--display); font-variant-numeric: tabular-nums; }
+
+/* ---------- Motion: one entrance per page, springy feedback on touch ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  body:not(.settled) .hub .main > * { animation: v5in .5s var(--sheet) both; }
+  body:not(.settled) .hub .main > *:nth-child(2) { animation-delay: .04s; } body:not(.settled) .hub .main > *:nth-child(3) { animation-delay: .08s; }
+  body:not(.settled) .hub .main > *:nth-child(4) { animation-delay: .12s; } body:not(.settled) .hub .main > *:nth-child(n+5) { animation-delay: .16s; }
+  .ws-tile, .ws-tabs a, .btn, .chip, .tz, .cmp-btn { transition: transform .18s var(--spring), background .15s, color .15s, border-color .15s; }
+  .ws-tile:active, .btn:active, .chip:active, .tz:active, .cmp-btn:active { transform: scale(.95); }
+  .main.swipe-l { animation: swl .32s var(--sheet) both; } .main.swipe-r { animation: swr .32s var(--sheet) both; }
+}
+@keyframes v5in { from { opacity: 0; transform: translateY(10px); } }
+@keyframes swl { from { opacity: .2; transform: translateX(36px); } }
+@keyframes swr { from { opacity: .2; transform: translateX(-36px); } }
+@media (prefers-reduced-motion: reduce) { .wsbar { transition: none; } .cmp-on.cmp-open, .xpop { animation: none; } }
+
+/* Desktop: the command bar names the workspace; the page title lives in the page and the active tab. Phones keep both. */
+@media (min-width: 901px) {
+  .cmd-title b { display: none; }
+  .cmd-title small, .cmd-title[data-ws] small { font: 760 22px var(--display); letter-spacing: -.02em; color: var(--ink); gap: 10px; }
+  .cmd-title small::before { width: 12px; height: 12px; border-radius: 4px; }
+}
+
+/* Resume strip: a slim ink bar instead of a big mint box. */
+.hub .resume-strip { background: var(--ink); color: #E8F2ED; border: 0; border-radius: 12px; padding: 10px 12px 10px 16px; margin-bottom: 14px; box-shadow: none; }
+.hub .resume-strip .rs-text b { color: #fff; font: 700 15px var(--display); }
+.hub .resume-strip .rs-text span { color: #A9BDB4; }
+.hub .resume-strip .btn-primary, .hub .resume-strip .btn-mint { background: var(--mint); color: #0F1B17; }
+.hub .resume-strip a, .hub .resume-strip .linkbtn { color: #A9BDB4; }
+.rs-facts i { text-transform: none; letter-spacing: 0; font-size: 12px; }
+@media (prefers-color-scheme: dark) { .hub .resume-strip { background: var(--surface-2); border: 1px solid var(--line); } }
+
+/* Phones: the command bar keeps search, alerts and you; the rest lives in the profile menu. */
+@media (max-width: 600px) {
+  .hub .cmd #presbtn, .hub .cmd #sndbtn, .hub .cmd .stpill { display: none; }
+  .cmd-title b { font-size: 18px; }
+}
+.cov .cb i { background: var(--mint-strong); }
+
+/* Tab rows are one line that snaps tab by tab (swipe the row, or swipe the page to change tab), with a fade where more tabs wait. */
+.hub .main .tabs, .hub .main .tabs.pipe-tabs { flex-wrap: nowrap !important; overflow-x: auto !important; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
+.hub .main .tabs > * { flex: none !important; }
+.ws-tabs, .hub .main .tabs { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.ws-tabs.at-end, .hub .main .tabs.at-end { -webkit-mask-image: none; mask-image: none; }
+.ws-tabs, .hub .main .tabs { position: relative; }
+/* Sideways swipes on a page change tabs (public/hub/wsnav.js): the page itself only pans up and down. Inner rows that scroll sideways keep their own panning. */
+.hub .main { touch-action: pan-y; }

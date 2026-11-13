@@ -1,6 +1,7 @@
 // Pipeline, Lead database tab: every business we know, searchable by anything we have learned about it and every call made to it.
 // Modeled on Apollo.io and ZoomInfo search: filters in categories down the side, ready made and saved searches, a column picker, sortable columns,
 // data coverage numbers at the top, export, and "Dial this search" straight into the power dialer. Catalog and SQL whitelist: public/js/leaddb.js.
+import { donut } from '../js/charts.js';
 import { $, $$, esc, api, toast, fmt, modal, busy } from './core.js';
 import { staffShell, pipeTabs } from './staff.js';
 import { FILTERS, FILTER_CATS, FILTER_MAP, COLUMNS, COLUMN_MAP, DEFAULT_COLUMNS, PRESETS, cleanFilter, filterCount, answeredLabel, objectionLabel, comboLabel, engageTier, reachTier } from '../js/leaddb.js';
@@ -68,15 +69,21 @@ export async function databasePage(app, user) {
     [meta, { health }, { saved }] = await Promise.all([api('/api/leaddb/meta'), api('/api/leaddb/health'), api('/api/leaddb/saved')]);
   } catch (e) { $('.skeleton', view).outerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const H = health || {};
-  const tiles = [['Businesses', H.total, null], ['With a phone', H.phone, H.total], ['Mobile', H.mobile, H.typed || H.total], ['Owner known', H.owner, H.total], ['Valid email', H.email_valid, H.total],
-    ['Website', H.website, H.total], ['Researched', H.researched, H.total], ['Scrubbed', H.scrubbed, H.total], ['Never called', H.never, H.total], ['Reached the owner', H.reached_owner, H.total],
-    ['Qualified', H.qualified, H.total], ['Do not call', H.dnc, H.total], ['Data over 6 months old', H.stale, H.total]];
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow">CRM</p><h1>Lead database</h1><p class="small muted" style="margin:4px 0 0">Every business, everything we know about it, and every call we made to it. Search, sort, save the search, then dial it.</p></div>
       <div class="row" style="gap:8px;flex-wrap:wrap">${owner ? '<button class="btn btn-ghost btn-sm" id="dbexport">Export CSV</button>' : ''}<button class="btn btn-primary btn-sm" id="dbdial">Dial this search</button></div></div>
     ${pipeTabs('database')}
     ${meta.pending ? `<div class="banner" style="margin-bottom:12px">${fmt.int(meta.pending)} businesses still need their call history added up. It runs on its own a few dozen a minute${owner ? ', or <button class="linkbtn" id="dbrebuild">add them all up now</button>' : ''}.</div>` : ''}
-    <div class="db-health">${tiles.map(([n, v, d]) => `<div class="db-tile"><b class="mono">${fmt.int(v || 0)}</b><span>${esc(n)}${d ? ` · ${pct(v || 0, d)}` : ''}</span></div>`).join('')}</div>
+    <div class="db-charts">
+      <div class="card"><div class="card-head"><h3>Data coverage</h3><span class="small muted">of ${fmt.int(H.total || 0)} businesses</span></div><div class="cov">${[['Phone', H.phone], ['Mobile line', H.mobile], ['Owner name', H.owner], ['Valid email', H.email_valid], ['Website', H.website], ['Researched', H.researched], ['Scrubbed', H.scrubbed]]
+        .map(([n, v]) => { const p = H.total ? Math.round((100 * (v || 0)) / H.total) : 0; return `<div class="cr"><span>${esc(n)}</span><span class="cb"><i style="width:${p}%"></i></span><b>${p}%</b></div>`; }).join('')}</div>
+        <p class="small muted" style="margin:10px 0 0">Owner name and mobile line raise the chance the owner answers; scrub to fill them (free, Pipeline step 2).</p></div>
+      <div class="card"><div class="card-head"><h3>Call coverage</h3><span class="small muted">where every business stands</span></div>${(() => {
+        const never = H.never || 0, owner = H.reached_owner || 0, dnc = H.dnc || 0, called = Math.max(0, (H.total || 0) - never - owner);
+        return `<div class="ins-donut">${donut([{ label: 'Never called', value: never, color: 'var(--c-slate)' }, { label: 'Called, owner not reached', value: called, color: 'var(--c-amber)' }, { label: 'Reached the owner', value: owner, color: 'var(--c-green)' }], { center: fmt.int(H.total || 0), sub: 'businesses' })}
+          <ul class="ins-legend"><li><i style="background:var(--c-slate)"></i>Never called<b class="mono">${fmt.int(never)}</b></li><li><i style="background:var(--c-amber)"></i>Called, owner not reached<b class="mono">${fmt.int(called)}</b></li><li><i style="background:var(--c-green)"></i>Reached the owner<b class="mono">${fmt.int(owner)}</b></li><li><i style="background:var(--bad)"></i>Do not call<b class="mono">${fmt.int(dnc)}</b></li><li><i style="background:var(--c-violet)"></i>Qualification answers on file<b class="mono">${fmt.int(H.qualified || 0)}</b></li><li><i style="background:var(--line-2)"></i>Data over 6 months old<b class="mono">${fmt.int(H.stale || 0)}</b></li></ul></div>`;
+      })()}</div>
+    </div>
     <div class="db-wrap">
       <details class="db-side card"${window.innerWidth >= 1000 ? ' open' : ''}><summary class="row" style="justify-content:space-between"><h2 style="margin:0">Filters</h2><button class="linkbtn" id="dbclear">Clear all</button></summary>
         <div id="dbfilters"></div></details>

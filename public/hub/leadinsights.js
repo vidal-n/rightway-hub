@@ -4,7 +4,7 @@
 // Benchmarks are B2B office calling (no vendor publishes local business numbers); our own numbers are the ones that count.
 import { $, $$, esc, api, toast, fmt } from './core.js';
 import { staffShell, pipeTabs } from './staff.js';
-import { donut } from '../js/charts.js';
+import { donut, lineChart } from '../js/charts.js';
 import { bestHours, answeredLabel, objectionLabel, filterCount, cleanFilter } from '../js/leaddb.js';
 
 const COLORS = { owner: 'var(--c-green)', staff: 'var(--c-teal)', service: 'var(--c-blue)', wrong: 'var(--c-coral)', someone: 'var(--c-violet)', menu: 'var(--c-amber)', voicemail: 'var(--c-slate)', screening: 'var(--c-pink)', none: '#B8C4BE', dead: '#7A1F1F' };
@@ -60,6 +60,15 @@ export async function insightsPage(app, user) {
         ${tile(d.triesToOwner ?? '-', 'Dials to reach an owner', '<span class="small muted">average, when reached</span>')}
         ${tile(mmss(T.avgTalk), 'Average talk', '<span class="small muted">per person reached</span>')}
       </div>
+      <div class="ins-grid two">
+        <div class="card"><div class="card-head"><h2>Call funnel</h2><span class="small muted">every outbound call</span></div>${funnel(T)}
+          <p class="small muted">Each bar is a share of dials; the percent on the right is the step from the one above. The biggest drop is the step to coach.</p></div>
+        <div class="card"><div class="card-head"><h2>When owners answer</h2><span class="small muted">their time</span></div>${heat(d.heat)}
+          <div class="heat-key">Owner reached per dial <b></b> more</div><p class="small muted">Striped squares had no dials. Fill your power dial blocks where the squares are darkest; squares with under 10 dials are guesses.</p></div>
+      </div>
+      <div class="card"><div class="card-head"><h2>How many tries pay off</h2><span class="small muted">share of businesses reached by each try</span></div>
+        <div class="curve">${curve(d.attemptCurve)}</div>
+        <p class="small muted">Green: a person answered by that try. Blue: the owner answered. When the lines go flat, more calls to the same number stop paying; Florida caps it at 3 calls in 24 hours anyway.</p></div>
       <div class="ins-grid">
         <div class="card"><div class="card-head"><h2>Who picks up</h2></div>
           <div class="ins-donut">${donut(d.answered.map((a) => ({ label: a.label, value: a.n, color: COLORS[a.key] || 'var(--c-slate)' })), { center: fmt.int(answeredTotal), sub: 'dials' })}
@@ -108,6 +117,24 @@ export async function insightsPage(app, user) {
     $('#insdb', view)?.addEventListener('change', (e) => { useDb = e.target.checked; draw(); });
     $$('[data-lead]', view).forEach((el) => el.addEventListener('click', () => import('./crm.js').then((m) => m.leadModal(el.dataset.lead, () => {}))));
   };
+  const funnel = (T) => {
+    const steps = [['Dials', T.dials], ['A person picked up', T.human], ['Reached the owner', T.owner], ['Owner talks over 60s', T.conv], ['Audits booked', T.booked]];
+    return `<div class="funnel">${steps.map(([n, v], i) => {
+      const w = T.dials ? Math.max(1.5, (100 * v) / T.dials) : 0;
+      const step = i && steps[i - 1][1] ? `${Math.round((1000 * v) / steps[i - 1][1]) / 10}%` : '';
+      return `<div class="fr"><span>${esc(n)}</span><span class="fb"><i style="width:${w}%"></i><em>${fmt.int(v)}</em></span><b>${step}</b></div>`;
+    }).join('')}</div>`;
+  };
+  const heat = (rows = []) => {
+    const max = Math.max(0.0001, ...rows.flatMap((r) => r.cells.filter((c) => c.dials >= 3).map((c) => c.ownerRate)));
+    const hrs = rows[0]?.cells.map((c) => c.hour) || [];
+    return `<div class="heat" style="--cols:${hrs.length}"><span></span>${hrs.map((h) => `<span>${h % 12 || 12}${h < 12 ? 'a' : 'p'}</span>`).join('')}
+      ${rows.map((r) => `<span>${esc(r.day)}</span>${r.cells.map((c) => `<i class="${c.dials ? '' : 'none'}" style="--v:${c.dials ? Math.min(1, c.ownerRate / max) : 0}" title="${esc(`${r.day} ${c.hour % 12 || 12}${c.hour < 12 ? 'am' : 'pm'}: ${c.dials} dials, ${pc(c.pickup)} pickup, ${pc(c.ownerRate)} owner`)}"></i>`).join('')}`).join('')}</div>`;
+  };
+  const curve = (pts = []) => (pts.some((p) => p.businesses) ? lineChart(pts.map((p) => `Try ${p.attempt}`), [
+    { name: 'Person reached', color: 'var(--c-green)', values: pts.map((p) => Math.round(p.human * 1000) / 10) },
+    { name: 'Owner reached', color: 'var(--c-blue)', values: pts.map((p) => Math.round(p.owner * 1000) / 10) },
+  ], { h: 200, area: true, fmt: (v) => `${v}%` }) : '<p class="small muted">Needs calls with try numbers. They fill in as results are saved.</p>');
   const callList = (list) => (list.length ? `<ul class="list ins-calls">${list.map((c) => `<li class="item" data-lead="${esc(c.lead_id || '')}"><span class="badge ${c.secs < 10 ? 'bad' : c.secs >= 60 ? 'ok' : 'gray'}">${mmss(c.secs)}</span>
       <div><div class="item-title">${esc(c.business || 'Unknown business')}</div><div class="item-sub">${esc(answeredLabel(c.by))} · ${esc(c.dispo)}${c.objection ? ` · ${esc(objectionLabel(c.objection))}` : ''} · ${esc(fmt.ago(c.at))}</div></div><span></span></li>`).join('')}</ul>` : '<p class="small muted">None yet.</p>');
   try { await draw(); } catch (e) { toast(e.message, true); }

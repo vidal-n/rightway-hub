@@ -184,3 +184,20 @@ test('lead database end to end: results with detail roll up, search, insights, q
   assert.equal(qc.data.queue.length, 0);
   } finally { Date.now = real; }
 });
+
+test('insights: weekday by hour grid and the attempt curve', async () => {
+  const { insights, attemptCurve } = await import('../public/js/leaddb.js');
+  const rows = [
+    { lead_id: 'a', attempt_no: 1, answered_by: 'none', hour: 10, dow: 1, at: 1 },
+    { lead_id: 'a', attempt_no: 2, answered_by: 'owner', duration: 90, answered_at: 1, hour: 10, dow: 1, at: 2 },
+    { lead_id: 'b', attempt_no: 1, answered_by: 'staff', duration: 20, answered_at: 1, hour: 14, dow: 3, at: 3 },
+  ];
+  const r = insights(rows);
+  const cell = r.heat[1].cells.find((c) => c.hour === 10);
+  assert.equal(cell.dials, 2);
+  assert.equal(cell.owner, 1);
+  assert.equal(r.attemptCurve[0].businesses, 2);
+  assert.equal(r.attemptCurve[0].human, 0.5);
+  assert.equal(r.attemptCurve[1].owner, 1 / 2);
+  assert.deepEqual(attemptCurve(new Map(), new Map(), new Map(), 2).map((x) => x.businesses), [0, 0]);
+});

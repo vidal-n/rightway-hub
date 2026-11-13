@@ -24,7 +24,7 @@ export function stampFor(dir = PUBLIC) {
 // Everything the Hub loads to run, so a new version is complete in the cache before it takes over.
 export function shellList(dir = PUBLIC) {
   const own = (sub, re) => readdirSync(join(dir, sub)).sort().filter((n) => re.test(n)).map((n) => `/${sub}/${n}`);
-  return ['/', '/index.html', '/hub.css', '/styles.css', '/app.js', '/manifest.webmanifest', ...own('hub', /\.(js|css)$/), ...own('js', /\.js$/), ...own('brand', /\.(svg|png)$/)];
+  return ['/', '/index.html', '/hub.css', '/hub5.css', '/styles.css', '/app.js', '/manifest.webmanifest', ...own('hub', /\.(js|css)$/), ...own('js', /\.js$/), ...own('brand', /\.(svg|png)$/)];
 }
 export const swPath = join(PUBLIC, 'sw.js');
 export const currentName = () => (readFileSync(swPath, 'utf8').match(/const CACHE = '([^']+)'/) || [])[1];

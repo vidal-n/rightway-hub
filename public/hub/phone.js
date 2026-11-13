@@ -231,6 +231,7 @@ function track(call, view, { onEnd, act } = {}) {
   call.on('ringing', (hasEarlyMedia) => { if (!answered) { set({ state: 'ringing', label: 'Ringing...' }); if (!hasEarlyMedia) ringback(true); } });
   const goLive = () => {
     answered = true; started = Date.now(); ringback(false);
+    import('./sound.js').then((m) => m.play('connect')).catch(() => {}); // a short blip so the rep knows a person picked up
     set({ state: 'live', label: '0:00' });
     clearInterval(tick);
     tick = setInterval(() => { const el = bar?.querySelector('.cb-status'); if (el && view.state === 'live') { view.label = clock(Math.round((Date.now() - started) / 1000)); el.textContent = view.label; } }, 1000);

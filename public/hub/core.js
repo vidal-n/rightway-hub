@@ -45,6 +45,8 @@ export function toast(msg, isError = false) {
   t.textContent = msg;
   box.appendChild(t);
   setTimeout(() => t.remove(), isError ? 6000 : 3200);
+  // Earned moments get a sound (booked, signed, paid, errors); everything else stays quiet. public/hub/sound.js
+  import('./sound.js').then((m) => { const k = m.soundFor(msg, isError); if (k) m.play(k); }).catch(() => {});
 }
 
 export async function copy(text, label = 'Copied') {

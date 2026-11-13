@@ -11,6 +11,11 @@ export const NAV = [
   ['training', '#/training', 'book', 'Training'], ['vault', '#/vault', 'key', 'Vault', 'admin'], ['slack', '#/slack', 'slack', 'Slack'], ['google', '#/google', 'apps', 'Google'],
   ['payments', '#/payments', 'money', 'Payments', 'admin'], ['alerts', '#/notifications', 'bell', 'Notifications'], ['settings', '#/settings', 'cog', 'Settings'],
 ];
+import { WORKSPACES, wsFor, wsTabs as wsTabsFor, wsList as wsListFor } from '/js/workspaces.js';
+export { WORKSPACES, wsFor };
+export const wsTabs = (user, key) => wsTabsFor(user, key, can);
+export const wsList = (user) => wsListFor(user, can);
+
 // The rail groups the menu by the job: selling, delivering, the team, and running the business.
 export const GROUPS = [['sell', 'Sell'], ['deliver', 'Deliver'], ['team', 'Team'], ['run', 'Run']];
 const GROUP_OF = { home: 'sell', phone: 'sell', pipeline: 'sell', finder: 'sell', calendar: 'sell', agents: 'sell', automations: 'sell', vault: 'team', work: 'deliver', schedule: 'deliver', clients: 'deliver', scan: 'deliver', training: 'team', slack: 'team', google: 'team', payments: 'run', alerts: 'run', settings: 'run' };
@@ -48,17 +53,20 @@ export const sideLinks = (user, active) => navItems(user).shown.map((n) => link(
 // Bottom bar: as many items as fit, the rest under More (which opens the full menu).
 export function renderBottom(bar, user, active, openMore) {
   if (!bar) return;
-  const items = navItems(user).shown;
-  const fit = Math.max(3, Math.min(7, Math.floor(window.innerWidth / 78)));
-  const showMore = items.length > fit;
-  const first = showMore ? items.slice(0, fit - 1) : items;
-  // Keep the open page in the bar when it would fall under More.
-  const cur = items.find((n) => n[0] === active);
-  if (showMore && cur && !first.includes(cur)) first[first.length - 1] = cur;
-  bar.innerHTML = first.map((n) => link(n, active, 'bb-item')).join('') + (showMore ? `<button type="button" class="bb-item" id="bb-more">${icon.menu}<span>More</span><b class="nbadge" data-badge="more" hidden></b></button>` : '');
-  bar.style.setProperty('--n', String(first.length + (showMore ? 1 : 0)));
+  // Workspaces, not single pages: Home, Sell, Inbox, Deliver first; the rest under More (opens the full menu with every page).
+  const here = wsFor(location.hash || '#/');
+  const items = wsList(user).filter((w) => w[0] !== 'settings' && w[0] !== 'automate');
+  const fit = Math.max(3, Math.min(6, Math.floor(window.innerWidth / 78)));
+  const showMore = true;
+  const first = items.slice(0, fit - 1);
+  const cur = items.find((w) => w[0] === here.ws);
+  if (cur && !first.includes(cur)) first[first.length - 1] = cur;
+  const badgeOf = { home: 'alerts', sell: 'pipeline', inbox: 'inbox', deliver: 'work' };
+  bar.innerHTML = first.map(([k, label, ic]) => `<a href="${wsTabs(user, k)[0][1]}" data-nav="${k}" class="bb-item${here.ws === k ? ' is-active' : ''}">${icon[ic] || ''}<span>${label}</span>${badgeOf[k] ? `<b class="nbadge" data-badge="${badgeOf[k]}" hidden></b>` : ''}</a>`).join('')
+    + (showMore ? `<button type="button" class="bb-item" id="bb-more">${icon.menu}<span>More</span><b class="nbadge" data-badge="more" hidden></b></button>` : '');
+  bar.style.setProperty('--n', String(first.length + 1));
   $('#bb-more', bar)?.addEventListener('click', openMore);
-  bar.dataset.under = JSON.stringify(showMore ? items.filter((n) => !first.includes(n)).map((n) => n[0]) : []);
+  bar.dataset.under = JSON.stringify([]);
   paint(last);
 }
 
@@ -71,16 +79,21 @@ export function wireNav(root, user, active, openMore) {
   window.addEventListener('resize', onResize);
   window.addEventListener('hashchange', () => window.removeEventListener('resize', onResize), { once: true });
   // Server copy of the order may differ from this device: redraw once it arrives.
-  if (!loaded) loadPrefs().then(() => { const side = $('#side nav', root); if (side) import('./shell.js').then((m) => { side.innerHTML = m.railLinks(user, active); paint(last); }); draw(); paint(last); });
+  if (!loaded) loadPrefs().then(() => { const side = $('#side nav', root); if (side) import('./shell.js').then((m) => { side.innerHTML = m.railLinks(user); paint(last); }); draw(); paint(last); });
   refreshBadges();
 }
 
 // ---------- dots ----------
 let last = null;
+let prevInbox = null;
 let lastAt = 0;
 let timer = null;
 function paint(b) {
   if (!b) return;
+  b = { ...b, inbox: (b.texts || 0) + (b.calls || 0) + (b.slack || 0) };
+  // A new text or missed call since the last check: one soft sound (public/hub/sound.js).
+  if (prevInbox != null && b.inbox > prevInbox) import('./sound.js').then((m) => m.play('message')).catch(() => {});
+  prevInbox = b.inbox;
   $$('[data-badge]').forEach((el) => {
     const k = el.dataset.badge;
     let n = b[k] || 0;

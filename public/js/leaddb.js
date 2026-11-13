@@ -364,6 +364,8 @@ export function insights(rows = [], { minDials = 5 } = {}) {
   const short = [], long = [];
   const toOwner = [];
   const dialed = new Set(), reached = new Set(), ownered = new Set();
+  const grid = DAYS.map(() => HOURS.map(() => ({ dials: 0, human: 0, owner: 0 }))); // weekday x hour, lead's own time
+  const firstOwner = new Map(), firstHuman = new Map(), maxTry = new Map();
   for (const c0 of rows) {
     if (c0.status === 'ready' && !c0.outcome) continue;
     const by = answeredOf(c0);
@@ -393,6 +395,12 @@ export function insights(rows = [], { minDials = 5 } = {}) {
       short.push(item); long.push(item);
     }
     if (by === 'owner' && c.attempt_no) toOwner.push(c.attempt_no);
+    if (c.dow != null && c.hour != null && HOURS.includes(c.hour)) { const g = grid[c.dow]?.[HOURS.indexOf(c.hour)]; if (g) { g.dials++; if (isHuman(by)) g.human++; if (by === 'owner') g.owner++; } }
+    if (c.lead_id && c.attempt_no) {
+      maxTry.set(c.lead_id, Math.max(maxTry.get(c.lead_id) || 0, c.attempt_no));
+      if (isHuman(by) && !(firstHuman.get(c.lead_id) <= c.attempt_no)) firstHuman.set(c.lead_id, c.attempt_no);
+      if (by === 'owner' && !(firstOwner.get(c.lead_id) <= c.attempt_no)) firstOwner.set(c.lead_id, c.attempt_no);
+    }
     if (c.lead_id) { dialed.add(c.lead_id); if (isHuman(by)) reached.add(c.lead_id); if (by === 'owner') ownered.add(c.lead_id); }
   }
   short.sort((a, b) => a.secs - b.secs || b.at - a.at);
@@ -420,7 +428,26 @@ export function insights(rows = [], { minDials = 5 } = {}) {
     shortest: short.slice(0, 15),
     longest: long.slice(0, 15),
     triesToOwner: toOwner.length ? Math.round((toOwner.reduce((a, b) => a + b, 0) / toOwner.length) * 10) / 10 : null,
+    heat: grid.map((row, d) => ({ day: DAYS[d], cells: row.map((g, h) => ({ hour: HOURS[h], ...g, pickup: rate(g.human, g.dials), ownerRate: rate(g.owner, g.dials) })) })),
+    attemptCurve: attemptCurve(maxTry, firstHuman, firstOwner),
   };
+}
+// Share of businesses reached (a person, the owner) by the Nth try, out of businesses dialed at least N times or reached sooner.
+// It answers "how many tries before we stop". Pure; tests in test/leaddb.test.js.
+export function attemptCurve(maxTry, firstHuman, firstOwner, upTo = 8) {
+  const out = [];
+  for (let n = 1; n <= upTo; n++) {
+    let base = 0, human = 0, owner = 0;
+    for (const [id, m] of maxTry) {
+      const fh = firstHuman.get(id), fo = firstOwner.get(id);
+      if (m < n && !(fh <= m) && !(fo <= m)) continue; // never got an Nth try and was never reached: not in this step
+      base++;
+      if (fh <= n) human++;
+      if (fo <= n) owner++;
+    }
+    out.push({ attempt: n, businesses: base, human: rate(human, base), owner: rate(owner, base) });
+  }
+  return out;
 }
 // The best hours by owner reach, only hours with enough dials to mean something.
 export function bestHours(byHour = [], min = 10) {
