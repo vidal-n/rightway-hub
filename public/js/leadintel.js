@@ -466,8 +466,8 @@ export const SCRIPT_VERSION = 10;
 // Two scripts, one story. Cold call: earn 30 seconds, frame us as a small group agency, hook with the scan, qualify, book the
 // clarity call (or start it right there). Clarity call: the screen share that ends in a signed work order.
 export const SCRIPT_GROUPS = [
-  ['cold', 'Cold call', ['k_open', 'k_site', 'k_hook', 'k_why', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
   ['analysis', 'Competitor analysis', ['a_call', 'a_set', 'a_disc', 'a_reb']],
+  ['cold', 'Cold call', ['k_open', 'k_site', 'k_hook', 'k_why', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
   ['plan', 'Game Plan (website audit)', ['g_call', 'g_ask', 'g_set']],
   ['clarity', 'Clarity audit', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
 ];

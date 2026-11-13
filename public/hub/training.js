@@ -97,7 +97,7 @@ const head = (title, eyebrow = 'Training') => `<div class="page-head"><div><p cl
 export async function trainingPage(app, user, sub, arg) {
   const view = staffShell(app, user, 'training');
   await loadDone();
-  if (sub === 'scripts') return scripts(view, user, arg || 'cold');
+  if (sub === 'scripts') return scripts(view, user, arg || 'analysis');
   if (sub === 'warmup') return warmup(view, user);
   if (sub === 'drills') return drills(view, user, arg || 'cold');
   if (sub === 'playbooks') return playbooks(view, user);
@@ -128,11 +128,11 @@ export async function trainingPage(app, user, sub, arg) {
 
 function scripts(view, user, which) {
   const voice = voiceFor(user);
-  which = ['clarity', 'plan', 'analysis'].includes(which) ? which : 'cold';
+  which = ['cold', 'clarity', 'plan', 'analysis'].includes(which) ? which : 'analysis';
   const NAMES = { cold: 'Cold call script', analysis: 'Competitor analysis script', clarity: 'Google clarity audit script', plan: 'Google Game Plan script (website audit)' };
   view.innerHTML = `${head(NAMES[which], 'Scripts')}${tabs('scripts', user)}
     <div class="row" style="justify-content:space-between;margin-bottom:16px">
-      <div class="seg"><a class="btn btn-sm ${which === 'cold' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'analysis' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/analysis">Competitor analysis</a><a class="btn btn-sm ${which === 'plan' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/plan">Game Plan</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
+      <div class="seg"><a class="btn btn-sm ${which === 'analysis' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/analysis">Competitor analysis</a><a class="btn btn-sm ${which === 'cold' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'plan' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/plan">Game Plan</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
       <div class="row"><a class="btn btn-ghost btn-sm" href="${(voice === 'I' ? PDF : PDF_TEAM)[which]}" target="_blank" rel="noopener">${icon.down}Print PDF</a>
         ${user.role === 'admin' ? `<div class="seg"><button class="btn btn-sm ${voice === 'I' ? 'btn-primary' : 'btn-ghost'}" data-voice="I">Owner copy (I)</button><button class="btn btn-sm ${voice === 'we' ? 'btn-primary' : 'btn-ghost'}" data-voice="we">Team copy (we)</button></div>` : ''}
         <label class="row small" style="gap:8px"><input type="checkbox" id="rd"${done.has(`script:${which}`) ? ' checked' : ''}> I have read it</label></div></div>

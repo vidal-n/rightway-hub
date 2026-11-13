@@ -68,7 +68,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
   const s = buildScript(lead, intel, { rep, voice }, custom);
   const age = intel?.at ? fmt.ago(intel.at) : null;
   // The dialer opens on the cold call; a booked lead (or the lead page with a meeting) opens on the clarity call.
-  const startGroup = lead.stage === 'audit_booked' || (lead.meet_at && lead.meet_at > Date.now() - 3 * 3600e3) ? 'clarity' : 'cold';
+  const startGroup = lead.stage === 'audit_booked' || (lead.meet_at && lead.meet_at > Date.now() - 3 * 3600e3) ? 'clarity' : 'analysis';
   const firstStep = Math.max(0, s.steps.findIndex((x) => x.group === startGroup));
   el.innerHTML = `
     <div class="prep">
