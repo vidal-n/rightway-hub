@@ -21,7 +21,7 @@ import { warmAudio, holdMic, dropMic } from './audioset.js';
 import { arriving, leaving } from './dialwin.js';
 import { testLeads, testIntel } from '/js/testleads.js';
 import { testTextModal, testBookModal, testLeadModal, testSummaryHtml } from './testdial.js';
-import { practiceModal } from './practice.js';
+import { practiceModal, unlockSpeech } from './practice.js';
 import { filterLeads } from '/js/leadfilter.js';
 import { quoteFor, callCategory, whoIs, personOf, CALL_CATS } from '/js/leadintel.js';
 import { refLines } from '/js/planref.js';
@@ -1391,7 +1391,7 @@ export async function dialerPage(app, user) {
     $('#tsagain', view)?.addEventListener('click', () => startTest());
     $('#tsexit', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
     $('#dscript', view)?.addEventListener('click', pickAgain);
-    $('#pdgo', view)?.addEventListener('click', async () => { if (!testMode && !power && !(await ensureScript())) return; warmAudio(); if (!testMode && !power) holdMic(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); if (!testMode) saveDial({ start: true, running: true, filter: flt, label: filterText, calls: pdCalls }); window.dispatchEvent(new Event('rw-power')); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
+    $('#pdgo', view)?.addEventListener('click', async () => { if (!testMode && !power && !(await ensureScript())) return; warmAudio(); if (testMode) unlockSpeech(); if (!power) holdMic(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); if (!testMode) saveDial({ start: true, running: true, filter: flt, label: filterText, calls: pdCalls }); window.dispatchEvent(new Event('rw-power')); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
     prefetch(l);
@@ -1406,6 +1406,7 @@ export async function dialerPage(app, user) {
     $('#dhub', view)?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       if (phase === 'wrap' || phoneState().onCall) return toast('Finish this call and save the result first.', true);
+      if (testMode) { warmAudio(); unlockSpeech(); if (!power) holdMic(); }   // inside the tap: iPhone and iPad only start mic and voice from a tap
       if (!testMode && !power && !(await ensureScript())) return;
       phase = 'calling';
       busy(btn, true);
@@ -1414,6 +1415,7 @@ export async function dialerPage(app, user) {
         await placeCall({ test: testMode, script: testMode ? null : scriptTag(l), outcome: l.test_outcome, onLive: () => { if (testMode) practiceModal({ persona: l.persona, lead: l, onScore: (n) => testScore.set(l.id, n), onFinish: () => { if (phoneState().onCall) hangUp(); } }); }, leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
           tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : [['Script', () => setScriptOn(!scriptOn())]]), ['Text them', () => (testMode ? testText(l) : textModal(l, { rep: REP }))], ['Book appointment', () => (testMode ? testBook(l) : bookModal(l, () => afterBooking(l, bookedId))), 'primary'], ['Full details', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {}))]] },
           onEnd: ({ answered }) => {
+            if (testMode && !power) dropMic();   // a single test call lets go of the mic when it ends
             const dr = takeCallDraft();
             if (skipDispo === l.id) { skipDispo = null; phase = 'idle'; return; }
             // The same window turns into the result picker. The next call waits until it is saved.

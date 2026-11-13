@@ -282,7 +282,24 @@ export function holdMic() {
   }).catch((e) => { held = null; toast(micProblem(e), true); return false; });
   return mine;
 }
+// Live level (0 to 1) of the held mic, so the test call's meter shows the real mic and not a made up bar. null = no mic is open.
+let meter = null;
+export function heldLevel() {
+  if (!held) { meter = null; return null; }
+  const ctx = getCtx(); if (!ctx) return null;
+  try {
+    if (!meter || meter.stream !== held) {
+      const an = ctx.createAnalyser(); an.fftSize = 1024;
+      ctx.createMediaStreamSource(held).connect(an);
+      meter = { stream: held, an, buf: new Float32Array(an.fftSize) };
+    }
+    meter.an.getFloatTimeDomainData(meter.buf);
+    let sum = 0; for (const v of meter.buf) sum += v * v;
+    return Math.min(1, Math.sqrt(sum / meter.buf.length) * 3);
+  } catch { return null; }
+}
 export function dropMic() {
+  meter = null;
   const s = held; held = null;
   try { s?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
 }

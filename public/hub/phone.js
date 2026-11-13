@@ -3,7 +3,7 @@
 import { api, esc, toast, makeDraggable, isPhone } from './core.js';
 import { arriving, leaving, morphFrom } from './dialwin.js';
 import { dispoPanel } from './dispo.js';
-import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter, warmAudio, prepareTones, sendTone } from './audioset.js';
+import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter, warmAudio, prepareTones, sendTone, heldLevel } from './audioset.js';
 
 const SDK = '/vendor/twilio-voice-2.18.5.min.js';
 const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -315,7 +315,7 @@ function testCall({ name, who, cat, info, tools, onEnd, outcome, onLive }) {
   timers.push(setTimeout(() => fire('ringing', true), 500));
   if (outcome === 'no-answer') timers.push(setTimeout(() => call.disconnect(), 6000));
   else {
-    timers.push(setTimeout(() => { fire('accept'); timers.push(setInterval(() => fire('volume', Math.random() * 0.35), 250)); onLive?.(); }, 3500));
+    timers.push(setTimeout(() => { fire('accept'); timers.push(setInterval(() => { const lv = heldLevel(); fire('volume', muted || lv == null ? 0 : lv); }, 150)); onLive?.(); }, 3500));
   }
   return call;
 }

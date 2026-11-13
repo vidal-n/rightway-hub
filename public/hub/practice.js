@@ -1,8 +1,20 @@
 // AI practice owner: type or speak to a pretend business owner, then get coaching. Used in Training, Warm up and on the Test power dial.
 import { $, esc, api, toast, modal } from './core.js';
-import { PERSONAS, personaOf } from '/js/practice.js';
+import { PERSONAS, personaOf, speechProblem as problemText } from '/js/practice.js';
 
 const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const TTS = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+const standalone = () => { try { return Boolean(navigator.standalone) || matchMedia('(display-mode: standalone)').matches; } catch { return false; } };
+const speechProblem = (code) => problemText(code, { apple: isApple(), standalone: standalone() });
+const isApple = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+// iPhone and iPad only let a page talk after a tap has asked the speech engine for something. Call this inside the tap that
+// starts the practice (Start power dial, Call, Start the warm up), so the owner's replies, which come back later, can be heard.
+export function unlockSpeech() {
+  if (!TTS) return;
+  try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); window.speechSynthesis.getVoices(); } catch { /* ignore */ }
+}
+
 
 export function practiceView(host, { persona = 'friendly', lead = {}, fixed = false, compact = false, onFinish = null, onScore = null } = {}) {
   let turns = [];
@@ -13,11 +25,49 @@ export function practiceView(host, { persona = 'friendly', lead = {}, fixed = fa
   let canAi = false;
   let useAi = false;
   try { useAi = localStorage.getItem('rw-practice-ai') === '1'; } catch { /* ignore */ }
-  let speak = false;
+  const pref = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v === '1'; } catch { return d; } };
+  const setPref = (k, v) => { try { localStorage.setItem(k, v ? '1' : '0'); } catch { /* ignore */ } };
+  let speak = TTS && pref('rw-practice-tts', true);      // the pretend owner talks back out loud unless turned off
+  let hands = Boolean(Rec) && pref('rw-practice-hands', false);   // after the owner finishes, start listening by itself
   let rec = null;
+  let note = '';          // one plain line under the buttons: why something is not working
+  let closed = false;     // the window went away: never listen or talk again
+  let quiet = 0;          // hands free: how many times in a row nothing was heard
+  const setNote = (t) => { note = t || ''; const el = $('#prnote', host); if (el) { el.textContent = note; el.hidden = !note; } };
   const say = (text) => {
-    if (!speak || !window.speechSynthesis) return;
-    try { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = 1.02; window.speechSynthesis.speak(u); } catch { /* ignore */ }
+    if (!speak || !TTS) return;
+    try {
+      const ss = window.speechSynthesis; ss.cancel();
+      const u = new SpeechSynthesisUtterance(text); u.rate = 1.02; u.lang = 'en-US';
+      const v = ss.getVoices().find((x) => /^en[-_]US/i.test(x.lang) && /samantha|google|alex|aaron|natural/i.test(x.name)) || ss.getVoices().find((x) => /^en[-_]US/i.test(x.lang));
+      if (v) u.voice = v;
+      u.onend = () => { if (hands && !closed && !ended && !busyNow && !rec) listen(true); };
+      u.onerror = (e) => { if (e.error === 'not-allowed') setNote('The browser would not play the owner\'s voice yet. Tap Speak or Send once, then it can talk.'); };
+      ss.speak(u);
+    } catch { /* ignore */ }
+  };
+  const listen = (auto) => {
+    if (!Rec || closed) return;
+    if (rec) { try { rec.stop(); } catch { /* ignore */ } return; }
+    if (TTS) window.speechSynthesis.cancel();
+    let heard = false; let failed = false;
+    try { rec = new Rec(); } catch { rec = null; return setNote(speechProblem('service-not-allowed')); }
+    rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = false;
+    const b = $('#prmic', host); if (b) b.textContent = 'Listening... tap to stop';
+    setNote(auto ? 'Your turn. Talk now.' : '');
+    rec.onresult = (ev) => {
+      let t = ''; for (let i = 0; i < ev.results.length; i += 1) t += ev.results[i][0]?.transcript || '';
+      const el = $('#prtext', host); if (el) el.value = t.trim(); heard = Boolean(t.trim());
+    };
+    rec.onerror = (ev) => { failed = true; if (ev.error !== 'aborted') setNote(speechProblem(ev.error)); if (ev.error !== 'no-speech') hands = false; };
+    rec.onend = () => {
+      rec = null; const b2 = $('#prmic', host); if (b2) b2.textContent = 'Speak';
+      const typed = ($('#prtext', host)?.value || '').trim();
+      if (typed && !ended) { quiet = 0; setNote(''); send(); return; }
+      if (hands && auto && !closed && !failed && !heard && !ended && quiet < 2) { quiet += 1; listen(true); return; }
+      if (!failed && !typed) setNote(speechProblem('no-speech'));
+    };
+    try { rec.start(); } catch { rec = null; if (b) b.textContent = 'Speak'; setNote(speechProblem('service-not-allowed')); }
   };
   const bubbles = () => turns.map((t) => `<div class="pr-b ${t.role === 'rep' ? 'rep' : 'lead'}"><small>${t.role === 'rep' ? 'You' : esc(personaOf(pid).name)}</small>${esc(t.text)}</div>`).join('');
   const paint = () => {
@@ -33,9 +83,13 @@ export function practiceView(host, { persona = 'friendly', lead = {}, fixed = fa
         <div class="row" style="gap:8px;flex-wrap:wrap">
           <button type="button" class="btn btn-primary btn-sm" id="prsend">Send</button>
           ${Rec ? '<button type="button" class="btn btn-ghost btn-sm" id="prmic">Speak</button>' : ''}
-          <label class="row small" style="gap:6px"><input type="checkbox" id="prtts"${speak ? ' checked' : ''}> Read replies aloud</label>
+          ${TTS ? `<label class="row small" style="gap:6px"><input type="checkbox" id="prtts"${speak ? ' checked' : ''}> Owner talks out loud</label>` : ''}
+          ${Rec ? `<label class="row small" style="gap:6px"><input type="checkbox" id="prhands"${hands ? ' checked' : ''}> Hands free</label>` : ''}
           <button type="button" class="btn btn-ghost btn-sm" id="prend" style="margin-left:auto">End call and get feedback</button>
         </div>
+        <p class="small muted" id="prnote" role="status"${note ? '' : ' hidden'}>${esc(note)}</p>
+        ${Rec ? '' : '<p class="small muted">This browser cannot turn speech into text. Tap the microphone key on your keyboard to dictate, or type.</p>'}
+        ${Rec && isApple() && standalone() ? '<p class="small muted">In a Home Screen app on iPhone or iPad, Speak may be blocked by Apple. If it is, use the microphone key on your keyboard.</p>' : ''}
       </div>
       <div class="row" id="prdone" style="gap:8px;margin-top:10px"${ended ? '' : ' hidden'}>
         <button type="button" class="btn btn-primary btn-sm" id="pragain">Practice again</button>
@@ -73,24 +127,17 @@ export function practiceView(host, { persona = 'friendly', lead = {}, fixed = fa
     $('#prai', host)?.addEventListener('change', (e) => { useAi = e.target.checked; try { localStorage.setItem('rw-practice-ai', useAi ? '1' : '0'); } catch { /* ignore */ } });
     $('#prsend', host)?.addEventListener('click', send);
     $('#prtext', host)?.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
-    $('#prtts', host)?.addEventListener('change', (e) => { speak = e.target.checked; if (!speak) window.speechSynthesis?.cancel?.(); });
+    $('#prtts', host)?.addEventListener('change', (e) => { speak = e.target.checked; setPref('rw-practice-tts', speak); if (speak) unlockSpeech(); else window.speechSynthesis?.cancel?.(); });
+    $('#prhands', host)?.addEventListener('change', (e) => { hands = e.target.checked; quiet = 0; setPref('rw-practice-hands', hands); if (hands) { unlockSpeech(); if (!rec && !busyNow && !ended) listen(true); } else if (rec) { try { rec.stop(); } catch { /* ignore */ } } });
     $('#prend', host)?.addEventListener('click', end);
     $('#pragain', host)?.addEventListener('click', () => { turns = []; ended = false; paint(); ask(); });
     $('#prfinish', host)?.addEventListener('click', () => onFinish?.());
-    $('#prmic', host)?.addEventListener('click', (e) => {
-      if (rec) { rec.stop(); return; }
-      rec = new Rec(); rec.lang = 'en-US'; rec.interimResults = false;
-      e.currentTarget.textContent = 'Listening...';
-      rec.onresult = (ev) => { const t = ev.results[0]?.[0]?.transcript || ''; const el = $('#prtext', host); if (el) el.value = t; };
-      rec.onerror = () => toast('The microphone is blocked or not available. Type your line instead.', true);
-      rec.onend = () => { rec = null; const b = $('#prmic', host); if (b) b.textContent = 'Speak'; if (($('#prtext', host)?.value || '').trim()) send(); };
-      try { rec.start(); } catch { rec = null; }
-    });
+    $('#prmic', host)?.addEventListener('click', () => { unlockSpeech(); quiet = 0; listen(false); });
   };
   api('/api/practice/status').then((r) => { canAi = Boolean(r.ai); paint(); }).catch(() => {});
   paint();
   ask();
-  return { stop: () => { window.speechSynthesis?.cancel?.(); try { rec?.stop(); } catch { /* ignore */ } } };
+  return { stop: () => { closed = true; hands = false; window.speechSynthesis?.cancel?.(); try { rec?.stop(); } catch { /* ignore */ } } };
 }
 
 // A pop up for the Test power dial: the pretend owner picks up when the pretend call connects.

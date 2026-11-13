@@ -80,3 +80,26 @@ test('practice is free unless an owner switches on real AI', async () => {
     assert.equal(st.ai, true);
   } finally { globalThis.fetch = real; }
 });
+
+test('speech problems say what to do, and never use dashes', async () => {
+  const { speechProblem } = await import('../public/js/practice.js');
+  for (const c of ['not-allowed', 'service-not-allowed', 'no-speech', 'audio-capture', 'network', 'language-not-supported', 'weird', undefined]) {
+    const t = speechProblem(c);
+    assert.ok(t.length > 20, c);
+    assert.ok(!/[–—]/.test(t), c);
+  }
+  assert.match(speechProblem('service-not-allowed', { apple: true, standalone: true }), /keyboard/);
+  assert.match(speechProblem('not-allowed'), /Allow it in the browser/);
+});
+
+test('simulator audio: voice unlocked inside the tap, real mic meter, owner talks by default', async () => {
+  const { readFileSync } = await import('node:fs');
+  const crm = readFileSync(new URL('../public/hub/crm.js', import.meta.url), 'utf8');
+  const phone = readFileSync(new URL('../public/hub/phone.js', import.meta.url), 'utf8');
+  const prac = readFileSync(new URL('../public/hub/practice.js', import.meta.url), 'utf8');
+  assert.match(crm, /if \(testMode\) unlockSpeech\(\); if \(!power\) holdMic\(\)/);
+  assert.match(crm, /if \(testMode\) \{ warmAudio\(\); unlockSpeech\(\); if \(!power\) holdMic\(\); \}/);
+  assert.ok(!/Math\.random\(\) \* 0\.35/.test(phone), 'the test call meter must read the real mic');
+  assert.match(phone, /heldLevel\(\)/);
+  assert.match(prac, /let speak = TTS && pref\('rw-practice-tts', true\)/);
+});

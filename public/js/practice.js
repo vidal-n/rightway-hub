@@ -84,3 +84,17 @@ export function localCoach(turns) {
   score = Math.max(1, Math.min(10, score));
   return `Score: ${score} of 10 (basic feedback, the AI coach needs an Anthropic key).\n\nWhat worked: ${good.slice(0, 2).join(' ') || 'You picked up the phone and tried. That counts.'}\n\nFix: ${fix.slice(0, 3).join(' ') || 'Nothing big. Run it again with a harder owner.'}\n\nTry saying: "Totally fair. Does tomorrow at 12pm or 4pm work better for you?"`;
 }
+
+// What each speech to text error means, in words a rep can act on. Pure so it is tested in Node.
+export function speechProblem(code, { apple = false, standalone = false } = {}) {
+  if (code === 'not-allowed' || code === 'service-not-allowed') {
+    return apple && standalone
+      ? 'Apple does not allow Speak inside a Home Screen app. Tap the microphone key on your keyboard to dictate your line, or open the Hub in Safari.'
+      : 'The microphone is blocked for this page. Allow it in the browser (the lock or aA icon by the address, then Microphone), then tap Speak again.';
+  }
+  if (code === 'no-speech') return 'Did not hear anything. Tap Speak, wait for Listening, then talk.';
+  if (code === 'audio-capture') return 'No microphone found. Plug in or turn on a mic, or type your line.';
+  if (code === 'network') return 'Speech to text needs the internet (the browser sends the audio to its speech service). Check your connection or type your line.';
+  if (code === 'language-not-supported') return 'This browser cannot understand English speech. Type your line.';
+  return 'Speech to text stopped (' + (code || 'unknown') + '). Type your line, or use your keyboard microphone key.';
+}
