@@ -2724,3 +2724,9 @@ html:not(.is-phone) .callbar.under, html:not(.is-phone) .pd.under { display: non
 .ref-line { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
 .ref-line a { color: inherit; text-decoration: underline; }
 @media (prefers-color-scheme: dark) { .guide { background: rgba(157, 235, 203, .07); } }
+
+/* Dial this column */
+.col-tools { display: inline-flex; align-items: center; gap: 6px; }
+.col-dial { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line, #DCE6E1); background: var(--surface, #fff); color: var(--accent, #0A6B4C); border-radius: 999px; padding: 2px 9px 2px 6px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.col-dial svg { width: 13px; height: 13px; }
+.col-dial:hover { background: var(--mint, #9DEBCB); color: var(--ink, #0F1B17); }

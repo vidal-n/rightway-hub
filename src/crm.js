@@ -521,8 +521,11 @@ route('POST', '/api/leads/:id/convert', async ({ env, user, params, body }) => {
 route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   requireStaff(user);
   const t = now();
-  const rows = await all(env, `SELECT * FROM leads WHERE dnc = 0 AND stage IN (${CALLABLE.map(() => '?').join(',')})
-    AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...CALLABLE, t);
+  // `stage` (a Pipeline column, or several joined by commas) narrows the queue to those stages. Only stages that can be called count.
+  const stages = (url.searchParams.get('stage') || '').split(',').map((x) => x.trim()).filter((x) => CALLABLE.includes(x));
+  const useStages = stages.length ? stages : CALLABLE;
+  const rows = await all(env, `SELECT * FROM leads WHERE dnc = 0 AND stage IN (${useStages.map(() => '?').join(',')})
+    AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...useStages, t);
   const priority = { callback: 0, audit_requested: 1, no_show: 2, follow_up: 3, new: 4, attempting: 5, not_now: 6 };
   const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier', 'data', 'cat'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
   const minScore = Number(url.searchParams.get('minScore')) || 0;

@@ -32,6 +32,8 @@ export const STAGE_LABEL = {
   new: 'New lead', attempting: 'Attempting', callback: 'Callback set', audit_requested: 'Audit requested', audit_booked: 'Audit booked',
   no_show: 'No-show', follow_up: 'Following up', won: 'Won', not_now: 'Not now', lost: 'Lost', dnc: 'Do not call',
 };
+// Stages the dialer can call (the same list the server uses).
+const DIALABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
 const BOARD = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won'];
 const CLOSED = ['not_now', 'lost', 'dnc'];
 // Built in results, used until the custom list loads and for older call records.
@@ -95,6 +97,15 @@ export async function pipelinePage(app, user, openId, screen) {
   let playOpen = false;
   let offHover = null;
 
+  // The Pipeline's current filters as a dialer filter. A stage narrows it to one column.
+  const dialFilter = (stage = '') => ({ tz: tzSel(p).filter((z) => z !== '?').join(','), grade: (p.f.grades || []).join(','), state: p.f.state || '', industry: p.f.industry || '', tag: p.f.tag || '', city: p.f.city || '', data: p.f.phoneType === 'mobile' ? 'mobile' : p.f.owner === 'yes' ? 'owner' : p.f.email ? 'email' : '', stage });
+  // "Dial this column": open the dialer with only that stage's leads (and the filters set above).
+  view.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-dialcol]'); if (!b) return;
+    e.preventDefault();
+    try { localStorage.setItem('rw-dial-filter', JSON.stringify(dialFilter(b.dataset.dialcol))); } catch { /* ignore */ }
+    location.hash = '#/phone';
+  });
   const render = () => {
     savePipe(p);
     const rows = filterLeads(all, p);
@@ -254,7 +265,7 @@ export async function pipelinePage(app, user, openId, screen) {
     $('#addl', view).addEventListener('click', () => leadForm(null, reload));
     $('#imp', view).addEventListener('click', () => importModal(reload));
     $('#dups', view).addEventListener('click', () => duplicatesModal(reload));
-    $('#godial', view).addEventListener('click', () => { try { localStorage.setItem('rw-dial-filter', JSON.stringify({ tz: tzSel(p).filter((z) => z !== '?').join(','), grade: (p.f.grades || []).join(','), state: p.f.state || '', industry: p.f.industry || '', tag: p.f.tag || '', city: p.f.city || '', data: p.f.phoneType === 'mobile' ? 'mobile' : p.f.owner === 'yes' ? 'owner' : p.f.email ? 'email' : '' })); } catch { /* ignore */ } });
+    $('#godial', view).addEventListener('click', () => { try { localStorage.setItem('rw-dial-filter', JSON.stringify(dialFilter())); } catch { /* ignore */ } });
     // Time zone tabs are multi select: tap one to add it, tap again to take it off, All clears them.
     $$('[data-tz]', view).forEach((b) => b.addEventListener('click', () => { const k = b.dataset.tz; if (!k) p.tz = ''; else { const cur = tzSel(p); p.tz = (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]).join(','); } render(); }));
     $$('[data-grade]', view).forEach((b) => b.addEventListener('click', () => { const g = b.dataset.grade; const s = new Set(p.f.grades || []); if (s.has(g)) s.delete(g); else s.add(g); p.f.grades = [...s]; render(); }));
@@ -323,7 +334,7 @@ export async function pipelinePage(app, user, openId, screen) {
       $$('#fsl .lead-card', view).forEach((c) => c.addEventListener('click', () => leadModal(c.dataset.id, () => pipelinePage(app, user, null, screen))));
       $('#fsmore', view)?.addEventListener('click', () => { shown += 50; draw(); });
     };
-    view.innerHTML = `<div class="fullscreen-list"><div class="page-head"><div><a class="btn btn-ghost btn-sm" href="#/pipeline">&lsaquo; Back to the pipeline</a><h1 style="margin-top:10px">${esc(title)}</h1><p class="small muted" id="fscount"></p></div></div>
+    view.innerHTML = `<div class="fullscreen-list"><div class="page-head"><div><a class="btn btn-ghost btn-sm" href="#/pipeline">&lsaquo; Back to the pipeline</a><h1 style="margin-top:10px">${esc(title)}</h1><p class="small muted" id="fscount"></p></div>${screen.kind !== 'group' && DIALABLE.includes(screen.key) ? `<button type="button" class="btn btn-mint" data-dialcol="${esc(screen.key)}">${icon.phone}Dial this column</button>` : ''}</div>
       <label class="field"><input id="fsq" placeholder="Search this list" autocomplete="off"></label><div class="fs-grid" id="fsl"></div></div>`;
     $('#fsq', view).addEventListener('input', (e) => { q = e.target.value; shown = 50; draw(); });
     draw();
@@ -395,7 +406,7 @@ async function duplicatesModal(onDone) {
 const PER_LIST = 10;
 function column(stage, leads) {
   const more = leads.length > PER_LIST;
-  return `<section class="col" data-stage="${stage}"><header class="col-head"><b>${STAGE_LABEL[stage]}</b><span class="badge gray">${leads.length}</span></header>
+  return `<section class="col" data-stage="${stage}"><header class="col-head"><b>${STAGE_LABEL[stage]}</b><span class="col-tools">${DIALABLE.includes(stage) && leads.length ? `<button type="button" class="col-dial" data-dialcol="${esc(stage)}" title="Dial only the ${esc(STAGE_LABEL[stage])} column. Leads not due yet or called in the last 3 hours wait.">${icon.phone}Dial</button>` : ''}<span class="badge gray">${leads.length}</span></span></header>
     <div class="col-body">${leads.slice(0, PER_LIST).map(card).join('')}${more ? `<a class="btn btn-ghost btn-sm col-all" href="#/pipeline/stage/${esc(stage)}">Open all ${leads.length} in a full screen</a>` : ''}</div></section>`;
 }
 function card(l) {
@@ -1147,7 +1158,7 @@ export async function dialerPage(app, user) {
   const upcoming = (cal.meetings || []).filter((m) => m.meet_at > Date.now() - 3600e3).slice(0, 4);
   // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.
   setTimeout(() => api('/api/balances/status').then((b) => { const el = document.getElementById('lowbal'); if (el && b.low?.length) el.innerHTML = `<div class="card" style="border-color:#E8A33D;margin-bottom:12px"><b>${b.low.map((x) => esc(x.name)).join(' and ')} balance ${b.low.some((x) => x.empty) ? 'is empty' : 'is low'}.</b> <span class="small">${b.low.some((x) => x.key === 'twilio') ? 'Calls and texts stop when Twilio runs out. ' : ''}${b.low.some((x) => x.key === 'dataforseo') ? 'Research and scans stop when DataForSEO runs out. ' : ''}An owner can add funds from the Dashboard.</span></div>`; }).catch(() => {}), 50);
-  const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier' && k !== 'cat').map(([k, v]) => `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`).join(' · ');
+  const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier' && k !== 'cat').map(([k, v]) => (k === 'stage' ? `Column: ${String(v).split(',').map((x) => STAGE_LABEL[x] || x).join(', ')}` : `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`)).join(' · ');
   let lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true };
   let layOpen = false;
   // Click anywhere else, or press Escape, to close the layout menu.
