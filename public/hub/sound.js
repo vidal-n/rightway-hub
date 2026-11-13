@@ -27,28 +27,43 @@ const SOUNDS = {
 };
 export const SOUND_NAMES = Object.keys(SOUNDS);
 
+// Browsers keep a sound context silent until the page has had a tap or key press. Most sounds fire later from a
+// toast, a reply or a timer (no tap), so the context is made and started on the first tap anywhere, and kept.
+function ensureCtx() {
+  if (ctx) return ctx;
+  try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch { ctx = null; }
+  return ctx;
+}
+const unlock = () => { const c = ensureCtx(); if (c && c.state !== 'running') c.resume?.().catch(() => {}); };
+for (const ev of ['pointerdown', 'keydown', 'touchend']) document.addEventListener(ev, unlock, { capture: true, passive: true });
+
 export function play(name) {
   const s = SOUNDS[name];
   if (!s || !on || document.hidden) return;
   if (onCall && !s.call) return; // never over a live call
-  try {
-    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-    const t0 = ctx.currentTime + 0.01;
-    const out = ctx.createGain();
-    out.gain.value = s.vol;
-    out.connect(ctx.destination);
-    for (const [f, at, len] of s.notes) {
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = s.wave;
-      o.frequency.setValueAtTime(f * (1 + (Math.random() - 0.5) * 0.008), t0 + at); // a hair of variation so repeats do not grate
-      g.gain.setValueAtTime(0, t0 + at);
-      g.gain.linearRampToValueAtTime(1, t0 + at + 0.008);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + len);
-      o.connect(g); g.connect(out);
-      o.start(t0 + at); o.stop(t0 + at + len + 0.02);
-    }
-  } catch { /* no audio here */ }
+  const c = ensureCtx();
+  if (!c) return;
+  const sound = () => {
+    try {
+      const t0 = c.currentTime + 0.01;
+      const out = c.createGain();
+      out.gain.value = s.vol;
+      out.connect(c.destination);
+      for (const [f, at, len] of s.notes) {
+        const o = c.createOscillator(), g = c.createGain();
+        o.type = s.wave;
+        o.frequency.setValueAtTime(f * (1 + (Math.random() - 0.5) * 0.008), t0 + at); // a hair of variation so repeats do not grate
+        g.gain.setValueAtTime(0, t0 + at);
+        g.gain.linearRampToValueAtTime(1, t0 + at + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + len);
+        o.connect(g); g.connect(out);
+        o.start(t0 + at); o.stop(t0 + at + len + 0.02);
+      }
+    } catch { /* no audio here */ }
+  };
+  if (c.state === 'running') return sound();
+  // Not started yet: start it, then play once it is running. If the browser still refuses, the next tap starts it.
+  c.resume?.().then(sound, () => {});
 }
 
 const SPK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"/>';

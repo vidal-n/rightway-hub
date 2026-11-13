@@ -103,3 +103,10 @@ test('simulator audio: voice unlocked inside the tap, real mic meter, owner talk
   assert.match(phone, /heldLevel\(\)/);
   assert.match(prac, /let speak = TTS && pref\('rw-practice-tts', true\)/);
 });
+
+test('sounds start the audio context on the first tap, so toast sounds are not silent', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../public/hub/sound.js', import.meta.url), 'utf8');
+  assert.match(src, /pointerdown', 'keydown', 'touchend'/);
+  assert.match(src, /c\.resume\?\.\(\)\.then\(sound/);
+});
