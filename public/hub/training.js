@@ -119,24 +119,27 @@ export async function trainingPage(app, user, sub, arg) {
       ${card('#/training/scripts/cold', 'phone', 'Cold call script', 'Pattern interrupt, the free plan, book it on this call, discovery after.', `<span class="tr-done">${done.has('script:cold') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/scripts/analysis', 'msg', 'Competitor analysis script', 'Cold call that offers the free Competitor Analysis, what to say once they pick a time, discovery, and the rebuttals.', `<span class="tr-done">${done.has('script:analysis') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/scripts/plan', 'msg', 'Google Game Plan script (website audit)', 'Three short parts: the call, what to say if they ask, and what to say once they pick a time.', `<span class="tr-done">${done.has('script:plan') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
-      ${card('#/training/scripts/clarity', 'device', 'Google clarity audit script', 'The screen share pitch with every screen cue: slideshow, Scan tool tab and Google.', `<span class="tr-done">${done.has('script:clarity') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
       ${card('#/training/warmup', 'phone', 'Warm up with the AI owner', 'Practice your opener and objections on a pretend owner by typing or speaking. It coaches you at the end.')}
-      ${card('#/training/drills', 'msg', 'Objection drills', 'Flash cards for every objection, before price, after price and the closes.', `<span class="tr-done">${n(['drill:cold', 'drill:before', 'drill:after', 'drill:any'])} of 4 sets done</span>`)}
+      ${card('#/training/drills', 'msg', 'Objection drills', 'Flash cards for cold call objections, and for the meeting: before price, after price and the closes.', `<span class="tr-done">${n(['drill:cold', 'drill:before', 'drill:after', 'drill:any'])} of 4 sets done</span>`)}
       ${card('#/training/playbooks', 'note', 'Playbooks', 'How we run the calling day, the audit, closing, onboarding and the monthly work.', `<span class="tr-done">${n(pbKeys)} of ${pbKeys.length} done</span>`)}
       ${card('#/training/guides', 'check', 'Fulfillment guides', 'Step by step for every task in My work, with the proof each one needs.')}
       ${user.role === 'admin' ? card('#/training/setup', 'key', 'Owner setup', 'The six things only an owner can do: wallets, keys, Stripe, Google, website.', `<span class="tr-done">${n(SETUP.map((x) => `setup:${x[0]}`))} of ${SETUP.length} done</span>`) : ''}
       ${can(user, 'close') ? card('#/training/pricing', 'chart', 'Pricing reference', 'Where to start a price: the plan guide, website pricing, bundles and the residual model. Closers and owners only.') : ''}
       ${card('#/training/resources', 'link', 'Resources', 'Google guidelines, booking page, work order, dashboards.')}
+    </div>
+    <h2 style="margin:28px 0 12px">Meeting scripts</h2>
+    <div class="tr-grid">
+      ${card('#/training/scripts/clarity', 'device', 'Meeting script: Google clarity audit', 'For the booked screen share, not for cold calls. Every screen cue: slideshow, Scan tool tab and Google.', `<span class="tr-done">${done.has('script:clarity') ? `${icon.check}Read` : 'Not read yet'}</span>`)}
     </div>`;
 }
 
 function scripts(view, user, which) {
   const voice = voiceFor(user);
   which = ['cold', 'clarity', 'plan', 'analysis', 'question'].includes(which) ? which : 'analysis';
-  const NAMES = { question: 'Question opener script', cold: 'Cold call script', analysis: 'Competitor analysis script', clarity: 'Google clarity audit script', plan: 'Google Game Plan script (website audit)' };
+  const NAMES = { question: 'Question opener script', cold: 'Cold call script', analysis: 'Competitor analysis script', clarity: 'Meeting script: Google clarity audit', plan: 'Google Game Plan script (website audit)' };
   view.innerHTML = `${head(NAMES[which], 'Scripts')}${tabs('scripts', user)}
     <div class="row" style="justify-content:space-between;margin-bottom:16px">
-      <div class="seg"><a class="btn btn-sm ${which === 'analysis' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/analysis">Competitor analysis</a><a class="btn btn-sm ${which === 'question' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/question">Question opener</a><a class="btn btn-sm ${which === 'cold' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'plan' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/plan">Game Plan</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
+      <div class="row" style="gap:16px;flex-wrap:wrap"><div class="row" style="gap:8px"><span class="small muted">Cold calls</span><div class="seg"><a class="btn btn-sm ${which === 'analysis' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/analysis">Competitor analysis</a><a class="btn btn-sm ${which === 'question' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/question">Question opener</a><a class="btn btn-sm ${which === 'cold' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'plan' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/plan">Game Plan</a></div></div><div class="row" style="gap:8px"><span class="small muted">Meetings</span><div class="seg"><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Meeting: clarity audit</a></div></div></div>
       <div class="row">${(voice === 'I' ? PDF : PDF_TEAM)[which] ? `<a class="btn btn-ghost btn-sm" href="${(voice === 'I' ? PDF : PDF_TEAM)[which]}" target="_blank" rel="noopener">${icon.down}Print PDF</a>` : ''}
         ${user.role === 'admin' ? `<div class="seg"><button class="btn btn-sm ${voice === 'I' ? 'btn-primary' : 'btn-ghost'}" data-voice="I">Owner copy (I)</button><button class="btn btn-sm ${voice === 'we' ? 'btn-primary' : 'btn-ghost'}" data-voice="we">Team copy (we)</button></div>` : ''}
         <label class="row small" style="gap:8px"><input type="checkbox" id="pgmode"${pagedOn() ? ' checked' : ''}> Page by page (swipe)</label>
@@ -205,12 +208,14 @@ async function warmup(view, user) {
   $('#wustart', view).addEventListener('click', () => { try { sessionStorage.setItem('rw-warmup', '1'); } catch { /* ignore */ } location.hash = '#/dialer'; });
   practiceView($('#wuhost', view), { persona: 'friendly', lead: { business: 'Test Plumbing Co', city: 'Miami' } });
 }
+// Cold call drills and meeting (clarity audit) drills are two categories.
+const DRILL_NAME = { ml: 'Cold: mirror and label', cold: 'Cold call', before: 'Meeting: before price', after: 'Meeting: after price', any: 'Meeting: any time' };
 function drills(view, user, set) {
   const groups = objectionGroups(undefined, voiceFor(user));
   const g = groups.find((x) => x[0] === set) || groups[0];
   let order = g[2].map((_, i) => i).sort(() => Math.random() - 0.5), n = 0, shown = false;
   view.innerHTML = `${head('Objection drills')}${tabs('drills', user)}
-    <div class="row" style="justify-content:space-between;margin-bottom:16px"><div class="seg">${groups.map(([k, name, l]) => `<button type="button" data-set="${k}" class="${k === g[0] ? 'is-on' : ''}">${esc(name)} (${l.length})</button>`).join('')}</div>
+    <div class="row" style="justify-content:space-between;margin-bottom:16px"><div class="seg">${groups.map(([k, name, l]) => `<button type="button" data-set="${k}" class="${k === g[0] ? 'is-on' : ''}">${esc(DRILL_NAME[k] || name)} (${l.length})</button>`).join('')}</div>
       <span class="small muted">Say your answer out loud first. Space flips the card, arrow right for the next one.</span></div>
     <div class="drill"><div class="drill-card" id="dc"></div>
       <div class="row" style="justify-content:space-between;margin-top:14px"><span class="small muted" id="dn"></span>
@@ -296,6 +301,6 @@ function resources(view, user) {
   view.innerHTML = `${head('Resources')}${tabs('resources', user)}
     <div class="tr-grid">${RESOURCES.map(([t, href, p]) => `<a class="tr-card" href="${esc(href)}"${href.startsWith('http') ? ' target="_blank" rel="noopener"' : ''}><span class="tr-ico">${(icon.chain || icon.share)}</span><h3>${esc(t)}</h3><p>${esc(p)}</p></a>`).join('')}
       <a class="tr-card" href="${(voiceFor(user) === 'I' ? PDF : PDF_TEAM).cold}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Cold call script PDF</h3><p>Large print, for the desk.</p></a>
-      <a class="tr-card" href="${(voiceFor(user) === 'I' ? PDF : PDF_TEAM).clarity}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Clarity audit script PDF</h3><p>Large print, with every screen cue.</p></a>
+      <a class="tr-card" href="${(voiceFor(user) === 'I' ? PDF : PDF_TEAM).clarity}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Meeting script PDF (clarity audit)</h3><p>Large print, with every screen cue.</p></a>
       <a class="tr-card" href="${(voiceFor(user) === 'I' ? PDF : PDF_TEAM).analysis}" target="_blank" rel="noopener"><span class="tr-ico">${icon.down}</span><h3>Competitor analysis script PDF</h3><p>The cold call and rebuttals, for the desk.</p></a></div>`;
 }

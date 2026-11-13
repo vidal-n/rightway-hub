@@ -474,6 +474,13 @@ export const SCRIPT_GROUPS = [
   ['plan', 'Game Plan (website audit)', ['g_call', 'g_ask', 'g_set']],
   ['clarity', 'Clarity audit', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
 ];
+// Two categories (Nov 2026, V: the clarity audit does not belong anywhere in a cold calling setting). Cold call scripts are for the dialer,
+// the call window and call prep. The meeting script (the Google clarity audit, the screen share that ends in a work order) is for the
+// closer once a meeting is booked: lead page, presenter notes, Training under Meeting scripts. `kind` on every group, step and objection.
+export const COLD_GROUPS = ['analysis', 'question', 'cold', 'plan'];
+export const MEETING_GROUPS = ['clarity'];
+export const groupKind = (key) => (MEETING_GROUPS.includes(key) ? 'meeting' : 'cold');
+export const objectionKind = (q) => (/^Cold: /.test(q) ? 'cold' : 'meeting');
 export const SCRIPT_KEYS = [
   ['k_open', 'Cold: the owner picks up'], ['k_site', 'Cold: no website, the site I built'], ['k_hook', 'Cold: the pattern interrupt'], ['k_why', 'Cold: why I called'],
   ['k_value', 'Cold: on the fence'], ['k_teach', 'Cold: before you book'], ['k_book', 'Cold: book it on this call'], ['k_after', 'Cold: after booking, discovery'], ['k_lock', 'Cold: lock it in'],
@@ -1065,9 +1072,9 @@ export function buildScript(lead, intel, ctx = {}, custom = {}) {
   const keep = (q) => { const m = q.match(/^\{(\w+)\}$/); return !m || (v[m[1]] != null && v[m[1]] !== ''); };
   return {
     vars: v,
-    steps: SCRIPT_KEYS.map(([id, title]) => ({ id, title: title.replace(/^Cold: /, ''), group: SCRIPT_GROUPS.find((g) => g[2].includes(id))?.[0] || 'clarity', lines: asLines(S[id]).filter(keep).map((q) => voiceText(fill(fill(q, v), v), ctx.voice)).filter((q) => q.trim()) })).filter((st) => st.lines.length),
-    groups: SCRIPT_GROUPS.map(([key, name]) => ({ key, name })),
-    objections: objections.map(([q, a]) => ({ q: voiceText(q, ctx.voice), a: voiceText(fill(a, v), ctx.voice), ml: ML[q] ? { mirror: ML[q].mirror, label: voiceText(fill(ML[q].label, v), ctx.voice), ask: voiceText(fill(ML[q].ask, v), ctx.voice) } : null })),
+    steps: SCRIPT_KEYS.map(([id, title]) => ({ id, title: title.replace(/^Cold: /, ''), group: SCRIPT_GROUPS.find((g) => g[2].includes(id))?.[0] || 'clarity', kind: groupKind(SCRIPT_GROUPS.find((g) => g[2].includes(id))?.[0] || 'clarity'), lines: asLines(S[id]).filter(keep).map((q) => voiceText(fill(fill(q, v), v), ctx.voice)).filter((q) => q.trim()) })).filter((st) => st.lines.length),
+    groups: SCRIPT_GROUPS.map(([key, name]) => ({ key, name, kind: groupKind(key) })),
+    objections: objections.map(([q, a]) => ({ kind: objectionKind(q), q: voiceText(q.replace(/^Cold: /, ''), ctx.voice), a: voiceText(fill(a, v), ctx.voice), ml: ML[q] ? { mirror: ML[q].mirror, label: voiceText(fill(ML[q].label, v), ctx.voice), ask: voiceText(fill(ML[q].ask, v), ctx.voice) } : null })),
     // Mirror and label catalog (46 objections with the funnel for yes, no and a dodge): public/js/rebuttals.js.
     catalog: catalogRows((t) => voiceText(fill(t, v), ctx.voice)),
     mlRules: ML_RULES,

@@ -6,7 +6,7 @@ import { parseListings, listingsLine, listingsTable } from '/js/listings.js';
 import { rich } from '/js/scriptprint.js';
 import { canRunCalls, can } from '/js/jobs.js';
 import { fromInputs, inputsIn, bothTimes, whenIn, ZONE_CHOICES, validZone } from '/js/apptime.js';
-import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of, quoteFor, scopeOfQuote, personOf } from '/js/leadintel.js';
+import { buildScript, COLD_GROUPS, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of, quoteFor, scopeOfQuote, personOf } from '/js/leadintel.js';
 import { effort, hoursOf } from '/js/scope.js';
 import { onSwipe, slideIn } from './swipe.js';
 
@@ -70,8 +70,9 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
   const E = effort(scopeOfQuote(Q));
   const s = buildScript(lead, intel, { rep, voice }, custom);
   const age = intel?.at ? fmt.ago(intel.at) : null;
-  // The dialer opens on the cold call; a booked lead (or the lead page with a meeting) opens on the clarity call.
-  const startGroup = lead.stage === 'audit_booked' || (lead.meet_at && lead.meet_at > Date.now() - 3 * 3600e3) ? 'clarity' : (scriptKeyFor(lead) || 'analysis');
+  // Cold call prep only ever holds cold call scripts. The meeting script has its own panel: meetingPanel below.
+  const picked = scriptKeyFor(lead);
+  const startGroup = COLD_GROUPS.includes(picked) ? picked : 'analysis';
   const firstStep = Math.max(0, s.steps.findIndex((x) => x.group === startGroup));
   el.innerHTML = `
     <div class="prep">
@@ -89,15 +90,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
       </div>
       ${!intel ? `<div class="caption" style="margin:12px 0">Not researched yet. Research finds their Google profile, checks where they rank around their address, reads their website, and tests mobile speed. About 4 cents.</div>` : intel.demo ? '<p class="badge warn" style="margin:10px 0 0">Demo data: DataForSEO is not connected</p>' : ''}
       <div class="fold-bar"><button type="button" class="linkbtn" data-folds="open">Open all</button><button type="button" class="linkbtn" data-folds="close">Close all</button></div>
-      ${fold('script', 'Script', `<div class="seg script-groups" role="tablist">${s.groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${g.key}">${esc(g.name)}</button>`).join('')}</div>
-      <label class="row small script-notes-sw" style="gap:8px;margin:8px 0 0"><input type="checkbox" id="scnotes"> Show coaching notes</label>
-      <div class="seg script-tabs" role="tablist">${s.steps.map((st, i) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${st.group}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
-      <p class="swipe-hint small muted">Swipe left for the next step, right to go back.</p>
-      <div class="script-body hide-notes">${s.steps.map((st, i) => {
-        const sib = s.steps.map((x, j) => [x, j]).filter(([x]) => x.group === st.group), at = sib.findIndex(([, j]) => j === i);
-        const back = sib[at - 1], next = sib[at + 1];
-        return `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}<div class="script-nav">${back ? `<button type="button" class="btn btn-ghost btn-sm" data-go="${back[1]}">Back</button>` : '<span></span>'}<span class="script-pos small muted">${at + 1} of ${sib.length}</span>${next ? `<button type="button" class="btn btn-primary btn-sm" data-go="${next[1]}">Next: ${esc(next[0].title)}</button>` : '<span></span>'}</div></div>`;
-      }).join('')}</div>`, true)}
+      ${scriptFold('script', 'Script', s, 'cold', startGroup, firstStep)}
       ${intel ? fold('snapshot', 'Their numbers', `<div class="prep-grid">
         <div>${snapshot(lead, intel)}</div>
         ${intel.grid ? `<div class="prep-map">${miniGrid(intel.grid)}<div class="small" style="text-align:center">Rank around them</div></div>` : ''}
@@ -107,11 +100,57 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
       + fold('problems', 'Problems to pitch', probs.length ? `<ul class="probs">${probs.map((p) => `<li class="prob sev-${p.severity}"><div class="item-title">${esc(p.title)}</div><div class="small">${esc(p.detail)}</div><div class="say">Say: ${esc(p.talk)}</div></li>`).join('')}</ul>` : '<p class="muted" style="margin:0">No major problems found. Pitch protecting their spot and growing into more keywords and areas.</p>', false, probs.length) : ''}
       ${fold('listings', 'Listings Google double checks', '<div class="prep-lst" id="preplst"></div>', false)}
       ${fold('mirror', 'Mirror and label (every objection)', `<div class="objs">${catalogHtml(s)}</div>`, false)}
-      ${compact ? '' : fold('objections', 'Objections', `<div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary>${mlLead(o.ml)}<p>${rich(esc(o.a))}</p></details>`).join('')}</div>
-      <details class="obj playbook"><summary>Why the script works (the playbook)</summary><ul>${s.playbook.map((p) => `<li><b>${esc(p.name)}</b> <span class="small">${esc(p.from)}</span><div class="small">${esc(p.use)}</div></li>`).join('')}</ul></details>`, false)}
+      ${compact ? '' : fold('objections', 'Objections', `<div class="objs">${s.objections.filter((o) => o.kind === 'cold').map((o) => `<details class="obj"><summary>${esc(o.q)}</summary>${mlLead(o.ml)}<p>${rich(esc(o.a))}</p></details>`).join('')}</div>`, false)}
     </div>`;
   wireFolds(el);
   document.dispatchEvent(new CustomEvent('rw-layout-refresh')); // the dialer's Edit screen puts the script sections where the person keeps them
+  wireScript(el);
+  $('[data-act="research"]', el).addEventListener('click', async (e) => {
+    if (lead.test) return toast('Practice lead: the research shown is made up. No real search runs.');
+    busy(e.target, true, 'Researching...');
+    try {
+      const r = await api(`/api/leads/${lead.id}/research`, { method: 'POST', body: { force: Boolean(intel) } });
+      toast(`Research done${r.intel?.cost ? ` ($${r.intel.cost.toFixed(3)})` : ''}`);
+      const next = { ...lead, score: r.score ?? lead.score, grade: r.grade ?? lead.grade, plan: lead.plan || r.plan };
+      onResearched?.(next, r.intel);
+      prepPanel(el, next, r.intel, { rep, voice, onResearched, compact });
+    } catch (err) { toast(err.message, true); busy(e.target, false); }
+  });
+  $('[data-act="book"]', el).addEventListener('click', async () => { if (lead.test) { const { testBookModal } = await import('./testdial.js'); return testBookModal(lead); } bookModal(lead); });
+  wireMeetNow(el, lead);
+  // The real listing check: which directories show wrong info or none at all. The "inconsistencies" in the pitch, for this business.
+  const lst = $('#preplst', el);
+  const drawLst = (L) => {
+    lst.innerHTML = `${L ? `<p class="small" style="margin:0 0 8px">${esc(listingsLine(L))} <span class="muted">Checked ${esc(fmt.ago(L.at))}${L.demo ? ' (demo data)' : ''}.</span></p>${listingsTable(L, { max: 15 })}` : '<p class="small muted" style="margin:0 0 8px">Not checked yet. Searches 15 directories for this business and flags wrong phone numbers, wrong ZIP codes and missing listings. About 3 cents.</p>'}
+      <button class="btn btn-ghost btn-sm" data-act="lst" style="margin-top:8px">${L ? 'Check again' : 'Check listings'}<span class="cost-hint" data-cost="listing_check"></span></button>`;
+    $('[data-act="lst"]', lst).addEventListener('click', async (e) => {
+      if (lead.test) return toast('Practice lead: no directory check runs.');
+      busy(e.target, true, 'Checking 15 directories...');
+      try { const r = await api(`/api/leads/${lead.id}/listings`, { method: 'POST' }); lead.listings = r; drawLst(r); toast('Listings checked'); }
+      catch (err) { toast(err.message, true); busy(e.target, false); }
+    });
+  };
+  drawLst(parseListings(lead.listings));
+}
+
+// The script block for one category: kind 'cold' (the dialer, call window, call prep) or 'meeting' (the booked screen share).
+// Step numbers stay the ones from buildScript, so Back and Next and the tabs work the same in both.
+export function scriptFold(key, title, s, kind, startGroup, firstStep, open = true) {
+  const groups = s.groups.filter((g) => g.kind === kind);
+  const steps = s.steps.map((st, i) => [st, i]).filter(([st]) => st.kind === kind);
+  return fold(key, title, `<div class="seg script-groups" role="tablist"${groups.length < 2 ? ' hidden' : ''}>${groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${esc(g.key)}">${esc(g.name)}</button>`).join('')}</div>
+      <label class="row small script-notes-sw" style="gap:8px;margin:8px 0 0"><input type="checkbox" id="scnotes"> Show coaching notes</label>
+      <div class="seg script-tabs" role="tablist">${steps.map(([st, i]) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${esc(st.group)}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
+      <p class="swipe-hint small muted">Swipe left for the next step, right to go back.</p>
+      <div class="script-body hide-notes">${steps.map(([st, i]) => {
+        const sib = steps.filter(([x]) => x.group === st.group), at = sib.findIndex(([, j]) => j === i);
+        const back = sib[at - 1], next = sib[at + 1];
+        return `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}<div class="script-nav">${back ? `<button type="button" class="btn btn-ghost btn-sm" data-go="${back[1]}">Back</button>` : '<span></span>'}<span class="script-pos small muted">${at + 1} of ${sib.length}</span>${next ? `<button type="button" class="btn btn-primary btn-sm" data-go="${next[1]}">Next: ${esc(next[0].title)}</button>` : '<span></span>'}</div></div>`;
+      }).join('')}</div>`, open);
+}
+
+// Group tabs, step tabs, coaching notes, Back and Next and swipe for a script block inside el.
+function wireScript(el) {
   $$('[data-group]', el).forEach((b) => b.addEventListener('click', () => {
     $$('[data-group]', el).forEach((x) => x.classList.toggle('is-on', x === b));
     const tabs = $$('[data-step]', el);
@@ -134,18 +173,9 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
     const btn = cur && $(dir === 'next' ? '[data-go].btn-primary' : '[data-go].btn-ghost', cur);
     if (btn) { btn.click(); slideIn($('.script-step:not([hidden])', sb), dir); }
   });
-  $('[data-act="research"]', el).addEventListener('click', async (e) => {
-    if (lead.test) return toast('Practice lead: the research shown is made up. No real search runs.');
-    busy(e.target, true, 'Researching...');
-    try {
-      const r = await api(`/api/leads/${lead.id}/research`, { method: 'POST', body: { force: Boolean(intel) } });
-      toast(`Research done${r.intel?.cost ? ` ($${r.intel.cost.toFixed(3)})` : ''}`);
-      const next = { ...lead, score: r.score ?? lead.score, grade: r.grade ?? lead.grade, plan: lead.plan || r.plan };
-      onResearched?.(next, r.intel);
-      prepPanel(el, next, r.intel, { rep, voice, onResearched, compact });
-    } catch (err) { toast(err.message, true); busy(e.target, false); }
-  });
-  $('[data-act="book"]', el).addEventListener('click', async () => { if (lead.test) { const { testBookModal } = await import('./testdial.js'); return testBookModal(lead); } bookModal(lead); });
+}
+
+function wireMeetNow(el, lead) {
   // Meet will not run inside another site (Google blocks it), so it opens in its own window next to the Hub.
   $('[data-act="meetnow"]', el)?.addEventListener('click', async (e) => {
     if (lead.test) return toast('Practice lead: no Meet is started.');
@@ -159,19 +189,31 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
     } catch (err) { win?.close(); toast(err.message, true); }
     busy(b, false);
   });
-  // The real listing check: which directories show wrong info or none at all. The "inconsistencies" in the pitch, for this business.
-  const lst = $('#preplst', el);
-  const drawLst = (L) => {
-    lst.innerHTML = `${L ? `<p class="small" style="margin:0 0 8px">${esc(listingsLine(L))} <span class="muted">Checked ${esc(fmt.ago(L.at))}${L.demo ? ' (demo data)' : ''}.</span></p>${listingsTable(L, { max: 15 })}` : '<p class="small muted" style="margin:0 0 8px">Not checked yet. Searches 15 directories for this business and flags wrong phone numbers, wrong ZIP codes and missing listings. About 3 cents.</p>'}
-      <button class="btn btn-ghost btn-sm" data-act="lst" style="margin-top:8px">${L ? 'Check again' : 'Check listings'}<span class="cost-hint" data-cost="listing_check"></span></button>`;
-    $('[data-act="lst"]', lst).addEventListener('click', async (e) => {
-      if (lead.test) return toast('Practice lead: no directory check runs.');
-      busy(e.target, true, 'Checking 15 directories...');
-      try { const r = await api(`/api/leads/${lead.id}/listings`, { method: 'POST' }); lead.listings = r; drawLst(r); toast('Listings checked'); }
-      catch (err) { toast(err.message, true); busy(e.target, false); }
-    });
-  };
-  drawLst(parseListings(lead.listings));
+}
+
+// The meeting script, on its own (Nov 2026, V: cold calling and the meeting audit are two categories, and the clarity audit stays out of
+// every cold calling screen). The Google clarity audit script, its objections, the playbook, and the closer's tools for the meeting.
+// Shown on the lead page for closers and owners. A split of the existing call prep, not a new product: same script, objections and playbook.
+export async function meetingPanel(el, lead, intel, { rep = '', voice = 'I' } = {}) {
+  const custom = await scriptSettings();
+  const s = buildScript(lead, intel, { rep, voice }, custom);
+  const firstStep = Math.max(0, s.steps.findIndex((x) => x.kind === 'meeting'));
+  const startGroup = s.steps[firstStep]?.group || 'clarity';
+  el.innerHTML = `<div class="prep prep-meeting">
+    <div class="prep-head"><div style="min-width:0"><div class="item-title">Meeting script: the Google clarity audit</div><div class="small">For the booked screen share, never for a cold call.</div></div>
+      <div class="row" style="margin-left:auto">
+        ${can(window.__rwUser, 'close') && !lead.test ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
+        <a class="btn btn-ghost btn-sm" href="/scan.html?lead=${esc(lead.id)}" target="_blank" rel="noopener">Scan tool</a>` : ''}
+        <button class="btn btn-ghost btn-sm" data-act="meetnow" title="Starts a Google Meet now, invites them by email, and opens it beside the Hub">Google Meet now</button>
+      </div></div>
+    <div class="fold-bar"><button type="button" class="linkbtn" data-folds="open">Open all</button><button type="button" class="linkbtn" data-folds="close">Close all</button></div>
+    ${scriptFold('mscript', 'Meeting script', s, 'meeting', startGroup, firstStep, false)}
+    ${fold('mobjections', 'Meeting objections', `<div class="objs">${s.objections.filter((o) => o.kind === 'meeting').map((o) => `<details class="obj"><summary>${esc(o.q)}</summary>${mlLead(o.ml)}<p>${rich(esc(o.a))}</p></details>`).join('')}</div>
+            <details class="obj playbook"><summary>Why the script works (the playbook)</summary><ul>${s.playbook.map((p) => `<li><b>${esc(p.name)}</b> <span class="small">${esc(p.from)}</span><div class="small">${esc(p.use)}</div></li>`).join('')}</ul></details>`, false)}
+  </div>`;
+  wireFolds(el);
+  wireScript(el);
+  wireMeetNow(el, lead);
 }
 
 // Book a meeting with a Google Meet link and calendar invite.
@@ -191,7 +233,7 @@ export async function bookModal(lead, onDone) {
   const zoneOpts = [...new Map([...(leadTz ? [[leadTz, '']] : []), ...ZONE_CHOICES, [yourTz, '']]).entries()];
   const zoneName = (z) => (ZONE_CHOICES.find(([v]) => v === z)?.[1] || z.replace(/^.*\//, '').replace(/_/g, ' '));
   const tomorrow = inputsIn(Date.now() + 864e5, theirTz);
-  const m = modal(`<div class="card-head"><h2>Book the Google clarity audit: ${esc(lead.business)}</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+  const m = modal(`<div class="card-head"><h2>Book the meeting: ${esc(lead.business)}</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     ${noGoogle ? '<p class="muted">Google Calendar is not connected, so this books it in the Hub. Paste a Zoom or Meet link if you have one, then send them the invite text below.</p>' : `<p class="muted">The lead gets a Google invite with a Meet link from the calendar of whoever runs the call (or ${esc(g.email || g.booking.ownerEmail)} if they have not connected Google), and it goes on the team calendar.</p>`}
     <form id="bkf" class="form-grid">
       <label class="field"><span>Their time zone</span><select name="tz">${zoneOpts.map(([z]) => `<option value="${esc(z)}"${z === theirTz ? ' selected' : ''}>${esc(zoneName(z))}</option>`).join('')}</select></label>

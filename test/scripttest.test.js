@@ -150,3 +150,28 @@ test('price is never named on a cold call, and no pet puns', () => {
   assert.match(cost.say, /only matters if it gets you results/);
   assert.doesNotMatch(JSON.stringify(s.catalog), /\$\s?\d/);
 });
+
+test('cold calling and the meeting audit are two categories, and clarity stays out of cold calling', async () => {
+  const { COLD_GROUPS, MEETING_GROUPS, groupKind } = await import('../public/js/leadintel.js');
+  const { readFileSync } = await import('node:fs');
+  assert.deepEqual(COLD_GROUPS, ['analysis', 'question', 'cold', 'plan']);
+  assert.deepEqual(MEETING_GROUPS, ['clarity']);
+  assert.equal(groupKind('clarity'), 'meeting');
+  assert.equal(groupKind('question'), 'cold');
+  const s = buildScript({ business: 'Joe Plumbing', city: 'Miami', industry: 'Plumbing' }, null, { rep: 'Sam' });
+  assert.ok(s.groups.every((g) => g.kind === groupKind(g.key)));
+  const cold = s.steps.filter((x) => x.kind === 'cold');
+  assert.ok(cold.length > 10 && cold.every((x) => COLD_GROUPS.includes(x.group)));
+  assert.ok(s.steps.filter((x) => x.kind === 'meeting').every((x) => x.group === 'clarity'));
+  assert.doesNotMatch(cold.flatMap((x) => x.lines).join('\n'), /clarity/i, 'no clarity audit wording in any cold call script');
+  const coldObj = s.objections.filter((o) => o.kind === 'cold');
+  assert.equal(coldObj.length, 7);
+  assert.doesNotMatch(JSON.stringify(coldObj), /clarity/i);
+  assert.ok(coldObj.every((o) => !/^Cold: /.test(o.q)));
+  assert.ok(s.objections.filter((o) => o.kind === 'meeting').length > 20);
+  // Screens that belong to cold calling never mention it, and never offer the clarity group.
+  for (const f of ['public/hub/scriptpane.js', 'public/hub/scriptpick.js', 'public/hub/phone.js', 'public/hub/dispo.js']) assert.doesNotMatch(readFileSync(new URL(`../${f}`, import.meta.url), 'utf8'), /clarity/i, f);
+  const prep = readFileSync(new URL('../public/hub/prep.js', import.meta.url), 'utf8');
+  const cut = prep.slice(prep.indexOf('export async function prepPanel'), prep.indexOf('export function scriptFold'));
+  assert.doesNotMatch(cut, /clarity/i, 'call prep holds cold scripts only');
+});

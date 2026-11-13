@@ -4,7 +4,7 @@ import { PRICES, money, priceText } from '../js/pricing.js';
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable, isPhone, editGoal, trayAdd, trayRemove } from './core.js';
 import { staffShell, settingsTabs, pipeTabs } from './staff.js';
 import { callIntelHtml, mountQual } from './qualform.js';
-import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
+import { prepPanel, meetingPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
 import { textModal } from './texts.js';
 import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
 import { loadDispos, keyed, dispositionModal, isoWhen } from './dispo.js';
@@ -674,6 +674,7 @@ export async function leadModal(id, onChange) {
     ${l.meet_at && l.meet_at > Date.now() - 2 * 3600e3 ? `<div class="card meet-card"><b>Audit meeting ${esc(bothTimes(l.meet_at, validZone(l.timezone) || yourZone(), yourZone()))}</b>
       ${l.meet_link ? `<a class="btn btn-mint btn-sm" href="${esc(l.meet_link)}" target="_blank" rel="noopener">Join Google Meet</a>` : ''}${closer ? `<a class="btn btn-primary btn-sm" href="/present.html#${esc(l.id)}" target="_blank" rel="noopener">Open presentation</a>` : ''}</div>` : ''}
     <div class="card" id="lprep" style="box-shadow:none;margin-bottom:16px"></div>
+    ${closer ? '<div class="card" id="lmeet" style="box-shadow:none;margin-bottom:16px"></div>' : ''}
     <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
       <div>
         ${fold('lm-log', 'Log a call', `
@@ -738,6 +739,7 @@ export async function leadModal(id, onChange) {
   const done = () => { m.close(); onChange?.(); };
   wireFolds(m.el);
   prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, voice: VOICE, onResearched: () => { changed = true; } });
+  if ($('#lmeet', m.el)) meetingPanel($('#lmeet', m.el), l, data.intel, { rep: REP, voice: VOICE });
   $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
   // Google: write to them, see what you have already sent, and put a meeting on your own calendar.
   $$('#laddmail, #laddmail2', m.el).forEach((b) => b.addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); }));

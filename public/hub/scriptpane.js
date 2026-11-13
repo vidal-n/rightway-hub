@@ -4,7 +4,7 @@
 // person's account. Modeled on the script panel next to the dial pad in Close.com and Orum style power dialers.
 import { scriptKeyFor } from './scriptpick.js';
 import { $, $$, esc, isPhone } from './core.js';
-import { buildScript } from '/js/leadintel.js';
+import { buildScript, COLD_GROUPS } from '/js/leadintel.js';
 import { scriptLine, scriptSettings } from './prep.js';
 import { onSwipe, slideIn } from './swipe.js';
 import { uiNow, saveUi } from './uiprefs.js';
@@ -54,7 +54,10 @@ export async function showCallScript(opts) {
   const custom = await scriptSettings();
   if (!document.querySelector('.callbar') || pane) return;
   const s = buildScript(lead, intel || null, { rep, voice }, custom);
-  const startGroup = lead.stage === 'audit_booked' || (lead.meet_at && lead.meet_at > Date.now() - 3 * 3600e3) ? 'clarity' : (scriptKeyFor(lead) || 'analysis');
+  // Cold call scripts only: the meeting script is never shown beside a call.
+  const picked = scriptKeyFor(lead);
+  const startGroup = COLD_GROUPS.includes(picked) ? picked : 'analysis';
+  const cold = s.steps.map((st, i) => [st, i]).filter(([st]) => st.kind === 'cold');
   const firstStep = Math.max(0, s.steps.findIndex((x) => x.group === startGroup));
   const el = document.createElement('aside');
   el.className = 'callscript';
@@ -63,9 +66,9 @@ export async function showCallScript(opts) {
     <div class="cs-head"><b>Script</b><span class="cs-who">${esc(lead.business || '')}</span>
       <label class="small cs-notes"><input type="checkbox" id="csn"> Coaching notes</label>
       <button type="button" class="cs-x" aria-label="Hide the script" title="Hide the script. Turn it back on with the Script button or in Customize layout.">×</button></div>
-    <div class="seg cs-groups" role="tablist">${s.groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${esc(g.key)}">${esc(g.name)}</button>`).join('')}</div>
-    <div class="seg cs-tabs" role="tablist">${s.steps.map((st, i) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${esc(st.group)}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
-    <div class="cs-body script-body hide-notes">${s.steps.map((st, i) => {
+    <div class="seg cs-groups" role="tablist">${s.groups.filter((g) => g.kind === 'cold').map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${esc(g.key)}">${esc(g.name)}</button>`).join('')}</div>
+    <div class="seg cs-tabs" role="tablist">${cold.map(([st, i]) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${esc(st.group)}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
+    <div class="cs-body script-body hide-notes">${cold.map(([st, i]) => {
       const sib = s.steps.map((x, j) => [x, j]).filter(([x]) => x.group === st.group), at = sib.findIndex(([, j]) => j === i);
       const back = sib[at - 1], next = sib[at + 1];
       return `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}<div class="script-nav">${back ? `<button type="button" class="btn btn-ghost btn-sm" data-go="${back[1]}">Back</button>` : '<span></span>'}<span class="script-pos small muted">${at + 1} of ${sib.length}</span>${next ? `<button type="button" class="btn btn-primary btn-sm" data-go="${next[1]}">Next: ${esc(next[0].title)}</button>` : '<span></span>'}</div></div>`;
