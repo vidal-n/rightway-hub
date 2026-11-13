@@ -60,6 +60,14 @@ export function decodeWord(s) {
     } catch { return text; }
   }).replace(/\?=\s+=\?/g, '');
 }
+// Gmail snippets arrive HTML escaped ("what&#39;s"); the Hub escapes again when drawing, so turn them back into plain text here.
+const NAMED = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+export function decodeEntities(s) {
+  return String(s || '').replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === '#') { const n = e[1].toLowerCase() === 'x' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); try { return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m; } catch { return m; } }
+    return NAMED[e.toLowerCase()] ?? m;
+  });
+}
 export function encodeWord(s) {
   const t = String(s ?? '');
   return /^[\x20-\x7E]*$/.test(t) ? t : `=?UTF-8?B?${encodeB64(t)}?=`;
@@ -191,7 +199,7 @@ export function threadRow(thread, me = '') {
     who: shown.map((n) => n.name).join(', ') || '(unknown)',
     count: msgs.length,
     subject: decodeWord(headerOf(last.payload, 'Subject')) || '(no subject)',
-    snippet: decodeWord(last.snippet || thread.snippet || ''),
+    snippet: decodeEntities(decodeWord(last.snippet || thread.snippet || '')),
     date: Number(last.internalDate || 0),
     unread: msgs.some((m) => (m.labelIds || []).includes('UNREAD')),
     starred: msgs.some((m) => (m.labelIds || []).includes('STARRED')),
@@ -209,7 +217,7 @@ export function fullMessage(m) {
     replyTo: headerOf(m.payload, 'Reply-To'), messageId: headerOf(m.payload, 'Message-ID'),
     references: headerOf(m.payload, 'References'),
     subject: decodeWord(headerOf(m.payload, 'Subject')),
-    html: body.html, text: body.text, snippet: decodeWord(m.snippet || ''),
+    html: body.html, text: body.text, snippet: decodeEntities(decodeWord(m.snippet || '')),
     attachments: attachmentsOf(m.payload).filter((a) => !a.inline || a.name),
     remoteImages: hasRemoteImages(body.html),
   };

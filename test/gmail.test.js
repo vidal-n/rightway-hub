@@ -246,3 +246,9 @@ test('full Drive access counts as the narrow Sheets permission, and nothing else
   assert.ok(grantedApps('openid https://www.googleapis.com/auth/gmail.modify').includes('mail'));
   assert.ok(!grantedApps('openid https://www.googleapis.com/auth/gmail.modify').includes('drive'));
 });
+
+test('snippets are decoded from HTML entities', async () => {
+  const { decodeEntities } = await import('../public/js/gmailparse.js');
+  assert.equal(decodeEntities('See what&#39;s unlocked &amp; more &quot;now&quot; &#x2019;'), 'See what\'s unlocked & more "now" ’');
+  assert.equal(decodeEntities('a &bogus; b &#0; c'), 'a &bogus; b &#0; c');
+});
