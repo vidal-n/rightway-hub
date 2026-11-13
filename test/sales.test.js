@@ -215,7 +215,7 @@ test('API: import dedupes by phone, website, and name; scores; research in demo;
     { business: 'No contact', city: 'Miami', state: 'FL' },
   ] });
   assert.equal(r.data.imported, 2);
-  assert.deepEqual(r.data.skippedBy, { phone: 0, website: 1, name: 1, invalid: 1, dnc: 0 });
+  assert.deepEqual(r.data.skippedBy, { phone: 0, website: 1, name: 1, invalid: 1, dnc: 0, suppressed: 0 });
   r = await t.call('GET', '/api/leads');
   const summit = r.data.leads.find((l) => l.business === 'Summit Roofing');
   assert.ok(summit.score > 0 && summit.grade);

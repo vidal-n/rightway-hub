@@ -7,6 +7,7 @@ import { requireStaff } from './auth.js';
 import { route } from './router.js';
 import { canEmail, sendEmail } from './email.js';
 import { logActivity } from './crm.js';
+import { emailBlocked } from './suppress.js';
 import { fromFor } from './hubmail.js';
 import { sendGmail } from './gmail.js';
 import { bookToken } from './automations.js';
@@ -53,7 +54,7 @@ route('POST', '/api/leads/:id/info-email', async ({ env, user, params, body }) =
   if (user.viewAs) throw new HttpError('Client view is read only.', 403);
   const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', params.id);
   if (!lead) throw new HttpError('Lead not found.', 404);
-  if (lead.dnc) throw new HttpError('This lead is on the do not call list. No email.', 400);
+  if (lead.dnc || await emailBlocked(env, lead)) throw new HttpError('This lead is on the do not call list. No email.', 400);
   const b = await body();
   const to = String(b.to || '').trim().toLowerCase();
   if (!to) throw new HttpError('Add their email address first.');

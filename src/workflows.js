@@ -109,7 +109,7 @@ async function doStep(env, st, ctx, { dry, depth }) {
     case 'send_email': {
       need();
       if (!/@/.test(lead.email || '')) return { line: 'Email skipped: no email address on the lead.' };
-      if (lead.dnc) return { line: 'Email skipped: do not contact.' };
+      if (lead.dnc || await import('./suppress.js').then((m) => m.emailBlocked(env, lead))) return { line: 'Email skipped: do not contact.' };
       const subject = say(st.subject), body = say(st.body);
       if (dry) return { line: `Would email ${lead.email}: ${subject}` };
       const { sendEmail, canEmail } = await import('./email.js');

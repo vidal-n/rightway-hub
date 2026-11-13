@@ -31,7 +31,7 @@ export async function workflowsPage(app, user, id = '') {
           <div class="wf-stats"><span><b>${fmt.int(w.waiting)}</b> in progress</span><span><b>${fmt.int(w.done30)}</b> finished, 30 days</span><span><b>${fmt.int(w.runs)}</b> started</span></div>
           ${w.problems.length ? `<p class="small err-text">${esc(w.problems[0])}</p>` : ''}</div>`).join('')}</div>` : ''}
       <h2 class="wf-sec">Start from a recipe</h2>
-      <p class="small muted" style="margin:-4px 0 12px">GoHighLevel's best known automations, rebuilt for the Hub. They start turned off so you can read and test them first.</p>
+      <p class="small muted" style="margin:-4px 0 12px">Ready made automations for a sales team, built on your Hub data. They start turned off so you can read and test them first.</p>
       <div class="wf-recipes">${RECIPES.map((r) => `<div class="wf-recipe"><b>${esc(r.name)}</b><p class="small">${esc(r.why)}</p>
         <p class="wf-trig small"><span class="wf-when">When</span> ${esc(trigLine(r.trigger))}</p><ol class="wf-mini small">${r.steps.map((s) => `<li>${esc(stepLine(cleanStep(s)))}</li>`).join('')}</ol>
         <button class="btn ${have.has(r.name) ? 'btn-ghost' : 'btn-mint'} btn-sm" data-recipe="${r.id}">${have.has(r.name) ? 'Add another copy' : 'Use this recipe'}</button></div>`).join('')}</div>`;

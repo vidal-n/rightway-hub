@@ -432,7 +432,7 @@ async function jobPage(view, id) {
   mountFilters(view);
   setFilters(view, f);
 
-  const ST = { new: ['New', ''], added: ['Added', ''], inhub: ['In the Hub', 'gray'], dnc: ['Do not call', 'bad'], nophone: ['No phone', 'gray'] };
+  const ST = { new: ['New', ''], added: ['Added', ''], inhub: ['In the Hub', 'gray'], dnc: ['Do not call', 'bad'], blocked: ['On the do not call list', 'bad'], nophone: ['No phone', 'gray'] };
   const visible = () => rows.filter((r) => passes(r, f) && (!q || [r.title, r.city, r.phone, r.category, r.website].some((v) => String(v || '').toLowerCase().includes(q)))).sort(SORTS[sort][1]);
   const addable = (list) => list.filter((r) => r.st === 'new');
 
@@ -446,7 +446,7 @@ async function jobPage(view, id) {
   const drawStats = () => {
     const now = visible();
     const c = (st) => rows.filter((r) => r.st === st).length;
-    $('#jstats', view).innerHTML = [['Found', total], ['Match the filters', now.length], ['New', c('new')], ['In the Hub', c('inhub') + c('added') + c('dnc')], ['Cost', job.source === 'osm' ? 'Free' : money(job.cost)]]
+    $('#jstats', view).innerHTML = [['Found', total], ['Match the filters', now.length], ['New', c('new')], ['In the Hub', c('inhub') + c('added') + c('dnc') + c('blocked')], ['Cost', job.source === 'osm' ? 'Free' : money(job.cost)]]
       .map(([l, v]) => `<div class="stat"><div class="stat-num">${typeof v === 'number' ? num(v) : v}</div><div class="stat-label">${l}</div></div>`).join('');
     $('#jcount', view).textContent = `${num(now.length)} of ${num(rows.length)} shown`;
   };
@@ -526,7 +526,7 @@ async function jobPage(view, id) {
           toast(`${num(r.imported)} added before it stopped: ${x.message} Press Add again to carry on.`, true);
           draw(); return;
         }
-        const why = Object.entries(r.skippedBy).filter(([, v]) => v).map(([k, v]) => `${v} ${{ phone: 'same phone', website: 'same website', name: 'same name', invalid: 'no phone', dnc: 'do not call' }[k] || k}`).join(', ');
+        const why = Object.entries(r.skippedBy).filter(([, v]) => v).map(([k, v]) => `${v} ${{ phone: 'same phone', website: 'same website', name: 'same name', invalid: 'no phone', dnc: 'do not call', suppressed: 'on the do not call list' }[k] || k}`).join(', ');
         toast(`${num(r.imported)} added to the Pipeline${r.skipped ? `, ${num(r.skipped)} skipped (${why})` : ''}`);
         picked.clear(); draw();
       }

@@ -6,6 +6,19 @@
 
 export const METRICS = [
   // ---------- calling ----------
+  { k: 'dnc_list', match: /^on the list$/, name: 'On the do not call list', what: 'Businesses and numbers that are kept in the database but never dialed, texted or added a second time.',
+    formula: 'Entries on the list that are still active. Each entry covers a business (phone, website and name in its area).', scope: 'Added by call results (Do not call, Dead lead, Bad number, Phone menu), by hand, by the scrubber, by a registry file, and when you delete a lead.',
+    bench: 'No outside benchmark. Watch the share of your calls that end as a bad number or phone menu: if it climbs, the lead source is weak.', why: 'Dials spent on dead numbers and menus are the cheapest to save, and a business that said stop is a legal risk if called again.',
+    misleads: 'A bad number does not mean a bad business. Those entries block only the number, and a direct line found later can still be called.', go: '#/pipeline/suppression' },
+  { k: 'dnc_legal', match: /requests and registry matches/, name: 'Requests and registry matches', what: 'Entries that came from someone asking not to be called, or from matching a do not call registry file.',
+    formula: 'Entries with the reason Asked not to be called or On a do not call registry.', scope: 'Permanent. They block calls, texts and email, and cannot be taken off from the list.', bench: 'A request not to be called must be honored; state and federal rules set the penalties.',
+    why: 'This is the list a regulator or lawyer asks to see first.', misleads: 'It only knows about requests that reps logged. Make sure every Do not call request gets the result saved.', go: '#/pipeline/suppression' },
+  { k: 'dnc_kept_out', match: /re-scrapes kept out/, name: 'Re-scrapes kept out', what: 'How many times an import or Lead finder search found a business that is already on the list and skipped it.',
+    formula: 'Count of skipped rows that matched an active entry, added up over time.', scope: 'Imports and Lead finder additions. A row is counted once per entry per run.', bench: 'None. A high number means your sources keep returning the same businesses.',
+    why: 'It shows the list saving you from calling the same dead lead or paying to research it twice.', misleads: 'Lifting an entry does not erase what it already kept out.', go: '#/finder' },
+  { k: 'registry_age', match: /registry last checked/, name: 'Registry last checked', what: 'How long ago you last scrubbed your leads against a do not call registry file.',
+    formula: 'Days since the last registry upload that finished.', scope: 'National and state files you upload on this page. Nothing is checked automatically.', bench: 'The FTC safe harbor asks for a scrub at least every 31 days.',
+    why: 'Numbers join the registry every day, so an old scrub protects you less each week.', misleads: 'Business to business calls are mostly outside the federal registry, but sole owners often list a cell number, and Florida keeps its own list. Check your own legal advice.', go: '#/pipeline/suppression' },
   { k: 'dials_today', match: /dials today/, name: 'Dials today', what: 'Calls you started today, answered or not.', formula: 'Count of outbound calls since midnight, New York time.',
     scope: 'Your own calls from the Hub dialer and Dial out. Calls made from your own phone count only when you log a result.', bench: 'Your daily goal is set by the owner. Power dialers usually run 40 to 80 dials an hour.',
     why: 'Dials are the input you control. Everything after them (talks, audits, clients) follows the volume.', misleads: 'A high count on a bad list books nothing. Read it next to owner talks and audits booked.', go: '#/phone' },

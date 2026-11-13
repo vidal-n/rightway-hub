@@ -3,7 +3,7 @@
 // Tab: [label, href, need ('admin' or a job ability), badge key]. Pages keep their own routes; this only groups them.
 export const WORKSPACES = [
   ['home', 'Home', 'home', [['Today', '#/'], ['Calendar', '#/calendar'], ['Notifications', '#/notifications', '', 'alerts'], ['Training', '#/training']]],
-  ['sell', 'Sell', 'phone', [['Dialer', '#/phone'], ['Pipeline', '#/pipeline', '', 'pipeline'], ['Lead database', '#/pipeline/database'], ['Lead finder', '#/finder', 'admin'], ['Agents', '#/agents'], ['Scan tool', '/scan.html', 'close']]],
+  ['sell', 'Sell', 'phone', [['Dialer', '#/phone'], ['Pipeline', '#/pipeline', '', 'pipeline'], ['Lead database', '#/pipeline/database'], ['Do not call list', '#/pipeline/suppression'], ['Lead finder', '#/finder', 'admin'], ['Agents', '#/agents'], ['Scan tool', '/scan.html', 'close']]],
   ['inbox', 'Inbox', 'msg', [['All conversations', '#/conversations', '', 'inbox'], ['Texts', '#/phone/texts', '', 'texts'], ['Calls', '#/phone/history', '', 'calls'], ['Meetings', '#/phone/meet'], ['Slack', '#/slack', '', 'slack'], ['Mail', '#/mail']]],
   ['clients', 'Clients', 'users', [['All clients', '#/clients', 'deliver'], ['Client view', '#/clients/view', 'close']]],
   ['deliver', 'Deliver', 'check', [['My work', '#/work', 'deliver', 'work'], ['Posts to publish', '#/work/posts', 'deliver'], ['Schedule', '#/work/schedule'], ['Hours', '#/work/hours', 'deliver'], ['Guides', '#/work/guides', 'deliver']]],

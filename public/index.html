@@ -16,12 +16,19 @@
     try {
       if (navigator.standalone) {
         var de = document.documentElement; de.classList.add('ios-standalone');
+        // The Home Screen app's layout viewport can end 20 to 60pt above the real screen bottom (iPhone and iPad). Everything fixed to the
+        // viewport (menu bar, drawer, pop ups) then stopped short with a dead strip under it. --rw-full is the real screen height: the Hub
+        // frame is sized to it and made the containing block for fixed pieces (see "Home Screen frame" at the end of hub5.css).
+        // --rw-gap is how far the viewport falls short; --sab keeps controls clear of the home bar (at most 34pt, the iPhone bar).
         var fit = function () {
           var long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height);
-          var gap = Math.round((innerWidth > innerHeight ? short : long) - innerHeight);
-          if (gap < 0 || gap > 60) return;
+          var full = innerWidth > innerHeight ? short : long;
+          var gap = Math.round(full - innerHeight);
+          // A windowed iPad or a keyboard is not the home bar strip: drop the numbers so the normal layout applies.
+          if (gap < 0 || gap > 120) { de.style.removeProperty('--rw-full'); de.style.removeProperty('--rw-gap'); de.style.removeProperty('--sab'); return; }
+          de.style.setProperty('--rw-full', full + 'px');
           de.style.setProperty('--rw-gap', gap + 'px');
-          de.style.setProperty('--sab', 'max(env(safe-area-inset-bottom, 0px), ' + gap + 'px)');
+          de.style.setProperty('--sab', 'max(env(safe-area-inset-bottom, 0px), ' + Math.min(gap, 34) + 'px)');
         };
         fit(); addEventListener('resize', fit); addEventListener('orientationchange', function () { setTimeout(fit, 300); });
       }

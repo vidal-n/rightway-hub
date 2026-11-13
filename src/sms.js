@@ -11,6 +11,7 @@ import { twilioReady, verifiedParams, twiml, xml } from './calls.js';
 import { browserIdentities, recordingOn } from './voice.js';
 import { trackedAnswer } from './calltrack.js';
 import { voicemailTwiml } from './voicemail.js';
+import { blockedFor, blockText } from './suppress.js';
 import { notify, notifyLater } from './notify.js';
 
 const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']);
@@ -98,6 +99,8 @@ export async function sendText(env, lead, rawText, user, origin, opts = {}) {
   }
   const why = canText(lead, Boolean(inbound));
   if (why) throw new HttpError(why, 409);
+  const blocked = await blockedFor(env, lead); // the Do Not Call list (src/suppress.js)
+  if (blocked) throw new HttpError(blockText(blocked, 'text'), 409);
   const to = e164(lead.phone);
   if (!to) throw new HttpError('This lead has no valid phone number.');
   // Replying within 12 hours of their own text is a conversation, not outreach, so the clock check is skipped.

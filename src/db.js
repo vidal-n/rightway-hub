@@ -176,6 +176,13 @@ const SCHEMA = [
   // Per lead call roll up for the Lead database (src/leaddb.js). Its own table: D1 allows 100 columns a table and leads is close to that.
   `CREATE TABLE IF NOT EXISTS lead_roll (
     lead_id TEXT PRIMARY KEY, r_dials INTEGER, r_connects INTEGER, r_owner INTEGER, r_staff INTEGER, r_menu INTEGER, r_vm INTEGER, r_noans INTEGER, r_dead INTEGER, r_wrong INTEGER, r_talk INTEGER, r_longest INTEGER, r_fast_hangs INTEGER, r_shortest INTEGER, r_last_by TEXT, r_last_dispo TEXT, r_last_secs INTEGER, r_obj TEXT, r_first_at INTEGER, r_owner_at INTEGER, r_to_owner INTEGER, r_24h INTEGER, r_convs INTEGER, r_service INTEGER)`,
+  // The Do Not Call list (src/suppress.js, public/js/suppress.js): kept apart from leads so a deleted lead is still never dialed or scraped again.
+  // One row per dedupe key (phone, website domain, business plus place); `grp` ties the rows of one entry together.
+  `CREATE TABLE IF NOT EXISTS suppressions (
+    key TEXT PRIMARY KEY, grp TEXT NOT NULL, reason TEXT NOT NULL, blocks INTEGER NOT NULL DEFAULT 1, lead_id TEXT, business TEXT, phone TEXT, website TEXT, city TEXT, state TEXT,
+    note TEXT, source TEXT, by TEXT, at INTEGER NOT NULL, lifted_at INTEGER, lifted_by TEXT, hits INTEGER NOT NULL DEFAULT 0, last_hit_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS suppress_grp ON suppressions (grp)`,
+  `CREATE INDEX IF NOT EXISTS suppress_at ON suppressions (at)`,
   `CREATE TABLE IF NOT EXISTS work_orders (
     id TEXT PRIMARY KEY, token TEXT UNIQUE NOT NULL, lead_id TEXT, client_id TEXT, plan TEXT NOT NULL, monthly_cents INTEGER NOT NULL,
     setup_cents INTEGER NOT NULL, business TEXT, contact_name TEXT, email TEXT, terms TEXT, pay_url TEXT, status TEXT NOT NULL DEFAULT 'sent',

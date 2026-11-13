@@ -5,6 +5,7 @@ import { first, all, run, now } from './db.js';
 import { requireStaff } from './auth.js';
 import { e164, inCallingHours, logActivity } from './crm.js';
 import { route } from './router.js';
+import { guardLead, blockedFor, blockedPhone, blockText } from './suppress.js';
 
 const enc = new TextEncoder();
 export const xml = (s) => String(s || '').replace(/[<>&'"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[c]);
@@ -85,6 +86,7 @@ route('POST', '/api/dialer/call', async ({ env, user, url, body }) => {
   const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', b.leadId);
   if (!lead) throw new HttpError('Lead not found.', 404);
   if (lead.dnc) throw new HttpError('This lead is on Do Not Call.', 409);
+  await guardLead(env, lead);
   if (!e164(lead.phone)) throw new HttpError('This lead has no valid phone number.');
   if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError("It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
   const activityId = await logActivity(env, { lead_id: lead.id, type: 'call', status: 'ringing_you', by: user.id });
@@ -122,6 +124,9 @@ export async function manualTarget(env, raw) {
   if (!to.startsWith('+1') || /^\+1(900|976)/.test(to)) throw new HttpError('Only US and Canada numbers can be dialed here.');
   const lead = await first(env, 'SELECT id, business, dnc FROM leads WHERE phone_digits = ? ORDER BY dnc DESC LIMIT 1', to.slice(2));
   if (lead?.dnc) throw new HttpError(`${lead.business} is on Do Not Call.`, 409);
+  // A number on the Do Not Call list can be typed in too: it is refused whether or not a lead still holds it.
+  const row = await blockedPhone(env, to.slice(2));
+  if (row) throw new HttpError(blockText(row), 409);
   return { to, lead: lead || null };
 }
 
@@ -171,7 +176,7 @@ route('POST', '/api/twilio/bridge', async ({ env, request, url }) => {
   const manualTo = a?.type === 'manual_call' ? e164(url.searchParams.get('to')) : null;
   const lead = a?.lead_id && (await first(env, 'SELECT * FROM leads WHERE id = ?', a.lead_id));
   const to = manualTo || (lead && e164(lead.phone));
-  if (!a || !to || lead?.dnc) return twiml('<Say>This number cannot be called.</Say><Hangup/>');
+  if (!a || !to || lead?.dnc || (lead && await blockedFor(env, lead)) || (manualTo && await blockedPhone(env, manualTo.slice(2)))) return twiml('<Say>This number cannot be called.</Say><Hangup/>');
   const callerId = url.searchParams.get('from') || env.TWILIO_FROM;
   await run(env, "UPDATE activities SET status = 'connecting' WHERE id = ?", a.id);
   return twiml(`<Say voice="Polly.Joanna">${manualTo ? 'Dialing.' : `Calling ${xml(lead.business)}.`}</Say><Dial callerId="${xml(callerId)}" answerOnBridge="true" timeout="25" record="do-not-record" action="${xml(`${url.origin}/api/twilio/dial-done?a=${a.id}`)}"><Number>${xml(to)}</Number></Dial>`);

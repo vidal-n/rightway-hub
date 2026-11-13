@@ -17,6 +17,7 @@ import { can } from '../public/js/jobs.js';
 import { cleanNewLead, queueScrub } from './scrub.js';
 import { contactFromImport } from '../public/js/names.js';
 import { resolveZone, canCallNow, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
+import { suppress, suppressMany, suppressedMap, noteHits, noteOutcome, entryFor } from './suppress.js';
 
 // A booking, however it was made: a call that ended in booked or a callback, or an audit booked from the lead, the booking page or the calendar.
 // Moved audits do not count again. Used by the dialer strip, the dashboard and the analytics.
@@ -108,6 +109,10 @@ export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, not
     case 'phone_menu':
       // An automated menu ("press 1 for sales") with no way to reach a person: taken off the call list, tagged so it can be found.
       Object.assign(set, { stage: 'lost', next_action_at: null, next_action: 'Phone menu: nobody to reach', tags: /phone menu/i.test(lead.tags || '') ? lead.tags : [lead.tags, 'phone menu'].filter(Boolean).join(', ') });
+      break;
+    case 'dead':
+      // Not interested and never worth another call: off the list for good (the Do Not Call list keeps it from being scraped again), still in the database for analytics.
+      Object.assign(set, { stage: 'lost', next_action_at: null, next_action: 'Dead lead: not interested', tags: /dead lead/i.test(lead.tags || '') ? lead.tags : [lead.tags, 'dead lead'].filter(Boolean).join(', ') });
       break;
     case 'dnc':
       Object.assign(set, { stage: 'dnc', dnc: 1, next_action_at: null, next_action: 'Do not call' });
@@ -205,7 +210,7 @@ const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, websi
   (CASE WHEN socials IS NULL OR socials IN ('', '{}') THEN 0 ELSE 1 END) AS has_socials,
   (CASE WHEN place_id IS NOT NULL AND place_id != '' THEN 1 ELSE 0 END) AS has_place`;
 
-async function updateLead(env, id, set) {
+export async function updateLead(env, id, set) {
   const cols = Object.keys(set);
   if (!cols.length) return;
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), id);
@@ -246,6 +251,8 @@ export async function existingKeys(env) {
   const rows = await all(env, 'SELECT id, business, phone_digits, website, city, zip, dnc FROM leads');
   const keys = new Map();
   for (const r of rows) for (const k of dupKeys(r)) if (!keys.has(k)) keys.set(k, r);
+  // The Do Not Call list too (src/suppress.js): deleted leads, bad numbers and requests stay known, so a re-scrape is skipped.
+  for (const [k, v] of await suppressedMap(env)) if (!keys.has(k)) keys.set(k, v);
   return keys;
 }
 async function findDuplicate(env, data) {
@@ -260,7 +267,8 @@ export async function importLeads(env, user, rows, { source, tags, merge = true 
   const keys = await existingKeys(env);
   const items = [];
   const out = new Array(rows.length);
-  const skipped = { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0 };
+  const skipped = { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0, suppressed: 0 };
+  const hitKeys = [];
   const reason = { p: 'phone', d: 'website', n: 'name', m: 'name' };
   const tagText = text(tags, 200);
   for (const [n, r] of rows.entries()) {
@@ -272,7 +280,7 @@ export async function importLeads(env, user, rows, { source, tags, merge = true 
     if (!d.phone_digits && !d.email) { skipped.invalid++; out[n] = { skipped: 'invalid' }; continue; }
     const ks = dupKeys(d);
     const hit = ks.find((k) => keys.has(k));
-    if (hit) { const prev = keys.get(hit); const why = prev?.dnc ? 'dnc' : reason[hit[0]]; skipped[why]++; out[n] = { skipped: why, lead_id: prev?.id || null }; continue; }
+    if (hit) { const prev = keys.get(hit); const why = prev?.dnc ? 'dnc' : prev?.supp ? 'suppressed' : reason[hit[0]]; if (prev?.supp) hitKeys.push(...ks.filter((k) => keys.get(k)?.supp)); skipped[why]++; out[n] = { skipped: why, lead_id: prev?.id || null }; continue; }
     if (tagText) d.tags = [d.tags, tagText].filter(Boolean).join(', ');
     const l = { ...cleanNewLead(d), id: newId('ld_'), stage: 'new', created_at: now(), updated_at: now(), owner_id: user.id };
     Object.assign(l, rescore(l));
@@ -290,7 +298,16 @@ export async function importLeads(env, user, rows, { source, tags, merge = true 
     const why = lead.phone_digits ? scrubReason(lead, null) : null;
     if (why) { scrubbed++; const set = { scrub: why, stage: 'lost', next_action: `Scrubbed: ${why}` }; for (const [k, v] of Object.entries(set)) { const i = cols.indexOf(k); if (i >= 0) it[i + 1] = v; else { cols.push(k); it.push(v); } } it[0] = `INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`; }
   }
+  const bad = [];
+  for (const it of items) {
+    const cols = it[0].match(/\(([^)]*)\)/)[1].split(', ');
+    const lead = Object.fromEntries(cols.map((c, i) => [c, it[i + 1]]));
+    if (lead.scrub) bad.push(lead);
+  }
   for (let i = 0; i < items.length; i += 100) await batch(env, items.slice(i, i + 100));
+  // Bad numbers the free scrub caught go on the Do Not Call list too (the lead stays in the database, never dialed, never scraped twice).
+  if (bad.length) await suppressMany(env, bad, 'bad_number', { by: user?.id || null, note: 'Scrubbed on import', source: 'scrub' }).catch((e) => console.error('suppress scrub', e.message));
+  if (hitKeys.length) await noteHits(env, hitKeys);
   // Duplicates with the leads already in the Hub (including name variants) are merged now, so the call list is clean from the start.
   const newIds = out.filter((x) => x?.id).map((x) => x.id);
   // `merge: false` skips it for callers whose rows were all checked against the Hub just above (it reads every lead, which is slow).
@@ -397,9 +414,12 @@ route('POST', '/api/leads/bulk', async ({ env, user, body }) => {
   for (let i = 0; i < ids.length; i += 90) {
     const part = ids.slice(i, i + 90);
     const ph = part.map(() => '?').join(',');
-    if (action === 'stage') await run(env, `UPDATE leads SET stage = ?, dnc = CASE WHEN ? = 'dnc' THEN 1 ELSE dnc END, updated_at = ? WHERE id IN (${ph})`, value, value, now(), ...part);
+    if (action === 'stage') {
+      if (value === 'dnc') { const leads = await all(env, `SELECT id, business, phone, phone_digits, website, city, zip, state FROM leads WHERE id IN (${ph}) AND dnc = 0`, ...part); await suppressMany(env, leads, 'dnc', { by: user.id, source: 'manual', note: 'Bulk move to Do not call' }); }
+      await run(env, `UPDATE leads SET stage = ?, dnc = CASE WHEN ? = 'dnc' THEN 1 ELSE dnc END, updated_at = ? WHERE id IN (${ph})`, value, value, now(), ...part);
+    }
     else if (action === 'tag') await run(env, `UPDATE leads SET tags = CASE WHEN tags IS NULL OR tags = '' THEN ? ELSE tags || ', ' || ? END, updated_at = ? WHERE id IN (${ph})`, t, t, now(), ...part);
-    else if (action === 'delete') await batch(env, [[`DELETE FROM activities WHERE lead_id IN (${ph})`, ...part], [`DELETE FROM leads WHERE id IN (${ph})`, ...part]]);
+    else if (action === 'delete') { await rememberDeleted(env, part, user.id); await batch(env, [[`DELETE FROM activities WHERE lead_id IN (${ph})`, ...part], [`DELETE FROM leads WHERE id IN (${ph})`, ...part]]); }
     else await run(env, `UPDATE leads SET next_action_at = ?, updated_at = ? WHERE id IN (${ph}) AND dnc = 0`, now(), now(), ...part);
   }
   return json({ ok: true, count: ids.length });
@@ -415,7 +435,7 @@ route('GET', '/api/leads/:id', async ({ env, user, params }) => {
   try { intel = l.intel ? JSON.parse(l.intel) : null; } catch { intel = null; }
   let scrub = null;
   try { scrub = l.scrub_data ? JSON.parse(l.scrub_data) : null; } catch { scrub = null; }
-  return json({ lead: seeAppt(decorate(l), user), intel, scrub, activities, orders });
+  return json({ lead: seeAppt(decorate(l), user), intel, scrub, activities, orders, suppression: await entryFor(env, l) });
 });
 
 route('PATCH', '/api/leads/:id', async ({ env, user, params, body }) => {
@@ -425,14 +445,26 @@ route('PATCH', '/api/leads/:id', async ({ env, user, params, body }) => {
   set.updated_at = now();
   Object.assign(set, rescore({ ...l, ...set }));
   await updateLead(env, l.id, set);
+  if (set.dnc && !l.dnc) await suppress(env, { ...l, ...set }, 'dnc', { by: user.id, source: 'manual' });
   if (set.stage && set.stage !== l.stage) await logActivity(env, { lead_id: l.id, type: 'stage', body: `Moved to ${set.stage.replace('_', ' ')}`, by: user.id });
   if (set.stage && set.stage !== l.stage) await wf(env, 'stage_changed', { leadId: l.id, stage: set.stage });
   if (set.tags != null) { const had = new Set(String(l.tags || '').split(',').map((t) => t.trim().toLowerCase())); for (const t of String(set.tags).split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)) if (!had.has(t)) await wf(env, 'tag_added', { leadId: l.id, tag: t }); }
   return json({ lead: seeAppt(decorate(await leadOr404(env, l.id)), user) });
 });
 
+// Deleting a lead keeps it on the Do Not Call list: a request not to be called stays a request, and any other lead stays "known" so the
+// same business is not scraped and added again. (Lift it from the Do Not Call list tab to let it back in.)
+async function rememberDeleted(env, ids, by) {
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90);
+    const leads = await all(env, `SELECT id, business, phone, phone_digits, website, city, zip, state, dnc FROM leads WHERE id IN (${part.map(() => '?').join(',')})`, ...part);
+    await suppressMany(env, leads.filter((l) => l.dnc), 'dnc', { by, source: 'delete', note: 'Deleted while on do not call' });
+    await suppressMany(env, leads.filter((l) => !l.dnc), 'deleted', { by, source: 'delete' });
+  }
+}
 route('DELETE', '/api/leads/:id', async ({ env, user, params }) => {
   requireStaff(user);
+  await rememberDeleted(env, [params.id], user.id);
   await batch(env, [['DELETE FROM activities WHERE lead_id = ?', params.id], ['DELETE FROM leads WHERE id = ?', params.id]]);
   return json({ ok: true });
 });
@@ -450,6 +482,8 @@ export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activ
     Object.assign(set, rescore({ ...l, ...set }));
   }
   await updateLead(env, l.id, set);
+  // Bad number, phone menu, dead lead and do not call go on the Do Not Call list (it keeps working after the lead is deleted).
+  if (d.acts !== 'none') await noteOutcome(env, { ...l, ...set }, d.acts, { by, note }).catch((e) => console.error('suppress outcome', e.message));
   // Attach to this call, or the most recent unlabeled call on the lead in the last hour, so a dial counts once.
   const target = activityId ? { id: activityId }
     : await first(env, "SELECT id FROM activities WHERE lead_id = ? AND type IN ('call','manual_call') AND outcome IS NULL AND at > ? ORDER BY at DESC LIMIT 1", l.id, now() - 3600e3);
@@ -562,6 +596,7 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
     if (w.vals.length < 80) { dbSql = ` AND id IN (SELECT leads.id FROM ${DB_FROM} WHERE ${w.where})`; dbVals = w.vals; }
   }
   const rows = await all(env, `SELECT ${LIST_COLS} FROM leads WHERE dnc = 0 AND stage IN (${useStages.map(() => '?').join(',')})
+    AND ('p:' || phone_digits) NOT IN (SELECT key FROM suppressions WHERE blocks = 1 AND lifted_at IS NULL)
     AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL${dbSql} ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...useStages, t, ...dbVals);
   // Florida caps sales calls at 3 per person in 24 hours on the same subject (Fla. Stat. 501.616(6)): leads dialed 3 times since this time yesterday wait.
   const capped = new Set((await all(env, `SELECT lead_id FROM activities WHERE type IN ('call','manual_call') AND at > ? AND lead_id IS NOT NULL

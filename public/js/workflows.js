@@ -30,7 +30,7 @@ export const ACTIONS = [
     fields: [{ k: 'subject', label: 'Subject', type: 'text', max: 160 }, { k: 'body', label: 'Message', type: 'textarea', max: 4000 }] },
   { id: 'wait', label: 'Wait', group: 'Timing', icon: 'clock', help: 'Pauses this lead in the workflow.',
     fields: [{ k: 'amount', label: 'How long', type: 'number', min: 1, max: 365, def: 5 }, { k: 'unit', label: 'Unit', type: 'select', options: [['minutes', 'Minutes'], ['hours', 'Hours'], ['days', 'Days']], def: 'minutes' }] },
-  { id: 'condition', label: 'Continue only if', group: 'Timing', icon: 'check', help: 'Stops the workflow for this lead when the check is not true (GoHighLevel\'s If/Else with the No branch ending).',
+  { id: 'condition', label: 'Continue only if', group: 'Timing', icon: 'check', help: 'Stops the workflow for this lead when the check is not true.',
     fields: [{ k: 'check', label: 'Check', type: 'select', options: () => CHECKS.map((c) => [c.id, c.label]) }, { k: 'value', label: 'Value (when the check needs one)', type: 'text' }] },
   { id: 'task', label: 'Set a call task', group: 'Team', icon: 'phone', help: 'Puts the lead at the top of the dialer with a next step due in N minutes.',
     fields: [{ k: 'title', label: 'Next step', type: 'text', def: 'Call now (speed to lead)' }, { k: 'minutes', label: 'Due in minutes', type: 'number', min: 0, max: 10080, def: 5 }] },

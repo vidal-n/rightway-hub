@@ -135,7 +135,8 @@ route('GET', '/api/leaddb/health', async ({ env, user }) => {
       SUM(CASE WHEN dnc = 1 THEN 1 ELSE 0 END) AS dnc,
       SUM(CASE WHEN COALESCE(scrubbed_at, created_at) < ? THEN 1 ELSE 0 END) AS stale
     FROM ${DB_FROM}`, t - 182 * 864e5);
-  return json({ health: h || {} });
+  const sup = await first(env, 'SELECT COUNT(DISTINCT grp) AS n FROM suppressions WHERE lifted_at IS NULL').catch(() => null);
+  return json({ health: { ...(h || {}), suppressed: sup?.n || 0 } });
 });
 
 // CSV of a search (owners: the whole list leaves the Hub).

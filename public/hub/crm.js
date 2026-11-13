@@ -667,8 +667,9 @@ export async function leadModal(id, onChange) {
       ${l.phone ? '<button class="btn btn-ghost" id="ltexts">Texts</button>' : ''}
       ${closer ? `<a class="btn btn-primary" href="#/present/lead/${esc(l.id)}" id="lpresent" title="Clean screen share view for this business">Present</a><button class="btn btn-ghost" id="lpack" title="Link to the free competitor analysis">Copy analysis link</button>` : ''}
       <button class="btn btn-ghost" id="ledit">Edit</button>
+      ${data.suppression ? '' : '<button class="btn btn-ghost" id="lsuppress" title="Keep this lead in the database but never call it again">Do not call list</button>'}
     </div></div>
-    ${l.dnc ? '<p class="badge bad" style="margin-bottom:12px">Do not call</p>' : ''}
+    ${data.suppression ? `<p class="row small" style="gap:8px;margin:0 0 12px;flex-wrap:wrap"><span class="badge bad">On the do not call list: ${esc(({ dnc: 'asked not to be called', registry: 'on a registry', dead: 'dead lead', bad_number: 'bad number', phone_menu: 'phone menu', deleted: 'kept out of scrapes' })[data.suppression.reason] || data.suppression.reason)}</span><a href="#/pipeline/suppression" class="small">See the list</a></p>` : l.dnc ? '<p class="badge bad" style="margin-bottom:12px">Do not call</p>' : ''}
     ${l.meet_at && l.meet_at > Date.now() - 2 * 3600e3 ? `<div class="card meet-card"><b>Audit meeting ${esc(bothTimes(l.meet_at, validZone(l.timezone) || yourZone(), yourZone()))}</b>
       ${l.meet_link ? `<a class="btn btn-mint btn-sm" href="${esc(l.meet_link)}" target="_blank" rel="noopener">Join Google Meet</a>` : ''}${closer ? `<a class="btn btn-primary btn-sm" href="/present.html#${esc(l.id)}" target="_blank" rel="noopener">Open presentation</a>` : ''}</div>` : ''}
     <div class="card" id="lprep" style="box-shadow:none;margin-bottom:16px"></div>
@@ -777,6 +778,7 @@ export async function leadModal(id, onChange) {
   if (l.email) import('./gstate.js').then((g) => g.hasGoogle('mail')).then((gm) => import(gm ? './mail.js' : './hubmail.js')).then((x) => x.mailWith($('#lmail', m.el), l.email, { name: l.contact_name || l.business })).catch(() => {});
   $('#lpack', m.el)?.addEventListener('click', async (e) => { busy(e.currentTarget, true, 'Making'); try { const r = await api(`/api/leads/${l.id}/pack`, { method: 'POST', body: {} }); copy(r.link, 'Analysis link copied'); } catch (err) { toast(err.message, true); } busy(e.currentTarget, false); });
   $('#ledit', m.el).addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); });
+  $('#lsuppress', m.el)?.addEventListener('click', () => import('./suppress.js').then((x) => x.addModal({ leadId: l.id, business: l.business, phone: l.phone }, () => { m.close(); onChange?.(); })));
   $$('[data-out]', m.el).forEach((b) => b.addEventListener('click', async () => {
     const outcome = b.dataset.out;
     const acts = dispoOf(outcome).acts;
@@ -1005,7 +1007,7 @@ function importModal(onDone) {
       }
       const r = await api('/api/leads/import', { method: 'POST', body: { rows: rowsOut, source: 'import', tags: $('#csvtag', m.el).value } });
       const sb = r.skippedBy || {};
-      const why = [['phone', 'same phone'], ['website', 'same website'], ['name', 'same name and area'], ['dnc', 'do not call'], ['invalid', 'no phone or email']].filter(([k]) => sb[k]).map(([k, n]) => `${sb[k]} ${n}`).join(', ');
+      const why = [['phone', 'same phone'], ['website', 'same website'], ['name', 'same name and area'], ['dnc', 'do not call'], ['suppressed', 'on the do not call list'], ['invalid', 'no phone or email']].filter(([k]) => sb[k]).map(([k, n]) => `${sb[k]} ${n}`).join(', ');
       m.el.innerHTML = `<div class="card-head"><h2>Import done</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div><p><b>${r.imported}</b> new leads added. ${fileDupes ? `${fileDupes} duplicate${fileDupes === 1 ? '' : 's'} inside the file removed. ` : ''}${dropped ? `${dropped} left out because no phone number could be confirmed on their website. ` : ''}${r.skipped ? `${r.skipped} skipped: ${esc(why)}.` : 'Nothing skipped.'}${r.scrubbed ? ` ${r.scrubbed} scrubbed out (bad or toll free numbers).` : ''}</p>
         <p class="small">Every new lead is now researched in the background (Google profile, map ranks, website, speed), scored and sorted into the dialer's Hot, Good, Maybe and Low queues.</p>
         <p class="small">Every lead is scored. Open the List view and sort by grade, or research them for full scores and pitch notes.</p>`;

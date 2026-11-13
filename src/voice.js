@@ -16,6 +16,7 @@ import { resolveDispo } from './dispo.js';
 import { route } from './router.js';
 import { twilioReady, verifiedParams, twiml, xml, pickFrom, manualTarget, ownedNumbers, resetNumberCache } from './calls.js';
 import { trackingSet } from './calltrack.js';
+import { guardLead, blockedFor } from './suppress.js';
 
 const enc = new TextEncoder();
 const b64url = (u8) => btoa(String.fromCharCode(...u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -123,6 +124,7 @@ route('POST', '/api/voice/prepare', async ({ env, user, body }) => {
     const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', b.leadId);
     if (!lead) throw new HttpError('Lead not found.', 404);
     if (lead.dnc) throw new HttpError('This lead is on Do Not Call.', 409);
+    await guardLead(env, lead); // the Do Not Call list (bad numbers, phone menus, dead leads, registry), src/suppress.js
     const to = e164(lead.phone);
     if (!to) throw new HttpError('This lead has no valid phone number.');
     if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError(lead.state === 'MD' ? "Maryland allows sales calls 9am to 8pm only. Call later." : "It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
@@ -183,8 +185,8 @@ route('POST', '/api/twilio/client-voice', async ({ env, request, url }) => {
   if (!a || a.status !== 'ready' || !a.to_num || now() - a.at > PREP_WINDOW) return no('This call could not be placed. Try again from the Hub.');
   if (String(p.From || '') !== `client:${identityFor(a.by)}`) return no('This call could not be placed.');
   if (a.lead_id) {
-    const lead = await first(env, 'SELECT dnc FROM leads WHERE id = ?', a.lead_id);
-    if (lead?.dnc) return no('This number is on Do Not Call.');
+    const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', a.lead_id);
+    if (lead?.dnc || (lead && await blockedFor(env, lead))) return no('This number is on Do Not Call.');
   }
   await run(env, "UPDATE activities SET status = 'connecting', call_sid = ? WHERE id = ?", p.CallSid || null, a.id);
   const rec = (await recordingOn(env))

@@ -174,7 +174,7 @@ route('GET', '/api/finder/jobs/:id/results', async ({ env, user, params, url }) 
   const results = rows.map((r) => {
     const rec = parse(r.data, {});
     let st = r.state, leadId = r.lead_id || null;
-    if (st === 'new') { const hit = dupKeys(dupShape(rec)).find((k) => keys.has(k)); if (hit) { st = keys.get(hit)?.dnc ? 'dnc' : 'inhub'; leadId = keys.get(hit)?.id || null; } }
+    if (st === 'new') { const hit = dupKeys(dupShape(rec)).find((k) => keys.has(k)); if (hit) { const k = keys.get(hit); st = k?.dnc ? 'dnc' : k?.supp ? 'blocked' : 'inhub'; leadId = k?.id || null; } }
     return { key: r.rkey, ...rec, st, lead_id: leadId };
   });
   // What the background scrub found for the ones already in the Hub: emails, owner, phone type, socials.
@@ -198,10 +198,10 @@ export async function addToPipeline(env, job, rows, by, { tag } = {}) {
   const out = await importLeads(env, { id: by }, recs.map(({ rec }) => leadRow(rec)), { source: 'Lead finder', tags: tag || job.tag || job.name, merge: false });
   const ops = out.rows.map((o, i) => (o.id
     ? ["UPDATE finder_results SET state = 'added', lead_id = ? WHERE job_id = ? AND rkey = ?", o.id, job.id, recs[i].key]
-    : ['UPDATE finder_results SET state = ?, lead_id = ? WHERE job_id = ? AND rkey = ?', o.skipped === 'dnc' ? 'dnc' : o.skipped === 'invalid' ? 'nophone' : 'inhub', o.lead_id || null, job.id, recs[i].key]));
+    : ['UPDATE finder_results SET state = ?, lead_id = ? WHERE job_id = ? AND rkey = ?', o.skipped === 'dnc' ? 'dnc' : o.skipped === 'suppressed' ? 'blocked' : o.skipped === 'invalid' ? 'nophone' : 'inhub', o.lead_id || null, job.id, recs[i].key]));
   for (let i = 0; i < ops.length; i += 100) await batch(env, ops.slice(i, i + 100));
   await run(env, 'UPDATE finder_jobs SET added = added + ?, updated_at = ? WHERE id = ?', out.imported, now(), job.id);
-  const st = (o) => (o.id ? 'added' : o.skipped === 'dnc' ? 'dnc' : o.skipped === 'invalid' ? 'nophone' : 'inhub');
+  const st = (o) => (o.id ? 'added' : o.skipped === 'dnc' ? 'dnc' : o.skipped === 'suppressed' ? 'blocked' : o.skipped === 'invalid' ? 'nophone' : 'inhub');
   out.byKey = Object.fromEntries(out.rows.map((o, i) => [recs[i].key, { st: st(o), lead_id: o.id || o.lead_id || null }]));
   return out;
 }
@@ -225,7 +225,7 @@ route('POST', '/api/finder/jobs/:id/add', async ({ env, user, params, body }) =>
     rows = page.filter((r) => r.state === 'new' && passes(parse(r.data, {}), f));
     if (!rows.length && !next) throw new HttpError('Nothing to add. These are already in the Hub, or none match the filters.');
   }
-  const out = { imported: 0, skipped: 0, scrubbed: 0, skippedBy: { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0 }, results: {} };
+  const out = { imported: 0, skipped: 0, scrubbed: 0, skippedBy: { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0, suppressed: 0 }, results: {} };
   for (let i = 0; i < rows.length; i += 25) {
     const r = await addToPipeline(env, job, rows.slice(i, i + 25), user.id, { tag: text(b.tag, 60) });
     out.imported += r.imported; out.skipped += r.skipped; out.scrubbed += r.scrubbed;
