@@ -7,12 +7,13 @@ import { route } from './router.js';
 import { getDispos } from './dispo.js';
 import { STATUS_KEYS, callStats, statusTime } from '../public/js/callstats.js';
 import { dayStart, TZ } from './day.js';
+import { dtf } from '../public/js/fmtcache.js';
 
 const STALE = 150e3; // no heartbeat for 2.5 minutes = not in the Hub
 const LIVE = ['ready', 'connecting', 'ringing', 'in-progress', 'ringing_you'];
 
 export { dayStart };
-const hourIn = (t, tz = TZ) => Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' }).format(new Date(t)));
+const hourIn = (t, tz = TZ) => Number(dtf('en-US', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' }).format(new Date(t)));
 
 // The primary owner: the first owner account (the one that set the Hub up).
 export async function isPrimary(env, user) {
@@ -137,7 +138,7 @@ route('GET', '/api/analytics/calls', async ({ env, user, url }) => {
       SUM(CASE WHEN stage = 'audit_booked' THEN 1 ELSE 0 END) AS booked, ROUND(AVG(score)) AS score
     FROM leads GROUP BY 1, 2 ORDER BY total DESC LIMIT 200`);
   // Day by day trend and the full funnel: dials to contacts to conversations to booked to signed to paid.
-  const dayKey = (t) => new Date(t).toLocaleDateString('en-CA', { timeZone: TZ });
+  const dayKey = (t) => dtf('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(t);
   const daily = new Map();
   for (let d = from; d <= t; d += 864e5) daily.set(dayKey(d), { day: dayKey(d), dials: 0, contacts: 0, booked: 0, talk: 0 });
   const { isOutbound, isConnect, isBooked, talkSecs } = await import('../public/js/callstats.js');

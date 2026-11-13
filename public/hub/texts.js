@@ -54,7 +54,7 @@ export function textPanel(el, lead, { rep = '', onChange } = {}) {
     });
   };
   load(false);
-  timer = setInterval(() => load(true), 8000);
+  timer = setInterval(() => { if (!document.hidden) load(true); }, 8000);
   return () => { alive = false; clearInterval(timer); };
 }
 

@@ -24,7 +24,7 @@
   // Keep variables and secrets added in the Cloudflare dashboard when deploying from GitHub.
   "keep_vars": true,
   // Copies Build secrets into the Worker (see scripts/bake-secrets.mjs).
-  "build": { "command": "node scripts/bake-secrets.mjs" }
+  "build": { "command": "node scripts/bake-secrets.mjs && node scripts/stamp-sw.mjs" }
   // Secrets (set in the Cloudflare dashboard, never in this file):
   //   DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD, ACCESS_KEY, PAGESPEED_KEY (optional)
 }

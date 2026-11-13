@@ -2893,25 +2893,6 @@ body.pdx .callscript { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .hub { transition: none; } }
 
-/* Phone menu: Zoom Phone style left menu (History, Texts, Keypad, More). Top row on the Dialer page and on phones. */
-.ph-nav { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-bottom: 14px; align-items: center; }
-.ph-i { display: inline-flex; align-items: center; gap: 9px; padding: 8px 12px; border-radius: 10px; border: 1px solid transparent; background: none; color: var(--ink); font: 600 14px var(--body); text-decoration: none; cursor: pointer; white-space: nowrap; }
-.ph-i svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
-.ph-i:hover { background: var(--surface-2); }
-.ph-i.is-active { background: var(--mint-soft, #E6F8F0); border-color: color-mix(in srgb, var(--mint-strong, #23B07E) 40%, transparent); }
-.ph-i.is-active svg { color: var(--accent, #0A6B4C); }
-.ph-i .nbadge[hidden] { display: none; }
-.ph-nav .ph-sep { font: 600 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 4px 0 10px; }
-.ph-mic { margin-left: auto; border-color: var(--line); background: var(--card, var(--surface)); }
-@media (min-width: 901px) {
-  #view:has(> .ph-nav:not(.ph-top)) { display: grid; grid-template-columns: 196px minmax(0, 1fr); column-gap: 22px; align-content: start; }
-  #view:has(> .ph-nav:not(.ph-top)) > * { grid-column: 2; min-width: 0; }
-  #view:has(> .ph-nav:not(.ph-top)) > .ph-nav { grid-column: 1; grid-row: 1 / span 40; flex-direction: column; flex-wrap: nowrap; align-items: stretch; align-self: start; position: sticky; top: 0; gap: 2px; margin: 0; padding: 4px 0; }
-  .ph-nav:not(.ph-top) .ph-nav .ph-sep { margin: 16px 10px 4px; }
-  .ph-nav:not(.ph-top) .ph-mic { margin: 14px 0 0; justify-content: flex-start; }
-  .ph-nav:not(.ph-top) .ph-i .nbadge { margin-left: auto; }
-}
-
 /* Phone History and Texts workspace (Zoom Phone style): list on the left, details beside it */
 .ph-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 12px; }
 .ph-sub a { padding: 6px 12px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: 600 13px var(--body); text-decoration: none; display: inline-flex; gap: 6px; align-items: center; }
@@ -2958,14 +2939,13 @@ body.pdx .callscript { display: none; }
 .ph-empty { border: 1px dashed var(--line); border-radius: 14px; padding: 40px 20px; text-align: center; color: var(--muted); }
 .ph-detail #tthread { min-width: 0; }
 .ph-detail .thread { max-height: 46vh; overflow-y: auto; }
-.ph-d { display: contents; }
-.ph-m { display: none; }
-@media (max-width: 900px) {
-  .ph-nav .ph-d { display: none; }
-  .ph-m { display: block; }
-  .ph-m > summary { list-style: none; } .ph-m > summary::-webkit-details-marker { display: none; }
-  .ph-m[open] > summary { background: var(--surface-2); }
-  .ph-mgrp { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; width: calc(100vw - 32px); }
-  .ph-nav .ph-i { padding: 8px 10px; }
-}
-@media (min-width: 901px) { .ph-nav .ph-grp { display: contents; } }
+
+/* Phone: the original top tabs stay; Keypad, History and Texts get a small sub menu under them (Zoom Phone style). */
+.ph-menu { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 14px; }
+.ph-menu a { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); font: 600 13.5px var(--body, inherit); text-decoration: none; }
+.ph-menu a svg { width: 17px; height: 17px; color: var(--muted); flex: none; }
+.ph-menu a:hover { background: var(--surface); }
+.ph-menu a.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.ph-menu a.is-active svg { color: var(--mint, #9DEBCB); }
+.ph-menu .nbadge[hidden] { display: none; }
+

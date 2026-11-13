@@ -122,7 +122,8 @@ async function route() {
     const sub = parts[0] === 'inbox' ? (parts[1] === 'calls' ? 'calls' : 'texts') : parts[1] || '';
     if (sub === 'out') return dialOutPage(app, u);
     if (sub === 'recordings') return recordingsPage(app, u);
-    if (sub === 'live') { location.replace('#/agents'); return; }
+    if (sub === 'live') { location.replace('#/phone/agents'); return; }
+    if (sub === 'agents') return import('./agents.js').then((m) => m.agentsPage(app, u, '', true));
     if (sub === 'setup') return phoneSetupPage(app, u);
     if (sub === 'line') return import('./lines.js').then((m) => m.linesPage(app, u));
     if (sub === 'meet') return import('./meet.js').then((m) => m.meetPage(app, u));

@@ -7,6 +7,7 @@ import { joinCall, onPhoneState, phoneState, pretty } from './phone.js';
 import { STATUSES, statusLabel, statusTone, statusesFor, clock, pct } from '/js/callstats.js';
 import { lineChart, barChart, legend } from '/js/charts.js';
 import { avatarUrl } from './avatar.js';
+import { dialTabs } from './dialout.js';
 
 const TONE_COLOR = { good: '#23B07E', warn: '#E8A33D', info: '#4E7FD8', gray: '#9AA8A2', live: '#D64545', maint: '#8B5CF6' };
 const stColor = (k) => TONE_COLOR[statusTone(k)] || '#9AA8A2';
@@ -15,13 +16,13 @@ const tabs = (active) => `<nav class="tabs"><a href="#/agents" class="${active =
 const setHtml = (el, html) => { if (!el || el.__h === html) return false; el.innerHTML = html; el.__h = html; return true; };
 const ago = (t) => { if (!t) return ''; const m = Math.floor((Date.now() - t) / 60e3); return m < 1 ? 'just now' : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`; };
 
-export async function agentsPage(app, user, sub) {
+export async function agentsPage(app, user, sub, inPhone = false) {
   if (sub === 'analytics') return analyticsPage(app, user);
   if (sub === 'sheet') return masterSheet(app, user);
-  const view = staffShell(app, user, 'agents');
-  view.innerHTML = `<div class="page-head"><div><p class="eyebrow">Team floor</p><h1>Agents</h1></div>
+  const view = staffShell(app, user, inPhone ? 'dialer' : 'agents');
+  view.innerHTML = `<div class="page-head"><div><p class="eyebrow">${inPhone ? 'Phone' : 'Team floor'}</p><h1>Agents</h1></div>
       <div class="seg" id="mine" aria-label="Your status">${statusesFor(user).map(([k, l]) => `<button type="button" data-st="${k}">${esc(l)}</button>`).join('')}</div></div>
-    ${tabs('board')}
+    ${inPhone ? `${dialTabs('agents', user)}<p class="small" style="margin:-4px 0 12px"><a href="#/agents/analytics">Call analytics</a> · <a href="#/agents/sheet">Master sheet</a></p>` : tabs('board')}
     <div class="stats" id="agtot"></div>
     <div class="legend" style="margin:-6px 0 14px">${[['on_call', 'On a call'], ...STATUSES.map(([k, l]) => [k, l])].map(([k, l]) => `<span><i class="dot ${statusTone(k)}"></i>${esc(l)}</span>`).join('')}
       ${user.role === 'admin' ? '<span style="display:inline"><b>Listen</b>: nobody hears you · <b>Whisper</b>: only the agent hears you · <b>Barge</b>: everyone hears you</span>' : ''}</div>
@@ -72,7 +73,7 @@ export async function agentsPage(app, user, sub) {
     }));
   };
   draw();
-  timer = setInterval(draw, 5000);
+  timer = setInterval(() => { if (!document.hidden) draw(); }, 5000);
   const off = onPhoneState(() => { if (!document.body.contains(view)) { off(); return; } draw(); });
 }
 

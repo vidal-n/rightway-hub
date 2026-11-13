@@ -142,8 +142,8 @@ route('GET', '/api/phone/history', async ({ env, user, url }) => {
   const f = url.searchParams.get('filter') || 'all';
   const rows = await all(env, `SELECT a.id, a.at, a.type, a.status, a.duration, a.to_num, a.from_num, a.by, a.dispo, a.body, a.vm_sid, a.vm_secs, a.seen_at, a.rec_sid, a.lead_id,
       l.business, l.contact_name, l.stage, l.email, l.phone AS lead_phone, u.name AS rep,
-      (SELECT COUNT(*) FROM activities o WHERE o.type IN ('call','manual_call') AND o.at > a.at AND o.status NOT IN ('inbound','missed','voicemail','inbound_answered','ready')
-        AND (o.lead_id = a.lead_id OR (a.from_num IS NOT NULL AND o.to_num = a.from_num))) AS called_back
+      CASE WHEN a.status IN ('missed','voicemail') THEN (SELECT COUNT(*) FROM activities o WHERE o.type IN ('call','manual_call') AND o.at > a.at AND o.status NOT IN ('inbound','missed','voicemail','inbound_answered','ready')
+        AND (o.lead_id = a.lead_id OR (a.from_num IS NOT NULL AND o.to_num = a.from_num))) ELSE 0 END AS called_back
     FROM activities a LEFT JOIN leads l ON l.id = a.lead_id LEFT JOIN users u ON u.id = a.by
     WHERE a.type IN ('call','manual_call') AND COALESCE(a.status, '') != 'ready' AND a.at > ? ORDER BY a.at DESC LIMIT 400`, now() - 60 * 864e5);
   const L = await import('./lines.js');

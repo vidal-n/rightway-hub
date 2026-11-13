@@ -93,7 +93,7 @@ export async function liveCallsPage(app, user) {
     }));
   };
   draw();
-  timer = setInterval(draw, 3000);
+  timer = setInterval(() => { if (!document.hidden) draw(); }, 3000);
   const off = onPhoneState(() => { if (!document.body.contains(view)) { off(); clearInterval(timer); return; } draw(); });
 }
 

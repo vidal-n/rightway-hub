@@ -23,13 +23,19 @@ function place() {
   let width, left;
   if (leftRoom >= 300) { width = Math.min(480, leftRoom - GAP); left = r.left - width - GAP; }
   else if (rightRoom >= 300) { width = Math.min(480, rightRoom - GAP); left = r.right + GAP; }
-  else { pane.style.display = 'none'; raf = requestAnimationFrame(place); return; }
-  pane.style.display = '';
+  else { pane.style.display = 'none'; pane.__k = ''; raf = requestAnimationFrame(place); return; }
   const top = Math.max(8, r.top);
-  pane.style.left = `${Math.round(left)}px`;
-  pane.style.width = `${Math.round(width)}px`;
-  pane.style.top = `${Math.round(top)}px`;
-  pane.style.height = `${Math.round(Math.max(380, Math.min(r.height, window.innerHeight - top - 12)))}px`;
+  const h = Math.round(Math.max(380, Math.min(r.height, window.innerHeight - top - 12)));
+  const key = `${Math.round(left)}|${Math.round(width)}|${Math.round(top)}|${h}`;
+  // Only touch the page when the call window moved (writing styles every frame forced a layout 60 times a second).
+  if (pane.__k !== key) {
+    pane.__k = key;
+    pane.style.display = '';
+    pane.style.left = `${Math.round(left)}px`;
+    pane.style.width = `${Math.round(width)}px`;
+    pane.style.top = `${Math.round(top)}px`;
+    pane.style.height = `${h}px`;
+  }
   raf = requestAnimationFrame(place);
 }
 

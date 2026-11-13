@@ -11,6 +11,7 @@ import { resolveDispo } from './dispo.js';
 import { notifyLater } from './notify.js';
 import { dialGoalOf } from './avail.js';
 import { dayFrom } from './day.js';
+import { dtf } from '../public/js/fmtcache.js';
 import { autoChatFor } from './chat.js';
 import { can } from '../public/js/jobs.js';
 import { cleanNewLead, queueScrub } from './scrub.js';
@@ -37,11 +38,11 @@ export function timezoneFor(state) {
 }
 export function localHour(tz, at = Date.now()) {
   try {
-    return Number(new Intl.DateTimeFormat('en-US', { timeZone: tz || 'America/New_York', hour: 'numeric', hourCycle: 'h23' }).format(at));
+    return Number(dtf('en-US', { timeZone: tz || 'America/New_York', hour: 'numeric', hourCycle: 'h23' }).format(at));
   } catch { return null; }
 }
 export function localTime(tz, at = Date.now()) {
-  try { return new Intl.DateTimeFormat('en-US', { timeZone: tz || 'America/New_York', hour: 'numeric', minute: '2-digit' }).format(at); } catch { return ''; }
+  try { return dtf('en-US', { timeZone: tz || 'America/New_York', hour: 'numeric', minute: '2-digit' }).format(at); } catch { return ''; }
 }
 // Calls are allowed 8am to 8pm in the lead's time zone (TCPA hours). `alt` is a second possible zone (both must be inside).
 // No zone at all means only the window that is safe from Miami to Seattle (11am to 8pm Eastern).
@@ -521,21 +522,32 @@ route('POST', '/api/leads/:id/convert', async ({ env, user, params, body }) => {
 });
 
 // The call queue: who to call right now, in order.
+// The full lead rows (everything but the big research JSON, which decorate drops anyway) for a short list of already decorated leads, same order.
+// D1 allows 100 bound values per statement, so ids are read 90 at a time.
+async function fullRows(env, list, user) {
+  const byId = new Map();
+  for (let i = 0; i < list.length; i += 90) {
+    const ids = list.slice(i, i + 90).map((l) => l.id);
+    for (const r of await all(env, `SELECT * FROM leads WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids)) byId.set(r.id, r);
+  }
+  return list.map((l) => (byId.has(l.id) ? seeAppt(decorate(byId.get(l.id)), user) : l));
+}
 route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   requireStaff(user);
   const t = now();
   // `stage` (a Pipeline column, or several joined by commas) narrows the queue to those stages. Only stages that can be called count.
   const stages = (url.searchParams.get('stage') || '').split(',').map((x) => x.trim()).filter((x) => CALLABLE.includes(x));
   const useStages = stages.length ? stages : CALLABLE;
-  const rows = await all(env, `SELECT * FROM leads WHERE dnc = 0 AND stage IN (${useStages.map(() => '?').join(',')})
+  // Light columns only for the sort, the filters and the counts (full rows carry big research JSON). The few rows sent back are read in full below.
+  const rows = await all(env, `SELECT ${LIST_COLS} FROM leads WHERE dnc = 0 AND stage IN (${useStages.map(() => '?').join(',')})
     AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...useStages, t);
   const priority = { callback: 0, audit_requested: 1, no_show: 2, follow_up: 3, new: 4, attempting: 5, not_now: 6 };
   const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier', 'data', 'cat'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
   const minScore = Number(url.searchParams.get('minScore')) || 0;
   const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
-  const ready = rows
-    .filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3))
-    .map((l) => seeAppt(decorate(l), user))
+  const decorated = rows.filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3)).map(decorate); // once per lead: tiers and the queue share it
+  const ready = decorated
+    .map((l) => seeAppt(l, user))
     .filter((l) => (!f.tz || f.tz.split(',').includes(l.tz_short)) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())
       && has(`${l.industry} ${l.category}`, f.industry) && has(l.tags, f.tag) && has(l.city, f.city) && (l.score || 0) >= minScore)
     .filter((l) => !f.tier || tierOf(l) === f.tier)
@@ -546,14 +558,16 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   // Sub queues by lead quality, counted on everything callable now (ignores the tier filter so the tabs always show their size).
   const tiers = { hot: 0, good: 0, maybe: 0, low: 0, fresh: 0 };
   const cats = {};
-  for (const l of rows) { if (!(l.last_call_at && t - l.last_call_at < 3 * 3600e3)) { const d = decorate(l); if (d.callable_now) { tiers[tierOf(d)]++; const c = callCategory(d).id; cats[c] = (cats[c] || 0) + 1; } } }
+  for (const d of decorated) { if (d.callable_now) { tiers[tierOf(d)]++; const c = callCategory(d).id; cats[c] = (cats[c] || 0) + 1; } }
   const later = ready.length - now_.length;
   // `count=1`: only how many are callable right now (the "pick up where you left off" prompt), no lead rows.
   if (url.searchParams.get('count')) return json({ count: now_.length });
   const dayBegin = dayFrom(url.searchParams.get('since'));
   const stats = await first(env, `SELECT SUM(type = 'call') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
       FROM activities WHERE type IN ('call','meeting') AND by = ? AND at >= ?`, user.id, dayBegin);
-  return json({ queue: now_.slice(0, Number(url.searchParams.get('limit')) || 50), waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0, goal: await dialGoalOf(env, user.id) }, tiers, cats });
+  const page = now_.slice(0, Number(url.searchParams.get('limit')) || 50);
+  const queue = await fullRows(env, page, user);
+  return json({ queue, waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0, goal: await dialGoalOf(env, user.id) }, tiers, cats });
 });
 // Where this person left off, from the server so it works on any device and with no local record: their last call (business and
 // time) and how many calls they made in the last 12 hours. Modeled on the resume prompts in Close.com and Outreach dialers.

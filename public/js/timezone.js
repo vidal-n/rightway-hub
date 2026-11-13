@@ -4,6 +4,8 @@
 // A lead with `alt` is only callable when BOTH zones are inside calling hours. A lead with no zone at all is only callable
 // in the window that is safe for the whole lower 48 (11am to 8pm Eastern). Results near a zone line are approximate on purpose.
 
+import { dtf } from './fmtcache.js';
+
 export const ZONES = { ET: 'America/New_York', CT: 'America/Chicago', MT: 'America/Denver', AZ: 'America/Phoenix', PT: 'America/Los_Angeles', AK: 'America/Anchorage', HI: 'Pacific/Honolulu' };
 export const ZONE_SHORT = Object.fromEntries(Object.entries(ZONES).map(([k, v]) => [v, k]));
 
@@ -184,7 +186,7 @@ export function resolveZone(l = {}) {
 }
 
 const hourIn = (tz, at) => {
-  try { return Number(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(at)); } catch { return null; }
+  try { return Number(dtf('en-US', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(at)); } catch { return null; }
 };
 const inside = (h) => h != null && h >= 8 && h < 20;
 

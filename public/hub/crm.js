@@ -1361,6 +1361,7 @@ export async function dialerPage(app, user) {
   };
   const rsTick = async () => {
     if (!document.body.contains(view)) return clearInterval(rsTimer);
+    if (document.hidden) return;
     try { rs = await api('/api/research/status'); paintResearch(); if (rs.on && rs.connected && rs.left && rs.done < rs.cap) await api('/api/research/tick', { method: 'POST' }); } catch { /* ignore */ }
     api('/api/scrub/tick', { method: 'POST' }).catch(() => {});
   };

@@ -14,7 +14,18 @@ export class ApiError extends Error {
 
 // Client view: when set, every request is made as that client sees it (read only on the server).
 export const VIEW = { as: null };
-export async function api(path, { method = 'GET', body, form } = {}) {
+// Status endpoints that several parts of a page ask for at the same moment share one request while it is in flight.
+const SHARE = /^\/api\/(me|me\/nav|auth\/state|research\/status|balances\/status|badges|me\/training|dispositions|google\/status)(\?|$)/;
+const inflight = new Map();
+export function api(path, opts = {}) {
+  if ((opts.method || 'GET') !== 'GET' || !SHARE.test(path)) return apiCall(path, opts);
+  const k = `${VIEW.as || ''}|${path}`;
+  if (inflight.has(k)) return inflight.get(k);
+  const p = apiCall(path, opts).finally(() => inflight.delete(k));
+  inflight.set(k, p);
+  return p;
+}
+async function apiCall(path, { method = 'GET', body, form } = {}) {
   const headers = { 'x-rw': '1' };
   if (VIEW.as) headers['x-view-as'] = VIEW.as;
   let payload;

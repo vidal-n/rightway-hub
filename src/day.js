@@ -1,10 +1,11 @@
 // "Today" for the team. The Worker runs in UTC, so a plain midnight would end the day at 7 pm in New York
 // and a rep's evening dials would vanish from the counters. Pure, so tests can use it.
+import { dtf } from '../public/js/fmtcache.js';
 export const TZ = 'America/New_York';
 
 // Midnight in a time zone (New York unless told otherwise), as a timestamp.
 export function dayStart(t = Date.now(), tz = TZ) {
-  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+  const p = Object.fromEntries(dtf('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
     .formatToParts(new Date(t)).map((x) => [x.type, x.value]));
   const sinceMidnight = ((+p.hour * 60 + +p.minute) * 60 + +p.second) * 1000 + (t % 1000);
   return t - sinceMidnight;
@@ -19,4 +20,4 @@ export function dayFrom(raw, t = Date.now(), tz = TZ) {
 }
 
 // Today's date as YYYY-MM-DD in New York (task due dates are plain dates, so "due today" must use the team's day, not UTC's).
-export const dayKey = (t = Date.now(), tz = TZ) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t));
+export const dayKey = (t = Date.now(), tz = TZ) => dtf('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t));
