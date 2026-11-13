@@ -548,6 +548,8 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const cats = {};
   for (const l of rows) { if (!(l.last_call_at && t - l.last_call_at < 3 * 3600e3)) { const d = decorate(l); if (d.callable_now) { tiers[tierOf(d)]++; const c = callCategory(d).id; cats[c] = (cats[c] || 0) + 1; } } }
   const later = ready.length - now_.length;
+  // `count=1`: only how many are callable right now (the "pick up where you left off" prompt), no lead rows.
+  if (url.searchParams.get('count')) return json({ count: now_.length });
   const dayBegin = dayFrom(url.searchParams.get('since'));
   const stats = await first(env, `SELECT SUM(type = 'call') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
       FROM activities WHERE type IN ('call','meeting') AND by = ? AND at >= ?`, user.id, dayBegin);

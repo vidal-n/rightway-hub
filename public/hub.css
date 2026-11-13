@@ -2804,3 +2804,16 @@ html:not(.is-phone) .callbar[data-state="wrap"] { width: min(540px, calc(100vw -
 .callbar .cb-wrap.has-info > .dp-facts { display: none; }
 .callbar .cb-wrap.has-info textarea { height: 40px; }
 .callbar .cb-wrap.has-info > .dispo-when { margin-top: 6px !important; }
+
+/* Pick up where you left off (Nov 2026): strip on Dashboard, Phone and Pipeline, and the popup facts */
+.resume-strip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--mint-strong); background: var(--mint-soft); }
+.hub .vscroll > .resume-strip { margin: 12px 20px 0; }
+.resume-strip .rs-text { flex: 1 1 260px; min-width: 0; display: grid; gap: 2px; }
+.resume-strip .rs-text b { font: 700 14.5px var(--body); }
+.resume-strip .rs-text span { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.rs-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.rs-facts > div { padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); display: grid; gap: 2px; min-width: 0; }
+.rs-facts i { font-style: normal; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.rs-facts b { font: 700 15px var(--body); overflow-wrap: anywhere; }
+@media (max-width: 900px) { .hub .vscroll > .resume-strip { margin: 10px 14px 0; } }
+.modal.resume-modal { max-width: 560px; }

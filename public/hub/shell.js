@@ -160,6 +160,7 @@ export function staffShell(app, user, active, inner) {
   $$('[data-pbub]', app).forEach((b) => b.addEventListener('click', () => profileMenu(b, user, logout)));
   paintWallet(app);
   import('./tour.js').then((m) => m.maybeTour(user)).catch(() => {});
+  import('./resume.js').then((m) => { m.mountStrip(app, active); m.maybeResume(); }).catch(() => {});
   if (user.role === 'admin') import('./costhint.js').then((m) => m.startCostHints()).catch(() => {});
   if (user.role === 'admin' && !window.__rwMt) { window.__rwMt = 1; api('/api/auth/state').then((st) => paintMaint(st.maintenance?.on)).catch(() => {}); }
   // Ask Claude, owners only for now: bottom right on every page. On a client page it knows that client.

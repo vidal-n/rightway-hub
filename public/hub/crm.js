@@ -5,6 +5,7 @@ import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } f
 import { textModal } from './texts.js';
 import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
 import { loadDispos, keyed, dispositionModal, isoWhen } from './dispo.js';
+import { saveDial } from './resume.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { hoverCards, hoverHtml } from './hovercard.js';
@@ -1049,7 +1050,7 @@ export async function dialerPage(app, user) {
     }
     if (!on) shut?.remove();
   };
-  const powerStop = () => { power = false; dropMic(); clearInterval(pdTimer); if (phase === 'countdown') phase = 'idle'; if (pdBox) { leaving(pdBox); pdBox.remove(); } pdBox = null; setPdx(); const b = document.getElementById('pdgo'); if (b) b.textContent = 'Start power dial'; };
+  const powerStop = () => { if (power && !testMode) saveDial({ running: false }); power = false; dropMic(); clearInterval(pdTimer); if (phase === 'countdown') phase = 'idle'; if (pdBox) { leaving(pdBox); pdBox.remove(); } pdBox = null; setPdx(); const b = document.getElementById('pdgo'); if (b) b.textContent = 'Start power dial'; };
   // Leaving the dialer pauses power dialing instead of ending it: a chip waits in the tray, one click comes back and carries on.
   window.addEventListener('hashchange', () => {
     if (!power) return;
@@ -1126,6 +1127,7 @@ export async function dialerPage(app, user) {
     if (busyPhase()) return;
     if (!btn || btn.disabled) { toast('The browser phone is not ready. Check Phone setup.', true); return powerStop(); }
     pdCalls++;
+    { const cur = q.queue[idx]; if (!testMode && cur) saveDial({ calls: pdCalls, running: true, last: { id: cur.id, business: cur.business, at: Date.now() } }); }
     // One window: the countdown box goes away while the call window is up, so only one clock runs on screen.
     clearInterval(pdTimer);
     if (pdBox) { leaving(pdBox); pdBox.remove(); } pdBox = null;
@@ -1271,7 +1273,7 @@ export async function dialerPage(app, user) {
     $('#pdtestx', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
     $('#tsagain', view)?.addEventListener('click', () => startTest());
     $('#tsexit', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
-    $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); if (!testMode && !power) holdMic(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
+    $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); if (!testMode && !power) holdMic(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); if (!testMode) saveDial({ start: true, running: true, filter: flt, label: filterText, calls: pdCalls }); window.dispatchEvent(new Event('rw-power')); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
     prefetch(l);
@@ -1380,7 +1382,10 @@ export async function dialerPage(app, user) {
   // Training, Warm up starts the pretend dialer straight away.
   let warm = false;
   try { warm = sessionStorage.getItem('rw-warmup') === '1'; sessionStorage.removeItem('rw-warmup'); } catch { /* ignore */ }
-  if (warm) startTest(); else render();
+  // Resume (popup, strip): the list was restored and the phone warmed inside the tap, so power dialing starts by itself.
+  let autoGo = false;
+  try { autoGo = sessionStorage.getItem('rw-autostart') === '1'; sessionStorage.removeItem('rw-autostart'); } catch { /* ignore */ }
+  if (warm) startTest(); else { render(); if (autoGo) setTimeout(() => { const b = $('#pdgo', view); if (b && !power && document.body.contains(view)) b.click(); }, 250); }
 }
 
 // ---------- settings ----------
