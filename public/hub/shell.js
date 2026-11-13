@@ -223,11 +223,13 @@ function profileMenu(b, user, logout) {
     ${user.avatar_at ? `<button type="button" data-pm="nophoto" role="menuitem">${icon.trash}Remove photo</button>` : ''}
     ${user.role === 'admin' ? `<a href="#/settings/team" role="menuitem">${icon.users}Agents</a><button type="button" data-pm="mt" role="menuitem">${icon.cog}Maintenance mode</button>` : ''}
     <button type="button" data-pm="nav" role="menuitem">${icon.edit || icon.cog}Customize menu</button>
+    <button type="button" data-pm="screen" role="menuitem">${icon.cog}Screen check</button>
     <button type="button" data-pm="out" role="menuitem">${icon.close}Log out</button>`;
   document.body.appendChild(m);
   const close = () => { m.remove(); document.removeEventListener('click', close); };
   setTimeout(() => document.addEventListener('click', close), 0);
   m.querySelector('[data-pm="nav"]').onclick = () => { close(); customizeMenu(user, () => location.reload()); };
+  m.querySelector('[data-pm="screen"]').onclick = () => { close(); import('./screencheck.js').then((x) => x.screenCheck()); };
   m.querySelector('[data-pm="out"]').onclick = logout;
   import('./sound.js').then((snd) => {
     const st = m.querySelector('[data-sndstate]'); if (st) st.textContent = snd.soundOn() ? 'on' : 'off';

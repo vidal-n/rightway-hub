@@ -118,7 +118,7 @@ body.hubbg { background: var(--bg); background-image: none; }
 .hub .main .stat { border-radius: 12px; box-shadow: none; }
 .hub .main .stat[class*="tint-"] { background: var(--surface); border-color: var(--line); box-shadow: inset 4px 0 0 var(--wc); }
 .hub .main .stat[class*="tint-"] .stat-num { color: var(--ink); }
-.hub .main .stat.hero, .hub .main .tile.hero { background: var(--ink); color: #fff; }
+.hub .main .stat.hero, .hub .main .tile.hero { background: var(--fill); color: var(--on-fill); }
 .hub .main .card[class*="wc-"] { border-top: 0; box-shadow: inset 0 3px 0 var(--wc), var(--shadow); }
 .btn { border-radius: 10px; font-weight: 650; }
 .btn-sm { border-radius: 9px; }
@@ -145,8 +145,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
 
 /* Pipeline board stage tops keep their colours; chips get firmer. */
 .chip { border-color: var(--line-2); }
-.chip.on, .tz.is-on { background: var(--ink) !important; color: #fff !important; border-color: var(--ink) !important; }
-.chip.on b, .tz.is-on b { color: var(--mint) !important; }
+.chip.on, .tz.is-on { background: var(--sel) !important; color: var(--on-sel) !important; border-color: var(--sel) !important; }
+.chip.on b, .tz.is-on b { color: var(--on-sel) !important; opacity: .8; }
 
 /* Bottom bar on phones */
 @media (max-width: 900px) {
@@ -233,7 +233,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
 }
 
 /* Resume strip: a slim ink bar instead of a big mint box. */
-.hub .resume-strip { background: var(--ink); color: #E8F2ED; border: 0; border-radius: 12px; padding: 10px 12px 10px 16px; margin-bottom: 14px; box-shadow: none; }
+.hub .resume-strip { background: var(--fill); color: var(--on-fill); border: 0; border-radius: 12px; padding: 10px 12px 10px 16px; margin-bottom: 14px; box-shadow: none; }
 .hub .resume-strip .rs-text b { color: #fff; font: 700 15px var(--display); }
 .hub .resume-strip .rs-text span { color: #A9BDB4; }
 .hub .resume-strip .btn-primary, .hub .resume-strip .btn-mint { background: var(--mint); color: #0F1B17; }
@@ -271,7 +271,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
 .cv-row:hover { background: var(--surface-2); }
 .cv-row.is-open { background: var(--wsl); box-shadow: inset 3px 0 0 var(--wsc); }
 .cv-row.unread .cv-top b, .cv-row.unread .cv-prev { font-weight: 750; color: var(--ink); }
-.cv-av { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--ink); color: var(--mint); font: 700 14px var(--display); }
+.cv-av { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--fill); color: var(--mint); font: 700 14px var(--display); }
 .cv-av.big { width: 44px; height: 44px; }
 .cv-mid { display: grid; gap: 2px; min-width: 0; }
 .cv-top { display: flex; justify-content: space-between; gap: 8px; } .cv-top b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -297,7 +297,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
 .cvi p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .cvi.msg { padding: 9px 12px; border-radius: 16px; }
 .cvi.in { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 6px; }
-.cvi.out { align-self: flex-end; background: var(--ink); color: #EAF4EF; border-bottom-right-radius: 6px; }
+.cvi.out { align-self: flex-end; background: var(--fill); color: var(--on-fill); border-bottom-right-radius: 6px; }
 .cvi.out .cvi-meta { color: #9DB2A9; } .cvi.out.email { background: color-mix(in srgb, var(--ws-clients) 14%, var(--surface)); color: var(--ink); border: 1px solid color-mix(in srgb, var(--ws-clients) 30%, var(--line)); }
 .cvi.out.email .cvi-meta { color: var(--muted); }
 .cvi.event { align-self: center; max-width: 92%; display: flex; gap: 10px; align-items: center; font-size: 13px; color: var(--ink-2); background: var(--surface); border: 1px dashed var(--line-2); border-radius: 99px; padding: 5px 12px; }
@@ -347,7 +347,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
   box-shadow: 0 2px 0 rgba(15, 27, 23, .05); transition: transform .2s var(--spring), border-color .15s, box-shadow .15s; }
 .wfb-node:hover { border-color: var(--wsc); }
 .wfb-node.is-sel { border-color: var(--wsc); box-shadow: 0 0 0 4px color-mix(in srgb, var(--wsc) 18%, transparent); }
-.wfb-node.trig { flex-direction: column; align-items: flex-start; gap: 2px; background: var(--ink); color: #EAF4EF; border-color: var(--ink); }
+.wfb-node.trig { flex-direction: column; align-items: flex-start; gap: 2px; background: var(--fill); color: var(--on-fill); border-color: var(--fill); }
 .wfb-node.trig .wfb-kind { color: var(--mint); } .wfb-node.trig .muted { color: #9DB2A9 !important; }
 .wfb-node.dragging { opacity: .35; transform: scale(.97); }
 .wfb-node.fresh { animation: wfPop .45s var(--spring) both; }
@@ -378,7 +378,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
 @media (max-width: 760px) { .wfb-grid { grid-template-columns: 1fr; } .wfb-side { position: static; max-height: none; } .wfb-name { font-size: 18px; } }
 
 /* Swipe hint: the name of the tab the page is heading to, at the edge it comes from (public/hub/wsnav.js). */
-.swhint { position: fixed; top: 50%; z-index: 120; transform: translateY(-50%); padding: 8px 14px; border-radius: 99px; background: var(--ink); color: #fff; font: 650 14px var(--body);
+.swhint { position: fixed; top: 50%; z-index: 120; transform: translateY(-50%); padding: 8px 14px; border-radius: 99px; background: var(--fill); color: var(--on-fill); font: 650 14px var(--body);
   box-shadow: 0 10px 30px rgba(6, 14, 11, .3); pointer-events: none; opacity: 0; }
 .swhint[data-side=right] { right: 12px; } .swhint[data-side=left] { left: 12px; }
 .swhint.none { background: var(--surface); color: var(--muted); border: 1px solid var(--line); }
@@ -390,16 +390,28 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
 @media (max-width: 900px) { .cv { margin: 0; border-radius: var(--r); border: 1px solid var(--line); height: calc(100dvh - 200px - var(--sab)); } }
 .cv { grid-template-rows: minmax(0, 1fr); align-items: stretch; } .cv > .cv-list, .cv > .cv-thread { height: 100%; align-self: stretch; }
 
-/* ===== Home Screen frame (Nov 2026, V's iPhone screenshot: the menu bar floated about 54pt above the screen bottom with a dead strip under it) =====
-   On the iOS Home Screen app the layout viewport can end above the real screen bottom, and everything fixed to it (bottom menu, drawer, pop ups,
-   toasts) stopped short. index.html measures the real screen height (--rw-full). The page body becomes a fixed box of exactly that height; a transformed
-   box is the containing block for fixed children, so every fixed piece now sits against the real screen edges. Only when the script has measured, and only
-   on Hub pages (they never scroll the window; the client app and public pages keep normal scrolling). */
-html.ios-standalone[style*="--rw-full"] body:has(.hub) { position: fixed; top: 0; left: 0; right: 0; height: var(--rw-full); overflow: hidden; transform: translateZ(0); }
-html.ios-standalone[style*="--rw-full"] .hub { top: 0; bottom: 0; height: auto; }
+/* ===== Home Screen frame, v2 (Nov 2026, iOS 26 WebKit bug 301108; the stretch and transform hack of v1 is gone: WebKit does not draw fixed content past the short edge) =====
+   Fix 1: when the page is at least as tall as the screen, iOS gives it the full viewport and the fixed Hub frame reaches the bottom by itself. Standalone only.
+   min() keeps 100lvh from adding a scroll when the status bar is opaque (inset 0). Fix 2 (safety net): index.html sets html.rw-short when the layout still ends
+   short; the strip under the bar then takes the bar colour so it reads as part of it. */
+@media (display-mode: standalone) {
+  html:has(.hub) { min-height: min(100lvh, calc(100% + env(safe-area-inset-top, 0px))); }
+}
+html.rw-short:has(.hub) { background: var(--rail); }
 
 /* Do not call list legend (Nov 2026): one row per reason, the count on the right, tap to filter the table. */
 .sp-leg { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; min-width: 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 99px; background: var(--surface); color: var(--ink); font: 600 13.5px var(--body); text-align: left; cursor: pointer; }
 .sp-leg span { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sp-leg i { flex: none; width: 10px; height: 10px; border-radius: 50%; }
-.sp-leg.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.sp-leg.on { background: var(--sel); color: var(--on-sel); border-color: var(--sel); }
+
+/* Screen check (Nov 2026): the two lines and the number table. */
+.sc-marks { position: fixed; inset: 0; z-index: 2147483000; pointer-events: none; }
+.sc-line { position: absolute; left: 0; right: 0; height: 3px; }
+.sc-line b { position: absolute; right: 8px; top: -18px; padding: 1px 7px; border-radius: 6px; font: 700 11px var(--body); color: #fff; }
+.sc-line[style*="bottom:0"] b { top: auto; bottom: 4px; }
+.sc-wrap { max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+.sc-t { width: 100%; border-collapse: collapse; font: 500 12.5px var(--mono); }
+.sc-t th { text-align: left; padding: 5px 10px; color: var(--muted); font-weight: 500; white-space: nowrap; vertical-align: top; }
+.sc-t td { padding: 5px 10px; color: var(--ink); overflow-wrap: anywhere; }
+.sc-t tr + tr { border-top: 1px solid var(--line); }

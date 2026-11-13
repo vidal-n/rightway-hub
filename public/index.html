@@ -11,26 +11,33 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Rightway">
   <script>
-    // iOS Home Screen app: the page box can end short of the real screen bottom (the home bar strip). Measure the gap so the Hub frame
-    // can stretch over it and keep its controls clear of the home bar. The home bar itself is the system's; a web app cannot hide it.
+    // iOS Home Screen app (Nov 2026). iOS 26 has a WebKit bug (WebKit 301108): with viewport-fit=cover and the translucent status bar, the layout
+    // viewport ends one status bar height (47 to 62pt) above the real screen bottom, and WebKit stops DRAWING fixed content at that short edge
+    // (stretching the frame past it only cuts the bar off). Fix 1 is pure CSS (min-height on html, end of hub5.css) and keeps the full screen look.
+    // This script is the safety net: a fixed probe reports where the layout viewport really ends. If it is still short of the screen, the page says so
+    // (html.rw-short, --rw-gap), the bottom bar stops adding the home bar padding the short layout already clears, and the strip under it takes the bar colour.
+    // "Screen check" in the profile menu shows these numbers on the device.
     try {
       if (navigator.standalone) {
         var de = document.documentElement; de.classList.add('ios-standalone');
-        // The Home Screen app's layout viewport can end 20 to 60pt above the real screen bottom (iPhone and iPad). Everything fixed to the
-        // viewport (menu bar, drawer, pop ups) then stopped short with a dead strip under it. --rw-full is the real screen height: the Hub
-        // frame is sized to it and made the containing block for fixed pieces (see "Home Screen frame" at the end of hub5.css).
-        // --rw-gap is how far the viewport falls short; --sab keeps controls clear of the home bar (at most 34pt, the iPhone bar).
+        var probe = null;
         var fit = function () {
+          if (!document.body) return;
+          if (!probe) { probe = document.createElement('div'); probe.id = 'rw-probe'; probe.style.cssText = 'position:fixed;left:0;top:0;bottom:0;width:1px;visibility:hidden;pointer-events:none'; document.body.appendChild(probe); }
           var long = Math.max(screen.width, screen.height), short = Math.min(screen.width, screen.height);
           var full = innerWidth > innerHeight ? short : long;
-          var gap = Math.round(full - innerHeight);
-          // A windowed iPad or a keyboard is not the home bar strip: drop the numbers so the normal layout applies.
-          if (gap < 0 || gap > 120) { de.style.removeProperty('--rw-full'); de.style.removeProperty('--rw-gap'); de.style.removeProperty('--sab'); return; }
-          de.style.setProperty('--rw-full', full + 'px');
-          de.style.setProperty('--rw-gap', gap + 'px');
-          de.style.setProperty('--sab', 'max(env(safe-area-inset-bottom, 0px), ' + Math.min(gap, 34) + 'px)');
+          var gap = Math.round(full - probe.offsetHeight);
+          // A keyboard or a windowed iPad is not this bug: gap must be a status bar sized strip.
+          if (gap >= 8 && gap <= 120) {
+            de.classList.add('rw-short'); de.style.setProperty('--rw-gap', gap + 'px');
+            de.style.setProperty('--sab', 'max(0px, calc(env(safe-area-inset-bottom, 0px) - ' + gap + 'px))');
+          } else { de.classList.remove('rw-short'); de.style.removeProperty('--rw-gap'); de.style.removeProperty('--sab'); }
         };
-        fit(); addEventListener('resize', fit); addEventListener('orientationchange', function () { setTimeout(fit, 300); });
+        var later = function () { fit(); setTimeout(fit, 400); setTimeout(fit, 1500); };
+        document.addEventListener('DOMContentLoaded', later);
+        addEventListener('load', later); addEventListener('pageshow', later); addEventListener('resize', fit);
+        addEventListener('orientationchange', function () { setTimeout(fit, 300); });
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) later(); });
       }
     } catch (e) {}
   </script>

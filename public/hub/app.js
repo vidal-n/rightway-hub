@@ -207,5 +207,17 @@ async function boot() {
 }
 
 window.addEventListener('hashchange', () => (state.user || location.hash.startsWith('#/invite') ? route() : boot()));
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  // A new version used to need two launches: the new service worker installs while the old files are on screen. When it takes over, reload once,
+  // unless a call, a window or a field is in use (then the next launch picks it up).
+  const hadWorker = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadWorker) return;
+    try { if (sessionStorage.getItem('rw-sw-reload')) return; } catch {}
+    if (document.querySelector('.callbar, .pd, .modal-bg') || document.activeElement?.matches?.('input, textarea, select, [contenteditable]')) return;
+    try { sessionStorage.setItem('rw-sw-reload', '1'); } catch {}
+    location.reload();
+  });
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
 boot();
