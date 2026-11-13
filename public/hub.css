@@ -2730,3 +2730,19 @@ html:not(.is-phone) .callbar.under, html:not(.is-phone) .pd.under { display: non
 .col-dial { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line, #DCE6E1); background: var(--surface, #fff); color: var(--accent, #0A6B4C); border-radius: 999px; padding: 2px 9px 2px 6px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .col-dial svg { width: 13px; height: 13px; }
 .col-dial:hover { background: var(--mint, #9DEBCB); color: var(--ink, #0F1B17); }
+
+/* Slack page fits the screen (Nov 2026, V: Slack window too big, had to scroll): the page body is now the only scroller, so Slack fills exactly
+   what is left under the top bars instead of using a viewport height. Its own lists and messages scroll inside it. */
+.hub .vscroll:has(.sl-main) { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
+.hub .main.sl-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding-bottom: calc(14px + var(--sab)); }
+.hub .main.sl-main > .sl, .hub .main.sl-main > .sl:has(.sl-thread:not([hidden])) { flex: 1 1 auto; min-height: 0; height: auto; }
+@media (max-width: 900px) {
+  .hub .main.sl-main { padding: 0 0 calc(76px + var(--sab)); }
+}
+/* Gmail page fits the screen the same way: it fills what is left under the Google tabs. */
+.hub .vscroll:has(.gm-wrap) { display: flex; flex-direction: column; overflow: hidden; scrollbar-gutter: auto; }
+.hub .main:has(> .gm-wrap) { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding-bottom: calc(14px + var(--sab)); }
+.hub .main:has(> .gm-wrap) > .gm-wrap { flex: 1 1 auto; min-height: 0; height: auto; }
+@media (max-width: 900px) {
+  .hub .main:has(> .gm-wrap) { padding-bottom: calc(76px + var(--sab)); }
+}
