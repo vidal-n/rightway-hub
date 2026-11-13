@@ -10,6 +10,8 @@ import { CITIES, DEFAULT_TOP, chunkAreas } from '/js/cities.js';
 import { STATES, NEW_FILING_STATES } from '/js/registries.js';
 import { TARGET_INDUSTRIES } from '/js/leadintel.js';
 import { directoryLinks } from '/js/freedata.js';
+import { mountPlays } from './plays.js';
+import { planFor, readFilters as readFilterGuide, readIndustries, southFloridaAreas, SOUTH_FLORIDA, weakness, gapLabel } from '/js/plays.js';
 const MINE_KEY = 'rw-finder-industries';
 const mineRead = () => { try { return JSON.parse(localStorage.getItem(MINE_KEY) || '[]'); } catch { return []; } };
 const mineSave = (v) => { try { localStorage.setItem(MINE_KEY, JSON.stringify(v)); } catch { /* private window: nothing saved */ } };
@@ -89,12 +91,15 @@ async function homePage(view) {
     <p class="small muted" style="margin:-8px 0 16px">Pick industries, states and cities from the lists, then start. Google Maps gives the most (ratings, reviews, claimed profiles) at about $0.002 a search. OpenStreetMap is free but thinner. Nothing is added to the Pipeline until you say so (or turn on auto add).</p>
     ${d.free ? '<div class="card" style="border-color:#23B07E;margin-bottom:14px"><b>Free lead data mode is on.</b> Only OpenStreetMap searches run, nothing is spent. Turn it off in Settings, Lead data mode, to use Google Maps again.</div>' : ''}
     ${d.demo ? '<div class="card" style="border-color:#E8A33D;margin-bottom:14px">Demo mode: DataForSEO is not connected, so these are made up businesses. Add DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD in Cloudflare for real ones.</div>' : ''}
-    <div class="card" id="fnew">
+    <div id="fplays"></div>
+    <div class="card" id="fnew" style="margin-top:14px">
       ${STEP(1, `Industries ${COST_IC('Each industry is its own search in every place')}`, 'Pick the industries you work with. Choose as many as you like. They run in groups of 10 per search.')}
+      <div class="guide" id="g1"></div>
       <div id="findbox"></div>
       <label class="field" style="margin-top:10px"><span>Other keyword (optional)</span><input id="fextra" placeholder="e.g. pool cleaning"></label>
 
       ${STEP(2, 'Where', 'Pick states, then the cities in them. Each state brings its biggest cities, already ticked.')}
+      <div class="guide" id="g2">Home turf first: calls to Miami and Fort Lauderdale are local and meetings are easy. Start with three cities, then widen when a play books audits. <button type="button" class="btn btn-ghost btn-sm" id="fsfl">Use South Florida (12 cities)</button></div>
       <div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div id="fstatebox" style="flex:1 1 260px;min-width:0"></div>
         <label class="field" style="flex:0 0 160px"><span>Cities per state ${COST_IC('Each city is searched for every industry, so more cities cost more')}</span><select id="ftop">${[3, 5, 10, 20, 50].map((n) => `<option value="${n}"${n === DEFAULT_TOP ? ' selected' : ''}>${n === 50 ? 'All' : `Top ${n}`}</option>`).join('')}</select></label>
@@ -119,6 +124,7 @@ async function homePage(view) {
         <details class="fold" style="margin-top:12px"><summary><span>Filters</span></summary><div class="fold-body"><p class="small muted" style="margin-top:0">Used by auto add, and as the starting point when you look at the results. You can change them there.</p>${filterHtml()}</div></details>
       </div></details>
 
+      <div class="guide" id="g4"></div>
       <div class="fsum" id="fsum"></div>
       <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn btn-primary" id="fgo">Start search</button></div>
       <p class="err-text small" id="ferr" hidden></p>
@@ -170,6 +176,13 @@ async function homePage(view) {
     const found = past.reduce((s, j) => s + j.found, 0);
     return views ? { per: found / views, n: past.length } : null;
   };
+  // Short guide lines above the options: what the current picks will likely give you.
+  const drawGuides = () => {
+    const ul = (list) => `<ul>${list.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
+    const g1 = $('#g1', view), g4 = $('#g4', view);
+    if (g1) g1.innerHTML = `<b>What your picks tend to give you</b>${ul(readIndustries(kwAll()))}`;
+    if (g4) g4.innerHTML = `<b>What these filters will likely give you</b>${ul(readFilterGuide(readFilters($('#fnew', view)), source))}`;
+  };
   const est = () => {
     const pl = plan();
     const parts = pl.jobs.map((j) => estimate({ areas: j.areas.length, size, keywords: j.keywords.length, source, views: custom }));
@@ -199,6 +212,7 @@ async function homePage(view) {
     $('#fgo', view).textContent = source === 'osm' ? 'Start search (free)' : 'Start search';
     $('#fcovx', view).textContent = covers().find((c) => c.size === size)?.what || '';
     nfIndLine();
+    drawGuides();
   };
 
   const drawCov = () => {
@@ -237,6 +251,49 @@ async function homePage(view) {
     } else { custom = null; size = Number(b.dataset.size); }
     drawCov(); est();
   });
+
+  $('#fnew', view).addEventListener('change', (e) => { if (e.target.matches('[data-f]')) drawGuides(); });
+  $('#fsfl', view).addEventListener('click', () => {
+    prevStates = ['FL']; stateSel.set(['FL']);
+    const sfl = southFloridaAreas(SOUTH_FLORIDA.length);
+    const have = citiesOf(['FL']);
+    cities.set([]); cities.setOptions([...have, ...sfl.filter((c) => !have.some((o) => o.value === c)).map((c) => ({ value: c, label: c }))], sfl);
+    est();
+  });
+
+  // A play fills the whole form (trades, places, source, coverage, filters, tag, spend limit). Nothing is spent until Start search.
+  const applyPlay = (play, budgetId, thenStart) => {
+    source = play.source === 'osm' || d.free ? 'osm' : 'google';
+    custom = null;
+    let areas;
+    if (play.mine) {
+      size = covers().some((c) => c.size === play.size) ? play.size : (source === 'osm' ? 3 : 5);
+      areas = play.areas;
+    } else {
+      const pl = planFor(play, budgetId);
+      size = pl.size;
+      areas = southFloridaAreas(pl.places);
+    }
+    const codes = [...new Set(areas.map((a) => String(a).split(',').pop().trim().toUpperCase()).filter((c) => STATES.some((x) => x[0] === c)))];
+    const stateCodes = codes.length ? codes : ['FL'];
+    prevStates = stateCodes; stateSel.set(stateCodes);
+    const have = citiesOf(stateCodes);
+    cities.set([]); cities.setOptions([...have, ...areas.filter((c) => !have.some((o) => o.value === c)).map((c) => ({ value: c, label: c }))], areas);
+    ind.set(play.industries); $('#fextra', view).value = ''; $('#fzip', view).value = '';
+    setFilters($('#fnew', view), play.filters);
+    $('#ftag', view).value = `${play.name}, ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    $('#fauto', view).checked = false;
+    drawCov(); est();
+    // A spend limit just above this run's estimate, so a typo in the form cannot cost much more than the play said.
+    const cost = plan().jobs.reduce((t, j) => t + estimate({ areas: j.areas.length, size, keywords: j.keywords.length, source, views: null }).cost, 0);
+    const lim = [1, 5, 10, 25, 50].find((x) => x >= cost * 1.3) || 0;
+    $('#fcap', view).value = String(lim); est();
+    $('#fnew', view).scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast(`${play.name}: form filled. Change anything, then Start search.`);
+    if (thenStart && !$('#fgo', view).disabled) $('#fgo', view).click();
+  };
+  const snapshot = () => ({ industries: kwAll(), filters: readFilters($('#fnew', view)), source, size: custom ? customSize(custom) : size, areas: areasAll() });
+  mountPlays($('#fplays', view), { apply: applyPlay, snapshot, freeMode: d.free });
 
   $('#fgo', view).addEventListener('click', async (e) => {
     const err = $('#ferr', view); err.hidden = true;
@@ -357,9 +414,11 @@ async function jobPage(view, id) {
   const loading = (n, t) => { const el = $('#jload', view); if (el) el.textContent = `Loading ${num(n)} of ${num(t)}`; };
   try { await loadResults(loading); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p><a href="#/finder">Back to the lead finder</a>`; return; }
   let f = cleanFilters(job.filters);
-  let q = '', sort = 'reviews_desc', shown = 100;
+  let q = '', sort = 'weak_desc', shown = 100;
+  // Profile gap (higher = needs more help = better prospect), worked out once per row. Follows the weakest first ranking of local SEO lead tools.
+  const gapOf = (r) => (r._gap ||= weakness({ ...r, source: job.source }));
   const picked = new Set();
-  const SORTS = { reviews_desc: ['Most reviews', (a, b) => (b.reviews || 0) - (a.reviews || 0)], reviews_asc: ['Fewest reviews', (a, b) => (a.reviews || 0) - (b.reviews || 0)], rating_desc: ['Highest rating', (a, b) => (b.rating || 0) - (a.rating || 0)], rating_asc: ['Lowest rating', (a, b) => (a.rating ?? 9) - (b.rating ?? 9)], name: ['Name', (a, b) => a.title.localeCompare(b.title)] };
+  const SORTS = { weak_desc: ['Weakest profile first (best prospects)', (a, b) => gapOf(b).score - gapOf(a).score || (b.reviews || 0) - (a.reviews || 0)], reviews_desc: ['Most reviews', (a, b) => (b.reviews || 0) - (a.reviews || 0)], reviews_asc: ['Fewest reviews', (a, b) => (a.reviews || 0) - (b.reviews || 0)], rating_desc: ['Highest rating', (a, b) => (b.rating || 0) - (a.rating || 0)], rating_asc: ['Lowest rating', (a, b) => (a.rating ?? 9) - (b.rating ?? 9)], name: ['Name', (a, b) => a.title.localeCompare(b.title)] };
 
   view.innerHTML = `<div class="page-head"><div><p class="eyebrow"><a href="#/finder">Lead finder</a></p><h1 id="jt"></h1></div><div class="row" id="jact"></div></div>
     <div id="jprog"></div><div class="stats" id="jstats"></div>
@@ -367,7 +426,7 @@ async function jobPage(view, id) {
       <div class="row" style="margin-top:10px;gap:12px"><label class="field" style="flex:1 1 200px"><span>Search the list</span><input id="jq" placeholder="name, city, phone"></label>
         <label class="field" style="flex:0 0 180px"><span>Sort</span><select id="jsort">${Object.entries(SORTS).map(([k, v]) => `<option value="${k}">${v[0]}</option>`).join('')}</select></label></div></div>
     <div class="card" style="margin-top:14px"><div class="row" id="jbar" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"></div>
-      <div class="tbl-wrap" style="margin-top:10px"><table class="tbl sheet"><thead><tr><th style="width:30px"><input type="checkbox" id="jall" title="Pick everything shown that is not in the Hub yet"></th><th>Business</th><th>Category</th><th>Phone</th><th>Website</th><th class="n">Rating</th><th class="n">Reviews</th><th>City</th><th>Status</th><th>Email</th><th>Owner</th></tr></thead><tbody id="jrows"></tbody></table></div>
+      <div class="tbl-wrap" style="margin-top:10px"><table class="tbl sheet"><thead><tr><th style="width:30px"><input type="checkbox" id="jall" title="Pick everything shown that is not in the Hub yet"></th><th>Business</th><th>Category</th><th>Phone</th><th>Website</th><th class="n" title="How much the profile needs help: no website, not claimed, few reviews, weak rating, few photos. Higher is a better prospect.">Gap</th><th class="n">Rating</th><th class="n">Reviews</th><th>City</th><th>Status</th><th>Email</th><th>Owner</th></tr></thead><tbody id="jrows"></tbody></table></div>
       <div class="row" style="justify-content:center;margin-top:10px"><button class="btn btn-ghost" id="jmore" hidden>Show more</button></div>
       <p class="small muted" id="jnote" style="margin:10px 0 0"></p></div>`;
   mountFilters(view);
@@ -399,9 +458,9 @@ async function jobPage(view, id) {
       return `<tr data-k="${esc(r.key)}"><td>${r.st === 'new' ? `<input type="checkbox" data-pick${picked.has(r.key) ? ' checked' : ''}>` : ''}</td>
         <td><b>${esc(r.title)}</b>${r.claimed === false ? ' <span class="small muted">· not claimed</span>' : ''}</td><td class="small">${esc(r.category)}</td><td>${esc(r.phone)}</td>
         <td>${dom ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">${esc(dom)}</a>` : '<span class="muted">none</span>'}</td>
-        <td class="n">${r.rating != null ? r.rating.toFixed(1) : ''}</td><td class="n">${job.source === 'osm' ? '' : num(r.reviews)}</td><td>${esc(r.city)}</td>
+        <td class="n" title="${esc(gapOf(r).why.join(', ') || 'Strong profile')}"><span class="badge ${gapOf(r).score >= 60 ? '' : 'gray'}">${gapOf(r).score}</span></td><td class="n">${r.rating != null ? r.rating.toFixed(1) : ''}</td><td class="n">${job.source === 'osm' ? '' : num(r.reviews)}</td><td>${esc(r.city)}</td>
         <td>${r.lead_id ? `<a class="badge ${st}" href="#/pipeline/${esc(r.lead_id)}">${sl}</a>` : `<span class="badge ${st}">${sl}</span>`}</td><td class="small">${esc(r.email || '')}</td><td class="small">${esc(r.owner_name || '')}</td></tr>`;
-    }).join('') || '<tr><td colspan="11" class="muted" style="padding:18px">Nothing matches yet.</td></tr>';
+    }).join('') || '<tr><td colspan="12" class="muted" style="padding:18px">Nothing matches yet.</td></tr>';
     $('#jmore', view).hidden = list.length <= shown;
     $('#jmore', view).textContent = `Show more (${num(list.length - shown)} left)`;
     $('#jall', view).checked = false;
