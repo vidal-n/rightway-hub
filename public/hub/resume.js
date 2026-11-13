@@ -10,6 +10,25 @@ export function saveDial(patch) {
   try { localStorage.setItem(KEY, JSON.stringify(merge(read(), patch))); } catch { /* ignore */ }
 }
 export const offered = () => { const r = read(); return usable(r) ? r : null; };
+
+// What we know about where this person left off. This device's own record wins (it has the list and the count); with none,
+// the server's last call fills in, so the strip works on a new device, after clearing the browser, or before any dial on this build.
+let srv = null;
+async function fromServer() {
+  if (srv && Date.now() - srv.at < 60e3) return srv.v;
+  let v = null;
+  try { v = await api('/api/dialer/resume'); } catch { /* offline: show the plain start state */ }
+  srv = { at: Date.now(), v };
+  return v;
+}
+export async function where() {
+  const local = offered();
+  const rec = local || {};
+  if (local) return { rec, history: true };
+  const s = await fromServer();
+  if (s?.last) return { rec: { label: '', filter: {}, calls: s.calls || 0, last: { business: s.last.business, at: s.last.at } }, history: true };
+  return { rec, history: false };
+}
 const pref = (k) => { try { return localStorage.getItem(k) === '1'; } catch { return false; } };
 const flag = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(k) === '1'; sessionStorage.setItem(k, v ? '1' : '0'); } catch { /* ignore */ } return false; };
 
@@ -31,51 +50,66 @@ export async function resumeNow() {
   else location.hash = '#/phone';
 }
 
-// The popup, once per browser session, only when there is something to pick up and nobody is mid dial.
+// Words for the strip and popup, whatever the state: ready to resume, nobody callable, or a first dial.
+export function stateText(rec, n, history) {
+  const last = lastLine(rec);
+  const list = rec.label ? `, ${rec.label}` : '';
+  if (n === 0) return { head: history ? 'Pick up where you left off' : 'Power dial', line: `No one is callable right now${list}. Calling hours are 8am to 8pm in their time zone.${last ? ` Last call ${last}.` : ''}`, btn: 'Open the dialer', go: false };
+  if (!history) return { head: 'Ready to dial', line: `${n == null ? 'Your call list is ready.' : `${n} ${n === 1 ? 'lead is' : 'leads are'} callable right now.`}`, btn: 'Start power dial', go: true };
+  return { head: 'Pick up where you left off', line: `Power dial${list}${n == null ? '' : `, ${leftText(n).replace(' in this list', '')}`}${last ? `, last call ${last}` : ''}`, btn: 'Resume power dial', go: true };
+}
+
+// The popup, once per browser session. It waits for the intro, tour or any other window to finish instead of giving up.
 export async function maybeResume() {
   if (pref('rw-resume-off') || flag('rw-resume-seen')) return;
-  const rec = offered();
-  if (!rec || /^#\/(phone|dialer)/.test(location.hash) || window.__rwPowerPause) return;
+  if (/^#\/(phone|dialer)/.test(location.hash) || window.__rwPowerPause) return;
   flag('rw-resume-seen', true);
-  await new Promise((r) => setTimeout(r, 1400));
-  if (document.querySelector('.tour, .intro, .splash') || document.querySelector('.modal-bg')) return;
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 900));
+    if (!document.querySelector('.tour, .intro, .splash, .modal-bg')) break;
+    if (i === 19) { flag('rw-resume-seen', false); return; }
+  }
+  if (/^#\/(phone|dialer)/.test(location.hash) || window.__rwPowerPause) return;
+  const { rec, history } = await where();
   const n = await leftNow(rec);
-  if (n === 0) return;
-  const last = lastLine(rec);
-  const m = modal(`<div class="card-head"><h2>Pick up where you left off</h2></div>
+  if (n === 0 && !history) return;
+  const st = stateText(rec, n, history);
+  const m = modal(`<div class="card-head"><h2>${esc(st.head)}</h2></div>
     <p class="muted" style="margin:4px 0 12px">Power dial${rec.label ? `, ${esc(rec.label)}` : ''}</p>
     <div class="rs-facts">
-      <div><i>Last call</i><b>${esc(last || 'None yet')}</b></div>
+      <div><i>Last call</i><b>${esc(lastLine(rec) || 'None yet')}</b></div>
       <div><i>Calls last session</i><b>${Number(rec.calls) || 0}</b></div>
       ${n == null ? '' : `<div><i>Callable now</i><b>${n}</b></div>`}
     </div>
-    <div class="row" style="gap:8px;margin-top:16px;flex-wrap:wrap"><button class="btn btn-primary" id="rsgo">Resume power dial</button><button class="btn btn-ghost" id="rsopen">Just open the dialer</button><button class="btn btn-ghost" id="rsno">Not now</button></div>
+    ${n === 0 ? `<p class="small muted" style="margin-top:10px">${esc(st.line)}</p>` : ''}
+    <div class="row" style="gap:8px;margin-top:16px;flex-wrap:wrap">${st.go ? `<button class="btn btn-primary" id="rsgo">${esc(st.btn)}</button><button class="btn btn-ghost" id="rsopen">Just open the dialer</button>` : `<button class="btn btn-primary" id="rsopen">${esc(st.btn)}</button>`}<button class="btn btn-ghost" id="rsno">Not now</button></div>
     <label class="row small" style="gap:8px;margin-top:14px"><input type="checkbox" id="rsoff"> Do not show this when I open the Hub</label>
-    <div class="small muted" style="margin-top:4px">The Resume button is also on the Dashboard, Phone and Pipeline pages.</div>`);
+    <div class="small muted" style="margin-top:4px">The Resume bar is also at the top of the Dashboard, Phone and Pipeline pages.</div>`);
   m.el.classList.add('resume-modal');
   const done = () => { if ($('#rsoff', m.el)?.checked) try { localStorage.setItem('rw-resume-off', '1'); } catch { /* ignore */ } };
-  $('#rsgo', m.el).addEventListener('click', () => { done(); m.close(); resumeNow(); });
+  $('#rsgo', m.el)?.addEventListener('click', () => { done(); m.close(); resumeNow(); });
   $('#rsopen', m.el).addEventListener('click', () => { done(); m.close(); location.hash = '#/phone'; });
   $('#rsno', m.el).addEventListener('click', () => { done(); m.close(); });
-  $('#rsgo', m.el).focus();
+  ($('#rsgo', m.el) || $('#rsopen', m.el)).focus();
 }
 
-// The strip at the top of Dashboard, Phone and Pipeline (staffShell calls this). It leaves when power dialing starts.
+// The strip at the top of Dashboard, Phone and Pipeline (staffShell calls this). It is always there, in every state, until
+// power dialing starts or it is hidden for this visit.
 export async function mountStrip(app, active) {
   if (!['home', 'phone', 'dialer', 'pipeline'].includes(active)) return;
   const host = $('#vscroll', app) || $('#view', app)?.parentElement;
-  if (!host || $('#resume-strip', host)) return;
-  const rec = offered();
-  if (!rec || flag('rw-resume-hide') || window.__rwPowerPause) return;
-  const n = await leftNow(rec);
-  if (!document.body.contains(host) || $('#resume-strip', host) || n === 0) return;
-  const last = lastLine(rec);
+  if (!host || $('#resume-strip', host) || flag('rw-resume-hide') || window.__rwPowerPause) return;
   const el = document.createElement('div');
   el.id = 'resume-strip'; el.className = 'resume-strip';
-  el.innerHTML = `<div class="rs-text"><b>Pick up where you left off</b><span>Power dial${rec.label ? `, ${esc(rec.label)}` : ''}${n == null ? '' : `, ${esc(leftText(n).replace(' in this list', ''))}`}${last ? `, last call ${esc(last)}` : ''}</span></div>
-    <button class="btn btn-primary btn-sm" id="rsgo2">Resume power dial</button><button class="linkbtn small" id="rshide" title="Hide for this visit">Hide</button>`;
+  el.innerHTML = '<div class="rs-text"><b>Power dial</b><span>Checking where you left off</span></div>';
   host.prepend(el);
-  $('#rsgo2', el).addEventListener('click', () => { el.remove(); resumeNow(); });
+  const { rec, history } = await where();
+  const n = await leftNow(rec);
+  if (!document.body.contains(el)) return;
+  const st = stateText(rec, n, history);
+  el.innerHTML = `<div class="rs-text"><b>${esc(st.head)}</b><span>${esc(st.line)}</span></div>
+    <button class="btn btn-primary btn-sm" id="rsgo2">${esc(st.btn)}</button><button class="linkbtn small" id="rshide" title="Hide for this visit">Hide</button>`;
+  $('#rsgo2', el).addEventListener('click', () => { if (st.go) { el.remove(); resumeNow(); } else location.hash = '#/phone'; });
   $('#rshide', el).addEventListener('click', () => { flag('rw-resume-hide', true); el.remove(); });
   window.addEventListener('rw-power', () => el.remove(), { once: true });
 }

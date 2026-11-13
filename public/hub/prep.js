@@ -6,6 +6,7 @@ import { canRunCalls, can } from '/js/jobs.js';
 import { fromInputs, inputsIn, bothTimes, whenIn, ZONE_CHOICES, validZone } from '/js/apptime.js';
 import { buildScript, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of, quoteFor, scopeOfQuote, personOf } from '/js/leadintel.js';
 import { effort, hoursOf } from '/js/scope.js';
+import { onSwipe, slideIn } from './swipe.js';
 
 let customCache = null;
 export async function scriptSettings() {
@@ -42,7 +43,7 @@ function snapshot(lead, intel) {
 
 // Renders the full prep panel into el. Returns nothing; wires its own buttons.
 // "Or:" lines are alternatives, "(" lines are coaching notes, everything else is what you say.
-function scriptLine(l) {
+export function scriptLine(l) {
   if (/^\(SCREEN:/.test(l)) return `<p class="say-screen"><b>Screen</b> ${esc(l.replace(/^\(SCREEN:\s*/, '').replace(/\)$/, ''))}</p>`;
   if (/^\(.*\)$/.test(l)) return `<p class="say-note"><b class="do-tag">Do</b>${esc(l.slice(1, -1))}</p>`;
   if (/^Or:/i.test(l)) return `<p class="say-alt"><span class="badge gray">Or</span> ${rich(esc(l.replace(/^Or:\s*/i, '')))}</p>`;
@@ -89,10 +90,11 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
       ${fold('script', 'Script', `<div class="seg script-groups" role="tablist">${s.groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${g.key}">${esc(g.name)}</button>`).join('')}</div>
       <label class="row small script-notes-sw" style="gap:8px;margin:8px 0 0"><input type="checkbox" id="scnotes"> Show coaching notes</label>
       <div class="seg script-tabs" role="tablist">${s.steps.map((st, i) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${st.group}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
+      <p class="swipe-hint small muted">Swipe left for the next step, right to go back.</p>
       <div class="script-body hide-notes">${s.steps.map((st, i) => {
         const sib = s.steps.map((x, j) => [x, j]).filter(([x]) => x.group === st.group), at = sib.findIndex(([, j]) => j === i);
         const back = sib[at - 1], next = sib[at + 1];
-        return `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}<div class="script-nav">${back ? `<button type="button" class="btn btn-ghost btn-sm" data-go="${back[1]}">Back</button>` : '<span></span>'}${next ? `<button type="button" class="btn btn-primary btn-sm" data-go="${next[1]}">Next: ${esc(next[0].title)}</button>` : ''}</div></div>`;
+        return `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}<div class="script-nav">${back ? `<button type="button" class="btn btn-ghost btn-sm" data-go="${back[1]}">Back</button>` : '<span></span>'}<span class="script-pos small muted">${at + 1} of ${sib.length}</span>${next ? `<button type="button" class="btn btn-primary btn-sm" data-go="${next[1]}">Next: ${esc(next[0].title)}</button>` : '<span></span>'}</div></div>`;
       }).join('')}</div>`, true)}
       ${intel ? fold('snapshot', 'Their numbers', `<div class="prep-grid">
         <div>${snapshot(lead, intel)}</div>
@@ -106,6 +108,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
       <details class="obj playbook"><summary>Why the script works (the playbook)</summary><ul>${s.playbook.map((p) => `<li><b>${esc(p.name)}</b> <span class="small">${esc(p.from)}</span><div class="small">${esc(p.use)}</div></li>`).join('')}</ul></details>`, false)}
     </div>`;
   wireFolds(el);
+  document.dispatchEvent(new CustomEvent('rw-layout-refresh')); // the dialer's Edit screen puts the script sections where the person keeps them
   $$('[data-group]', el).forEach((b) => b.addEventListener('click', () => {
     $$('[data-group]', el).forEach((x) => x.classList.toggle('is-on', x === b));
     const tabs = $$('[data-step]', el);
@@ -121,6 +124,13 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
     $$('[data-step]', el).forEach((x) => x.classList.toggle('is-on', x === b));
     $$('[data-body]', el).forEach((x) => { x.hidden = x.dataset.body !== b.dataset.step; });
   }));
+  // Swipe the script: left is the next step, right is back (touch and pen).
+  const sb = $('.script-body', el);
+  if (sb) onSwipe(sb, (dir) => {
+    const cur = $('.script-step:not([hidden])', sb);
+    const btn = cur && $(dir === 'next' ? '[data-go].btn-primary' : '[data-go].btn-ghost', cur);
+    if (btn) { btn.click(); slideIn($('.script-step:not([hidden])', sb), dir); }
+  });
   $('[data-act="research"]', el).addEventListener('click', async (e) => {
     if (lead.test) return toast('Practice lead: the research shown is made up. No real search runs.');
     busy(e.target, true, 'Researching...');

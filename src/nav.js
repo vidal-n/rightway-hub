@@ -6,6 +6,7 @@ import { requireStaff } from './auth.js';
 import { route } from './router.js';
 import { personalPart } from '../public/js/audiocfg.js';
 import { dayKey } from './day.js';
+import { cleanUi } from '../public/js/layout.js';
 
 const today = () => dayKey();
 
@@ -33,6 +34,7 @@ route('GET', '/api/badges', async ({ env, user }) => {
   return json(await badges(env, user));
 });
 
+
 route('GET', '/api/me/nav', async ({ env, user }) => {
   requireStaff(user);
   const r = await first(env, 'SELECT nav_prefs FROM users WHERE id = ?', user.id);
@@ -45,7 +47,13 @@ route('PUT', '/api/me/nav', async ({ env, user, body }) => {
   requireStaff(user);
   const b = await body();
   const clean = (a) => (Array.isArray(a) ? a.filter((x) => typeof x === 'string' && /^[a-z]{2,20}$/.test(x)).slice(0, 30) : []);
-  if (b.reset) { await run(env, 'UPDATE users SET nav_prefs = NULL WHERE id = ?', user.id); return json({ prefs: null }); }
+  if (b.reset) {
+    const c = await first(env, 'SELECT nav_prefs FROM users WHERE id = ?', user.id);
+    let o = {}; try { o = c?.nav_prefs ? JSON.parse(c.nav_prefs) : {}; } catch { o = {}; }
+    const keep = o.ui ? { order: [], hidden: [], ui: o.ui } : null; // the menu goes back to default; screen layouts stay
+    await run(env, 'UPDATE users SET nav_prefs = ? WHERE id = ?', keep ? JSON.stringify(keep) : null, user.id);
+    return json({ prefs: keep });
+  }
   const cleanQ = (a) => (Array.isArray(a) ? [...new Set(a.filter((x) => typeof x === 'string' && /^(#\/|\/)[A-Za-z0-9\/_.-]{0,60}$/.test(x)))].slice(0, 14) : []);
   const cur = await first(env, 'SELECT nav_prefs FROM users WHERE id = ?', user.id);
   let old = {}; try { old = cur?.nav_prefs ? JSON.parse(cur.nav_prefs) : {}; } catch { old = {}; }
@@ -53,7 +61,10 @@ route('PUT', '/api/me/nav', async ({ env, user, body }) => {
   const prefs = b.order ? { order: clean(b.order), hidden: clean(b.hidden) } : { order: old.order || [], hidden: old.hidden || [] };
   if (b.order && !prefs.order.length) throw new HttpError('Nothing to save.');
   if (b.quick !== undefined) prefs.quick = cleanQ(b.quick); else if (old.quick) prefs.quick = old.quick;
-  if (!prefs.order.length && !prefs.quick?.length) throw new HttpError('Nothing to save.');
+  // Screen layouts and small switches (`ui`): sent as a patch, kept when the menu order or quick links are saved.
+  const ui = cleanUi(old.ui, b.ui);
+  if (ui) prefs.ui = ui;
+  if (!prefs.order.length && !prefs.quick?.length && !prefs.ui) throw new HttpError('Nothing to save.');
   await run(env, 'UPDATE users SET nav_prefs = ? WHERE id = ?', JSON.stringify(prefs), user.id);
   return json({ prefs });
 });

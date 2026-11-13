@@ -6,12 +6,14 @@ import { leadModal, STAGE_LABEL } from './crm.js';
 import { paymentsSnapshot } from './payments.js';
 import { initials } from './shell.js';
 import { avatarHtml, wireAvatars, miniAvatar } from './avatar.js';
+import { mountLayout } from './widgets.js';
 import { lineChart, barChart, donut, ring, spark, legend } from '/js/charts.js';
 
 const when = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const hello = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
 const ACT = { call: 'Call', sms: 'Text', stage: 'Update', note: 'Note', payment: 'Payment', meeting: 'Meeting' };
 
+const DASH_ITEMS = [['dials', 'Dials today'], ['talks', 'Owner conversations'], ['booked', 'Audits booked'], ['callable', 'Leads you can call'], ['calls14', 'Calls, last 14 days'], ['goal', 'Today\'s goal'], ['pipeline', 'Pipeline'], ['funnel', 'Conversion funnel'], ['quality', 'Lead quality'], ['hours', 'Best hours to call'], ['meetings', 'Meetings coming up'], ['callbacks', 'Callbacks due'], ['payments', 'Payments'], ['budget', 'Budget and costs'], ['balances', 'Balances'], ['floor', 'Team floor'], ['clients', 'Clients'], ['activity', 'Recent activity']];
 const PIPE = [['new', 'New', 'var(--c-slate)'], ['attempting', 'Attempting', 'var(--c-blue)'], ['callback', 'Callback', 'var(--c-amber)'], ['audit_booked', 'Audit booked', 'var(--c-violet)'], ['follow_up', 'Follow up', 'var(--c-teal)'], ['won', 'Won', 'var(--c-green)']];
 const GRADE = { A: 'var(--c-green)', B: 'var(--c-teal)', C: 'var(--c-amber)', D: 'var(--c-slate)', 'Not scored': 'var(--c-line)' };
 const ACT_TONE = { call: 'k-call', sms: 'k-text', stage: 'k-lead', note: 'k-task', payment: 'k-money', meeting: 'k-meet' };
@@ -41,56 +43,58 @@ export async function homePage(app, user) {
   const funnel = an?.funnel || [];
   const f0 = Math.max(1, funnel[0]?.n || 0);
   const hrs = an?.hours || [];
-  const tile = (cls, num, label, sparkVals, color, extra = '') => `<div class="stat tile ${cls}"><div class="tile-top"><div class="stat-num mono" data-count="${num}">0</div>${sparkVals.length > 1 ? `<div class="tile-spark">${spark(sparkVals, { color })}</div>` : ''}</div><div class="stat-label">${label}</div>${extra}</div>`;
+  const tile = (cls, num, label, sparkVals, color, extra = '', wid = '') => `<div class="stat tile ${cls}" data-wid="${wid}"><div class="tile-top"><div class="stat-num mono" data-count="${num}">0</div>${sparkVals.length > 1 ? `<div class="tile-spark">${spark(sparkVals, { color })}</div>` : ''}</div><div class="stat-label">${label}</div>${extra}</div>`;
   view.innerHTML = `
     <div class="page-head"><div class="hello"><span class="hello-av">${avatarHtml(user, initials(user))}</span><div><p class="eyebrow">${esc(new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }))}</p><h1>${esc(hello())}${first ? `, ${esc(first)}` : ''}</h1></div></div>
       <div class="row"><a class="btn btn-mint" href="#/phone">${icon.phone}Start dialing</a><a class="btn btn-ghost" href="#/pipeline">${icon.chart}Pipeline</a></div></div>
     <div id="gprompt"></div>
     <div class="bento">
-      <div class="stat tile hero w-3"><div class="tile-top"><div class="stat-num mono" data-count="${d.me.dials}">0</div>${daily.length > 1 ? `<div class="tile-spark">${spark(lastN('dials'), { color: 'var(--mint)' })}</div>` : ''}</div><div class="stat-label">dials today, goal ${DIAL_TARGET}</div><div class="progress" style="margin-top:10px"><span data-w="${pctDials}"></span></div></div>
-      ${tile('tint-blue w-3', d.me.talks, 'owner conversations today', lastN('contacts'), 'var(--c-blue)')}
-      ${tile('tint-amber w-3', d.me.booked, 'audits booked today', lastN('booked'), 'var(--c-amber)')}
-      ${tile('tint-violet w-3', d.pipeline.callableNow, `leads you can call now (${d.pipeline.aLeads} A grade open)`, [], 'var(--c-violet)')}
+      <div class="stat tile hero w-3" data-wid="dials"><div class="tile-top"><div class="stat-num mono" data-count="${d.me.dials}">0</div>${daily.length > 1 ? `<div class="tile-spark">${spark(lastN('dials'), { color: 'var(--mint)' })}</div>` : ''}</div><div class="stat-label">dials today, goal ${DIAL_TARGET}</div><div class="progress" style="margin-top:10px"><span data-w="${pctDials}"></span></div></div>
+      ${tile('tint-blue w-3', d.me.talks, 'owner conversations today', lastN('contacts'), 'var(--c-blue)', '', 'talks')}
+      ${tile('tint-amber w-3', d.me.booked, 'audits booked today', lastN('booked'), 'var(--c-amber)', '', 'booked')}
+      ${tile('tint-violet w-3', d.pipeline.callableNow, `leads you can call now (${d.pipeline.aLeads} A grade open)`, [], 'var(--c-violet)', '', 'callable')}
 
-      <div class="card w-8 wc-blue"><div class="card-head"><h2>${scope} calls, last 14 days</h2><span class="small muted">${an ? `${an.total.dials} dials, ${an.total.connects} contacts, ${an.total.booked} booked` : ''}</span></div>
+      <div class="card w-8 wc-blue" data-wid="calls14"><div class="card-head"><h2>${scope} calls, last 14 days</h2><span class="small muted">${an ? `${an.total.dials} dials, ${an.total.connects} contacts, ${an.total.booked} booked` : ''}</span></div>
         ${daily.length > 1 ? (() => { const S = [{ name: 'Dials', color: 'var(--c-blue)', values: lastN('dials') }, { name: 'Contacts', color: 'var(--c-green)', values: lastN('contacts') }, { name: 'Booked', color: 'var(--c-amber)', values: lastN('booked') }]; return lineChart(dl, S, { h: 230, area: true }) + legend(S); })() : '<p class="muted">Calls show up here as soon as the dialer is used.</p>'}</div>
-      <div class="card w-4 wc-green"><div class="card-head"><h2>Today's goal</h2><span class="badge gray mono">${d.me.dials}/${user.role === 'admin' ? `<button type="button" class="goal-btn" id="hgoal" title="Click to change your daily dial goal">${DIAL_TARGET}</button>` : `<span title="Your owner sets your daily dial goal">${DIAL_TARGET}</span>`}</span></div>
+      <div class="card w-4 wc-green" data-wid="goal"><div class="card-head"><h2>Today's goal</h2><span class="badge gray mono">${d.me.dials}/${user.role === 'admin' ? `<button type="button" class="goal-btn" id="hgoal" title="Click to change your daily dial goal">${DIAL_TARGET}</button>` : `<span title="Your owner sets your daily dial goal">${DIAL_TARGET}</span>`}</span></div>
         <div class="goal-ring">${ring(pctDials, { size: 150, thick: 16, color: pctDials >= 100 ? 'var(--c-green)' : 'var(--c-blue)', center: `${pctDials}%`, sub: 'of dial goal' })}</div>
         <div class="mini3"><div><b>${d.me.dials}</b><span>dials</span></div><div><b>${d.me.talks}</b><span>talks</span></div><div><b>${d.me.booked}</b><span>booked</span></div></div>
         <p class="small" style="margin:10px 0 0">${DIAL_TARGET - d.me.dials > 0 ? `${DIAL_TARGET - d.me.dials} dials to goal.` : 'Goal hit. Keep going.'} Team this week: ${d.week.dials} dials, ${d.week.booked} booked.</p></div>
 
-      <div class="card w-4 wc-violet"><div class="card-head"><h2>Pipeline</h2><span class="small muted">${d.pipeline.open} open</span></div>
+      <div class="card w-4 wc-violet" data-wid="pipeline"><div class="card-head"><h2>Pipeline</h2><span class="small muted">${d.pipeline.open} open</span></div>
         <div class="dn-row">${donut(pipeSegs, { size: 150, thick: 20, center: String(d.pipeline.open), sub: 'open leads' })}<ul class="dn-leg">${pipeSegs.map((p) => `<li><i style="background:${p.color}"></i><span>${esc(p.label)}</span><b class="mono">${p.value}</b></li>`).join('')}</ul></div></div>
-      <div class="card w-4 wc-teal"><div class="card-head"><h2>Conversion funnel</h2><span class="small muted">last 14 days</span></div>
+      <div class="card w-4 wc-teal" data-wid="funnel"><div class="card-head"><h2>Conversion funnel</h2><span class="small muted">last 14 days</span></div>
         ${funnel.length && f0 > 1 ? `<div class="fn">${funnel.map((x, i) => `<div class="fn-row"><span>${esc(x.label)}</span><i><b style="width:${Math.max(2, Math.round((100 * x.n) / f0))}%;background:hsl(${210 - i * 22} 62% ${52 - i * 2}%)"></b></i><em class="mono">${x.n}${i && funnel[i - 1].n ? ` <small>${Math.round((100 * x.n) / funnel[i - 1].n)}%</small>` : ''}</em></div>`).join('')}</div>` : '<p class="muted">Dial for a few days and the funnel fills in: contacts, conversations, audits, signed, paid.</p>'}</div>
-      <div class="card w-4 wc-amber"><div class="card-head"><h2>Lead quality</h2><a class="btn btn-ghost btn-sm" href="#/phone">Dial</a></div>
+      <div class="card w-4 wc-amber" data-wid="quality"><div class="card-head"><h2>Lead quality</h2><a class="btn btn-ghost btn-sm" href="#/phone">Dial</a></div>
         ${grades.length ? `<div class="gq">${grades.map((g) => `<div class="gq-row"><span class="gq-g" style="background:${GRADE[g]}">${esc(g === 'Not scored' ? '?' : g)}</span><i><b style="width:${Math.max(3, Math.round((100 * inv[g].total) / maxGrade))}%;background:${GRADE[g]}"></b></i><em class="mono">${inv[g].total}</em><small>${inv[g].fresh} fresh</small></div>`).join('')}</div>` : '<p class="muted">Import leads and research them. The best ones float to the top of the dialer.</p>'}</div>
 
-      <div class="card w-6 wc-blue"><div class="card-head"><h2>Best hours to call</h2><span class="small muted">dials and contacts by hour</span></div>
+      <div class="card w-6 wc-blue" data-wid="hours"><div class="card-head"><h2>Best hours to call</h2><span class="small muted">dials and contacts by hour</span></div>
         ${hrs.length ? (() => { const S = [{ name: 'Dials', color: 'var(--c-blue)', values: hrs.map((h) => h.dials) }, { name: 'Contacts', color: 'var(--c-green)', values: hrs.map((h) => h.connects) }]; return barChart(hrs.map((h) => hourLabel(h.hour)), S, { h: 190 }) + legend(S); })() : '<p class="muted">Once there are calls, you see which hours get people on the phone.</p>'}</div>
-      <div class="card w-6 wc-coral"><div class="card-head"><h2>Meetings coming up</h2><a class="btn btn-ghost btn-sm" href="#/calendar">Calendar</a></div>
+      <div class="card w-6 wc-coral" data-wid="meetings"><div class="card-head"><h2>Meetings coming up</h2><a class="btn btn-ghost btn-sm" href="#/calendar">Calendar</a></div>
         ${d.meetings.length ? `<ul class="list">${d.meetings.map((m) => `<li class="item"><span class="badge k-meet-b">${esc(when(m.meet_at))}</span>
           <div><div class="item-title">${esc(m.business)}</div><div class="item-sub">${esc(m.contact_name || '')}</div></div>
           <div class="row" style="gap:6px">${m.meet_link ? `<a class="btn btn-mint btn-sm" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Join</a>` : ''}${can(user, 'close') ? `<a class="btn btn-primary btn-sm" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>` : ''}</div></li>`).join('')}</ul>`
         : '<p class="muted">No meetings booked yet. Every audit you book shows up here with its Meet link and presentation.</p>'}</div>
 
-      <div class="card w-4 wc-amber"><div class="card-head"><h2>Callbacks due</h2><span class="badge ${d.due.length ? 'warn' : 'gray'}">${d.due.length}</span></div>
+      <div class="card w-4 wc-amber" data-wid="callbacks"><div class="card-head"><h2>Callbacks due</h2><span class="badge ${d.due.length ? 'warn' : 'gray'}">${d.due.length}</span></div>
         ${d.due.length ? `<ul class="list">${d.due.map((l) => `<li class="item" data-lead="${esc(l.id)}" style="cursor:pointer"><span class="badge ${l.next_action_at < Date.now() ? 'bad' : 'gray'}">${esc(l.next_action_at < Date.now() ? 'Now' : new Date(l.next_action_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span>
           <div><div class="item-title">${esc(l.business)}</div><div class="item-sub">${esc(l.next_action || STAGE_LABEL[l.stage] || '')}</div></div>${l.grade ? `<span class="badge gray">${esc(l.grade)}</span>` : ''}</li>`).join('')}</ul>`
         : '<p class="muted">Nothing due today. The dialer brings callbacks back at the right time automatically.</p>'}</div>
-      ${admin ? '<div class="card w-4 wc-green" id="paysnap"><div class="card-head"><h2>Payments</h2></div><div class="skeleton" style="height:70px"></div></div><div class="card w-4 wc-violet" id="budsnap"><div class="card-head"><h2>Budget and costs</h2></div><div class="skeleton" style="height:120px"></div></div><div class="card w-4 wc-amber" id="balsnap"></div>' : ''}
-      <div class="card w-4 wc-teal" id="floor"><div class="card-head"><h2>Team floor</h2><a class="btn btn-ghost btn-sm" href="#/agents">Agents</a></div><div class="skeleton" style="height:70px"></div></div>
-      ${can(user, 'deliver') ? `<div class="card w-4 wc-green"><div class="card-head"><h2>Clients</h2><a class="btn btn-ghost btn-sm" href="#/clients">Open</a></div>
+      ${admin ? '<div class="card w-4 wc-green" id="paysnap" data-wid="payments"><div class="card-head"><h2>Payments</h2></div><div class="skeleton" style="height:70px"></div></div><div class="card w-4 wc-violet" id="budsnap" data-wid="budget"><div class="card-head"><h2>Budget and costs</h2></div><div class="skeleton" style="height:120px"></div></div><div class="card w-4 wc-amber" id="balsnap" data-wid="balances"></div>' : ''}
+      <div class="card w-4 wc-teal" id="floor" data-wid="floor"><div class="card-head"><h2>Team floor</h2><a class="btn btn-ghost btn-sm" href="#/agents">Agents</a></div><div class="skeleton" style="height:70px"></div></div>
+      ${can(user, 'deliver') ? `<div class="card w-4 wc-green" data-wid="clients"><div class="card-head"><h2>Clients</h2><a class="btn btn-ghost btn-sm" href="#/clients">Open</a></div>
         <div class="cl-row">${ring(workPct, { size: 104, thick: 12, color: 'var(--c-green)', center: `${workPct}%`, sub: 'work done' })}<div class="cl-nums">${d.clients.mrr != null ? `<div><b class="mono">${fmt.money(d.clients.mrr)}</b><span>monthly revenue</span></div>` : ''}<div><b class="mono">${d.clients.active}</b><span>active clients</span></div><div><b class="mono">${d.orders.signed}</b><span>signed this month</span></div></div></div>
         <p class="small" style="margin-top:10px">${d.work.postsWaiting} post${d.work.postsWaiting === 1 ? '' : 's'} waiting to go out. ${d.orders.sent} agreement${d.orders.sent === 1 ? '' : 's'} out, ${d.orders.paid} paid.</p>
         <div class="row" style="margin-top:6px">${d.clients.sample ? `<a class="btn btn-ghost btn-sm" href="#/clients/view/${esc(d.clients.sample)}">${icon.device}See the sample client app</a>` : `<button class="btn btn-ghost btn-sm" id="mk-sample">${icon.device}Create a sample client</button>`}<a class="btn btn-ghost btn-sm" href="#/phone/texts">${icon.msg}${d.unread} unread</a></div></div>` : ''}
-      <div class="card w-12 wc-blue"><div class="card-head"><h2>Recent activity</h2></div>
+      <div class="card w-12 wc-blue" data-wid="activity"><div class="card-head"><h2>Recent activity</h2></div>
         ${d.recent.length ? `<ul class="feed">${d.recent.map((a) => `<li><span class="dot ${ACT_TONE[a.type] || 'k-text'}">${a.type === 'call' ? icon.phone : a.type === 'sms' ? icon.msg : icon.note}</span>
           <div><div>${esc(ACT[a.type] || 'Update')}${a.outcome ? `: ${esc(a.outcome.replace(/_/g, ' '))}` : ''}${a.business ? ` · ${esc(a.business)}` : ''}</div>${a.body ? `<div class="small">${esc(String(a.body).slice(0, 90))}</div>` : ''}</div><span class="small">${esc(fmt.ago(a.at))}</span></li>`).join('')}</ul>`
         : '<p class="muted">Calls, texts, and updates from the last 7 days show up here.</p>'}</div>
     </div>`;
   animateNumbers(view);
   wireAvatars(view);
+  // Edit screen: move, resize, remove and add back the dashboard pieces. Saved on the person's account.
+  mountLayout(view, { page: 'dashboard', items: DASH_ITEMS.map(([id, label]) => ({ id, label, sel: `.bento > [data-wid="${id}"]`, spans: true })) });
   $('#hgoal', view)?.addEventListener('click', (e) => editGoal(e.currentTarget, DIAL_TARGET, () => homePage(app, user)));
   api('/api/agents').then((r) => {
     const box = $('#floor', view); if (!box) return;

@@ -6,6 +6,8 @@ import { textModal } from './texts.js';
 import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
 import { loadDispos, keyed, dispositionModal, isoWhen } from './dispo.js';
 import { saveDial } from './resume.js';
+import { mountLayout } from './widgets.js';
+import { showCallScript, setScriptOn, scriptOn } from './scriptpane.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { hoverCards, hoverHtml } from './hovercard.js';
@@ -256,6 +258,8 @@ export async function pipelinePage(app, user, openId, screen) {
 
   const wire = () => {
     offHover?.();
+    // Edit screen: move, remove and add back the four steps. Saved on the person's account.
+    mountLayout(view, { page: 'pipeline', items: [['get', '1 Get leads'], ['clean', '2 Clean up'], ['pick', '3 Choose who to call'], ['work', '4 Call and work the list']].map(([id, label]) => ({ id, label, sel: `.fstep[data-sec="${id}"]` })) });
     offHover = hoverCards(view, { selector: '.lead-card, tbody tr[data-id]', build: (el) => leadHover(all.find((x) => x.id === (el.dataset.id || ''))) });
     // Customize layout: ticks apply at once and the menu stays open (no redraw), same as the dialer.
     const pbody = document.getElementById('playbody');
@@ -1138,7 +1142,7 @@ export async function dialerPage(app, user) {
   const researching = new Set();
   const prefetch = async (l) => {
     if (!l || intelCache.has(l.id) || researching.has(l.id)) return;
-    if (testMode) { intelCache.set(l.id, testIntel(l)); return; }
+    if (testMode) { intelCache.set(l.id, testIntel(l)); if (q.queue[idx]?.id === l.id) showPrep(); return; } // the first test lead's script and research used to stay on Loading
     researching.add(l.id);
     try {
       const d = await api(`/api/leads/${l.id}`);
@@ -1202,6 +1206,7 @@ export async function dialerPage(app, user) {
             <p class="small muted" style="margin:0">Show or hide. Saved for you on this computer.</p>
             ${[['queue', 'Up next list'], ['prep', 'Script and research'], ['tiers', 'Quality tabs'], ['cats', 'Call type tabs'], ['upcoming', 'Coming up appointments'], ['links', 'Map, profile and website buttons'], ['notes', 'Note and callback time'], ['compact', 'Tighter spacing']]
               .map(([k, n]) => `<label><input type="checkbox" data-lay="${k}"${lay[k] ? ' checked' : ''}> ${n}</label>`).join('')}
+            <label title="While a call is up, the script for that lead sits next to the call window"><input type="checkbox" id="dcs"${scriptOn() ? ' checked' : ''}> Script beside the call window</label>
             <button type="button" class="btn btn-ghost btn-sm" id="dlayreset">Show everything</button></div></div></div>
       <div id="lowbal"></div>
       ${upcoming.length ? `<div class="card upcoming" data-sec="upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(bothTimes(m.meet_at, validZone(m.timezone) || yourZone(), yourZone()))} ${esc(m.business)}</span>
@@ -1242,6 +1247,22 @@ export async function dialerPage(app, user) {
         <div class="card dial-prep" id="dprep"></div>
       </div>`}`;
     wireFolds(view);
+    // Edit screen: the panes, the script sections and the strips can be moved, removed and added back.
+    const COLS = { queue: '290px', lead: 'minmax(min(340px, 100%), 1fr)', prep: 'minmax(0, 1.25fr)' };
+    mountLayout(view, { page: 'dialer', onApply: ({ order, hidden }) => {
+      const g = $('.dial-grid', view); if (!g) return;
+      const shown = order.filter((id) => COLS[id] && !hidden.includes(id) && !(id === 'queue' && !lay.queue) && !(id === 'prep' && !lay.prep));
+      const custom = hidden.some((id) => COLS[id]) || order.filter((id) => COLS[id]).join() !== 'queue,lead,prep';
+      g.classList.toggle('lw-cols', custom);
+      if (custom) g.style.setProperty('--dg-cols', shown.length ? shown.map((id) => COLS[id]).join(' ') : '1fr'); else g.style.removeProperty('--dg-cols');
+    }, items: [
+      ['filters', 'Quality and call type', '.dropfilters'], ['strip', 'Today: dials and goal', '.dstrip'], ['upcoming', 'Coming up', '.upcoming'],
+      ['queue', 'Up next', '.dial-grid > .dial-queue'], ['lead', 'Call card', '.dial-grid > .dial-left'], ['prep', 'Script and research', '.dial-grid > .dial-prep'],
+      ['callcard', 'Who to call', '.dial-left > .dial-card'], ['actions', 'Skip and book', '.dial-left > .dial-after'],
+      ['p-script', 'Script', '.dial-prep details.fold[data-fold="script"]'], ['p-snapshot', 'Their numbers', '.dial-prep details.fold[data-fold="snapshot"]'],
+      ['p-problems', 'Problems to pitch', '.dial-prep details.fold[data-fold="problems"]'], ['p-listings', 'Listings', '.dial-prep details.fold[data-fold="listings"]'],
+      ['p-objections', 'Objections', '.dial-prep details.fold[data-fold="objections"]'],
+    ].map(([id, label, sel]) => ({ id, label, sel })) });
     $$('[data-jump]', view).forEach((b) => b.addEventListener('click', () => { if (busyPhase()) return toast('Finish this call and save the result first.', true); idx = Number(b.dataset.jump); render(); }));
     // Customize layout: tick boxes change the page in place (no redraw), so the menu stays open while you choose.
     const applyLay = () => {
@@ -1253,6 +1274,7 @@ export async function dialerPage(app, user) {
     const openLay = (on) => { layOpen = on; const b = $('#dlaybody', view); if (b) b.hidden = !on; $('#dlaybtn', view)?.setAttribute('aria-expanded', String(on)); };
     $('#dlaybtn', view)?.addEventListener('click', (e) => { e.stopPropagation(); openLay(!layOpen); });
     $$('[data-lay]', view).forEach((c) => c.addEventListener('change', () => { lay[c.dataset.lay] = c.checked; saveLay(); applyLay(); }));
+    $('#dcs', view)?.addEventListener('change', (e) => setScriptOn(e.target.checked));
     $('#dlayreset', view)?.addEventListener('click', () => { lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true }; saveLay(); applyLay(); $$('[data-lay]', view).forEach((c) => { c.checked = Boolean(lay[c.dataset.lay]); }); });
     $('#dgoal', view)?.addEventListener('click', (e) => editGoal(e.currentTarget, q.stats.goal || 60, (g) => { q.stats.goal = g; render(); }));
     applyLay();
@@ -1291,8 +1313,9 @@ export async function dialerPage(app, user) {
       phase = 'calling';
       busy(btn, true);
       try {
+        showCallScript({ lead: l, intel: intelCache.get(l.id) || null, rep: REP, voice: VOICE });
         await placeCall({ test: testMode, outcome: l.test_outcome, onLive: () => { if (testMode) practiceModal({ persona: l.persona, lead: l, onScore: (n) => testScore.set(l.id, n), onFinish: () => { if (phoneState().onCall) hangUp(); } }); }, leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
-          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : []), ['Text them', () => (testMode ? testText(l) : textModal(l, { rep: REP }))], ['Book appointment', () => (testMode ? testBook(l) : bookModal(l, () => afterBooking(l, bookedId))), 'primary'], ['Full details', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {}))]] },
+          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : [['Script', () => setScriptOn(!scriptOn())]]), ['Text them', () => (testMode ? testText(l) : textModal(l, { rep: REP }))], ['Book appointment', () => (testMode ? testBook(l) : bookModal(l, () => afterBooking(l, bookedId))), 'primary'], ['Full details', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {}))]] },
           onEnd: ({ answered }) => {
             const dr = takeCallDraft();
             if (skipDispo === l.id) { skipDispo = null; phase = 'idle'; return; }

@@ -3,6 +3,7 @@
 import { $, $$, esc, api, toast, icon } from './core.js';
 import { staffShell } from './shell.js';
 import { docHtml, objectionGroups, rich } from '/js/scriptprint.js';
+import { onSwipe, slideIn } from './swipe.js';
 import { jobLabel, can } from '/js/jobs.js';
 import { PLAN_KEYS, PLAN_REF, INCLUDED_ALL, itemLine, refMoney } from '/js/planref.js';
 import { WEB_TIERS, WEB_MIN, CARE_MONTHLY, OWN_AFTER_MONTHS, money as wmoney, webValue } from '/js/webprice.js';
@@ -135,11 +136,45 @@ function scripts(view, user, which) {
       <div class="seg"><a class="btn btn-sm ${which === 'analysis' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/analysis">Competitor analysis</a><a class="btn btn-sm ${which === 'cold' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/cold">Cold call</a><a class="btn btn-sm ${which === 'plan' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/plan">Game Plan</a><a class="btn btn-sm ${which === 'clarity' ? 'btn-primary' : 'btn-ghost'}" href="#/training/scripts/clarity">Clarity audit</a></div>
       <div class="row"><a class="btn btn-ghost btn-sm" href="${(voice === 'I' ? PDF : PDF_TEAM)[which]}" target="_blank" rel="noopener">${icon.down}Print PDF</a>
         ${user.role === 'admin' ? `<div class="seg"><button class="btn btn-sm ${voice === 'I' ? 'btn-primary' : 'btn-ghost'}" data-voice="I">Owner copy (I)</button><button class="btn btn-sm ${voice === 'we' ? 'btn-primary' : 'btn-ghost'}" data-voice="we">Team copy (we)</button></div>` : ''}
+        <label class="row small" style="gap:8px"><input type="checkbox" id="pgmode"${pagedOn() ? ' checked' : ''}> Page by page (swipe)</label>
         <label class="row small" style="gap:8px"><input type="checkbox" id="rd"${done.has(`script:${which}`) ? ' checked' : ''}> I have read it</label></div></div>
     <p class="small muted" style="margin:0 0 16px">Say the plain lines. Italic underlined lines are for you, never out loud. Brackets are blanks that call prep fills in with the lead's real names and numbers. The live version is in call prep and the presenter notes.</p>
     <div class="card script-read doc"><div class="d-brand"><img class="on-light" src="/brand/rightway-logo-light.svg" alt="Rightway Growth" width="170" height="28"><img class="on-dark" src="/brand/rightway-logo-dark.svg" alt="" width="170" height="28"></div>${docHtml(which, { voice })}</div>`;
   $$('[data-voice]', view).forEach((b) => b.addEventListener('click', () => { teamView = b.dataset.voice === 'we'; scripts(view, user, which); }));
   $('#rd', view).addEventListener('change', (e) => toggleDone(`script:${which}`, e.target.checked));
+  $('#pgmode', view).addEventListener('change', (e) => { try { localStorage.setItem('rw-script-pages', e.target.checked ? '1' : '0'); } catch { /* ignore */ } scripts(view, user, which); });
+  if (pagedOn()) pagedReader($('.script-read.doc', view));
+}
+
+// Page by page reading: one step of the script at a time, with Back and Next and a swipe (left is next, right is back).
+const pagedOn = () => { try { const v = localStorage.getItem('rw-script-pages'); return v === null ? matchMedia('(pointer: coarse)').matches : v === '1'; } catch { return false; } };
+function pagedReader(doc) {
+  if (!doc) return;
+  const kids = [...doc.children];
+  const first = kids.findIndex((k) => k.classList.contains('d-h'));
+  if (first < 0) return;
+  const pages = [];
+  let cur = null;
+  for (const k of kids.slice(first)) {
+    if (k.classList.contains('d-h')) { cur = document.createElement('section'); cur.className = 'd-page'; doc.insertBefore(cur, k); pages.push(cur); }
+    cur.appendChild(k);
+  }
+  const nav = document.createElement('div');
+  nav.className = 'd-pager';
+  nav.innerHTML = '<button type="button" class="btn btn-ghost btn-sm" data-pg="back">Back</button><span class="small muted" data-pos></span><button type="button" class="btn btn-primary btn-sm" data-pg="next">Next</button>';
+  doc.appendChild(nav);
+  let at = 0;
+  const show = (to, dir) => {
+    at = Math.max(0, Math.min(pages.length - 1, to));
+    pages.forEach((p, i) => { p.hidden = i !== at; });
+    $('[data-pos]', nav).textContent = `${at + 1} of ${pages.length}`;
+    $('[data-pg="back"]', nav).disabled = at === 0;
+    $('[data-pg="next"]', nav).disabled = at === pages.length - 1;
+    if (dir) { slideIn(pages[at], dir); doc.scrollIntoView({ block: 'nearest' }); }
+  };
+  nav.addEventListener('click', (e) => { const b = e.target.closest('[data-pg]'); if (b) show(at + (b.dataset.pg === 'next' ? 1 : -1), b.dataset.pg); });
+  onSwipe(doc, (dir) => show(at + (dir === 'next' ? 1 : -1), dir));
+  show(0);
 }
 
 // The tour as a reference: every stop for this person's job, with Show me to jump straight to it.

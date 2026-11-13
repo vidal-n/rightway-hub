@@ -555,6 +555,16 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
       FROM activities WHERE type IN ('call','meeting') AND by = ? AND at >= ?`, user.id, dayBegin);
   return json({ queue: now_.slice(0, Number(url.searchParams.get('limit')) || 50), waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0, goal: await dialGoalOf(env, user.id) }, tiers, cats });
 });
+// Where this person left off, from the server so it works on any device and with no local record: their last call (business and
+// time) and how many calls they made in the last 12 hours. Modeled on the resume prompts in Close.com and Outreach dialers.
+route('GET', '/api/dialer/resume', async ({ env, user }) => {
+  requireStaff(user);
+  const t = now();
+  const last = await first(env, `SELECT a.at AS at, l.business AS business, l.id AS lead_id FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
+    WHERE a.type = 'call' AND a.by = ? ORDER BY a.at DESC LIMIT 1`, user.id);
+  const recent = await first(env, `SELECT COUNT(*) AS n FROM activities WHERE type = 'call' AND by = ? AND at >= ?`, user.id, t - 12 * 3600e3);
+  return json({ last: last ? { business: last.business || 'a lead', at: last.at, id: last.lead_id } : null, calls: recent?.n || 0 });
+});
 // Quality tiers: callbacks and booked follow ups always count as hot; not researched yet is its own queue.
 export function tierOf(l) {
   if (['callback', 'audit_requested', 'no_show'].includes(l.stage)) return 'hot';
