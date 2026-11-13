@@ -377,5 +377,7 @@ route('GET', '/api/clients/:id/site/summary', async ({ env, user, params }) => {
   requireClientAccess(user, params.id);
   const last = await first(env, "SELECT score, pages, issues, finished_at FROM site_audits WHERE client_id = ? AND status = 'done' ORDER BY finished_at DESC LIMIT 1", params.id);
   const fixes = await first(env, 'SELECT COUNT(*) AS n FROM site_fixes WHERE client_id = ?', params.id);
-  return json({ score: last?.score ?? null, pages: last?.pages ?? 0, issues: last?.issues ?? 0, at: last?.finished_at ?? null, fixes: fixes?.n || 0 });
+  const recent = await all(env, 'SELECT what, page_url, before_text, after_text, status, created_at FROM site_fixes WHERE client_id = ? ORDER BY created_at DESC LIMIT 12', params.id);
+  return json({ score: last?.score ?? null, pages: last?.pages ?? 0, issues: last?.issues ?? 0, at: last?.finished_at ?? null, fixes: fixes?.n || 0,
+    recent: recent.map((f) => ({ what: f.what, page: f.page_url || '', before: f.before_text || '', after: f.after_text || '', verified: f.status === 'verified', at: f.created_at })) });
 });

@@ -6,6 +6,9 @@ import { requireStaff } from './auth.js';
 import { tasksForMonth, monthKey } from './plans.js';
 import { route } from './router.js';
 import { gridPoints } from '../public/js/grid.js';
+import { saveReport } from './reports.js';
+import { demoReviews } from './reputation.js';
+import { quarterOf } from './quarterly.js';
 
 const CENTER = { lat: 26.0112, lng: -80.1495 }; // Hollywood, FL
 const COMPETITORS = [
@@ -120,14 +123,79 @@ route('POST', '/api/sample-client', async ({ env, user }) => {
   await run(env, 'INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', `onb:${id}`,
     JSON.stringify({ 'gbp:claimed': true, 'gbp:category': true, 'gbp:hours': true, 'gbp:nap': true, 'gbp:services': true, 'gbp:logo': true,
       'cit:Apple Business Connect': 'ok', 'cit:Bing Places': 'created', 'cit:Yelp': 'fixed', 'cit:Facebook page': 'ok', 'cit:Better Business Bureau': 'ok', 'cit:Nextdoor': 'created', 'cit:Angi': 'wrong' }));
+  await seedMore(env, id, c, t, month);
   return json({ id, existed: false });
 });
+
+// The rest of what a client sees in the app: reports, listings and links, website health, reputation, calls, social posts and the quarterly plan.
+// Each part is separate so one failing never stops the sample client from being made.
+async function seedMore(env, id, c, t, month) {
+  const tryIt = async (fn) => { try { await fn(); } catch { /* sample data is best effort */ } };
+  const d = new Date(t); const prev = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1));
+  const prevKey = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}`;
+  await tryIt(async () => {
+    for (const m of [prevKey, month]) {
+      const r = await saveReport(env, { ...c, id }, m, { force: true });
+      await run(env, "UPDATE reports SET status = 'sent', sent_at = ?, sent_to = ? WHERE id = ?", t - (m === month ? 1 : 28) * 864e5, c.contact_email, r.id);
+    }
+  });
+  await tryIt(async () => {
+    const results = [{ name: 'Yelp', status: 'match' }, { name: 'Facebook page', status: 'match' }, { name: 'Better Business Bureau', status: 'match' }, { name: 'Angi', status: 'mismatch', detail: 'Phone differs' }, { name: 'Nextdoor', status: 'none' }];
+    await run(env, 'INSERT INTO citation_audits (id, client_id, results, counts, cost, demo, created_at) VALUES (?, ?, ?, ?, 0, 1, ?)', newId('ca_'), id, JSON.stringify(results), JSON.stringify({ match: 3, mismatch: 1, none: 1 }), t - 6 * 864e5);
+    const links = [['citation', 'Apple Business Connect', 'https://businessconnect.apple.com', 'live', 50], ['citation', 'Bing Places', 'https://www.bingplaces.com', 'live', 40], ['citation', 'Yelp', 'https://www.yelp.com', 'live', 30],
+      ['link', 'Hollywood Chamber of Commerce', 'https://hollywoodchamber.example/members/sunrise-roofing', 'live', 20], ['link', 'Broward Roofing Association', 'https://browardroofers.example/members', 'live', 10], ['link', 'Local home service guide', 'https://southfloridahomes.example', 'submitted', 5]];
+    for (const [type, name, url, status, ago] of links) {
+      await run(env, 'INSERT INTO link_log (id, client_id, type, name, url, target, kind, status, cost_cents, month, created_at, live_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)',
+        newId('ll_'), id, type, name, url, SAMPLE.website, type === 'link' ? 'association' : null, status, month, t - ago * 864e5, status === 'live' ? t - (ago - 1) * 864e5 : null);
+    }
+  });
+  await tryIt(async () => {
+    await run(env, "INSERT INTO site_audits (id, client_id, start_url, status, data, result, pages, score, issues, created_at, finished_at) VALUES (?, ?, ?, 'done', '{}', '{}', 18, 78, 9, ?, ?)", newId('sa_'), id, SAMPLE.website, t - 3 * 864e5, t - 3 * 864e5);
+    const fixes = [['Added a title that names the service and city', '/', 'Home', 'Roof repair and replacement in Hollywood, FL | Sunrise Roofing', 'verified', 9], ['Wrote unique descriptions for the service pages', '/services', 'Missing', 'Added', 'verified', 14],
+      ['Added a click to call phone link to the header', '/', 'Plain text number', 'Tap to call link', 'fixed', 2], ['Added alt text to job photos', '/gallery', '11 photos had none', 'All photos described', 'fixed', 4]];
+    for (const [what, page, before, after, status, ago] of fixes) {
+      await run(env, 'INSERT INTO site_fixes (id, client_id, page_url, what, before_text, after_text, kind, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', newId('sf_'), id, page, what, before, after, 'onpage', status, t - ago * 864e5);
+    }
+  });
+  await tryIt(async () => {
+    await run(env, "INSERT INTO review_pulls (id, client_id, status, reviews, rating, total, cost, demo, created_at, finished_at) VALUES (?, ?, 'done', ?, 4.7, 58, 0, 1, ?, ?)", newId('rv_'), id, JSON.stringify(demoReviews(t)), t - 864e5, t - 864e5);
+  });
+  await tryIt(async () => {
+    const nid = newId('tn_');
+    await run(env, "INSERT INTO tracking_numbers (id, client_id, number, source, forward_to, record, alert_to, status, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, 'active', ?)", nid, id, '+19545550199', 'Google profile', SAMPLE.phone, SAMPLE.contact_email, t - 60 * 864e5);
+    const m0 = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+    const at = (f) => Math.round(m0 + (t - m0) * f);
+    const rows = [['+17865550111', 'Miami', 'answered', 214, 0, 1], ['+19545550122', 'Hollywood', 'answered', 96, 0, 0.9], ['+19545550133', 'Pembroke Pines', 'missed', 0, 1, 0.8], ['+17865550144', 'Hallandale Beach', 'answered', 305, 1, 0.65],
+      ['+19545550155', 'Dania Beach', 'voicemail', 0, 1, 0.5], ['+19545550166', 'Hollywood', 'answered', 148, 0, 0.35], ['+17865550177', 'Miramar', 'answered', 77, 1, 0.2]];
+    for (const [i, [from, city, status, dur, fresh, f]] of rows.entries()) await items_insert(env, [id, nid, `smpcall${id.slice(-5)}${i}`, from, city, status, dur, fresh, at(f), SAMPLE.phone, i < 4 ? 'Google profile' : 'Website']);
+  });
+  await tryIt(async () => {
+    const posts = [['Storm season roof checks', 'posted', ['facebook', 'instagram'], -6], ['Before and after: tile restoration', 'scheduled', ['google', 'facebook'], 2], ['Meet our crew', 'review', ['facebook', 'instagram'], 4], ['Why leaks start at the flashing', 'approved', ['google', 'facebook', 'instagram'], 7]];
+    for (const [title, status, channels, days] of posts) {
+      const caps = Object.fromEntries(channels.map((ch) => [ch, { text: `${title}. Sunrise Roofing, family owned in Hollywood since 2009. Call (954) 555-0142.` }]));
+      await run(env, 'INSERT INTO social_items (id, client_id, title, status, channels, captions, media, scheduled_at, posted_at, post_links, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        newId('si_'), id, title, status, JSON.stringify(channels), JSON.stringify(caps), '[]', t + days * 864e5, status === 'posted' ? t + days * 864e5 : null, '{}', t - 8 * 864e5, t - 864e5);
+    }
+  });
+  await tryIt(async () => {
+    const data = {
+      goals: [{ label: 'First page (top 10) coverage for "roof repair"', now: '58%', target: '73%' }, { label: 'Google reviews', now: '58', target: '70' }, { label: 'Calls from tracked numbers per month', now: '7', target: '12' }, { label: 'Website health score', now: '78', target: '90' }],
+      focus: ['Lift "roof replacement": on the first page in less than half of your area today.', 'Close the review gap with Harborline Roofing.', 'Fix the Angi listing, which shows a different phone number.'],
+      months: [{ label: 'Month 1', items: ['4 Google posts', 'Replies to every new review', 'Fix the Angi listing', 'New page: Roof replacement in Pembroke Pines'] }, { label: 'Month 2', items: ['4 Google posts', '2 new local links', 'Website fix: service page descriptions'] }, { label: 'Month 3', items: ['4 Google posts', 'New page: Tile roof repair in Dania Beach', 'Quarterly review call'] }],
+      notes: 'Sample plan for the Sample client.' };
+    await run(env, "INSERT INTO quarterly_plans (id, client_id, quarter, data, status, token, created_at, updated_at, shared_at) VALUES (?, ?, ?, ?, 'shared', ?, ?, ?, ?)", newId('qp_'), id, quarterOf(), JSON.stringify(data), `smpplan${id.slice(-8)}`, t, t, t);
+  });
+}
+function items_insert(env, v) {
+  return run(env, "INSERT INTO tracked_calls (id, client_id, number_id, call_sid, from_num, from_city, from_state, to_num, source, status, duration, started_at, ended_at, first_time) VALUES (?, ?, ?, ?, ?, ?, 'FL', ?, ?, ?, ?, ?, ?, ?)",
+    newId('tc_'), v[0], v[1], v[2], v[3], v[4], '+19545550199', v[10], v[5], v[6], v[8], v[8] + v[6] * 1000, v[7]);
+}
 
 route('DELETE', '/api/sample-client', async ({ env, user }) => {
   requireStaff(user);
   const rows = await all(env, 'SELECT id FROM clients WHERE sample = 1');
   for (const { id } of rows) {
-    await batch(env, ['tasks', 'log', 'review_requests', 'posts', 'scans', 'kit_scans', 'assets'].map((tb) => [`DELETE FROM ${tb} WHERE client_id = ?`, id])
+    await batch(env, ['tasks', 'log', 'review_requests', 'posts', 'scans', 'kit_scans', 'assets', 'reports', 'citation_audits', 'link_log', 'site_audits', 'site_fixes', 'review_pulls', 'tracking_numbers', 'tracked_calls', 'social_items', 'quarterly_plans'].map((tb) => [`DELETE FROM ${tb} WHERE client_id = ?`, id])
       .concat([['DELETE FROM settings WHERE k = ? OR k = ?', `onb:${id}`, `latest:${id}`], ['DELETE FROM clients WHERE id = ?', id]]));
   }
   return json({ removed: rows.length });

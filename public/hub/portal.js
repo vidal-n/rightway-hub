@@ -3,7 +3,7 @@ import { $, esc, api, fmt, icon, animateNumbers } from './core.js';
 import { feedHtml, renderReviews, renderPosts, renderRankings } from './shared.js';
 import { clientStart } from './onboarding.js';
 
-const TABS = [['home', 'Home', icon.home], ['messages', 'Messages', icon.msg], ['reviews', 'Reviews', icon.star], ['post', 'Post', icon.camera], ['results', 'Results', icon.chart]];
+const TABS = [['home', 'Home', icon.home], ['messages', 'Messages', icon.msg], ['reviews', 'Reviews', icon.star], ['post', 'Post', icon.camera], ['results', 'Results', icon.chart], ['more', 'More', icon.dots]];
 
 function shell(app, client, user, active, title, sub) {
   app.innerHTML = `
@@ -69,6 +69,20 @@ export async function portal(app, user, tab, state) {
     const v = shell(app, c, user, 'results', 'Your results', 'Where you show up on Google across your area.');
     return renderRankings(v, c.id, { staff: false });
   }
+  const MORE = {
+    more: ['More', 'Everything we do for your business, in one place.', 'moreView'],
+    progress: ['Your progress', 'Rankings, reviews, calls and work, live.', 'progressView'],
+    reports: ['Monthly reports', 'Your report each month.', 'reportsView'],
+    listings: ['Listings and links', 'Where your business is listed and linked.', 'listingsView'],
+    site: ['Website health', 'A monthly check of your site and what we fixed.', 'siteView'],
+    reputation: ['Reviews and reputation', 'Your rating, review pace and replies.', 'reputationView'],
+    plan: ['Your 90 day plan', 'Goals and the work planned for the quarter.', 'planView'],
+  };
+  if (MORE[tab]) {
+    const [t, sub, fn] = MORE[tab];
+    const v = shell(app, c, user, 'more', t, sub);
+    return import('./clientmore.js').then((m) => m[fn](v, c));
+  }
   const o = data.overview;
   const pct = o.tasks.total ? Math.round((100 * o.tasks.done) / o.tasks.total) : 0;
   const v = shell(app, c, user, 'home', `${first ? `Hi ${first}` : 'Welcome'}`, c.name);
@@ -97,13 +111,7 @@ export async function portal(app, user, tab, state) {
   clientBadges();
   import('./meetings.js').then(async (m) => { const html = await m.nextMeetingCard(c.id); const box = $('#pmeet', v); if (box && html) box.innerHTML = html; }).catch(() => {});
   if (!user.viewAs) import('./alerts.js').then((m) => m.pushPrompt($('#ppush', v), 'Get a note when your team messages you, your report is ready, a page needs your OK, or a meeting is booked.')).catch(() => {});
-  if (c.plan === 'leader') {
-    import('./leader.js').then(async (m) => {
-      const html = await m.liveDashboard(c);
-      const stats = v.querySelector('.stats');
-      if (html && stats && v.isConnected) { stats.insertAdjacentHTML('afterend', html); }
-    });
-  }
+  v.querySelector('.stats')?.insertAdjacentHTML('afterend', '<a class="card start-card" href="#/progress"><b>Your progress</b><span>Rankings, reviews, calls and work, live. Tap to see it all, plus reports, listings and your plan under More.</span></a>');
   import('./calltrack.js').then(async (m) => {
     const s = await m.callsSummary(c.id);
     const stats = v.querySelector('.stats');

@@ -102,7 +102,7 @@ export function slimReviews(items = []) {
   }).filter((r) => r.rating && r.at);
 }
 
-function demoReviews(at = Date.now()) {
+export function demoReviews(at = Date.now()) {
   const good = ['Showed up on time and fixed our roof leak the same day. Fair price and they cleaned up everything.', 'Very professional and friendly crew. Explained the whole job and the quote was reasonable. Highly recommend.',
     'Great job on our tile roof. Quality work and great communication the whole way.', 'Quick response after the storm. Would recommend to anyone in Hollywood.', 'Honest estimate, beautiful work, left no mess.'];
   const bad = ['They were late twice and never called back about the second visit.', 'Price was higher than the estimate and the leak came back.', 'Rude on the phone and took forever to schedule.'];

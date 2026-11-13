@@ -2949,3 +2949,12 @@ body.pdx .callscript { display: none; }
 .ph-menu a.is-active svg { color: var(--mint, #9DEBCB); }
 .ph-menu .nbadge[hidden] { display: none; }
 
+
+/* Client app: six tabs (More added) and the More list */
+.portal .tabbar { grid-template-columns: repeat(6, minmax(0, 1fr)); padding-left: 4px; padding-right: 4px; }
+.portal .tabbar a { padding: 8px 2px; font-size: 11px; }
+.portal .tabbar a svg { width: 22px; height: 22px; }
+.more-row { border: 0; box-shadow: none; background: transparent; border-radius: 12px; margin: 0; padding: 12px 10px; }
+.more-row + .more-row { border-top: 1px solid var(--line); border-radius: 0; }
+.more-go { margin-left: auto; font-size: 22px; color: var(--muted); line-height: 1; }
+ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
