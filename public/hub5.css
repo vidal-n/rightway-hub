@@ -150,7 +150,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
 
 /* Bottom bar on phones */
 @media (max-width: 900px) {
-  .bbar { background: var(--rail); border-top: 0; }
+  .bbar { background: var(--rail); border-top: 0; padding-bottom: calc(4px + max(0px, calc(var(--sab) - 20px))); } /* V: stretch to the bottom; labels sit about 18pt up, clear of the home indicator line */
   .bb-item { color: #A9BDB4; }
   .bb-item.is-active { color: #fff; background: color-mix(in srgb, var(--wsc) 30%, transparent); }
   .bb-item.is-active svg { color: var(--wsc); filter: brightness(1.35); }
