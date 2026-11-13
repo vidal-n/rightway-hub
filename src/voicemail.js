@@ -133,3 +133,45 @@ route('PUT', '/api/voicemail/settings', async ({ env, user, body }) => {
   }
   return json({ ok: true, greeting: await greeting(env) });
 });
+
+// All calls in one list for the Phone page (modeled on the History tab in Zoom Phone): ours going out, theirs coming in, missed and
+// voicemail. Same privacy as before: a teammate sees only their own calls, an owner sees everyone's except another owner's, and a
+// personal line (src/lines.js) is only ever shown to the person it belongs to.
+route('GET', '/api/phone/history', async ({ env, user, url }) => {
+  requireStaff(user);
+  const f = url.searchParams.get('filter') || 'all';
+  const rows = await all(env, `SELECT a.id, a.at, a.type, a.status, a.duration, a.to_num, a.from_num, a.by, a.dispo, a.body, a.vm_sid, a.vm_secs, a.seen_at, a.rec_sid, a.lead_id,
+      l.business, l.contact_name, l.stage, l.email, l.phone AS lead_phone, u.name AS rep,
+      (SELECT COUNT(*) FROM activities o WHERE o.type IN ('call','manual_call') AND o.at > a.at AND o.status NOT IN ('inbound','missed','voicemail','inbound_answered','ready')
+        AND (o.lead_id = a.lead_id OR (a.from_num IS NOT NULL AND o.to_num = a.from_num))) AS called_back
+    FROM activities a LEFT JOIN leads l ON l.id = a.lead_id LEFT JOIN users u ON u.id = a.by
+    WHERE a.type IN ('call','manual_call') AND COALESCE(a.status, '') != 'ready' AND a.at > ? ORDER BY a.at DESC LIMIT 400`, now() - 60 * 864e5);
+  const L = await import('./lines.js');
+  const hide = await L.hiddenLines(env, user);
+  const roles = Object.fromEntries((await all(env, 'SELECT id, role FROM users')).map((x) => [x.id, x.role]));
+  const inbound = new Set(['inbound', 'inbound_answered', 'missed', 'voicemail']);
+  const out = [];
+  for (const r of rows) {
+    const isIn = inbound.has(r.status);
+    if (isIn ? hide.has(r.to_num) : hide.has(r.from_num)) continue;
+    if (!isIn && r.by && r.by !== user.id && !(user.role === 'admin' && roles[r.by] !== 'admin')) continue;
+    const other = isIn ? r.from_num : r.to_num || r.lead_phone || null;
+    const answered = isIn ? r.status === 'inbound_answered' : (r.duration || 0) > 0 || ['completed', 'in-progress'].includes(r.status);
+    const kind = r.status === 'voicemail' ? 'voicemail' : r.status === 'missed' ? 'missed' : isIn ? 'in' : 'out';
+    if (f === 'missed' && !['missed', 'voicemail'].includes(kind)) continue;
+    if (f === 'voicemail' && kind !== 'voicemail') continue;
+    if (f === 'inbound' && !isIn) continue;
+    if (f === 'outbound' && isIn) continue;
+    out.push({
+      id: r.id, at: r.at, kind, dir: isIn ? 'in' : 'out', status: r.status, answered, duration: r.duration || 0,
+      number: other, pretty: pretty(other), rep: r.rep || '', dispo: r.dispo || '',
+      voicemail: Boolean(r.vm_sid), vmSecs: r.vm_secs || 0, seen: Boolean(r.seen_at), recording: Boolean(r.rec_sid),
+      calledBack: Boolean(r.called_back),
+      lead: r.lead_id ? { id: r.lead_id, business: r.business, contact: r.contact_name, stage: r.stage, email: r.email || '' } : null,
+    });
+    if (out.length >= 300) break;
+  }
+  const unseen = out.filter((c) => ['missed', 'voicemail'].includes(c.kind) && !c.seen).length;
+  const s = await getSettings(env);
+  return json({ calls: out, unseen, voicemails: out.filter((c) => c.voicemail).length, greeting: await greeting(env), custom: Boolean((s.vm_greeting || '').trim()), alertTo: s.vm_alert_to || '' });
+});

@@ -621,6 +621,21 @@ function leadDataCard(box, l, scrub, onChange) {
 }
 
 // ---------- lead details ----------
+// Phone, email and website right under the lead's name, so nobody hunts for them. Email opens the Hub composer; with no email it
+// says so and offers to add or find one (Lead data scrub reads their website).
+function contactStrip(l, scrub) {
+  const found = (scrub?.emails || []).filter((x) => x.ok && x.email !== l.email).map((x) => x.email);
+  const bad = ['bad', 'no_mail_server'].includes(l.email_status);
+  const tag = l.email && l.email_status ? (EMAIL_STATUS_LABEL[l.email_status] || '') : '';
+  const site = l.website ? String(l.website).replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '') : '';
+  return `<div class="lm-contact">
+    <div class="lmc"><i>Phone</i>${l.phone ? `<a href="${telHref(l.phone)}">${esc(l.phone)}</a>` : '<span class="muted">None</span>'}</div>
+    <div class="lmc lmc-mail"><i>Email</i>${l.email ? `<a href="mailto:${esc(l.email)}" id="lmailx" title="Write to them from the Hub">${esc(l.email)}</a>${tag ? ` <span class="badge ${bad ? 'bad' : 'gray'}">${esc(tag)}</span>` : ''}`
+      : `<span class="muted">No email on file</span> <button type="button" class="linkbtn small" id="laddmail2">Add it</button>`}${found.length ? `<small class="muted">Also found: ${found.slice(0, 2).map((e) => esc(e)).join(', ')}</small>` : ''}</div>
+    ${site ? `<div class="lmc"><i>Website</i><a href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}" target="_blank" rel="noopener">${esc(site)}</a></div>` : ''}
+  </div>`;
+}
+
 export async function leadModal(id, onChange) {
   let changed = false;
   const origin = location.hash.split('/').slice(0, 2).join('/');   // the page it was opened from; its list is only redrawn if you are still on it
@@ -635,9 +650,10 @@ export async function leadModal(id, onChange) {
     <div class="lm-top"><div class="card-head"><div><p class="eyebrow">${esc(STAGE_LABEL[l.stage])}${l.attempts ? ` · ${l.attempts} attempts` : ''}</p><h2>${esc(l.business)}</h2>
       <div class="small">${esc([personOf(l), l.city, l.state].filter(Boolean).join(' · '))}${l.tz_known ? ` · their time ${esc(l.local_time)}` : ''}</div></div>
       <button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+    ${contactStrip(l, data.scrub)}
     <div class="row lm-actions">
       ${l.phone ? `<a class="btn btn-mint" href="${telHref(l.phone)}">${icon.phone}${esc(l.phone)}</a>` : ''}
-      ${l.email ? `<button class="btn btn-ghost" id="lmailbtn">${icon.mail}Email</button>` : ''}
+      ${l.email ? `<button class="btn btn-ghost" id="lmailbtn">${icon.mail}Email</button>` : '<button class="btn btn-ghost" id="laddmail">' + icon.mail + 'Add email</button>'}
       <button class="btn btn-ghost" id="lmeetbtn">Add appointment</button>
       <button class="btn btn-ghost" id="lbooklink" title="A personal booking page link for this lead">Booking link</button>
       ${l.meet_at ? '<span id="lcloserbox" class="row small" style="gap:6px"></span>' : ''}
@@ -715,11 +731,13 @@ export async function leadModal(id, onChange) {
   prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, voice: VOICE, onResearched: () => { changed = true; } });
   $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
   // Google: write to them, see what you have already sent, and put a meeting on your own calendar.
-  $('#lmailbtn', m.el)?.addEventListener('click', async () => {
+  $$('#laddmail, #laddmail2', m.el).forEach((b) => b.addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); }));
+  $$('#lmailbtn, #lmailx', m.el).forEach((b) => b.addEventListener('click', async (e) => {
+    e.preventDefault();
     const gmail = await import('./gstate.js').then((g) => g.hasGoogle('mail'));
     if (gmail) import('./mail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth` }));
     else import('./hubmail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth`, lead_id: l.id }));
-  });
+  }));
   leadDataCard($('#ldata', m.el), l, data.scrub, () => { changed = true; });
   // Who runs the booked call. Changing it checks they are free, updates the lead's invite and the team calendar.
   const cbox = $('#lcloserbox', m.el);

@@ -126,8 +126,8 @@ async function route() {
     if (sub === 'setup') return phoneSetupPage(app, u);
     if (sub === 'line') return import('./lines.js').then((m) => m.linesPage(app, u));
     if (sub === 'meet') return import('./meet.js').then((m) => m.meetPage(app, u));
-    if (sub === 'texts') return inboxPage(app, u);
-    if (sub === 'calls') return inboxPage(app, u, 'calls');
+    if (sub === 'texts') return import('./phonehub.js').then((m) => m.textsPage(app, u, parts[0] === 'phone' ? decodeURIComponent(parts[2] || '') : ''));
+    if (sub === 'history' || sub === 'calls' || sub === 'voicemail') return import('./phonehub.js').then((m) => m.historyPage(app, u, sub === 'voicemail' ? 'voicemail' : (parts[0] === 'phone' && sub === 'history' ? parts[2] : '') || 'all'));
     return dialerPage(app, u);
   }
   // Owner areas: agents are sent back to their dashboard (the server refuses these for them too).

@@ -92,6 +92,7 @@ export async function maybeResume() {
 // power dialing starts or it is hidden for this visit.
 export async function mountStrip(app, active) {
   if (!['home', 'phone', 'dialer', 'pipeline'].includes(active)) return;
+  if (['phone', 'dialer'].includes(active) && !/^#\/(phone|dialer)\/?(\?.*)?$/.test(location.hash)) return; // only on the Dialer, not History, Texts or Keypad
   const host = $('#vscroll', app) || $('#view', app)?.parentElement;
   if (!host || $('#resume-strip', host) || flag('rw-resume-hide') || window.__rwPowerPause) return;
   const el = document.createElement('div');

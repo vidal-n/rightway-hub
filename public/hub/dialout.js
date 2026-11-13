@@ -22,14 +22,34 @@ export function bindCaller(root, id = 'dfrom') {
   return () => el?.value || undefined;
 }
 
-// Phone: the dialer, texts, calls and voicemail, recordings and (owners) live calls and setup, in one place.
+// Phone: one place for the dialer, keypad, all call history (with voicemail), texts, recordings, meetings and setup.
+// Modeled on the Zoom Phone app: a left menu with History (calls and voicemail), Texts and the keypad, and a short "More" list.
+// On the Dialer page the menu runs along the top so the three dialer panes keep their width; on phones it wraps as chips.
+const S = (d) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const NI = {
+  queue: S('<path d="M4 14v-2a8 8 0 0116 0v2"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/>'),
+  out: picon.pad,
+  history: S('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  texts: S('<path d="M4 5h16v11H8l-4 4z"/>'),
+  recordings: S('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/>'),
+  meet: S('<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>'),
+  line: S('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/>'),
+  agents: S('<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0M17 11a3 3 0 100-6M21 20a5 5 0 00-4-4.9"/>'),
+  setup: S('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>'),
+};
 export const dialTabs = (active, user) => {
-  const tabs = [['queue', '#/phone', 'Dialer'], ['out', '#/phone/out', 'Dial out'], ['texts', '#/phone/texts', 'Texts', 'texts'], ['calls', '#/phone/calls', 'Calls and voicemail', 'calls'], ['recordings', '#/phone/recordings', 'Recordings']];
-  tabs.splice(2, 0, ['meet', '#/phone/meet', 'Meetings']);
-  tabs.push(['line', '#/phone/line', 'My line'], ['agents', '#/agents', 'Agents']);
-  if (user?.role === 'admin') tabs.push(['setup', '#/phone/setup', 'Phone setup']);
+  if (active === 'calls' || active === 'voicemail') active = 'history';
+  const main = [['queue', '#/phone', 'Dialer'], ['out', '#/phone/out', 'Keypad'], ['history', '#/phone/history', 'History', 'calls'], ['texts', '#/phone/texts', 'Texts', 'texts']];
+  const more = [['recordings', '#/phone/recordings', 'Recordings'], ['meet', '#/phone/meet', 'Meetings'], ['line', '#/phone/line', 'My line'], ['agents', '#/agents', 'Agents']];
+  if (user?.role === 'admin') more.push(['setup', '#/phone/setup', 'Phone setup']);
   setTimeout(() => import('./nav.js').then((m) => m.refreshBadges()), 0);
-  return `<div class="tabs" style="margin-bottom:14px">${tabs.map(([k, h, n, b]) => `<a class="${active === k ? 'is-active' : ''}" href="${h}">${n}${b ? ` <b class="nbadge" data-badge="${b}" hidden></b>` : ''}</a>`).join('')}<button type="button" class="tab-audio" data-testmic title="Check that your mic works. Takes 10 seconds.">Test mic</button><button type="button" class="tab-audio" data-audio title="Mic, speaker, noise cancellation and tests">Mic and noise</button></div>`;
+  const item = ([k, h, n, b]) => `<a class="ph-i${active === k ? ' is-active' : ''}" href="${h}">${NI[k] || ''}<span>${n}</span>${b ? ` <b class="nbadge" data-badge="${b}" hidden></b>` : ''}</a>`;
+  const mic = `<button type="button" class="ph-i ph-mic" data-testmic title="Check that your mic works. Takes 10 seconds.">${picon.mic}<span>Test mic</span></button>`;
+  const inMore = more.some(([k]) => k === active);
+  // Computers show the whole list; phones fold the "More" items into one tap so the menu stays short.
+  return `<nav class="ph-nav${active === 'queue' ? ' ph-top' : ''}" aria-label="Phone">${main.map(item).join('')}
+    <span class="ph-d ph-sep">More</span><span class="ph-d ph-grp">${more.map(item).join('')}</span><span class="ph-d">${mic}</span>
+    <details class="ph-m"${inMore ? ' open' : ''}><summary class="ph-i">More</summary><div class="ph-mgrp">${more.map(item).join('')}${mic}</div></details></nav>`;
 };
 
 export function phoneBadge(s = phoneState()) {
