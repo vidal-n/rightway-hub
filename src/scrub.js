@@ -9,6 +9,7 @@ import { route } from './router.js';
 import { extractProfile, mergeProfiles } from '../public/js/freedata.js';
 import { registryLookup, leadMode } from './freedata.js';
 import { titleLike } from '../public/js/names.js';
+import { nameMatches, findPhones, pageText } from '../public/js/phonefind.js';
 import { isPersonName, cleanPerson, nameFromEmail, firstFromEmail, cleanName, phoneInfo, emailInfo, pickEmail, emailStatus, extractContacts, mergeContacts, contactLinks, dataScore } from '../public/js/scrub.js';
 
 const UA = 'Mozilla/5.0 (compatible; RightwayHub/1.0; +https://rightwaygrowth.com)';
@@ -223,6 +224,34 @@ route('POST', '/api/scrub/cancel', async ({ env, user }) => {
   requireStaff(user);
   await run(env, 'UPDATE leads SET scrub_queued = 0, scrub_lookup = 0 WHERE scrub_queued = 1');
   return json({ ok: true });
+});
+
+// Import step: find the phone number for leads that came with none (Google Maps lists often have no number on the card). The number must be on the business's own website,
+// and the site must say the business's name, or the lead is rejected. Free: only website reads. Up to 3 leads a request keeps each call small.
+route('POST', '/api/leads/find-phones', async ({ env, user, body }) => {
+  requireStaff(user);
+  const b = await body();
+  const rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 3);
+  const results = [];
+  for (const r of rows) {
+    const business = String(r?.business || '').slice(0, 200);
+    if (!business || !r?.website) { results.push({ found: false, reason: 'No website to check.' }); continue; }
+    const home = await fetchPage(String(r.website).slice(0, 300), fetch);
+    if (!home.ok) { results.push({ found: false, reason: home.error || 'The website did not load.' }); continue; }
+    let host = '';
+    try { host = new URL(home.url).hostname.replace(/^www\./, ''); } catch { host = ''; }
+    const title = (home.html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1] || '';
+    if (!nameMatches(business, `${title} ${pageText(home.html)}`, host.replace(/\./g, ' '))) { results.push({ found: false, reason: 'The website does not mention this business.' }); continue; }
+    let phones = findPhones(home.html);
+    if (!phones.length) {
+      for (const link of contactLinks(home.html, home.url).slice(0, 2)) {
+        const pg = await fetchPage(link, fetch);
+        if (pg.ok) { phones = findPhones(pg.html); if (phones.length) break; }
+      }
+    }
+    results.push(phones.length ? { found: true, phone: phones[0].pretty, site: home.url } : { found: false, reason: 'No phone number on the website.' });
+  }
+  return json({ results });
 });
 
 route('POST', '/api/scrub/tick', async ({ env, user }) => {

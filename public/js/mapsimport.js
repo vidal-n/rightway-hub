@@ -40,3 +40,24 @@ export function mapsScrapeRows(head, body, { state = '' } = {}) {
     return o;
   }).filter(Boolean);
 }
+
+// Duplicates inside one file: same phone, same website, or same name at the same address or place. The first row wins and keeps any detail the later ones add.
+import { dupKeys } from './leadintel.js';
+export function dedupeRows(rows) {
+  const seen = new Map();
+  const out = [];
+  let removed = 0;
+  for (const r of rows) {
+    const keys = dupKeys({ ...r, city: r.city || '', zip: r.zip || r.address || '' });
+    const hit = keys.map((k) => seen.get(k)).find(Boolean);
+    if (hit) {
+      for (const [k, v] of Object.entries(r)) if (v && !hit[k]) hit[k] = v;
+      for (const k of keys) if (!seen.has(k)) seen.set(k, hit);
+      removed++;
+      continue;
+    }
+    for (const k of keys) seen.set(k, r);
+    out.push(r);
+  }
+  return { rows: out, removed };
+}

@@ -24,3 +24,18 @@ test('reads name, rating, reviews, phone, website, category and address by conte
 test('skips rows with no name', () => {
   assert.equal(mapsScrapeRows(head, [['https://www.google.com/maps/place/x', '', '4.0']]).length, 0);
 });
+
+import { dedupeRows } from '../public/js/mapsimport.js';
+test('dedupeRows removes repeats by phone, website and name at one address, and keeps added details', () => {
+  const rows = [
+    { business: 'Americas Plumbers', phone: '(954) 737-3680', address: '2517 Park Ln' },
+    { business: 'Americas Plumbers LLC', phone: '954-737-3680' },
+    { business: 'Sparkle Plumbing', website: 'https://sparkle.com', address: '10 Main St' },
+    { business: 'Sparkle Plumbing Inc', website: 'https://www.sparkle.com/about', rating: '5.0' },
+    { business: 'Bob Plumbing', address: '5 Oak Ave' }, { business: 'Bob Plumbing', address: '5 Oak Ave' }, { business: 'Bob Plumbing', address: '99 Elm St' },
+  ];
+  const r = dedupeRows(rows);
+  assert.equal(r.removed, 3);
+  assert.deepEqual(r.rows.map((x) => x.business), ['Americas Plumbers', 'Sparkle Plumbing', 'Bob Plumbing', 'Bob Plumbing']);
+  assert.equal(r.rows[1].rating, '5.0');
+});

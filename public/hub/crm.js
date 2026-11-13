@@ -1,5 +1,5 @@
 // CRM screens: pipeline board, lead details, CSV import, power dialer, settings.
-import { isMapsScrape, mapsScrapeRows } from '../js/mapsimport.js';
+import { isMapsScrape, mapsScrapeRows, dedupeRows } from '../js/mapsimport.js';
 import { PRICES, money, priceText } from '../js/pricing.js';
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable, isPhone, editGoal, trayAdd, trayRemove } from './core.js';
 import { staffShell, settingsTabs } from './staff.js';
@@ -934,6 +934,7 @@ function importModal(onDone) {
     <div class="imp-opts">
       <div class="imp-col"><h3>Free <span class="badge ok">$0</span></h3>
         <label class="imp-opt"><input type="checkbox" id="csvscrub" checked><span><b>Scrub names and other free info</b><span class="small muted">Cleans the business name, then reads each website for the owner's name, email, Facebook, Instagram and other pages, and checks business registries.</span></span></label>
+        <label class="imp-opt"><input type="checkbox" id="csvfind" checked><span><b>Find missing phone numbers</b><span class="small muted">For leads with no phone or email, reads their own website for a number and checks the site is really that business. If it can't be confirmed, the lead is not imported.</span></span></label>
         <label class="imp-opt"><input type="checkbox" id="csvres"><span><b>Research the A and B leads</b><span class="small muted">Website, ad tracking and any Google details the file already has. No paid call. Leads with no Google details are skipped.</span></span></label>
       </div>
       <div class="imp-col"><h3>Paid <span class="badge warn" id="csvcost">add on</span></h3>
@@ -956,7 +957,8 @@ function importModal(onDone) {
     const rows = parseCsv($('#csvt', m.el).value || '');
     mapped = mapRows(rows, { state: ($('#csvst', m.el).value || '').trim() });
     $('#csvstw', m.el).hidden = !mapped.scraper;
-    $('#csvp', m.el).textContent = mapped.length ? `${mapped.scraper ? 'Google Maps list detected. ' : ''}${mapped.length} leads ready${mapped.scraper ? ` (${mapped.filter((x) => x.phone).length} with a phone number)` : ''}. First: ${mapped[0].business}${mapped[0].phone ? `, ${mapped[0].phone}` : ''}` : 'No rows with a business name found yet.';
+    const dupN = dedupeRows(mapped).removed;
+    $('#csvp', m.el).textContent = mapped.length ? `${mapped.scraper ? 'Google Maps list detected. ' : ''}${mapped.length} leads ready${mapped.scraper ? ` (${mapped.filter((x) => x.phone).length} with a phone number)` : ''}${dupN ? `, ${dupN} duplicate${dupN === 1 ? '' : 's'} in the file will be removed` : ''}. Duplicates of leads already in the Hub are skipped too. First: ${mapped[0].business}${mapped[0].phone ? `, ${mapped[0].phone}` : ''}` : 'No rows with a business name found yet.';
     $('#csvgo', m.el).disabled = !mapped.length;
     paidNote();
   };
@@ -971,10 +973,35 @@ function importModal(onDone) {
     const wantRes = Boolean(depth);
     const startedAt = Date.now() - 5000;
     try {
-      const r = await api('/api/leads/import', { method: 'POST', body: { rows: mapped.slice(0, 5000), source: 'import', tags: $('#csvtag', m.el).value } });
+      const dd = dedupeRows(mapped.slice(0, 5000));
+      let rowsOut = dd.rows, dropped = 0;
+      const fileDupes = dd.removed;
+      if ($('#csvfind', m.el).checked) {
+        const need = rowsOut.filter((x) => !x.phone && !x.email);
+        const ask = need.filter((x) => x.website).slice(0, 600);
+        const pool = ask.slice();
+        let done = 0;
+        const label = e.target.textContent;
+        const work = async () => {
+          while (pool.length) {
+            const part = pool.splice(0, 3);
+            try {
+              const res = await api('/api/leads/find-phones', { method: 'POST', body: { rows: part.map((x) => ({ business: x.business, website: x.website })) } });
+              part.forEach((x, i) => { if (res.results?.[i]?.found) x.phone = res.results[i].phone; });
+            } catch { /* those leads stay without a number and are dropped */ }
+            done += part.length; e.target.textContent = `Finding phone numbers ${done} of ${ask.length}`;
+          }
+        };
+        await Promise.all([work(), work(), work()]);
+        e.target.textContent = label;
+        const before = rowsOut.length;
+        rowsOut = rowsOut.filter((x) => x.phone || x.email);
+        dropped = before - rowsOut.length;
+      }
+      const r = await api('/api/leads/import', { method: 'POST', body: { rows: rowsOut, source: 'import', tags: $('#csvtag', m.el).value } });
       const sb = r.skippedBy || {};
       const why = [['phone', 'same phone'], ['website', 'same website'], ['name', 'same name and area'], ['dnc', 'do not call'], ['invalid', 'no phone or email']].filter(([k]) => sb[k]).map(([k, n]) => `${sb[k]} ${n}`).join(', ');
-      m.el.innerHTML = `<div class="card-head"><h2>Import done</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div><p><b>${r.imported}</b> new leads added. ${r.skipped ? `${r.skipped} skipped: ${esc(why)}.` : 'Nothing skipped.'}${r.scrubbed ? ` ${r.scrubbed} scrubbed out (bad or toll free numbers).` : ''}</p>
+      m.el.innerHTML = `<div class="card-head"><h2>Import done</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div><p><b>${r.imported}</b> new leads added. ${fileDupes ? `${fileDupes} duplicate${fileDupes === 1 ? '' : 's'} inside the file removed. ` : ''}${dropped ? `${dropped} left out because no phone number could be confirmed on their website. ` : ''}${r.skipped ? `${r.skipped} skipped: ${esc(why)}.` : 'Nothing skipped.'}${r.scrubbed ? ` ${r.scrubbed} scrubbed out (bad or toll free numbers).` : ''}</p>
         <p class="small">Every new lead is now researched in the background (Google profile, map ranks, website, speed), scored and sorted into the dialer's Hot, Good, Maybe and Low queues.</p>
         <p class="small">Every lead is scored. Open the List view and sort by grade, or research them for full scores and pitch notes.</p>`;
       onDone?.();

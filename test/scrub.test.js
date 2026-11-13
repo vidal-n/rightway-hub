@@ -133,3 +133,25 @@ test('scrubbing a lead: cleaned name, website emails and owner, email check, lin
     assert.equal((await t.call('GET', '/api/scrub/status')).data.queued >= 1, true);
   } finally { f.done(); }
 });
+
+test('find-phones: takes a number from the business own site, rejects a site that is not that business', async () => {
+  const t = setup(); await owner(t);
+  const site = stubFetch((u) => {
+    if (u.startsWith('https://sparkle.test')) return html('<title>Sparkle Plumbing | Hollywood</title><body>Sparkle Plumbing LLC <a href="tel:+13055550188">Call</a></body>', 'https://sparkle.test/');
+    if (u.startsWith('https://parked.test')) return html('<title>Domain for sale</title><body>Buy this domain. 305-555-0199</body>', 'https://parked.test/');
+    if (u.startsWith('https://nophone.test')) return html('<title>Bayfront Plumbing</title><body>Bayfront Plumbing, serving Broward. Email us.</body>', 'https://nophone.test/');
+    return null;
+  });
+  try {
+    const r = await t.call('POST', '/api/leads/find-phones', { rows: [
+      { business: 'Sparkle Plumbing LLC', website: 'https://sparkle.test' }, { business: 'Sparkle Plumbing LLC', website: 'https://parked.test' },
+      { business: 'Bayfront Plumbing', website: 'https://nophone.test' }] });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.results[0].found, true);
+    assert.equal(r.data.results[0].phone, '(305) 555-0188');
+    assert.equal(r.data.results[1].found, false);
+    assert.match(r.data.results[1].reason, /does not mention/);
+    assert.equal(r.data.results[2].found, false);
+    assert.match(r.data.results[2].reason, /No phone number/);
+  } finally { site.done(); }
+});
