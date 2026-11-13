@@ -32,14 +32,9 @@ export async function where() {
 const pref = (k) => { try { return localStorage.getItem(k) === '1'; } catch { return false; } };
 const flag = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(k) === '1'; sessionStorage.setItem(k, v ? '1' : '0'); } catch { /* ignore */ } return false; };
 
-// How many are callable right now for this list. Cached a minute so three pages in a row cost one lookup.
-let cache = null;
-async function leftNow(rec) {
-  const key = JSON.stringify(rec.filter || {});
-  if (cache && cache.key === key && Date.now() - cache.at < 60e3) return cache.n;
-  const qs = new URLSearchParams(Object.entries(rec.filter || {}).filter(([, v]) => v && v !== 'tier' && v !== 'cat').map(([k, v]) => [k, v])).toString();
-  try { const r = await api(`/api/dialer/queue?count=1${qs ? `&${qs}` : ''}`); cache = { key, at: Date.now(), n: r.count }; return r.count; } catch { return null; }
-}
+// The count of callable leads used to be fetched here on every page, which loads and scores up to 1000 leads and slowed the Hub.
+// It is not fetched any more; the strip and popup say "ready" without a number. The dialer itself shows the real queue.
+async function leftNow() { return null; }
 
 // Restore the list, warm the phone inside this tap, open the dialer and start. The dialer starts itself (rw-autostart).
 export async function resumeNow() {

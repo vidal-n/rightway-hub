@@ -2279,6 +2279,11 @@ body.presenting { background: var(--bg, #fff); }
 .pm-body { overflow: auto; padding: 18px 16px 40px; min-height: 0; }
 .pm-body.is-frame { padding: 0; overflow: hidden; }
 .pm-frame { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+.pm-body.is-frame { position: relative; }
+.pm-wait { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; padding: 20px; }
+.pm-wait span { color: var(--muted); }
+.pm-frame.pm-over { position: absolute; inset: 0; opacity: 0; transition: opacity .2s; }
+.pm-frame.pm-over.is-in { opacity: 1; }
 .pm-body .pk { padding: 0; max-width: 1040px; }
 .pm-body .pk .pk-hero h1 { font-size: clamp(28px, 4vw, 44px); }
 .pm-body .pk .pk-kpi b { font-size: clamp(26px, 3.4vw, 40px); }

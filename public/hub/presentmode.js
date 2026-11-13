@@ -87,7 +87,23 @@ export async function presentView(app, user, kind, id, tabKey) {
     try { history.replaceState(null, '', `#/present/${kind}/${id}/${k}`); } catch { /* fine */ }
     body.classList.toggle('is-frame', k === 'slides' || k === 'scan' || k === 'progress');
     if (k === 'slides') body.innerHTML = `<iframe class="pm-frame" src="/present.html#${encodeURIComponent(leadId)}" title="Slides" allow="fullscreen"></iframe>`;
-    else if (k === 'scan') body.innerHTML = `<iframe class="pm-frame" src="/scan.html?lead=${encodeURIComponent(leadId)}" title="Live scan"></iframe>`;
+    else if (k === 'scan') {
+      // If the scan page is slow or comes back blank, say so and offer it in its own tab instead of leaving a white screen.
+      const url = `/scan.html?lead=${encodeURIComponent(leadId)}`;
+      body.innerHTML = `<div class="pm-wait" id="pmwait"><b>Loading the live scan</b><span>If it stays blank, open it in its own tab.</span><a class="btn btn-primary btn-sm" href="${url}" target="rw-scan" rel="noopener">Open the live scan in its own tab</a></div><iframe class="pm-frame pm-over" src="${url}" title="Live scan"></iframe>`;
+      const fr = body.querySelector('iframe');
+      // Show the page once it has real content; a blank or error page keeps the fallback and button visible.
+      let tries = 0;
+      const look = () => {
+        if (!document.body.contains(fr)) return;
+        let ok = false;
+        try { const t = (fr.contentDocument?.body?.innerText || '').trim(); ok = t.length > 40 && !/error code|temporarily unavailable|worker exceeded/i.test(t); } catch { ok = true; }
+        if (ok) fr.classList.add('is-in');
+        else if (++tries < 40) setTimeout(look, 500);
+        else { const w = $('#pmwait'); if (w) w.querySelector('b').textContent = 'The live scan did not load here'; }
+      };
+      fr.addEventListener('load', () => setTimeout(look, 300));
+    }
     else if (k === 'progress') body.innerHTML = `<iframe class="pm-frame" src="${esc(report)}" title="Progress report"></iframe>`;
     else if (!parts) {
       body.innerHTML = `<div class="pk">${notReady()}</div>`;
