@@ -1,3 +1,5 @@
+import { discoveryFor } from './discovery.js';
+import { LISTEN, ANALYSIS_ML, ML, catalogRows, ML_RULES } from './rebuttals.js';
 import { parseListings } from './listings.js';
 import { isPersonName, titleLike } from './names.js';
 import { SERVICE_LIST } from './plancopy.js';
@@ -466,8 +468,9 @@ export const SCRIPT_VERSION = 10;
 // Two scripts, one story. Cold call: earn 30 seconds, frame us as a small group agency, hook with the scan, qualify, book the
 // clarity call (or start it right there). Clarity call: the screen share that ends in a signed work order.
 export const SCRIPT_GROUPS = [
-  ['analysis', 'Competitor analysis', ['a_call', 'a_set', 'a_disc', 'a_reb']],
-  ['cold', 'Cold call', ['k_open', 'k_site', 'k_hook', 'k_why', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
+  ['analysis', 'Competitor analysis', ['a_call', 'a_set', 'a_disc', 'a_reb', 'a_ml']],
+  ['question', 'Question opener', ['q_open', 'q_state', 'q_listen', 'q_sum', 'q_ask', 'q_lock', 'q_reb']],
+  ['cold', 'Cold call', ['k_open', 'k_site', 'k_hook', 'k_why', 'k_ml', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
   ['plan', 'Game Plan (website audit)', ['g_call', 'g_ask', 'g_set']],
   ['clarity', 'Clarity audit', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
 ];
@@ -480,6 +483,9 @@ export const SCRIPT_KEYS = [
   ['c_trial', 'Trial close'], ['c_price', 'Price: the drop close'], ['c_close', 'Close'], ['c_post', 'Work order and payment'],
   ['g_call', 'The call'], ['g_ask', 'If they ask what it is'], ['g_set', 'Once they give you a time'],
   ['a_call', 'The call'], ['a_set', 'Once they give you a time'], ['a_disc', 'Discovery after booking (Optional)'], ['a_reb', 'Rebuttals'],
+  ['a_ml', 'Mirror and label first'],
+  ['q_open', 'The opener'], ['q_state', 'Their current state'], ['q_listen', 'Mirror and label what they say'], ['q_sum', 'Sum it up'], ['q_ask', 'Ask for time'], ['q_lock', 'Lock it in'], ['q_reb', 'Rebuttals (mirror, label, ask)'],
+  ['k_ml', 'Cold: mirror and label'],
   ['c_onboard', 'Onboarding and homework'], ['c_book', 'Book the audit for later'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'],
 ];
 
@@ -539,6 +545,74 @@ export const DEFAULT_SCRIPT = {
     "“I already have a company”",
     "I bet you do you’re in [industry]",
     "“Why not have a second pair of eyes to make sure he’s working for you and not just fleecing your pockets? It’s free to find out. You get a report to show him and if you think we could help, you’ll have your answer on the call, I can meet today or tomorrow at 12 or 5?”",
+  ].join('\n'),
+  // Question opener (Nov 2026, V's opener): a question about their business, get them talking about how work comes in now, mirror and label
+  // what they say, sum it up until they say "that's right", then ask for time only. Research: report "Cold call scripts and split testing".
+  q_open: [
+    "Hey, is this {first_or_owner}? It's {rep} with Rightway Growth.",
+    "The reason for the call is I have a question for you about {business}.",
+    "Rightway Growth helps businesses get the leads they want at the peak of their interest, which is while they're on Google searching. Kind of like live strategy in your pocket.",
+    "So I'm curious, how are you handling new leads for jobs right now?",
+    "Or (shorter): The reason for the call is I have a question for you about {business}. We help {industry} businesses get calls from people on Google right now looking for what you do. So I'm curious, how are most new jobs coming in for you these days?",
+    "Or (permission first): I know I'm calling out of the blue. Can I take 30 seconds to tell you why I called, and you tell me if I'm off base?",
+    "(DO: Ask the question, then stop talking. Silence is fine. Let them answer.)",
+  ].join('\n'),
+  q_state: [
+    "{industry_q}",
+    "Then: {industry_f1}",
+    "Then: {industry_f2}",
+    "(DO: The goal is to get them talking about where work comes from now. Listen for a problem you can help with. If it really works and they are happy, that is a fine answer: thank them and exit.)",
+  ].join('\n'),
+  q_listen: [
+    "(DO: Mirror their last one to three words as a question, pause four seconds, then label it. One label, then one how or what question. Never why.)",
+    ...LISTEN.map(([when, ml, q]) => `IF ${when}: ${ml} ${q}`),
+  ].join('\n'),
+  q_sum: [
+    "So it sounds like most of your work comes from [your words for where work comes from], and [your words for the problem they named]. Did I get that right?",
+    "(DO: Wait for \"That's right.\" If you hear \"You're right\", label it: It sounds like I missed something. What did I get wrong?)",
+  ].join('\n'),
+  q_ask: [
+    "It sounds like there are a few ways I could help you get more quality jobs in the door that I'd love to show you.",
+    "{fruit_line}",
+    "Would it be crazy to grab a quick screen share, {slot1} or {slot2}?",
+    "Or: Are you available today or tomorrow for a chat? I have {slot1} or {slot2}.",
+    "(DO: Sell the time, nothing else. No prices, no service talk. If they ask, it's all on the screen share.)",
+  ].join('\n'),
+  q_lock: [
+    "Perfect. What's the best email for the invite?",
+    "So {slot1}, and you'll be near a computer or your phone? (Wait for \"That's right.\")",
+    "What could come up that would make that time a problem?",
+    "(DO: Say the day and time back out loud. Book it in the Hub before you hang up.)",
+  ].join('\n'),
+  q_reb: [
+    "(DO: Every answer starts with a mirror or a label, then one how or what question, then back to the time ask. Full list in Mirror and label below the script.)",
+    "\"Not interested.\"",
+    "Totally fair, you didn't ask for my call. It sounds like Google isn't a headache right now. How are most new customers finding you these days?",
+    "\"Just send me an email.\"",
+    "Some info? Happy to. So I don't send you junk, what would actually be useful to you?",
+    "\"We already have someone.\"",
+    "Already have someone? (pause) Good, so you already believe in it. How do you know it's working?",
+    "\"We get enough from word of mouth.\"",
+    "Word of mouth? Best kind of customer. When a friend says call {business}, what do you think they do first, dial straight or look you up?",
+    "\"How much does it cost?\"",
+    "How much? Fair. It depends on what your map needs, which is why we look first. What are you spending to get customers right now?",
+    "\"We tried it before and it didn't work.\"",
+    "It sounds like you paid and got nothing to show for it. What went wrong: you couldn't see the work, or the results never came?",
+    "\"I'm busy.\"",
+    "It sounds like I caught you mid job. Give me 20 seconds on why I called, then you decide if it's worth a callback?",
+    "\"Is this a sales call?\"",
+    "It is, and you can hang up in 30 seconds if it's off. Fair?",
+  ].join('\n'),
+  // Mirror and label first, then V's own rebuttal (a_reb) word for word. Added Nov 2026; the Competitor analysis text itself is unchanged.
+  a_ml: [
+    "(DO: When they push back, mirror or label FIRST, pause, then give the rebuttal above in your own words.)",
+    ...ANALYSIS_ML.map(([q, ml]) => `${q} ${ml}`),
+  ].join('\n'),
+  k_ml: [
+    "(DO: Whatever they say back, mirror their last few words as a question and pause. Then label it.)",
+    "Already have a system? (pause) It sounds like you have a good system in place to get more calls in. What part of it brings in the jobs you want most?",
+    "Word of mouth? (pause) It sounds like your reputation does the selling. When a friend sends someone your way, what do they do first, call you or look you up?",
+    "Busy? (pause) It sounds like I caught you mid job. When are you off the tools?",
   ].join('\n'),
   k_open: [
     "Hey, is this {first_or_owner}?",
@@ -888,7 +962,13 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
   const lc = L?.counts || {};
   const lbad = (lc.mismatch || 0) + (lc.missing || 0);
   const worst = (L?.results || []).find((r) => r.status === 'mismatch') || (L?.results || []).find((r) => r.status === 'missing');
+  const D = discoveryFor(lead.industry, intel?.listing?.category || lead.category, info.label);
+  const realGaps = probs.length > 0 || lbad > 0;
   return {
+    industry_q: D.q, industry_f1: D.f1, industry_f2: D.f2, cust_word: D.word,
+    // "Low hanging fruit" only when research actually found something; otherwise it stays a maybe.
+    fruit_line: realGaps ? `It seems like there's some low hanging fruit here. I'd love to show you how the ${info.label.toLowerCase()} shops at the top of the map near you are getting their calls.`
+      : `It seems like there could be some low hanging fruit here. I'd love to show you how the ${info.label.toLowerCase()} shops at the top of the map near you get their calls.`,
     first,
     listings_hook: L?.results?.length && lbad ? `I also checked the directories Google uses to double check you, and ${lbad} of ${L.results.length} have you wrong or missing${worst ? `, ${worst.name} for one` : ''}.` : '',
     listings_say: L?.results?.length ? (lbad ? `And this isn't theory. On ${lead.business || 'your business'}, ${lbad} of the ${L.results.length} directories I checked have you wrong or missing. Let me show you.` : `Good news on yours: the ${L.results.length} directories I checked mostly line up, so we protect that and build on it.`) : '',
@@ -986,7 +1066,10 @@ export function buildScript(lead, intel, ctx = {}, custom = {}) {
     vars: v,
     steps: SCRIPT_KEYS.map(([id, title]) => ({ id, title: title.replace(/^Cold: /, ''), group: SCRIPT_GROUPS.find((g) => g[2].includes(id))?.[0] || 'clarity', lines: asLines(S[id]).filter(keep).map((q) => voiceText(fill(fill(q, v), v), ctx.voice)).filter((q) => q.trim()) })).filter((st) => st.lines.length),
     groups: SCRIPT_GROUPS.map(([key, name]) => ({ key, name })),
-    objections: objections.map(([q, a]) => ({ q: voiceText(q, ctx.voice), a: voiceText(fill(a, v), ctx.voice) })),
+    objections: objections.map(([q, a]) => ({ q: voiceText(q, ctx.voice), a: voiceText(fill(a, v), ctx.voice), ml: ML[q] ? { mirror: ML[q].mirror, label: voiceText(fill(ML[q].label, v), ctx.voice), ask: voiceText(fill(ML[q].ask, v), ctx.voice) } : null })),
+    // Mirror and label catalog (46 objections with the funnel for yes, no and a dodge): public/js/rebuttals.js.
+    catalog: catalogRows((t) => voiceText(fill(t, v), ctx.voice)),
+    mlRules: ML_RULES,
     playbook: PLAYBOOK.map(([name, from, use]) => ({ name, from, use })),
   };
 }

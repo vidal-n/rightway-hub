@@ -1,11 +1,14 @@
 // The scripts as a reading copy: same text as the Hub's call prep, with blanks where call prep fills in the real names and numbers.
 // Pure. Used by the Training page and by the printable PDFs, so paper, Training and the live call prep never drift apart.
+import { catalogRows } from './rebuttals.js';
 import { DEFAULT_SCRIPT, SCRIPT_KEYS, SCRIPT_GROUPS, DEFAULT_OBJECTIONS, voiceText } from './leadintel.js';
 
 const B = (t) => `[[${t}]]`;
 export const PRINT_VARS = {
   first: B('first name'), first_or_owner: B('first name'), rep: B('your name'), company: B('company name'), my_number: B('your number'), business: B('business'), city: B('city'),
-  industry: B('industry'), keyword: B('keyword'), top_name_or_them: B('top competitor'), top10_of_points: B('X of Y'), ticket: B('job value'),
+  industry: B('industry'), keyword: B('keyword'),
+  industry_q: 'How are most new customers finding you right now? (call prep shows the question for their trade)', industry_f1: 'Where did your last few new customers come from?', industry_f2: 'Is that the kind of work you want more of?',
+  fruit_line: "It seems like there's some low hanging fruit here. I'd love to show you how the [industry] shops at the top of the map near you are getting their calls.", top_name_or_them: B('top competitor'), top10_of_points: B('X of Y'), ticket: B('job value'),
   price: B('monthly'), setup: B('buildout'), today_total: B('buildout + monthly'), city_suffix: ` in ${B('city')}`, pain: B('their pain'),
   scan_spread: `${B('spread line from call prep')} Same search, a couple of blocks apart, and you go from the first page to nowhere.`,
   services_list: B('the services on their quote'),
@@ -72,7 +75,7 @@ const docCues = (html) => String(html).replace(/\(([^()]{2,240})\)/g, (m, inner)
 const noteText = (t) => boldHtml(brackets(e(t)));
 const spoken = (t) => boldHtml(docCues(brackets(e(t))));
 export const DOC_TITLES = {
-  cold: ['COLD CALL SCRIPT'], analysis: ['COLD CALL SCRIPT:', 'COMPETITOR ANALYSIS'],
+  question: ['COLD CALL SCRIPT:', 'QUESTION OPENER'], cold: ['COLD CALL SCRIPT'], analysis: ['COLD CALL SCRIPT:', 'COMPETITOR ANALYSIS'],
   plan: ['GAME PLAN SCRIPT:', 'WEBSITE AUDIT'], clarity: ['GOOGLE CLARITY AUDIT SCRIPT'],
 };
 export function docLine(l) {
@@ -94,6 +97,7 @@ export function docObjections(group, voice = 'I') {
     const quick = DEFAULT_OBJECTIONS.filter(([q]) => QUICK.includes(q)).map(([q, a]) => ({ q, a: voiceText(fillPrint(a), voice) }));
     return [['Objections', [...og.cold, ...quick]]];
   }
+  if (group === 'question') return [['Mirror and label', og.ml]];
   if (group === 'clarity') return [['Objections before price', og.before], ['Objections after price', og.after], ['Objections any time', og.any]];
   return [];
 }
@@ -117,5 +121,6 @@ export function objectionGroups(list = DEFAULT_OBJECTIONS, voice = 'I') {
   const after = price >= 0 ? rest.filter(([q]) => idx(q) >= price && (any < 0 || idx(q) < any)) : [];
   const anytime = any >= 0 ? rest.filter(([q]) => idx(q) >= any) : [];
   const map = ([q, a]) => ({ q: q.replace(/^Cold: /, ''), a: voiceText(fillPrint(a), voice) });
-  return [['cold', 'Cold call', cold.map(map)], ['before', 'Before price', before.map(map)], ['after', 'After price', after.map(map)], ['any', 'Any time', anytime.map(map)]];
+  const ml = catalogRows((t) => voiceText(fillPrint(t), voice)).filter((x) => x.id !== 'remove').map((x) => ({ q: x.q, a: x.say }));
+  return [['ml', 'Mirror and label', ml], ['cold', 'Cold call', cold.map(map)], ['before', 'Before price', before.map(map)], ['after', 'After price', after.map(map)], ['any', 'Any time', anytime.map(map)]];
 }

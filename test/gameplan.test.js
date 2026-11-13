@@ -52,8 +52,9 @@ test('Competitor analysis cold call is V\'s doc word for word, with rebuttals', 
   assert.ok(SCRIPT_GROUPS.find((g) => g[0] === 'analysis'));
   const s = buildScript({ business: 'Joe Plumbing', contact_name: 'Joe Smith', city: 'Miami', industry: 'Plumbing' }, null, { rep: 'Sam', voice: 'I' });
   const steps = s.steps.filter((x) => x.group === 'analysis');
-  assert.deepEqual(steps.map((x) => x.id), ['a_call', 'a_set', 'a_disc', 'a_reb']);
-  assert.deepEqual(steps.map((x) => x.title), ['The call', 'Once they give you a time', 'Discovery after booking (Optional)', 'Rebuttals']);
+  // Nov 2026: a mirror and label add on comes after V's rebuttals; his own steps are unchanged.
+  assert.deepEqual(steps.map((x) => x.id), ['a_call', 'a_set', 'a_disc', 'a_reb', 'a_ml']);
+  assert.deepEqual(steps.map((x) => x.title), ['The call', 'Once they give you a time', 'Discovery after booking (Optional)', 'Rebuttals', 'Mirror and label first']);
   const plain = (id) => steps.find((x) => x.id === id).lines.map(unbold);
   // Typos and odd spacing are his, so they stay.
   assert.deepEqual(plain('a_call'), [
@@ -77,7 +78,7 @@ test('Competitor analysis cold call is V\'s doc word for word, with rebuttals', 
   // The same text reads the same for owners and teammates (no I/we markers in it).
   const we = buildScript({ business: 'x' }, null, { rep: 'Sam', voice: 'we' }).steps.filter((x) => x.group === 'analysis').flatMap((x) => x.lines);
   assert.deepEqual(we, steps.flatMap((x) => x.lines));
-  assert.equal(scriptSteps('analysis').length, 4);
+  assert.equal(scriptSteps('analysis').length, 5); // V's four steps plus the mirror and label add on
 });
 
 test('doc layout: bold, notes, brackets and lowercase parentheses', () => {

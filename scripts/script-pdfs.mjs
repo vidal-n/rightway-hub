@@ -16,9 +16,9 @@ const logo = `data:image/svg+xml;base64,${readFileSync(join(ROOT, 'public', 'bra
 
 const FILES = {
   cold: 'RightWay-Growth-Cold-Call-Script', analysis: 'RightWay-Growth-Competitor-Analysis-Script',
-  plan: 'RightWay-Growth-Game-Plan-Script', clarity: 'RightWay-Growth-Google-Clarity-Audit-Script',
+  plan: 'RightWay-Growth-Game-Plan-Script', clarity: 'RightWay-Growth-Google-Clarity-Audit-Script', question: 'RightWay-Growth-Question-Opener-Script',
 };
-const NAMES = { cold: 'Cold call script', analysis: 'Competitor analysis script', plan: 'Game Plan script', clarity: 'Google clarity audit script' };
+const NAMES = { question: 'Question opener script', cold: 'Cold call script', analysis: 'Competitor analysis script', plan: 'Game Plan script', clarity: 'Google clarity audit script' };
 
 const CSS = `
 @page { size: Letter; margin: 1in; }
@@ -40,7 +40,7 @@ const footer = (label) => `<div style="width:100%;margin:0 1in;font:9px Arial,'L
 const browser = await chromium.launch();
 const p = await browser.newPage();
 for (const voice of ['I', 'we']) {
-  for (const g of Object.keys(FILES)) {
+  for (const g of Object.keys(FILES).filter((k) => !process.env.ONLY || process.env.ONLY.split(',').includes(k))) {
     const name = `${FILES[g]}${voice === 'we' ? '-Team' : ''}.pdf`;
     await p.setContent(page(docHtml(g, { voice, objections: true }), NAMES[g]));
     await p.pdf({ path: join(OUT, name), format: 'Letter', printBackground: true, displayHeaderFooter: true, headerTemplate: header, footerTemplate: footer(NAMES[g]), margin: { top: '1in', bottom: '1in', left: '1in', right: '1in' } });

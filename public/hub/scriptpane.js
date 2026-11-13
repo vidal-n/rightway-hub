@@ -2,6 +2,7 @@
 // window and follows it when it is dragged. Groups and steps, coaching notes on or off, Back and Next, and swipe. It can be
 // switched off for good (Dialer, Customize layout, or the Script button in the call window); the choice is saved on the
 // person's account. Modeled on the script panel next to the dial pad in Close.com and Orum style power dialers.
+import { scriptKeyFor } from './scriptpick.js';
 import { $, $$, esc, isPhone } from './core.js';
 import { buildScript } from '/js/leadintel.js';
 import { scriptLine, scriptSettings } from './prep.js';
@@ -53,7 +54,7 @@ export async function showCallScript(opts) {
   const custom = await scriptSettings();
   if (!document.querySelector('.callbar') || pane) return;
   const s = buildScript(lead, intel || null, { rep, voice }, custom);
-  const startGroup = lead.stage === 'audit_booked' || (lead.meet_at && lead.meet_at > Date.now() - 3 * 3600e3) ? 'clarity' : 'analysis';
+  const startGroup = lead.stage === 'audit_booked' || (lead.meet_at && lead.meet_at > Date.now() - 3 * 3600e3) ? 'clarity' : (scriptKeyFor(lead) || 'analysis');
   const firstStep = Math.max(0, s.steps.findIndex((x) => x.group === startGroup));
   const el = document.createElement('aside');
   el.className = 'callscript';

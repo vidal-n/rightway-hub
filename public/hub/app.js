@@ -145,6 +145,7 @@ async function route() {
   if (parts[0] === 'agents') return import('./agents.js').then((m) => m.agentsPage(app, u, parts[1] || ''));
   if (parts[0] === 'training') return import('./training.js').then((m) => m.trainingPage(app, u, parts[1] || '', parts[2] || ''));
   if (parts[0] === 'pipeline' && parts[1] === 'database') return import('./leaddb.js').then((m) => m.databasePage(app, u, parts[2] || ''));
+  if (parts[0] === 'pipeline' && parts[1] === 'scripts') return import('./scripttests.js').then((m) => m.scriptTestsPage(app, u));
   if (parts[0] === 'pipeline' && parts[1] === 'suppression') return import('./suppress.js').then((m) => m.suppressPage(app, u));
   if (parts[0] === 'pipeline' && parts[1] === 'insights') return import('./leadinsights.js').then((m) => m.insightsPage(app, u));
   if (parts[0] === 'pipeline' && parts[1] === 'stage' && parts[2]) return pipelinePage(app, u, null, { kind: 'stage', key: decodeURIComponent(parts[2]) });

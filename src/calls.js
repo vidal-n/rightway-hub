@@ -1,5 +1,6 @@
 // Dialer through Twilio: the Hub calls your phone, then connects you to the lead from the business number.
 // Keys: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM (your Twilio number, +1...). Recording stays off.
+import { tagScript } from './scripttest.js';
 import { HttpError, json } from './util.js';
 import { first, all, run, now } from './db.js';
 import { requireStaff } from './auth.js';
@@ -90,6 +91,7 @@ route('POST', '/api/dialer/call', async ({ env, user, url, body }) => {
   if (!e164(lead.phone)) throw new HttpError('This lead has no valid phone number.');
   if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError("It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
   const activityId = await logActivity(env, { lead_id: lead.id, type: 'call', status: 'ringing_you', by: user.id });
+  await tagScript(env, activityId, b.script, b.scriptV);
   const params = new URLSearchParams({
     To: me.phone, From: env.TWILIO_FROM,
     Url: `${url.origin}/api/twilio/bridge?a=${activityId}&from=${encodeURIComponent(from)}`,

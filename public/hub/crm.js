@@ -11,6 +11,7 @@ import { loadDispos, keyed, dispositionModal, isoWhen } from './dispo.js';
 import { saveDial } from './resume.js';
 import { mountLayout } from './widgets.js';
 import { showCallScript, setScriptOn, scriptOn } from './scriptpane.js';
+import { ensureScript, scriptChip, scriptTag, loadScriptTest } from './scriptpick.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { hoverCards, hoverHtml } from './hovercard.js';
@@ -1076,6 +1077,10 @@ export async function dialerPage(app, user) {
   const view = staffShell(app, user, 'dialer');
   let flt = {};
   try { flt = JSON.parse(localStorage.getItem(DIAL_KEY) || '{}'); } catch { flt = {}; }
+  // Script tests: the header chip shows today's script (or the owner's split test) and opens the picker.
+  function paintChip() { const b = $('#dscript', view); if (b) { b.outerHTML = scriptChip(); $('#dscript', view)?.addEventListener('click', pickAgain); } }
+  async function pickAgain() { await ensureScript({ force: true }); paintChip(); }
+  loadScriptTest().then(paintChip);
   // Researching the next leads as you dial costs money, so it starts off (Nov 2026). The old saved choice is ignored once.
   let auto = false;
   try { auto = localStorage.getItem('rw-dial-auto2') === '1'; } catch { /* ignore */ }
@@ -1271,6 +1276,7 @@ export async function dialerPage(app, user) {
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
           ${testMode ? '' : `<label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label>`}<a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
+          ${testMode ? '' : scriptChip()}
           <button class="btn btn-ghost btn-sm" id="pdtest" title="Try power dialing with pretend leads and a pretend call. Nothing is dialed or saved.">${testMode ? 'Exit test' : 'Test power dial'}</button>
           ${dialOn() ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
       ${testMode ? '<div class="card test-banner"><b>Test mode.</b> Seven pretend leads run the whole dialer, from Start power dial to the result popup and the next lead. Nothing is dialed, texted, booked or saved, and it costs nothing. <a href="#/training/warmup">Warm up in Training</a>. <button type="button" class="btn btn-ghost btn-sm" id="pdtestx">Exit test</button></div>' : ''}
@@ -1347,6 +1353,7 @@ export async function dialerPage(app, user) {
       ['p-script', 'Script', '.dial-prep details.fold[data-fold="script"]'], ['p-snapshot', 'Their numbers', '.dial-prep details.fold[data-fold="snapshot"]'],
       ['p-problems', 'Problems to pitch', '.dial-prep details.fold[data-fold="problems"]'], ['p-listings', 'Listings', '.dial-prep details.fold[data-fold="listings"]'],
       ['p-objections', 'Objections', '.dial-prep details.fold[data-fold="objections"]'],
+      ['p-mirror', 'Mirror and label', '.dial-prep details.fold[data-fold="mirror"]'],
     ].map(([id, label, sel]) => ({ id, label, sel })) });
     $$('[data-jump]', view).forEach((b) => b.addEventListener('click', () => { if (busyPhase()) return toast('Finish this call and save the result first.', true); idx = Number(b.dataset.jump); render(); }));
     // Customize layout: tick boxes change the page in place (no redraw), so the menu stays open while you choose.
@@ -1380,7 +1387,8 @@ export async function dialerPage(app, user) {
     $('#pdtestx', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
     $('#tsagain', view)?.addEventListener('click', () => startTest());
     $('#tsexit', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
-    $('#pdgo', view)?.addEventListener('click', () => { warmAudio(); if (!testMode && !power) holdMic(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); if (!testMode) saveDial({ start: true, running: true, filter: flt, label: filterText, calls: pdCalls }); window.dispatchEvent(new Event('rw-power')); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
+    $('#dscript', view)?.addEventListener('click', pickAgain);
+    $('#pdgo', view)?.addEventListener('click', async () => { if (!testMode && !power && !(await ensureScript())) return; warmAudio(); if (!testMode && !power) holdMic(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); if (!testMode) saveDial({ start: true, running: true, filter: flt, label: filterText, calls: pdCalls }); window.dispatchEvent(new Event('rw-power')); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
     prefetch(l);
@@ -1395,11 +1403,12 @@ export async function dialerPage(app, user) {
     $('#dhub', view)?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       if (phase === 'wrap' || phoneState().onCall) return toast('Finish this call and save the result first.', true);
+      if (!testMode && !power && !(await ensureScript())) return;
       phase = 'calling';
       busy(btn, true);
       try {
         showCallScript({ lead: l, intel: intelCache.get(l.id) || null, rep: REP, voice: VOICE });
-        await placeCall({ test: testMode, outcome: l.test_outcome, onLive: () => { if (testMode) practiceModal({ persona: l.persona, lead: l, onScore: (n) => testScore.set(l.id, n), onFinish: () => { if (phoneState().onCall) hangUp(); } }); }, leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
+        await placeCall({ test: testMode, script: testMode ? null : scriptTag(l), outcome: l.test_outcome, onLive: () => { if (testMode) practiceModal({ persona: l.persona, lead: l, onScore: (n) => testScore.set(l.id, n), onFinish: () => { if (phoneState().onCall) hangUp(); } }); }, leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
           tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : [['Script', () => setScriptOn(!scriptOn())]]), ['Text them', () => (testMode ? testText(l) : textModal(l, { rep: REP }))], ['Book appointment', () => (testMode ? testBook(l) : bookModal(l, () => afterBooking(l, bookedId))), 'primary'], ['Full details', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {}))]] },
           onEnd: ({ answered }) => {
             const dr = takeCallDraft();
@@ -1479,7 +1488,8 @@ export async function dialerPage(app, user) {
       throw new Error('Fill in the booking form that just opened, or add a time here, then press Save.');
     }
     if (!(booked && acts === 'booked') && !(acts === 'booked' && bookedDuring.has(l.id))) {
-      const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note, callbackAt: isoWhen(when), detail: extra.detail || null } });
+      const tag = scriptTag(l);
+      const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note, callbackAt: isoWhen(when), detail: extra.detail || null, script: tag?.key, scriptV: tag?.v } });
       if (r.calendar?.warning) toast(`Heads up: ${r.calendar.warning} Hand it to someone else on the lead.`, true);
     } else if (note) await api(`/api/leads/${l.id}/note`, { method: 'POST', body: { text: note } });
     bookedDuring.delete(l.id);
@@ -1572,7 +1582,7 @@ export async function settingsPage(app, user) {
       <div class="card" id="teamcal"></div>
     <div class="card"><div class="card-head"><h2>Call script</h2></div>
       <p class="muted">The dialer and the presentation fill these in for each lead. One line per thing to say. Start a line with "Or:" for an alternative, and wrap coaching notes in (parentheses).</p>
-      <p class="small mono">{first} {rep} {my_number} {business} {city} {industry} {keyword} {scan_line} {hook_impact} {opener_reason} {vm_scan} {rank} {top_name} {top_name_or_them} {top_reviews} {top3_of_points} {top10_of_points} {reviews} {rating} {price} {setup} {today_total} {services_list} {price_anchor} {drop_offer} {ticket} {breakeven} {breakeven_jobs} {problems} {slot1} {slot2} {email_or_phone} {email_or_ask}</p>
+      <p class="small mono">{first} {rep} {my_number} {business} {city} {industry} {industry_q} {industry_f1} {industry_f2} {fruit_line} {keyword} {scan_line} {hook_impact} {opener_reason} {vm_scan} {rank} {top_name} {top_name_or_them} {top_reviews} {top3_of_points} {top10_of_points} {reviews} {rating} {price} {setup} {today_total} {services_list} {price_anchor} {drop_offer} {ticket} {breakeven} {breakeven_jobs} {problems} {slot1} {slot2} {email_or_phone} {email_or_ask}</p>
       <form id="scf" class="form-grid" style="grid-template-columns:1fr">
         ${SCRIPT_KEYS.map(([k, n]) => `<label class="field"><span>${n}</span><textarea name="${k}" rows="${Math.min(9, Math.max(3, String(sc[k] || '').split('\n').length + 1))}"${isAdmin ? '' : ' disabled'}>${esc(Array.isArray(sc[k]) ? sc[k].join('\n') : sc[k])}</textarea></label>`).join('')}
         <label class="field"><span>Objections (one per block: the objection on the first line, the answer below, blank line between)</span><textarea name="objections" rows="14"${isAdmin ? '' : ' disabled'}>${esc(obs.map(([q, a]) => `${q}\n${a}`).join('\n\n'))}</textarea></label>

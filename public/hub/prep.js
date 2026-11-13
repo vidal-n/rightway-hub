@@ -1,4 +1,6 @@
 // Call prep: research snapshot, problems with talk tracks, the adaptive script, objections, booking, and presenting.
+import { catalogHtml, mlLead } from './mlview.js';
+import { scriptKeyFor } from './scriptpick.js';
 import { $, $$, esc, api, toast, busy, modal, fmt } from './core.js';
 import { parseListings, listingsLine, listingsTable } from '/js/listings.js';
 import { rich } from '/js/scriptprint.js';
@@ -69,7 +71,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
   const s = buildScript(lead, intel, { rep, voice }, custom);
   const age = intel?.at ? fmt.ago(intel.at) : null;
   // The dialer opens on the cold call; a booked lead (or the lead page with a meeting) opens on the clarity call.
-  const startGroup = lead.stage === 'audit_booked' || (lead.meet_at && lead.meet_at > Date.now() - 3 * 3600e3) ? 'clarity' : 'analysis';
+  const startGroup = lead.stage === 'audit_booked' || (lead.meet_at && lead.meet_at > Date.now() - 3 * 3600e3) ? 'clarity' : (scriptKeyFor(lead) || 'analysis');
   const firstStep = Math.max(0, s.steps.findIndex((x) => x.group === startGroup));
   el.innerHTML = `
     <div class="prep">
@@ -104,7 +106,8 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
       ${intel.competitors?.length ? `<div class="comps">${intel.competitors.slice(0, 3).map((c, i) => `<span class="badge gray">#${i + 1} ${esc(c.title)}${c.reviews != null ? ` · ${c.reviews} reviews` : ''}${c.rating ? ` · ${c.rating}★` : ''}</span>`).join('')}</div>` : ''}`, true)
       + fold('problems', 'Problems to pitch', probs.length ? `<ul class="probs">${probs.map((p) => `<li class="prob sev-${p.severity}"><div class="item-title">${esc(p.title)}</div><div class="small">${esc(p.detail)}</div><div class="say">Say: ${esc(p.talk)}</div></li>`).join('')}</ul>` : '<p class="muted" style="margin:0">No major problems found. Pitch protecting their spot and growing into more keywords and areas.</p>', false, probs.length) : ''}
       ${fold('listings', 'Listings Google double checks', '<div class="prep-lst" id="preplst"></div>', false)}
-      ${compact ? '' : fold('objections', 'Objections', `<div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary><p>${rich(esc(o.a))}</p></details>`).join('')}</div>
+      ${fold('mirror', 'Mirror and label (every objection)', `<div class="objs">${catalogHtml(s)}</div>`, false)}
+      ${compact ? '' : fold('objections', 'Objections', `<div class="objs">${s.objections.map((o) => `<details class="obj"><summary>${esc(o.q)}</summary>${mlLead(o.ml)}<p>${rich(esc(o.a))}</p></details>`).join('')}</div>
       <details class="obj playbook"><summary>Why the script works (the playbook)</summary><ul>${s.playbook.map((p) => `<li><b>${esc(p.name)}</b> <span class="small">${esc(p.from)}</span><div class="small">${esc(p.use)}</div></li>`).join('')}</ul></details>`, false)}
     </div>`;
   wireFolds(el);
