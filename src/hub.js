@@ -678,6 +678,7 @@ import './chat.js';
 import './hubcal.js';
 import './files.js';
 import './hubmail.js';
+import './infomail.js';
 import './teamcal.js';
 import './pack.js';
 import './practice.js';

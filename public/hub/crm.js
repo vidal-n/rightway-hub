@@ -4,7 +4,7 @@ import { staffShell, settingsTabs } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
 import { textModal } from './texts.js';
 import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
-import { loadDispos, keyed, dispositionModal } from './dispo.js';
+import { loadDispos, keyed, dispositionModal, isoWhen } from './dispo.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { hoverCards, hoverHtml } from './hovercard.js';
@@ -752,7 +752,7 @@ export async function leadModal(id, onChange) {
     const when = $('#lwhen', m.el).value;
     if ((acts === 'callback' || acts === 'booked') && !when) return toast('Pick the date and time first.', true);
     busy(b, true);
-    try { const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note: $('#lnote', m.el).value, callbackAt: when || null } }); toast(r.calendar?.warning ? `Logged. Heads up: ${r.calendar.warning}` : 'Logged', Boolean(r.calendar?.warning)); done(); }
+    try { const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note: $('#lnote', m.el).value, callbackAt: isoWhen(when) } }); toast(r.calendar?.warning ? `Logged. Heads up: ${r.calendar.warning}` : 'Logged', Boolean(r.calendar?.warning)); done(); }
     catch (err) { toast(err.message, true); busy(b, false); }
   }));
   $('#lnotebtn', m.el).addEventListener('click', async () => {
@@ -1277,7 +1277,7 @@ export async function dialerPage(app, user) {
     prefetch(l);
     prefetch(q.queue[idx + 1]);
     $('#dskip', view).addEventListener('click', () => { if (busyPhase()) return toast('Finish this call and save the result first.', true); idx++; render(); });
-    $('#dlog', view)?.addEventListener('click', () => { if (busyPhase()) return toast('The result opens in the call window when the call ends.', true); const w = whoIs(l); dispositionModal({ title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), sub: 'Pick how it went. It moves the lead to the right next step.', answered: true, onSave: (r) => logOutcome(l, r.dispo, { note: r.note, when: r.callbackAt }) }); });
+    $('#dlog', view)?.addEventListener('click', () => { if (busyPhase()) return toast('The result opens in the call window when the call ends.', true); const w = whoIs(l); dispositionModal({ lead: testMode ? null : l, title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), sub: 'Pick how it went. It moves the lead to the right next step.', answered: true, onSave: (r) => logOutcome(l, r.dispo, { note: r.note, when: r.callbackAt }) }); });
     $('#dopen', view).addEventListener('click', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {})));
     $('#dtext', view).addEventListener('click', () => (testMode ? testText(l) : textModal(l, { rep: REP })));
     const bookedId = (DISP.find((d) => d.acts === 'booked') || { id: 'booked' }).id;
@@ -1327,7 +1327,7 @@ export async function dialerPage(app, user) {
   const openDispo = (l, answered, dr) => {
     const w = whoIs(l);
     const powerLine = `<button type="button" class="cb-book" data-pbook>Book appointment</button>${power ? `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="small muted">Next call starts ${pdWait} second${pdWait === 1 ? '' : 's'} after you save.</span><button type="button" class="cbp-stop" data-pstop>Stop dialing</button></div>` : ''}`;
-    wrapUp({ title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), note: dr.note, callbackAt: dr.when,
+    wrapUp({ lead: testMode ? null : l, title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), note: dr.note, callbackAt: dr.when,
       sub: answered ? 'Pick how it went. It moves the lead to the right next step.' : 'No one picked up? Pick the result.', answered, skipLabel: 'Later',
       foot: powerLine, footBind: (el) => {
         el.querySelector('[data-pbook]')?.addEventListener('click', () => (testMode ? testBook(l) : bookModal(l, () => { bookedDuring.add(l.id); toast('Booked. Pick the result and Save.'); })));
@@ -1368,7 +1368,7 @@ export async function dialerPage(app, user) {
       throw new Error('Fill in the booking form that just opened, or add a time here, then press Save.');
     }
     if (!(booked && acts === 'booked') && !(acts === 'booked' && bookedDuring.has(l.id))) {
-      const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note, callbackAt: when || null } });
+      const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note, callbackAt: isoWhen(when) } });
       if (r.calendar?.warning) toast(`Heads up: ${r.calendar.warning} Hand it to someone else on the lead.`, true);
     } else if (note) await api(`/api/leads/${l.id}/note`, { method: 'POST', body: { text: note } });
     bookedDuring.delete(l.id);

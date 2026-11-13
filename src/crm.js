@@ -87,7 +87,9 @@ export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, not
       Object.assign(set, { stage: 'callback', next_action_at: callbackAt, next_action: 'Callback' });
       break;
     case 'conversation':
-      Object.assign(set, { stage: 'follow_up', next_action_at: at + 2 * DAY, next_action: 'Follow up' });
+      // A "wants info first" result with a callback time (the info email promised it) is a callback at that time.
+      if (callbackAt) Object.assign(set, { stage: 'callback', next_action_at: callbackAt, next_action: 'Callback (info sent)' });
+      else Object.assign(set, { stage: 'follow_up', next_action_at: at + 2 * DAY, next_action: 'Follow up' });
       break;
     case 'booked':
       Object.assign(set, { stage: 'audit_booked', next_action_at: callbackAt || at + DAY, next_action: 'Audit call (Call 2)' });

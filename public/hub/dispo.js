@@ -11,11 +11,14 @@ export const clearDispos = () => { cache = null; };
 // Each disposition gets a number key 1 to 9 in list order.
 export const keyed = (list) => list.map((d, i) => ({ ...d, key: i < 9 ? String(i + 1) : '' }));
 export const needsTime = (d) => d && (d.acts === 'callback' || d.acts === 'booked');
+// A datetime-local value is the rep's own clock; send an exact moment so the Worker (UTC) never shifts it.
+export const isoWhen = (v) => { const t = v ? new Date(v) : null; return t && !Number.isNaN(+t) ? t.toISOString() : null; };
+const isInfo = (d) => Boolean(d) && (d.id === 'send_info' || /\binfo\b/i.test(d.label || ''));
 
 // The result picker. It draws into any box: the popup (dispositionModal) or the call window itself (wrapUp in phone.js).
 // onSave gets { dispo, note, callbackAt, newLead } and does the saving; it may throw to keep the panel open. onDone(saved) runs after Save or Skip.
 // Returns { destroy, wasSaved } or null when the list could not load.
-export async function dispoPanel(host, { title = 'How did the call go?', sub = '', answered = false, askLead = false, number = '', person = '', business = '', facts = [], note = '', callbackAt = '', foot = '', footBind, skipLabel = 'Skip', bare = false, onSave, onSkip, onDone } = {}) {
+export async function dispoPanel(host, { title = 'How did the call go?', sub = '', answered = false, askLead = false, number = '', person = '', business = '', facts = [], note = '', callbackAt = '', foot = '', footBind, skipLabel = 'Skip', bare = false, lead = null, onSave, onSkip, onDone } = {}) {
   let list;
   try { list = keyed((await loadDispos()).dispositions); } catch (e) { toast(e.message, true); return null; }
   // A callback time tapped during the call picks the callback result for them.
@@ -27,18 +30,34 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
     <div class="card-head"><div class="dp-who">${person || business ? `<span class="pd-av">${esc(initials)}</span>` : ''}<div style="min-width:0"><h2 style="margin:0">${esc(person || title)}</h2>${person || business ? `<div class="pd-biz">${esc(person ? business || title : '')}</div>` : ''}${sub ? `<p class="small muted" style="margin:4px 0 0">${esc(sub)}</p>` : ''}</div></div><button class="btn btn-ghost btn-sm"${bare ? ' data-skip' : ' data-close'}>${esc(skipLabel)}</button></div>
     ${facts.filter((f) => f && f.v).length ? `<div class="dp-facts">${facts.filter((f) => f && f.v).map((f) => `<span><i>${esc(f.k)}</i>${esc(f.v)}</span>`).join('')}</div>` : ''}
     <div class="dispo-grid">${list.map((d) => `<button type="button" class="dispo-btn${d.id === pick ? ' on' : ''}" data-d="${esc(d.id)}">${d.key ? `<span class="kbd">${d.key}</span>` : ''}${esc(d.label)}</button>`).join('')}</div>
-    <label class="field dispo-when" style="margin-top:12px${needsTime(list.find((d) => d.id === pick)) ? '' : ';display:none'}"><span>Callback or audit time</span><input type="datetime-local" id="dpwhen" value="${esc(callbackAt)}"></label>
-    <label class="field" style="margin-top:12px"><span>Note</span><textarea id="dpnote" rows="3" placeholder="What they said, job value, who handles marketing">${esc(note)}</textarea></label>
+    <label class="field dispo-when" style="margin-top:12px${needsTime(list.find((d) => d.id === pick)) ? '' : ';display:none'}"><span id="dpwlabel">Callback or audit time</span><input type="datetime-local" id="dpwhen" value="${esc(callbackAt)}"></label>
+    <div class="dp-info" style="display:none"></div>
+    <label class="field" style="margin-top:12px"><span>Note</span><textarea id="dpnote" rows="2" placeholder="What they said, job value, who handles marketing">${esc(note)}</textarea></label>
     ${askLead ? `<details class="dispo-lead" style="margin-top:12px"><summary>Add ${esc(number || 'this number')} as a new lead</summary>
       <div class="form-grid" style="margin-top:10px"><label class="field"><span>Business name</span><input id="dpbiz" placeholder="Shore Plumbing"></label>
       <label class="field"><span>Contact</span><input id="dpcontact" placeholder="Mike"></label><label class="field"><span>State</span><input id="dpstate" placeholder="FL" maxlength="20"></label></div></details>` : ''}
-    <div class="row end" style="margin-top:16px"><button type="button" class="btn btn-primary" id="dpsave"${pick ? '' : ' disabled'}>Save</button></div>
+    <div class="row end dp-actions" style="margin-top:16px"><button type="button" class="btn btn-primary" id="dpsave"${pick ? '' : ' disabled'}>Save</button></div>
     ${foot ? `<div class="dp-foot">${foot}</div>` : ''}`;
   const el = host;
+  // "Wants info first": the email form opens right in the result window.
+  let infoCtl = null, infoLoading = false, emailed = false;
+  const showInfo = async (on) => {
+    const box = $('.dp-info', el);
+    box.style.display = on ? '' : 'none';
+    el.classList.toggle('has-info', on);
+    if (!on || infoCtl || infoLoading || !lead) return;
+    infoLoading = true;
+    try { const m = await import('./infomail.js'); infoCtl = await m.mountInfo(box, lead, () => $('#dpwhen', el).value); } catch (e) { box.innerHTML = `<div class="small err-text">${esc(e.message)}</div>`; }
+    infoLoading = false;
+  };
   const choose = (id) => {
     pick = id;
     $$('.dispo-btn', el).forEach((b) => b.classList.toggle('on', b.dataset.d === id));
-    $('.dispo-when', el).style.display = needsTime(list.find((d) => d.id === id)) ? '' : 'none';
+    const dd = list.find((d) => d.id === id);
+    const info = Boolean(lead) && isInfo(dd);
+    $('.dispo-when', el).style.display = needsTime(dd) || info ? '' : 'none';
+    $('#dpwlabel', el).textContent = info ? 'Callback time (optional, goes in the email)' : 'Callback or audit time';
+    showInfo(info);
     $('#dpsave', el).disabled = false;
   };
   $$('.dispo-btn', el).forEach((b) => b.addEventListener('click', () => choose(b.dataset.d)));
@@ -51,7 +70,14 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
   };
   function destroy() { gone = true; document.removeEventListener('keydown', onKey); }
   document.addEventListener('keydown', onKey);
-  if (foot) footBind?.($('.dp-foot', el));
+  if (foot) {
+    footBind?.($('.dp-foot', el));
+    // Book appointment sits beside Save so a dial is one glance and one tap (the listeners stay on the moved button).
+    const bk = $('.dp-foot .cb-book', el);
+    if (bk) { $('.dp-actions', el).prepend(bk); el.classList.add('has-book'); }
+    const left = $('.dp-foot', el);
+    if (left && !left.children.length && !left.textContent.trim()) left.remove();
+  }
   $('[data-skip]', el)?.addEventListener('click', () => { if (gone) return; destroy(); onSkip?.(); onDone?.(false); });
   $('#dpsave', el).addEventListener('click', async (e) => {
     const d = list.find((x) => x.id === pick);
@@ -60,6 +86,14 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
     const biz = $('#dpbiz', el)?.value.trim();
     busy(e.currentTarget, true);
     try {
+      // Send the info email first. A wrong address or a send problem stops here, so nothing is logged twice.
+      if (lead && isInfo(d) && infoCtl && !emailed) {
+        const m = infoCtl.get();
+        if (m) {
+          const r = await api(`/api/leads/${lead.id}/info-email`, { method: 'POST', body: { ...m, callbackAt: when ? new Date(when).toISOString() : null } });
+          emailed = true; toast(`Email sent to ${r.to}`);
+        }
+      }
       await onSave({ dispo: d.id, acts: d.acts, label: d.label, note: $('#dpnote', el).value.trim(), callbackAt: when || null,
         newLead: biz ? { business: biz, contact: $('#dpcontact', el).value.trim(), state: $('#dpstate', el).value.trim() } : null });
       saved = true;
