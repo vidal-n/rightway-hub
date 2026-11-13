@@ -1,4 +1,6 @@
 // CRM screens: pipeline board, lead details, CSV import, power dialer, settings.
+import { isMapsScrape, mapsScrapeRows } from '../js/mapsimport.js';
+import { PRICES, money, priceText } from '../js/pricing.js';
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable, isPhone, editGoal, trayAdd, trayRemove } from './core.js';
 import { staffShell, settingsTabs } from './staff.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
@@ -348,11 +350,12 @@ export async function pipelinePage(app, user, openId, screen) {
 }
 
 // Research several leads, three at a time, with a progress bar and a stop button.
-export function researchMany(leads, onDone) {
+export function researchMany(leads, onDone, opts = {}) {
+  const depth = opts.depth || '';
   if (!leads.length) return toast('Nothing to research in this view.');
   let stop = false;
   const m = modal(`<div class="card-head"><h2>Researching ${leads.length} leads</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
-    <p class="muted">Each lead: find the Google profile, rank check at 9 points around them, website read, mobile speed. About 4 cents each, ${esc(fmt.money(leads.length * 0.04))} max.</p>
+    <p class="muted">${depth === 'free' ? 'Each lead: website read, ad tracking and the Google details already saved. No paid calls. Leads with no Google details are skipped.' : depth === 'lite' ? `Each lead: one Google Maps check at the business plus a website read. About ${esc(money(PRICES.research_lite.usd * leads.length))} in total.` : `Each lead: find the Google profile, rank check at 9 points around them, website read, mobile speed. About 4 cents each, ${esc(fmt.money(leads.length * 0.04))} max.`}</p>
     <div class="progress"><span id="rmbar" style="width:0%"></span></div><p class="small" id="rmtxt">Starting...</p>
     <div class="row end"><button class="btn btn-ghost btn-sm" id="rmstop">Pause</button></div>`, { onClose: () => { stop = true; onDone?.(); } });
   let done = 0, failed = 0, cost = 0;
@@ -365,7 +368,7 @@ export function researchMany(leads, onDone) {
   const worker = async () => {
     while (queue.length && !stop) {
       const l = queue.shift();
-      try { const r = await api(`/api/leads/${l.id}/research`, { method: 'POST', body: {} }); cost += r.intel?.cost || 0; tick(l); }
+      try { const r = await api(`/api/leads/${l.id}/research`, { method: 'POST', body: depth ? { depth } : {} }); cost += r.intel?.cost || 0; tick(l); }
       catch (err) { failed++; tick(l, err.message); }
     }
   };
@@ -897,8 +900,9 @@ const MAP = [
   ['address', /address/i],
 ];
 
-export function mapRows(rows) {
+export function mapRows(rows, { state = '' } = {}) {
   const [head, ...body] = rows;
+  if (isMapsScrape(head, body)) return Object.assign(mapsScrapeRows(head, body, { state }), { scraper: true });
   const cols = head.map((h) => { const hit = MAP.find(([, re]) => re.test(h.trim())); return hit ? hit[0] : null; });
   // No business column: a plain "name" column is the business (Outscraper), else a "title" column (some exports), else the first name-like column.
   if (!cols.includes('business')) {
@@ -925,20 +929,46 @@ function importModal(onDone) {
     <input type="file" id="csvf" accept=".csv,text/csv,text/plain" style="margin:10px 0">
     <textarea id="csvt" rows="8" placeholder="business,contact,phone,city,state,industry&#10;Summit Roofing,Bob,954-555-0101,Miami,FL,Roofing"></textarea>
     <p id="csvp" class="small"></p>
-    <div class="row"><label class="field" style="flex:1 1 220px"><span>Tag this batch (optional)</span><input id="csvtag" placeholder="e.g. Broward roofers Nov"></label>
-      <label class="row small" style="gap:6px"><input type="checkbox" id="csvres"> Research the A and B leads after import</label></div>
+    <label class="field" id="csvstw" hidden style="max-width:260px"><span>State for these leads (the Google Maps list has no state)</span><input id="csvst" value="FL" maxlength="2" style="text-transform:uppercase"></label>
+    <label class="field" style="margin-bottom:10px"><span>Tag this batch (optional)</span><input id="csvtag" placeholder="e.g. Broward roofers Nov"></label>
+    <div class="imp-opts">
+      <div class="imp-col"><h3>Free <span class="badge ok">$0</span></h3>
+        <label class="imp-opt"><input type="checkbox" id="csvscrub" checked><span><b>Scrub names and other free info</b><span class="small muted">Cleans the business name, then reads each website for the owner's name, email, Facebook, Instagram and other pages, and checks business registries.</span></span></label>
+        <label class="imp-opt"><input type="checkbox" id="csvres"><span><b>Research the A and B leads</b><span class="small muted">Website, ad tracking and any Google details the file already has. No paid call. Leads with no Google details are skipped.</span></span></label>
+      </div>
+      <div class="imp-col"><h3>Paid <span class="badge warn" id="csvcost">add on</span></h3>
+        <label class="imp-opt"><input type="checkbox" id="csvlookup"><span><b>Phone type check</b><span class="small muted" id="csvlookn">Mobile or landline, so reps know who can be texted. Twilio Lookup, ${esc(priceText('phone_lookup'))}.</span></span></label>
+        <label class="imp-opt"><input type="checkbox" id="csvgres"><span><b>Google research on the A and B leads</b><span class="small muted">One Google Maps check each for the real rank and competitors. ${esc(priceText('research_lite'))}. Replaces the free research above.</span></span></label>
+      </div>
+    </div>
     <div class="row end"><button class="btn btn-primary" id="csvgo" disabled>Import</button></div>`);
   let mapped = [];
+  const paidNote = () => {
+    const n = mapped.length, parts = [];
+    if ($('#csvlookup', m.el).checked) parts.push(`${money(PRICES.phone_lookup.usd * n)} for ${n} phone checks`);
+    if ($('#csvgres', m.el).checked) parts.push('about $0.003 per A or B lead');
+    $('#csvcost', m.el).textContent = parts.length ? parts.join(', ') : 'add on';
+  };
+  api('/api/scrub/status').then((st) => { if (!st.twilio) { const b = $('#csvlookup', m.el); b.disabled = true; $('#csvlookn', m.el).textContent = 'Needs Twilio connected first.'; } }).catch(() => {});
+  ['#csvlookup', '#csvgres'].forEach((q) => $(q, m.el).addEventListener('change', paidNote));
+  $('#csvlookup', m.el).addEventListener('change', (e) => { if (e.target.checked) $('#csvscrub', m.el).checked = true; });
   const preview = () => {
-    mapped = mapRows(parseCsv($('#csvt', m.el).value || ''));
-    $('#csvp', m.el).textContent = mapped.length ? `${mapped.length} leads ready. First: ${mapped[0].business}${mapped[0].phone ? `, ${mapped[0].phone}` : ''}` : 'No rows with a business name found yet.';
+    const rows = parseCsv($('#csvt', m.el).value || '');
+    mapped = mapRows(rows, { state: ($('#csvst', m.el).value || '').trim() });
+    $('#csvstw', m.el).hidden = !mapped.scraper;
+    $('#csvp', m.el).textContent = mapped.length ? `${mapped.scraper ? 'Google Maps list detected. ' : ''}${mapped.length} leads ready${mapped.scraper ? ` (${mapped.filter((x) => x.phone).length} with a phone number)` : ''}. First: ${mapped[0].business}${mapped[0].phone ? `, ${mapped[0].phone}` : ''}` : 'No rows with a business name found yet.';
     $('#csvgo', m.el).disabled = !mapped.length;
+    paidNote();
   };
   $('#csvt', m.el).addEventListener('input', preview);
+  $('#csvst', m.el).addEventListener('input', preview);
   $('#csvf', m.el).addEventListener('change', async (e) => { const f = e.target.files[0]; if (f) { $('#csvt', m.el).value = await f.text(); preview(); } });
   $('#csvgo', m.el).addEventListener('click', async (e) => {
     busy(e.target, true);
-    const wantRes = $('#csvres', m.el).checked;
+    const wantLookup = $('#csvlookup', m.el).checked && !$('#csvlookup', m.el).disabled;
+    const wantScrub = $('#csvscrub', m.el).checked || wantLookup;
+    const depth = $('#csvgres', m.el).checked ? 'lite' : $('#csvres', m.el).checked ? 'free' : '';
+    const wantRes = Boolean(depth);
     const startedAt = Date.now() - 5000;
     try {
       const r = await api('/api/leads/import', { method: 'POST', body: { rows: mapped.slice(0, 5000), source: 'import', tags: $('#csvtag', m.el).value } });
@@ -948,10 +978,13 @@ function importModal(onDone) {
         <p class="small">Every new lead is now researched in the background (Google profile, map ranks, website, speed), scored and sorted into the dialer's Hot, Good, Maybe and Low queues.</p>
         <p class="small">Every lead is scored. Open the List view and sort by grade, or research them for full scores and pitch notes.</p>`;
       onDone?.();
-      if (wantRes && r.imported) {
-        const fresh = (await api('/api/leads')).leads.filter((l) => l.created_at >= startedAt && !l.researched && ['A', 'B'].includes(l.grade)).slice(0, 100);
+      const ids = (r.rows || []).filter((x) => x?.id).map((x) => x.id);
+      if (wantScrub && ids.length) { m.close(); await scrubMany(ids.map((id) => ({ id })), onDone, { lookup: wantLookup }); }
+      if (wantRes && ids.length) {
+        const set = new Set(ids);
+        const fresh = (await api('/api/leads')).leads.filter((l) => set.has(l.id) && !l.researched && ['A', 'B'].includes(l.grade)).slice(0, 100);
         m.close();
-        researchMany(fresh, onDone);
+        researchMany(fresh, onDone, { depth });
       }
     }
     catch (err) { toast(err.message, true); busy(e.target, false); }
