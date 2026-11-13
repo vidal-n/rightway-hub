@@ -1,5 +1,5 @@
 // Current state questions per trade (Nov 2026, V: get them talking about their current state, based on the problems each industry faces;
-// "How are you getting more paws in the door now?"). Pure and shared. From the research report "Cold call scripts and split testing":
+// "How are you getting more customers in the door now?", quality or more; Nov 2026: no pet puns, customers and jobs only). Pure and shared. From the research report "Cold call scripts and split testing":
 // one calibrated how/what question and two follow ups per trade, in the owner's own words (calls, jobs, patients, covers).
 // The problems behind them are practitioner knowledge, not measured facts, so the questions ask, they never claim.
 // Modeled on Josh Braun's poke the bear questions and Chris Voss's calibrated questions.
@@ -41,8 +41,8 @@ export const DISCOVERY = [
   [/med spa|medspa|aesthetic|botox|laser|plastic surg/i, 'clients', 'Besides running specials, how are you bringing in new clients right now?', 'How many of the people who come in on a deal come back at full price?', 'How do you stand out from the other med spas nearby?'],
   [/physical therap|rehab/i, 'patients', 'How many of your new patients are coming from doctor referrals right now?', 'How many find you on their own?', 'How has that mix changed in the last year or so?'],
   [/vet|animal hosp/i, 'clients', 'How are new pet owners in the area finding you right now?', 'Are you taking new clients, or are you pretty booked up?', 'Which kind of visits would you want more of?'],
-  [/groom/i, 'pups', 'How are you getting more paws in the door right now?', 'Are your regulars booked on a schedule, or do they call when they remember?', 'Where do new dog owners usually find you?'],
-  [/dog train|boarding|kennel|pet sit|daycare for dogs/i, 'dogs', 'How are you filling your boarding spots and classes right now?', 'Is it packed at holidays and slow the rest of the year?', 'Where do new clients usually find you?'],
+  [/groom/i, 'customers', 'How are you getting more customers in the door right now?', 'Are your regulars booked on a schedule, or do they call when they remember?', 'Where do new customers usually find you?'],
+  [/dog train|boarding|kennel|pet sit|daycare for dogs/i, 'customers', 'How are you filling your boarding spots and classes right now?', 'Is it packed at holidays and slow the rest of the year?', 'Where do new clients usually find you?'],
   [/barber|hair|salon|beauty|lash|brow/i, 'clients', 'How are you getting new people in the chair right now?', 'Is that mostly walk ins, Instagram, or Google?', 'Are the books full, or are there gaps during the week?'],
   [/nail/i, 'clients', 'How are you getting new clients in the chairs right now?', 'Are they mostly walk ins or booked appointments?', 'When someone searches nail salon near them, where do you show up?'],
   [/gym|fitness|trainer|yoga|pilates|crossfit|martial/i, 'members', 'How are you getting new members right now?', 'Is January still your big month, or is it steadier now?', 'How many people who try a class end up joining?'],

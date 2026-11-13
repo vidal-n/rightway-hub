@@ -62,7 +62,7 @@ test('question opener script: V\'s opener, a trade question, labels, time ask', 
   const text = q.flatMap((x) => x.lines).join('\n');
   assert.match(text, /The reason for the call is I have a question for you about Paws Spa/);
   assert.match(text, /live strategy in your pocket/);
-  assert.match(text, /How are you getting more paws in the door right now\?/);
+  assert.match(text, /How are you getting more customers in the door right now\?/);
   assert.match(text, /It sounds like there are a few ways I could help you get more quality jobs in the door/);
   assert.match(text, /could be some low hanging fruit/, 'no research, so it stays a maybe');
   assert.doesNotMatch(text, /[–—]/, 'no dashes');
@@ -125,4 +125,28 @@ test('calls are counted by script end to end', async () => {
   assert.notEqual(r.data.test.id, id, 'changing the scripts starts a new test');
   r = await call('GET', '/api/scripts/test');
   assert.deepEqual(r.data.test.variants, ['analysis', 'cold']);
+  assert.equal(r.data.test.allowPick, true, 'reps may pick their own script by default');
+  // A call the test assigned counts in the test; a rep's own pick counts only under Reps' own picks and All.
+  await call('POST', '/api/leads/import', { rows: [{ business: 'Split Shop Roofing', phone: '305-555-0190', state: 'FL', city: 'Miami' }, { business: 'Own Pick Roofing', phone: '305-555-0191', state: 'FL', city: 'Miami' }] });
+  const more = (await call('GET', '/api/leads')).data.leads;
+  const byName = (n) => more.find((l) => l.business === n).id;
+  await call('POST', `/api/leads/${byName('Split Shop Roofing')}/outcome`, { dispo: 'not_interested', script: 'cold', scriptHow: 'split' });
+  await call('POST', `/api/leads/${byName('Own Pick Roofing')}/outcome`, { dispo: 'not_interested', script: 'cold', scriptHow: 'pick' });
+  r = await call('GET', '/api/scripts/stats?test=1');
+  assert.equal(r.data.stats.reduce((a, x) => a + x.dials, 0), 1, 'only the split call is in the test');
+  r = await call('GET', '/api/scripts/stats?how=pick&days=30');
+  assert.equal(r.data.stats.find((x) => x.key === 'cold').dials, 1);
+  r = await call('PUT', '/api/scripts/test', { on: true, variants: ['analysis', 'cold'], allowPick: false });
+  assert.equal(r.data.test.allowPick, false);
+});
+
+test('price is never named on a cold call, and no pet puns', () => {
+  const s = buildScript({ business: 'Happy Tails Grooming', industry: 'Pet grooming', city: 'Miami' }, null, { rep: 'Sam' });
+  const cold = s.steps.filter((x) => ['question', 'cold', 'plan'].includes(x.group)).flatMap((x) => x.lines).join('\n');
+  assert.doesNotMatch(cold, /\$\s?\d/, 'no dollar amounts');
+  assert.match(cold, /performance based/);
+  assert.doesNotMatch(cold, /paws|pups/i);
+  const cost = s.catalog.find((x) => x.id === 'cost');
+  assert.match(cost.say, /only matters if it gets you results/);
+  assert.doesNotMatch(JSON.stringify(s.catalog), /\$\s?\d/);
 });

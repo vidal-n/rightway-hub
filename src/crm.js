@@ -470,7 +470,7 @@ route('DELETE', '/api/leads/:id', async ({ env, user, params }) => {
 });
 
 // Log a call result on a lead: moves the lead along (cadence, callback, DNC) and labels the call record.
-export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activityId, detail = null, script = null, scriptV = null } = {}) {
+export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activityId, detail = null, script = null, scriptV = null, scriptHow = null } = {}) {
   const d = await resolveDispo(env, dispo);
   if (!d) throw new HttpError('Unknown call outcome.');
   let set;
@@ -494,7 +494,7 @@ export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activ
     await run(env, 'UPDATE activities SET dispo = ?, note = ?, dispo_at = at WHERE id = ?', d.label, note || null, actId);
   }
   // Script tests: a call logged with a script (calls from the rep's own phone have no prepared call) is counted under it.
-  if (script && actId) await (await import('./scripttest.js')).tagScript(env, actId, script, scriptV).catch((e) => console.error('script tag', e.message));
+  if (script && actId) await (await import('./scripttest.js')).tagScript(env, actId, script, scriptV, scriptHow).catch((e) => console.error('script tag', e.message));
   // Lead database: who answered, how far it got, the objection; then the lead's roll up and scores.
   const { saveCallDetail, rollupLeads } = await import('./leaddb.js');
   await saveCallDetail(env, actId, l.id, detail || {}, d.id).catch((e) => console.error('call detail', e.message));
@@ -510,7 +510,7 @@ route('POST', '/api/leads/:id/outcome', async ({ env, user, params, body }) => {
   const l = await leadOr404(env, params.id);
   const b = await body();
   const callbackAt = b.callbackAt ? Number(new Date(b.callbackAt)) || null : null;
-  await recordOutcome(env, l, { dispo: b.dispo || b.outcome, note: text(b.note, 2000), callbackAt, by: user.id, detail: b.detail || null, script: b.script, scriptV: b.scriptV });
+  await recordOutcome(env, l, { dispo: b.dispo || b.outcome, note: text(b.note, 2000), callbackAt, by: user.id, detail: b.detail || null, script: b.script, scriptV: b.scriptV, scriptHow: b.scriptHow });
   // Booked with a time: it lands on the booker's own Google Calendar with a Meet link (the Hub keeps it either way).
   let calendar = null;
   if (callbackAt) calendar = await import('./appointments.js').then((m) => m.bookOnCalendar(env, user.id, l.id)).catch((e) => ({ error: e.message }));

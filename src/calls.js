@@ -91,7 +91,7 @@ route('POST', '/api/dialer/call', async ({ env, user, url, body }) => {
   if (!e164(lead.phone)) throw new HttpError('This lead has no valid phone number.');
   if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError("It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
   const activityId = await logActivity(env, { lead_id: lead.id, type: 'call', status: 'ringing_you', by: user.id });
-  await tagScript(env, activityId, b.script, b.scriptV);
+  await tagScript(env, activityId, b.script, b.scriptV, b.scriptHow);
   const params = new URLSearchParams({
     To: me.phone, From: env.TWILIO_FROM,
     Url: `${url.origin}/api/twilio/bridge?a=${activityId}&from=${encodeURIComponent(from)}`,

@@ -132,7 +132,7 @@ route('POST', '/api/voice/prepare', async ({ env, user, body }) => {
     await capCheck(env, lead.id);
     const activityId = await logActivity(env, { lead_id: lead.id, type: 'call', status: 'ready', by: user.id });
     await run(env, 'UPDATE activities SET to_num = ?, from_num = ? WHERE id = ?', to, from, activityId);
-    await tagScript(env, activityId, b.script, b.scriptV);
+    await tagScript(env, activityId, b.script, b.scriptV, b.scriptHow);
     await run(env, 'UPDATE leads SET last_call_at = ?, updated_at = ? WHERE id = ?', now(), now(), lead.id);
     return json({ activityId, to, from, name: lead.business, recording: await recordingOn(env) });
   }
@@ -140,7 +140,7 @@ route('POST', '/api/voice/prepare', async ({ env, user, body }) => {
   if (lead) await capCheck(env, lead.id);
   const activityId = await logActivity(env, { lead_id: lead?.id || null, type: 'manual_call', status: 'ready', body: `Manual dial to ${to} from ${from}`, by: user.id });
   await run(env, 'UPDATE activities SET to_num = ?, from_num = ? WHERE id = ?', to, from, activityId);
-  await tagScript(env, activityId, b.script, b.scriptV);
+  await tagScript(env, activityId, b.script, b.scriptV, b.scriptHow);
   if (lead) await run(env, 'UPDATE leads SET last_call_at = ?, updated_at = ? WHERE id = ?', now(), now(), lead.id);
   return json({ activityId, to, from, name: lead?.business || null, leadId: lead?.id || null, recording: await recordingOn(env) });
 });
@@ -331,7 +331,7 @@ route('POST', '/api/voice/calls/:id/disposition', async ({ env, user, params, bo
     const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', leadId);
     if (lead) {
       if (d.acts === 'callback' && !callbackAt) throw new HttpError('Pick the callback time.');
-      await recordOutcome(env, lead, { dispo: d.id, note, callbackAt, by: user.id, activityId: a.id, detail: b.detail || null, script: b.script, scriptV: b.scriptV });
+      await recordOutcome(env, lead, { dispo: d.id, note, callbackAt, by: user.id, activityId: a.id, detail: b.detail || null, script: b.script, scriptV: b.scriptV, scriptHow: b.scriptHow });
       return json({ ok: true, leadId, dispo: d });
     }
   }

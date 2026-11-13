@@ -145,5 +145,6 @@ export function verdict(stats = [], { minConvs = MIN_CONVS, minDays = MIN_DAYS, 
 // Test settings as saved (settings.script_test): { on, id, variants: [keys], started_at }.
 export function cleanTest(t = {}, valid = DIAL_SCRIPTS) {
   const variants = [...new Set((Array.isArray(t.variants) ? t.variants : []).filter((k) => valid.includes(k)))].slice(0, 4);
-  return { on: Boolean(t.on) && variants.length >= 2, id: String(t.id || '').slice(0, 40) || null, variants, started_at: Number(t.started_at) || null };
+  // allowPick: reps may still choose their own script while the test runs; those calls are tagged 'pick' and kept out of the test's numbers.
+  return { on: Boolean(t.on) && variants.length >= 2, id: String(t.id || '').slice(0, 40) || null, variants, started_at: Number(t.started_at) || null, allowPick: t.allowPick !== false };
 }

@@ -12,10 +12,11 @@ export const cleanScript = (s) => (DIAL_SCRIPTS.includes(String(s || '')) ? Stri
 export const cleanVersion = (v) => (/^[a-z0-9]{1,8}$/.test(String(v || '')) ? String(v) : null);
 
 // Stamp a call with its script. Never overwrites: the script a call started with is the one it is counted under.
-export async function tagScript(env, activityId, script, version) {
+export async function tagScript(env, activityId, script, version, how = null) {
   const s = cleanScript(script);
   if (!activityId || !s) return;
-  await run(env, 'UPDATE activities SET script = COALESCE(script, ?), script_v = COALESCE(script_v, ?) WHERE id = ?', s, cleanVersion(version), activityId);
+  // how: 'split' (the owner's split test picked it for this lead) or 'pick' (the rep chose it).
+  await run(env, 'UPDATE activities SET script = COALESCE(script, ?), script_v = COALESCE(script_v, ?), script_how = COALESCE(script_how, ?) WHERE id = ?', s, cleanVersion(version), how === 'split' ? 'split' : 'pick', activityId);
 }
 
 export async function getTest(env) {
@@ -32,7 +33,7 @@ route('PUT', '/api/scripts/test', async ({ env, user, body }) => {
   requireAdmin(user);
   const b = await body();
   const old = await getTest(env);
-  const next = cleanTest({ on: b.on, variants: b.variants });
+  const next = cleanTest({ on: b.on, variants: b.variants, allowPick: b.allowPick });
   if (b.on && next.variants.length < 2) throw new HttpError('Pick at least two scripts to split test.');
   // A new test starts whenever it is switched on or the scripts change, so old calls never mix into it.
   const same = old.on && next.on && old.variants.join() === next.variants.join();
@@ -52,7 +53,9 @@ route('GET', '/api/scripts/stats', async ({ env, user, url }) => {
   const args = [since];
   let where = "a.type IN ('call','manual_call') AND a.script IS NOT NULL AND a.at > ? AND NOT (a.status = 'ready' AND a.outcome IS NULL)";
   if (rep) { where += ' AND a.by = ?'; args.push(rep); }
-  if (onlyTest) { where += ` AND a.script IN (${test.variants.map(() => '?').join(',')})`; args.push(...test.variants); }
+  // The split test counts only calls the test assigned, so a rep's own choice never tilts it. ?how=pick shows only reps' own choices.
+  if (onlyTest) { where += ` AND a.script_how = 'split' AND a.script IN (${test.variants.map(() => '?').join(',')})`; args.push(...test.variants); }
+  else if (q.get('how') === 'pick' || q.get('how') === 'split') { where += ' AND COALESCE(a.script_how, \'pick\') = ?'; args.push(q.get('how')); }
   const rows = await all(env, `SELECT a.lead_id, a.script, a.script_v, a.outcome, a.answered_by, a.answered_at, a.duration, a.objection, a.by, a.at,
     (SELECT 1 FROM activities m WHERE m.lead_id = a.lead_id AND m.type = 'meeting' AND (m.body LIKE 'Audit booked for%' OR m.body LIKE 'Booked%') AND m.at BETWEEN a.at AND a.at + 7200000 LIMIT 1) AS bk,
     l.stage, l.meet_at, l.client_id FROM activities a LEFT JOIN leads l ON l.id = a.lead_id WHERE ${where} ORDER BY a.at LIMIT 20000`, ...args);

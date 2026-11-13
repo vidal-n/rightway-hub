@@ -1079,7 +1079,8 @@ export async function dialerPage(app, user) {
   try { flt = JSON.parse(localStorage.getItem(DIAL_KEY) || '{}'); } catch { flt = {}; }
   // Script tests: the header chip shows today's script (or the owner's split test) and opens the picker.
   function paintChip() { const b = $('#dscript', view); if (b) { b.outerHTML = scriptChip(); $('#dscript', view)?.addEventListener('click', pickAgain); } }
-  async function pickAgain() { await ensureScript({ force: true }); paintChip(); }
+  // Changing the script redraws the call prep on the new script, unless a call or the countdown is running.
+  async function pickAgain() { if (await ensureScript({ force: true })) { paintChip(); if (phase === 'idle' && !power) render(); } }
   loadScriptTest().then(paintChip);
   // Researching the next leads as you dial costs money, so it starts off (Nov 2026). The old saved choice is ignored once.
   let auto = false;
@@ -1489,7 +1490,7 @@ export async function dialerPage(app, user) {
     }
     if (!(booked && acts === 'booked') && !(acts === 'booked' && bookedDuring.has(l.id))) {
       const tag = scriptTag(l);
-      const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note, callbackAt: isoWhen(when), detail: extra.detail || null, script: tag?.key, scriptV: tag?.v } });
+      const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note, callbackAt: isoWhen(when), detail: extra.detail || null, script: tag?.key, scriptV: tag?.v, scriptHow: tag?.how } });
       if (r.calendar?.warning) toast(`Heads up: ${r.calendar.warning} Hand it to someone else on the lead.`, true);
     } else if (note) await api(`/api/leads/${l.id}/note`, { method: 'POST', body: { text: note } });
     bookedDuring.delete(l.id);

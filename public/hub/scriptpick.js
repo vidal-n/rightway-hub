@@ -27,51 +27,66 @@ export function loadScriptTest(force = false) {
 }
 export const currentTest = () => test;
 
+// The rep's choice: a script key, or 'test' (follow the owner's split test). Kept until changed; asked again each new day, with the last
+// choice already highlighted, so every dialing day starts with a deliberate pick. Changeable any time from the dialer's Script button.
 const today = () => new Date().toDateString();
-export function pickedScript() {
-  try {
-    const r = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (r && r.day === today() && DIAL_SCRIPTS.includes(r.key)) return r.key;
-  } catch {}
-  return null;
+function readPick() {
+  try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch { return null; }
+}
+const validPick = (k) => k === 'test' || DIAL_SCRIPTS.includes(k);
+export function pickedScript({ anyDay = false } = {}) {
+  const r = readPick();
+  return r && validPick(r.key) && (anyDay || r.day === today()) ? r.key : null;
 }
 export function setPicked(key) {
   try { localStorage.setItem(KEY, JSON.stringify({ key, day: today() })); } catch {}
   window.dispatchEvent(new CustomEvent('rw-script', { detail: key }));
 }
 
-// The script for this lead: the running split test decides, otherwise the rep's pick for today.
-export function scriptKeyFor(lead) {
-  if (test.on && lead?.id && !lead.test) return assign(test.id, lead.id, test.variants);
-  return pickedScript();
+// The script for this lead and how it was chosen. The split test decides when the rep follows it (or reps may not pick their own);
+// otherwise the rep's own pick. how: 'split' or 'pick'.
+export function scriptChoice(lead) {
+  const pick = pickedScript({ anyDay: true });
+  const follow = test.on && (pick === 'test' || !pick || !test.allowPick);
+  if (follow && lead?.id && !lead.test) return { key: assign(test.id, lead.id, test.variants), how: 'split' };
+  if (pick && pick !== 'test') return { key: pick, how: 'pick' };
+  return { key: null, how: null };
 }
-// What the call is logged with: the script and the version of its words (any edit in Settings makes a new version).
+export const scriptKeyFor = (lead) => scriptChoice(lead).key;
+// What the call is logged with: the script, the version of its words (any edit in Settings makes a new version) and how it was chosen.
 export function scriptTag(lead) {
-  const key = scriptKeyFor(lead);
+  const { key, how } = scriptChoice(lead);
   if (!key) return null;
   const g = SCRIPT_GROUPS.find((x) => x[0] === key);
   const S = { ...DEFAULT_SCRIPT, ...(custom.script || {}) };
-  return { key, v: g ? versionOf(g[2].map((id) => S[id] || '')) : null };
+  return { key, how, v: g ? versionOf(g[2].map((id) => S[id] || '')) : null };
 }
 
-// Before the first call: make sure a script is chosen. Resolves with the key (or 'test'), or null when the rep closes the picker.
+// Before the first call of the day: make sure a choice is made. Resolves with the choice, or null when the rep closes the picker.
 export async function ensureScript({ force = false } = {}) {
   await loadScriptTest();
-  if (!force && (test.on || pickedScript())) return test.on ? 'test' : pickedScript();
+  if (!force && pickedScript()) return pickedScript();
+  if (!force && test.on && !test.allowPick) return 'test';
   return new Promise((resolve) => {
     let done = false;
-    const cur = pickedScript();
+    const cur = pickedScript({ anyDay: true }) || (test.on ? 'test' : null);
+    const card = (k, name, about) => `<button type="button" class="sp-card${k === cur ? ' on' : ''}" data-k="${k}"><b>${esc(name)}</b><span>${esc(about)}</span></button>`;
+    const testCard = test.on ? card('test', `Follow the split test: ${test.variants.map((k) => scriptName(k)).join(' vs ')}`, 'The Hub picks the script for each lead, so the comparison stays fair. Recommended while the test runs.') : '';
+    const mine = !test.on || test.allowPick;
     const m = modal(`<div class="modal-head"><h3>Pick your script</h3></div>
-      ${test.on ? `<p class="small sp-test"><b>Split test running:</b> ${test.variants.map((k) => esc(scriptName(k))).join(' vs ')}. The Hub picks the script for each lead, so the comparison stays fair. Your pick below is used only outside the test.</p>` : '<p class="small muted">Every call you make today is tracked under this script, so we can see which one books the most meetings.</p>'}
-      <div class="sp-list">${DIAL_SCRIPTS.map((k) => `<button type="button" class="sp-card${k === cur ? ' on' : ''}" data-k="${k}"><b>${esc(scriptName(k))}</b><span>${esc(ABOUT[k] || '')}</span></button>`).join('')}</div>`,
+      <p class="small muted">Every call is saved with the script you used, so we can see which one books the most meetings. You can change it any time from the Script button in the dialer.</p>
+      <div class="sp-list">${testCard}${mine ? `${test.on ? '<p class="small muted sp-or">Or use your own script (your calls still count in the analytics, but not in the split test):</p>' : ''}${DIAL_SCRIPTS.map((k) => card(k, scriptName(k), ABOUT[k] || '')).join('')}` : '<p class="small muted">Your owner has the split test set so the Hub picks for everyone.</p>'}</div>`,
     { onClose: () => { if (!done) resolve(null); } });
     m.el.querySelectorAll('.sp-card').forEach((b) => b.addEventListener('click', () => { done = true; setPicked(b.dataset.k); m.close(); resolve(b.dataset.k); }));
   });
 }
 
-// The chip in the dialer header: shows the script (or the running test) and opens the picker.
+// The button in the dialer header: shows what this rep is dialing with and opens the picker.
 export function scriptChip() {
-  if (test.on) return `<button type="button" class="btn btn-ghost btn-sm sp-chip" id="dscript" title="An owner is running a split test. The Hub picks the script per lead.">Split test: ${test.variants.map((k) => esc(scriptName(k))).join(' vs ')}</button>`;
+  const pick = pickedScript({ anyDay: true });
+  const following = test.on && (pick === 'test' || !pick || !test.allowPick);
+  if (following) return `<button type="button" class="btn btn-ghost btn-sm sp-chip" id="dscript" title="Split test running: the Hub picks the script per lead. Tap to change.">Script: split test (${test.variants.map((k) => esc(scriptName(k))).join(' vs ')})</button>`;
   const k = pickedScript();
-  return `<button type="button" class="btn ${k ? 'btn-ghost' : 'btn-primary'} btn-sm sp-chip" id="dscript">${k ? `Script: ${esc(scriptName(k))}` : 'Pick a script'}</button>`;
+  const shown = k && k !== 'test' ? k : (pick && pick !== 'test' ? pick : null);
+  return `<button type="button" class="btn ${k ? 'btn-ghost' : 'btn-primary'} btn-sm sp-chip" id="dscript" title="Tap to change your script">${shown ? `Script: ${esc(scriptName(shown))}${test.on ? ' (own pick)' : ''}` : 'Pick a script'}</button>`;
 }

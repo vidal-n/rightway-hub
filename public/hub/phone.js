@@ -327,7 +327,7 @@ export async function placeCall({ to, leadId, from, name, who, cat, info, tools,
   if (callMode() === 'phone' && leadId && !to) return bridgeCall({ leadId, from, name, who, cat, info, onEnd, script });
   draft = { note: '', when: '' };
   document.querySelector('.callbar > .cb-tools')?.remove();
-  const prep = await api('/api/voice/prepare', { method: 'POST', body: { to, leadId, from, script: script?.key, scriptV: script?.v } });
+  const prep = await api('/api/voice/prepare', { method: 'POST', body: { to, leadId, from, script: script?.key, scriptV: script?.v, scriptHow: script?.how } });
   const d = await startPhone();
   const view = { state: 'dialing', label: 'Calling...', name: name || prep.name, who, cat, info, tools, number: prep.to, from: prep.from, kind: 'out', recording: Boolean(prep.recording) };
   renderBar(view);
@@ -342,7 +342,7 @@ export async function placeCall({ to, leadId, from, name, who, cat, info, tools,
 // The ring-my-mobile route: the Hub calls the rep's saved mobile, and when it is answered it dials the lead.
 const BRIDGE_END = { completed: 1, 'no-answer': 1, busy: 1, failed: 1, canceled: 1, you_busy: 1, 'you_no-answer': 1, you_failed: 1, you_canceled: 1 };
 async function bridgeCall({ leadId, from, name, who, cat, info, onEnd, script }) {
-  const r = await api('/api/dialer/call', { method: 'POST', body: { leadId, from, script: script?.key, scriptV: script?.v } });
+  const r = await api('/api/dialer/call', { method: 'POST', body: { leadId, from, script: script?.key, scriptV: script?.v, scriptHow: script?.how } });
   const id = r.activityId;
   const view = { state: 'ringing', label: 'Your phone is ringing. Answer it.', name: name || 'Lead', who, cat, info, number: '', from: '', kind: 'bridge' };
   renderBar(view);

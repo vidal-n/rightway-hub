@@ -21,6 +21,7 @@ export async function scriptTestsPage(app, user) {
     try {
       const q = new URLSearchParams({ days: String(days) });
       if (mode === 'test') q.set('test', '1');
+      if (mode === 'pick') q.set('how', 'pick');
       if (versions) q.set('versions', '1');
       [r, team] = await Promise.all([api(`/api/scripts/stats?${q}`), owner ? api('/api/team').then((t) => t.users || []).catch(() => []) : []]);
     } catch (e) { body.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
@@ -32,12 +33,13 @@ export async function scriptTestsPage(app, user) {
     const best = Math.max(0.0001, ...r.stats.map((s) => s.range?.[1] || 0));
     body.innerHTML = `
       ${owner ? `<div class="card st-test"><div class="card-head"><h3>Split test</h3>${t.on ? `<span class="badge ok">Running since ${fmt.date(t.started_at)}</span>` : '<span class="badge gray">Off</span>'}</div>
-        <p class="small muted">When it is on, the Hub picks the script for each lead (the same lead always gets the same one) and every rep dials every script, so rep skill and lead quality even out. Changing the scripts starts a new test.</p>
+        <p class="small muted">Two ways to compare scripts, and both can run at once. <b>Split test:</b> the Hub picks the script for each lead (the same lead always gets the same one) and every rep dials every script, so rep skill and lead quality even out. <b>Reps' own picks:</b> each rep chooses a script and can change it any time; those calls are saved too and show under "Reps' own picks". Changing the test's scripts starts a new test.</p>
         <div class="row" style="flex-wrap:wrap;gap:8px">${DIAL_SCRIPTS.map((k) => `<label class="chip"><input type="checkbox" data-v="${k}"${t.variants?.includes(k) ? ' checked' : ''}> ${esc(scriptName(k))}</label>`).join('')}</div>
+        <label class="row small" style="gap:8px;margin-top:10px"><input type="checkbox" id="st-allow"${t.allowPick !== false ? ' checked' : ''}> Reps can still choose their own script while the test runs (their calls stay out of the test's numbers)</label>
         <div class="row" style="margin-top:10px"><button class="btn btn-primary btn-sm" id="st-on">${t.on ? 'Save and restart the test' : 'Start the split test'}</button>${t.on ? '<button class="btn btn-ghost btn-sm" id="st-off">Stop the test</button>' : ''}</div></div>` : ''}
       <div class="card"><div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div class="seg">${t.started_at ? `<button type="button" data-mode="test" class="${mode === 'test' ? 'is-on' : ''}">This test</button>` : ''}<button type="button" data-mode="all" class="${mode === 'all' ? 'is-on' : ''}">All scripted calls</button></div>
-        <div class="row" style="gap:8px">${mode === 'all' ? `<select id="st-days" style="width:auto">${[30, 90, 180, 365].map((d) => `<option value="${d}"${d === days ? ' selected' : ''}>Last ${d} days</option>`).join('')}</select>` : ''}
+        <div class="seg">${t.started_at ? `<button type="button" data-mode="test" class="${mode === 'test' ? 'is-on' : ''}">Split test</button>` : ''}<button type="button" data-mode="pick" class="${mode === 'pick' ? 'is-on' : ''}">Reps' own picks</button><button type="button" data-mode="all" class="${mode === 'all' ? 'is-on' : ''}">All scripted calls</button></div>
+        <div class="row" style="gap:8px">${mode !== 'test' ? `<select id="st-days" style="width:auto">${[30, 90, 180, 365].map((d) => `<option value="${d}"${d === days ? ' selected' : ''}>Last ${d} days</option>`).join('')}</select>` : ''}
         <label class="small row" style="gap:6px"><input type="checkbox" id="st-ver"${versions ? ' checked' : ''}> Split by version</label></div></div>
         <div class="st-verdict tone-${TONE[v.state] || 'gray'}" data-metric="script_verdict"><b>${esc(v.text || '')}</b>${r.stats.length ? '' : ' <span class="muted">Pick a script in the dialer, or start a split test, and dial: results show up here.</span>'}
         <p class="small muted">The winner is picked on meetings booked per owner conversation. Each script needs ${MIN_CONVS} owner conversations and the test ${MIN_DAYS} days before the Hub names one: checking early picks false winners about a quarter of the time. ${r.need?.each && isFinite(r.need.each) ? `To tell ${pct(r.need.at)} from ${pct(r.need.to)} you need about ${r.need.each} conversations per script.` : ''}</p></div></div>
@@ -57,7 +59,7 @@ export async function scriptTestsPage(app, user) {
     $('#st-ver', body)?.addEventListener('change', (e) => { versions = e.target.checked; draw(); });
     const save = async (on) => {
       const variants = $$('[data-v]', body).filter((x) => x.checked).map((x) => x.dataset.v);
-      try { await api('/api/scripts/test', { method: 'PUT', body: { on, variants } }); await loadScriptTest(true); toast(on ? 'Split test running. The dialer picks the script per lead.' : 'Split test stopped.'); mode = on ? 'test' : 'all'; draw(); } catch (e) { toast(e.message, true); }
+      try { await api('/api/scripts/test', { method: 'PUT', body: { on, variants, allowPick: $('#st-allow', body)?.checked !== false } }); await loadScriptTest(true); toast(on ? 'Split test running. The dialer picks the script per lead.' : 'Split test stopped.'); mode = on ? 'test' : 'all'; draw(); } catch (e) { toast(e.message, true); }
     };
     $('#st-on', body)?.addEventListener('click', () => save(true));
     $('#st-off', body)?.addEventListener('click', () => save(false));
