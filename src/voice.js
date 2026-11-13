@@ -125,18 +125,27 @@ route('POST', '/api/voice/prepare', async ({ env, user, body }) => {
     if (lead.dnc) throw new HttpError('This lead is on Do Not Call.', 409);
     const to = e164(lead.phone);
     if (!to) throw new HttpError('This lead has no valid phone number.');
-    if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt)) throw new HttpError("It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
+    if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError(lead.state === 'MD' ? "Maryland allows sales calls 9am to 8pm only. Call later." : "It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
+    await capCheck(env, lead.id);
     const activityId = await logActivity(env, { lead_id: lead.id, type: 'call', status: 'ready', by: user.id });
     await run(env, 'UPDATE activities SET to_num = ?, from_num = ? WHERE id = ?', to, from, activityId);
     await run(env, 'UPDATE leads SET last_call_at = ?, updated_at = ? WHERE id = ?', now(), now(), lead.id);
     return json({ activityId, to, from, name: lead.business, recording: await recordingOn(env) });
   }
   const { to, lead } = await manualTarget(env, b.to);
+  if (lead) await capCheck(env, lead.id);
   const activityId = await logActivity(env, { lead_id: lead?.id || null, type: 'manual_call', status: 'ready', body: `Manual dial to ${to} from ${from}`, by: user.id });
   await run(env, 'UPDATE activities SET to_num = ?, from_num = ? WHERE id = ?', to, from, activityId);
   if (lead) await run(env, 'UPDATE leads SET last_call_at = ?, updated_at = ? WHERE id = ?', now(), now(), lead.id);
   return json({ activityId, to, from, name: lead?.business || null, leadId: lead?.id || null, recording: await recordingOn(env) });
 });
+
+// Florida: no more than 3 sales calls to one business in 24 hours, whatever number we call from (Fla. Stat. 501.616(6)). Counts dials, not prepared shells.
+async function capCheck(env, leadId) {
+  const r = await first(env, `SELECT COUNT(*) AS n FROM activities WHERE lead_id = ? AND type IN ('call','manual_call') AND at > ?
+    AND (status IS NULL OR status NOT IN ('inbound','missed','voicemail','inbound_answered')) AND NOT (status = 'ready' AND outcome IS NULL)`, leadId, now() - 864e5);
+  if ((r?.n || 0) >= 3) throw new HttpError('This business has had 3 calls from us in the last 24 hours. Florida rules allow no more. Try again tomorrow.', 409);
+}
 
 export async function recordingOn(env) {
   return (await getSettings(env).catch(() => ({}))).call_recording === '1';
@@ -317,7 +326,7 @@ route('POST', '/api/voice/calls/:id/disposition', async ({ env, user, params, bo
     const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', leadId);
     if (lead) {
       if (d.acts === 'callback' && !callbackAt) throw new HttpError('Pick the callback time.');
-      await recordOutcome(env, lead, { dispo: d.id, note, callbackAt, by: user.id, activityId: a.id });
+      await recordOutcome(env, lead, { dispo: d.id, note, callbackAt, by: user.id, activityId: a.id, detail: b.detail || null });
       return json({ ok: true, leadId, dispo: d });
     }
   }

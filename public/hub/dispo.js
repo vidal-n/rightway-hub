@@ -1,5 +1,6 @@
 // Call dispositions: the list (owners can customize it), the popup after each call, and the editor in Phone setup.
 import { $, $$, esc, api, toast, busy, modal } from './core.js';
+import { PICKUP_CHOICES, ANSWERED_BY, HANGUP_STAGES, OBJECTIONS, OBJECTION_GROUPS, asksFor, defaultAnswered, defaultObjection } from '../js/leaddb.js';
 
 let cache = null;
 export async function loadDispos(force = false) {
@@ -30,6 +31,12 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
     <div class="card-head"><div class="dp-who">${person || business ? `<span class="pd-av">${esc(initials)}</span>` : ''}<div style="min-width:0"><h2 style="margin:0">${esc(person || title)}</h2>${person || business ? `<div class="pd-biz">${esc(person ? business || title : '')}</div>` : ''}${sub ? `<p class="small muted" style="margin:4px 0 0">${esc(sub)}</p>` : ''}</div></div><button class="btn btn-ghost btn-sm"${bare ? ' data-skip' : ' data-close'}>${esc(skipLabel)}</button></div>
     ${facts.filter((f) => f && f.v).length ? `<div class="dp-facts">${facts.filter((f) => f && f.v).map((f) => `<span><i>${esc(f.k)}</i>${esc(f.v)}</span>`).join('')}</div>` : ''}
     <div class="dispo-grid">${list.map((d) => `<button type="button" class="dispo-btn${d.id === pick ? ' on' : ''}" data-d="${esc(d.id)}">${d.key ? `<span class="kbd">${d.key}</span>` : ''}${esc(d.label)}</button>`).join('')}</div>
+    <div class="dp-more">
+      <div class="dp-q" data-q="pickup" hidden><span>Who picked up</span>${PICKUP_CHOICES.map((k) => `<button type="button" class="chip" data-pick="${k}">${esc(ANSWERED_BY.find((a) => a[0] === k)[1])}</button>`).join('')}</div>
+      <div class="dp-q" data-q="stage" hidden><span>Where it ended</span>${HANGUP_STAGES.map(([k, n]) => `<button type="button" class="chip" data-stage="${k}">${esc(n)}</button>`).join('')}</div>
+      <label class="dp-q" data-q="objection" hidden><span>Why</span><select id="dpobj"><option value="">Pick the reason</option>${Object.entries(OBJECTION_GROUPS).map(([g, gn]) => `<optgroup label="${esc(gn)}">${OBJECTIONS.filter((o) => o[2] === g).map(([k, n]) => `<option value="${k}">${esc(n)}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      <label class="dp-q" data-q="menu" hidden><span>Menu path</span><input id="dpmenu" maxlength="200" placeholder="Press 2, then 0 for the office" value="${esc(lead?.menu_path || '')}"></label>
+    </div>
     <label class="field dispo-when" style="margin-top:12px${needsTime(list.find((d) => d.id === pick)) ? '' : ';display:none'}"><span id="dpwlabel">Callback or audit time</span><input type="datetime-local" id="dpwhen" value="${esc(callbackAt)}"></label>
     <div class="dp-info" style="display:none"></div>
     <label class="field" style="margin-top:12px"><span>Note</span><textarea id="dpnote" rows="2" placeholder="What they said, job value, who handles marketing">${esc(note)}</textarea></label>
@@ -50,10 +57,28 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
     try { const m = await import('./infomail.js'); infoCtl = await m.mountInfo(box, lead, () => $('#dpwhen', el).value); } catch (e) { box.innerHTML = `<div class="small err-text">${esc(e.message)}</div>`; }
     infoLoading = false;
   };
+  // Lead database: who picked up, where it ended and why (Orum and Gong style). Shown only for the results that need them.
+  const det = { pickup: '', stage: '' };
+  const showMore = (dd) => {
+    const a = asksFor(dd?.acts || '');
+    for (const q of ['pickup', 'stage', 'objection', 'menu']) { const box = $(`.dp-q[data-q="${q}"]`, el); if (box) box.hidden = !a[q]; }
+    det.pickup = a.pickup ? (defaultAnswered(dd.id, dd.acts) === 'someone' ? '' : defaultAnswered(dd.id, dd.acts) || '') : '';
+    $$('[data-pick]', el).forEach((b) => b.classList.toggle('on', b.dataset.pick === det.pickup));
+    if (!a.stage) { det.stage = ''; $$('[data-stage]', el).forEach((b) => b.classList.remove('on')); }
+    const o = $('#dpobj', el); if (o) o.value = defaultObjection(dd?.id || '') || (a.objection ? o.value : '');
+  };
+  $$('[data-pick]', el).forEach((b) => b.addEventListener('click', () => { det.pickup = det.pickup === b.dataset.pick ? '' : b.dataset.pick; $$('[data-pick]', el).forEach((x) => x.classList.toggle('on', x.dataset.pick === det.pickup)); }));
+  $$('[data-stage]', el).forEach((b) => b.addEventListener('click', () => { det.stage = det.stage === b.dataset.stage ? '' : b.dataset.stage; $$('[data-stage]', el).forEach((x) => x.classList.toggle('on', x.dataset.stage === det.stage)); }));
+  const detailOf = (dd) => {
+    const a = asksFor(dd.acts);
+    return { answered_by: a.pickup ? (det.pickup || defaultAnswered(dd.id, dd.acts)) : defaultAnswered(dd.id, dd.acts), hangup_stage: a.stage ? det.stage || null : null,
+      objection: a.objection ? ($('#dpobj', el)?.value || null) : null, menu_path: a.menu ? ($('#dpmenu', el)?.value.trim() || null) : null };
+  };
   const choose = (id) => {
     pick = id;
     $$('.dispo-btn', el).forEach((b) => b.classList.toggle('on', b.dataset.d === id));
     const dd = list.find((d) => d.id === id);
+    showMore(dd);
     const info = Boolean(lead) && isInfo(dd);
     $('.dispo-when', el).style.display = needsTime(dd) || info ? '' : 'none';
     $('#dpwlabel', el).textContent = info ? 'Callback time (optional, goes in the email)' : 'Callback or audit time';
@@ -61,6 +86,7 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
     $('#dpsave', el).disabled = false;
   };
   $$('.dispo-btn', el).forEach((b) => b.addEventListener('click', () => choose(b.dataset.d)));
+  if (pick) showMore(list.find((d) => d.id === pick));
   const onKey = (e) => {
     if (!document.body.contains(el)) return destroy();
     if (/input|textarea|select/i.test(e.target.tagName)) return;
@@ -94,7 +120,7 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
           emailed = true; toast(`Email sent to ${r.to}`);
         }
       }
-      await onSave({ dispo: d.id, acts: d.acts, label: d.label, note: $('#dpnote', el).value.trim(), callbackAt: when || null,
+      await onSave({ dispo: d.id, acts: d.acts, label: d.label, note: $('#dpnote', el).value.trim(), callbackAt: when || null, detail: detailOf(d),
         newLead: biz ? { business: biz, contact: $('#dpcontact', el).value.trim(), state: $('#dpstate', el).value.trim() } : null });
       saved = true;
       destroy();

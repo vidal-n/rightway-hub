@@ -165,6 +165,7 @@ const SCHEMA = [
     id TEXT PRIMARY KEY, lead_id TEXT, client_id TEXT, type TEXT NOT NULL, outcome TEXT, body TEXT, duration INTEGER,
     call_sid TEXT, status TEXT, at INTEGER NOT NULL, by TEXT)`,
   `CREATE INDEX IF NOT EXISTS act_lead ON activities (lead_id, at)`,
+  `CREATE INDEX IF NOT EXISTS act_at ON activities (at)`,
   `CREATE TABLE IF NOT EXISTS work_orders (
     id TEXT PRIMARY KEY, token TEXT UNIQUE NOT NULL, lead_id TEXT, client_id TEXT, plan TEXT NOT NULL, monthly_cents INTEGER NOT NULL,
     setup_cents INTEGER NOT NULL, business TEXT, contact_name TEXT, email TEXT, terms TEXT, pay_url TEXT, status TEXT NOT NULL DEFAULT 'sent',
@@ -227,6 +228,13 @@ const ADD_COLUMNS = [
   ['leads', 'deep_scan TEXT'], ['finder_jobs', 'source TEXT'], ['finder_jobs', 'auto_cursor TEXT'], ['leads', 'tz_alt TEXT'], ['leads', 'scrub_lookup INTEGER'], ['leads', 'tz_how TEXT'], ['users', 'training TEXT'], ['leads', 'research_tried INTEGER'], ['leads', 'scrub TEXT'],
   ['users', 'fwd_calls INTEGER'], ['users', 'fwd_texts INTEGER'], ['users', 'avatar_at INTEGER'], ['users', 'cal_token TEXT'], ['leads', 'book_token TEXT'], ['users', 'google_alerted INTEGER'], ['leads', 'closer_id TEXT'], ['leads', 'gcal_owner TEXT'], ['leads', 'gcal_cal TEXT'], ['leads', 'master_event_id TEXT'], ['leads', 'master_sig TEXT'], ['leads', 'invite_tried INTEGER'], ['events', 'master_event_id TEXT'], ['events', 'master_sig TEXT'], ['users', 'job TEXT'], ['leads', 'business_raw TEXT'], ['leads', 'manual_listing TEXT'], ['leads', 'phone_type TEXT'], ['leads', 'phone_carrier TEXT'], ['leads', 'email_status TEXT'], ['leads', 'owner_name TEXT'], ['leads', 'socials TEXT'], ['leads', 'data_score INTEGER'], ['leads', 'scrub_data TEXT'], ['leads', 'scrubbed_at INTEGER'], ['leads', 'scrub_queued INTEGER'], ['leads', 'scrub_tried INTEGER'], ['users', 'audio_cfg TEXT'], ['users', 'avail TEXT'], ['users', 'dial_goal INTEGER'], ['leads', 'pack_token TEXT'], ['leads', 'pack TEXT'], ['leads', 'pack_at INTEGER'], ['leads', 'pack_views INTEGER'],
   ['social_items', 'auto INTEGER NOT NULL DEFAULT 0'], ['social_items', 'pillar TEXT'], ['social_items', 'leads INTEGER'], ['social_items', 'verified_at INTEGER'],
+  // Lead database: what each call reached, and the per lead roll up (src/leaddb.js, public/js/leaddb.js).
+  ['activities', 'answered_by TEXT'], ['activities', 'hangup_stage TEXT'], ['activities', 'objection TEXT'], ['activities', 'attempt_no INTEGER'], ['activities', 'dispo_id TEXT'],
+  ['leads', 'qual TEXT'], ['leads', 'qual_n INTEGER'], ['leads', 'menu_path TEXT'], ['leads', 'reach_score INTEGER'], ['leads', 'engage_score INTEGER'], ['leads', 'roll_at INTEGER'],
+  ['leads', 'r_dials INTEGER'], ['leads', 'r_connects INTEGER'], ['leads', 'r_owner INTEGER'], ['leads', 'r_staff INTEGER'], ['leads', 'r_menu INTEGER'], ['leads', 'r_vm INTEGER'],
+  ['leads', 'r_noans INTEGER'], ['leads', 'r_dead INTEGER'], ['leads', 'r_wrong INTEGER'], ['leads', 'r_talk INTEGER'], ['leads', 'r_longest INTEGER'], ['leads', 'r_fast_hangs INTEGER'],
+  ['leads', 'r_shortest INTEGER'], ['leads', 'r_last_by TEXT'], ['leads', 'r_last_dispo TEXT'], ['leads', 'r_last_secs INTEGER'], ['leads', 'r_obj TEXT'], ['leads', 'r_first_at INTEGER'],
+  ['leads', 'r_owner_at INTEGER'], ['leads', 'r_to_owner INTEGER'], ['leads', 'r_24h INTEGER'], ['leads', 'r_convs INTEGER'], ['leads', 'r_service INTEGER'],
 ];
 
 let ready = null;

@@ -188,12 +188,15 @@ export function resolveZone(l = {}) {
 const hourIn = (tz, at) => {
   try { return Number(dtf('en-US', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(at)); } catch { return null; }
 };
-const inside = (h) => h != null && h >= 8 && h < 20;
+const inside = (h, start = 8) => h != null && h >= start && h < 20;
+// States with a later start than 8am (Maryland allows sales calls 9am to 8pm only). Add more here when a state is checked.
+export const STATE_START = { MD: 9 };
 
 // 8am to 8pm in the lead's zone (TCPA hours). With a second possible zone, both must be inside. With no zone, the window that is
 // safe from Miami to Seattle: 11am to 8pm Eastern (8am Pacific is 11am Eastern).
-export function canCallNow(tz, alt, at = Date.now()) {
-  if (!tz) return inside(hourIn(ZONES.PT, at)) && inside(hourIn(ZONES.ET, at));
-  if (!inside(hourIn(tz, at))) return false;
-  return !alt || inside(hourIn(alt, at));
+export function canCallNow(tz, alt, at = Date.now(), state = '') {
+  const start = STATE_START[String(state || '').toUpperCase()] || 8;
+  if (!tz) return inside(hourIn(ZONES.PT, at), start) && inside(hourIn(ZONES.ET, at), start);
+  if (!inside(hourIn(tz, at), start)) return false;
+  return !alt || inside(hourIn(alt, at), start);
 }

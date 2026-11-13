@@ -94,7 +94,7 @@ export async function sendText(env, lead, rawText, user, origin) {
   if (!to) throw new HttpError('This lead has no valid phone number.');
   // Replying within 12 hours of their own text is a conversation, not outreach, so the clock check is skipped.
   const replying = inbound && now() - inbound.at < 12 * 3600e3;
-  if (!replying && !inCallingHours(lead.timezone, Date.now(), lead.tz_alt)) throw new HttpError("It's outside 8am to 8pm in their time zone, or their state is missing. Text later.", 409);
+  if (!replying && !inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError("It's outside 8am to 8pm in their time zone, or their state is missing. Text later.", 409);
   const prior = await first(env, "SELECT 1 AS x FROM messages WHERE lead_id = ? AND direction = 'out' LIMIT 1", lead.id);
   if (!prior) {
     if (!/rightway/i.test(text)) text = `Rightway Growth: ${text}`;

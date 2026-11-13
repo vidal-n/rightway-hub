@@ -20,6 +20,7 @@ import { automationTick } from './automations.js';
 import { researchTick } from './autoresearch.js';
 import { scrubTick } from './scrub.js';
 import { finderTick } from './leadfinder.js';
+import { rollTick } from './leaddb.js';
 import { costTick } from './costs.js';
 import { masterTick, inviteTick } from './teamcal.js';
 import { googleHealthTick } from './googlecheck.js';
@@ -59,6 +60,8 @@ export default {
       // Clients without their private chat get one (one per run, about 5 Slack calls each).
       if (used < 35) await ensureClientChats(env, 1).catch((e) => console.error('client chats', e));
       await socialAutoTick(env).catch((e) => console.error('social autopilot', e));
+      // Lead database: keep each lead's call roll up and scores current (no outside calls).
+      await rollTick(env, 40).catch((e) => console.error('lead roll up', e));
     })());
   },
   async fetch(request, rawEnv, execCtx) {

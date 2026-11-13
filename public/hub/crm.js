@@ -2,7 +2,8 @@
 import { isMapsScrape, mapsScrapeRows, dedupeRows } from '../js/mapsimport.js';
 import { PRICES, money, priceText } from '../js/pricing.js';
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, makeDraggable, isPhone, editGoal, trayAdd, trayRemove } from './core.js';
-import { staffShell, settingsTabs } from './staff.js';
+import { staffShell, settingsTabs, pipeTabs } from './staff.js';
+import { callIntelHtml, mountQual } from './qualform.js';
 import { prepPanel, gradeBadge, bookModal, clearScriptCache, fold, wireFolds } from './prep.js';
 import { textModal } from './texts.js';
 import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
@@ -132,6 +133,7 @@ export async function pipelinePage(app, user, openId, screen) {
             <p class="small muted" style="margin:0">Show or hide parts of this page. Saved for you on this computer.</p>
             ${PIPE_LAYOUT.map(([k, n]) => `<label><input type="checkbox" data-play="${k}"${lay[k] ? ' checked' : ''}> ${n}</label>`).join('')}
             <button type="button" class="btn btn-ghost btn-sm" id="playreset">Show everything</button></div></div></div></div>
+      ${pipeTabs('board')}
       <div class="flow">
         <section class="fstep" data-sec="get"><header><span class="fn">1</span><div><h3>Get leads</h3><p>Find new businesses or bring a list in.</p></div></header>
           <div class="row">${user.role === 'admin' ? `<a class="btn btn-ghost btn-sm" href="#/finder">Lead finder</a>` : ''}<button class="btn btn-ghost btn-sm" id="imp">${icon.upload}Import a list</button><button class="btn btn-ghost btn-sm" id="addl">${icon.plus}Add one lead</button></div></section>
@@ -723,6 +725,8 @@ export async function leadModal(id, onChange) {
         ${fold('lm-next', 'Next step and notes', `<p style="margin-top:0">${l.next_action ? `${esc(l.next_action)} <span class="badge gray">${esc(dueText(l.next_action_at))}</span>` : '<span class="muted">None set</span>'}</p>
         ${l.notes ? `<div class="caption">${esc(l.notes)}</div>` : ''}`, true)}
         ${fold('lm-data', 'Lead data', '<div id="ldata"></div>', false)}
+        ${fold('lm-calls', 'Call intelligence', callIntelHtml(l), false)}
+        ${fold('lm-qual', 'Qualification', '<div id="lqual"></div>', false)}
         ${fold('lm-mail', 'Recent email', '<div class="card" id="lmail" style="box-shadow:none;padding:0"></div>', false)}
         ${fold('lm-hist', 'History', `<ul class="feed">${data.activities.map((a) => `<li><span class="dot">${a.type === 'call' ? icon.msg : a.type === 'payment' ? icon.star : icon.note}</span>
           <div><div>${esc(activityText(a))}</div>${a.body && a.type !== 'stage' ? `<div class="small">${esc(a.body)}</div>` : ''}</div><span class="small">${esc(fmt.ago(a.at))}</span></li>`).join('') || '<li class="muted">Nothing yet.</li>'}</ul>`, false, data.activities.length)}
@@ -742,6 +746,7 @@ export async function leadModal(id, onChange) {
     else import('./hubmail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth`, lead_id: l.id }));
   }));
   leadDataCard($('#ldata', m.el), l, data.scrub, () => { changed = true; });
+  mountQual($('#lqual', m.el), l, () => { changed = true; });
   // Who runs the booked call. Changing it checks they are free, updates the lead's invite and the team calendar.
   const cbox = $('#lcloserbox', m.el);
   if (cbox) api('/api/team').then(({ users }) => {
@@ -1072,7 +1077,7 @@ export async function dialerPage(app, user) {
   // Researching the next leads as you dial costs money, so it starts off (Nov 2026). The old saved choice is ignored once.
   let auto = false;
   try { auto = localStorage.getItem('rw-dial-auto2') === '1'; } catch { /* ignore */ }
-  const qs = new URLSearchParams(Object.entries(flt).filter(([, v]) => v)).toString();
+  const qs = new URLSearchParams(Object.entries(flt).filter(([k, v]) => v && k !== 'label')).toString();
   let me, q, cal, nums = { numbers: [] };
   try { [me, q, cal, nums] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150&since=${new Date().setHours(0, 0, 0, 0)}${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] })), api('/api/dialer/numbers').catch(() => ({ numbers: [] }))]); }
   catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
@@ -1242,7 +1247,7 @@ export async function dialerPage(app, user) {
   const upcoming = (cal.meetings || []).filter((m) => m.meet_at > Date.now() - 3600e3).slice(0, 4);
   // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.
   setTimeout(() => api('/api/balances/status').then((b) => { const el = document.getElementById('lowbal'); if (el && b.low?.length) el.innerHTML = `<div class="card" style="border-color:#E8A33D;margin-bottom:12px"><b>${b.low.map((x) => esc(x.name)).join(' and ')} balance ${b.low.some((x) => x.empty) ? 'is empty' : 'is low'}.</b> <span class="small">${b.low.some((x) => x.key === 'twilio') ? 'Calls and texts stop when Twilio runs out. ' : ''}${b.low.some((x) => x.key === 'dataforseo') ? 'Research and scans stop when DataForSEO runs out. ' : ''}An owner can add funds from the Dashboard.</span></div>`; }).catch(() => {}), 50);
-  const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier' && k !== 'cat').map(([k, v]) => (k === 'stage' ? `Column: ${String(v).split(',').map((x) => STAGE_LABEL[x] || x).join(', ')}` : `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`)).join(' · ');
+  const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier' && k !== 'cat' && k !== 'db').map(([k, v]) => (k === 'label' ? `Lead database search: ${v}` : k === 'stage' ? `Column: ${String(v).split(',').map((x) => STAGE_LABEL[x] || x).join(', ')}` : `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`)).join(' · ');
   let lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true };
   let layOpen = false;
   // Click anywhere else, or press Escape, to close the layout menu.
@@ -1379,7 +1384,7 @@ export async function dialerPage(app, user) {
     prefetch(l);
     prefetch(q.queue[idx + 1]);
     $('#dskip', view).addEventListener('click', () => { if (busyPhase()) return toast('Finish this call and save the result first.', true); idx++; render(); });
-    $('#dlog', view)?.addEventListener('click', () => { if (busyPhase()) return toast('The result opens in the call window when the call ends.', true); const w = whoIs(l); dispositionModal({ lead: testMode ? null : l, title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), sub: 'Pick how it went. It moves the lead to the right next step.', answered: true, onSave: (r) => logOutcome(l, r.dispo, { note: r.note, when: r.callbackAt }) }); });
+    $('#dlog', view)?.addEventListener('click', () => { if (busyPhase()) return toast('The result opens in the call window when the call ends.', true); const w = whoIs(l); dispositionModal({ lead: testMode ? null : l, title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), sub: 'Pick how it went. It moves the lead to the right next step.', answered: true, onSave: (r) => logOutcome(l, r.dispo, { note: r.note, when: r.callbackAt, detail: r.detail }) }); });
     $('#dopen', view).addEventListener('click', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {})));
     $('#dtext', view).addEventListener('click', () => (testMode ? testText(l) : textModal(l, { rep: REP })));
     const bookedId = (DISP.find((d) => d.acts === 'booked') || { id: 'booked' }).id;
@@ -1438,7 +1443,7 @@ export async function dialerPage(app, user) {
         el.querySelector('[data-pstop]')?.addEventListener('click', () => { powerStop(); toast('Dialing stopped.'); const r = el.querySelector('.row'); if (r) r.innerHTML = '<span class="small muted">Dialing stopped. Save the result to finish.</span>'; });
       },
       onSkip: () => { phase = 'idle'; if (power) holdPower(() => { phase = 'wrap'; openDispo(l, answered, dr); }); },
-      onSave: async (r) => { await logOutcome(l, r.dispo, { note: r.note, when: r.callbackAt }); } }).catch(() => { phase = 'idle'; });
+      onSave: async (r) => { await logOutcome(l, r.dispo, { note: r.note, when: r.callbackAt, detail: r.detail }); } }).catch(() => { phase = 'idle'; });
   };
   const afterBooking = (l, bookedId) => { bookedDuring.add(l.id); if (!busyPhase() && q.queue[idx]?.id === l.id) logOutcome(l, bookedId, {}, true); };
   // The strip inside the call window while power dialing: the wait between calls and a Stop.
@@ -1472,7 +1477,7 @@ export async function dialerPage(app, user) {
       throw new Error('Fill in the booking form that just opened, or add a time here, then press Save.');
     }
     if (!(booked && acts === 'booked') && !(acts === 'booked' && bookedDuring.has(l.id))) {
-      const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note, callbackAt: isoWhen(when) } });
+      const r = await api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: outcome, note, callbackAt: isoWhen(when), detail: extra.detail || null } });
       if (r.calendar?.warning) toast(`Heads up: ${r.calendar.warning} Hand it to someone else on the lead.`, true);
     } else if (note) await api(`/api/leads/${l.id}/note`, { method: 'POST', body: { text: note } });
     bookedDuring.delete(l.id);

@@ -46,8 +46,8 @@ export function localTime(tz, at = Date.now()) {
 }
 // Calls are allowed 8am to 8pm in the lead's time zone (TCPA hours). `alt` is a second possible zone (both must be inside).
 // No zone at all means only the window that is safe from Miami to Seattle (11am to 8pm Eastern).
-export function inCallingHours(tz, at = Date.now(), alt = null) {
-  return canCallNow(tz, alt, at);
+export function inCallingHours(tz, at = Date.now(), alt = null, state = '') {
+  return canCallNow(tz, alt, at, state);
 }
 // Where a lead is, from whatever fields it has. Returns the columns to save: timezone, tz_alt, tz_how (and state when it was empty).
 export function zoneFields(l) {
@@ -195,7 +195,7 @@ function seeAppt(l, user) {
 function decorate(l) {
   const tz = l.timezone || null;
   const { intel, scrub_data, ...rest } = l;
-  return { ...rest, scrubbed: Boolean(l.scrubbed_at), researched: Boolean(l.intel_at), tz_short: TZ_SHORT[tz] || null, tz_alt_short: TZ_SHORT[l.tz_alt] || null, local_time: tz ? localTime(tz) : '', callable_now: !l.dnc && inCallingHours(tz, Date.now(), l.tz_alt), tz_known: Boolean(tz) };
+  return { ...rest, scrubbed: Boolean(l.scrubbed_at), researched: Boolean(l.intel_at), tz_short: TZ_SHORT[tz] || null, tz_alt_short: TZ_SHORT[l.tz_alt] || null, local_time: tz ? localTime(tz) : '', callable_now: !l.dnc && inCallingHours(tz, Date.now(), l.tz_alt, l.state), tz_known: Boolean(tz) };
 }
 const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, website, city, state, zip, timezone, tz_alt, tz_how, industry, category, tags, source, stage, plan,
   next_action_at, next_action, owner_id, attempts, last_call_at, dnc, sms_consent, client_id, score, grade, rating, reviews, map_rank, problems,
@@ -433,7 +433,7 @@ route('DELETE', '/api/leads/:id', async ({ env, user, params }) => {
 });
 
 // Log a call result on a lead: moves the lead along (cadence, callback, DNC) and labels the call record.
-export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activityId } = {}) {
+export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activityId, detail = null } = {}) {
   const d = await resolveDispo(env, dispo);
   if (!d) throw new HttpError('Unknown call outcome.');
   let set;
@@ -449,10 +449,15 @@ export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activ
   const target = activityId ? { id: activityId }
     : await first(env, "SELECT id FROM activities WHERE lead_id = ? AND type IN ('call','manual_call') AND outcome IS NULL AND at > ? ORDER BY at DESC LIMIT 1", l.id, now() - 3600e3);
   if (target) await run(env, "UPDATE activities SET outcome = ?, dispo = ?, note = ?, dispo_at = ?, lead_id = COALESCE(lead_id, ?), body = CASE WHEN type = 'manual_call' THEN body ELSE COALESCE(?, body) END WHERE id = ?", d.acts, d.label, note || null, now(), l.id, note || null, target.id);
-  else {
-    const id = await logActivity(env, { lead_id: l.id, type: 'call', outcome: d.acts, body: note || null, by });
-    await run(env, 'UPDATE activities SET dispo = ?, note = ?, dispo_at = at WHERE id = ?', d.label, note || null, id);
+  let actId = target?.id || null;
+  if (!target) {
+    actId = await logActivity(env, { lead_id: l.id, type: 'call', outcome: d.acts, body: note || null, by });
+    await run(env, 'UPDATE activities SET dispo = ?, note = ?, dispo_at = at WHERE id = ?', d.label, note || null, actId);
   }
+  // Lead database: who answered, how far it got, the objection; then the lead's roll up and scores.
+  const { saveCallDetail, rollupLeads } = await import('./leaddb.js');
+  await saveCallDetail(env, actId, l.id, detail || {}, d.id).catch((e) => console.error('call detail', e.message));
+  await rollupLeads(env, [l.id]).catch((e) => console.error('roll up', e.message));
   return d;
 }
 
@@ -461,7 +466,7 @@ route('POST', '/api/leads/:id/outcome', async ({ env, user, params, body }) => {
   const l = await leadOr404(env, params.id);
   const b = await body();
   const callbackAt = b.callbackAt ? Number(new Date(b.callbackAt)) || null : null;
-  await recordOutcome(env, l, { dispo: b.dispo || b.outcome, note: text(b.note, 2000), callbackAt, by: user.id });
+  await recordOutcome(env, l, { dispo: b.dispo || b.outcome, note: text(b.note, 2000), callbackAt, by: user.id, detail: b.detail || null });
   // Booked with a time: it lands on the booker's own Google Calendar with a Meet link (the Hub keeps it either way).
   let calendar = null;
   if (callbackAt) calendar = await import('./appointments.js').then((m) => m.bookOnCalendar(env, user.id, l.id)).catch((e) => ({ error: e.message }));
@@ -539,13 +544,24 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const stages = (url.searchParams.get('stage') || '').split(',').map((x) => x.trim()).filter((x) => CALLABLE.includes(x));
   const useStages = stages.length ? stages : CALLABLE;
   // Light columns only for the sort, the filters and the counts (full rows carry big research JSON). The few rows sent back are read in full below.
+  // db=1: the rep's "Dial this search" from the Lead database (src/leaddb.js), applied as SQL.
+  let dbSql = '', dbVals = [];
+  if (url.searchParams.get('db') === '1') {
+    const { dialFilterOf } = await import('./leaddb.js');
+    const { whereFor } = await import('../public/js/leaddb.js');
+    const w = whereFor(await dialFilterOf(env, user.id), { now: t });
+    if (w.vals.length < 80) { dbSql = ` AND id IN (SELECT id FROM leads WHERE ${w.where})`; dbVals = w.vals; }
+  }
   const rows = await all(env, `SELECT ${LIST_COLS} FROM leads WHERE dnc = 0 AND stage IN (${useStages.map(() => '?').join(',')})
-    AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...useStages, t);
+    AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL${dbSql} ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...useStages, t, ...dbVals);
+  // Florida caps sales calls at 3 per person in 24 hours on the same subject (Fla. Stat. 501.616(6)): leads dialed 3 times since this time yesterday wait.
+  const capped = new Set((await all(env, `SELECT lead_id FROM activities WHERE type IN ('call','manual_call') AND at > ? AND lead_id IS NOT NULL
+      AND (status IS NULL OR status NOT IN ('inbound','missed','voicemail','inbound_answered')) AND NOT (status = 'ready' AND outcome IS NULL) GROUP BY lead_id HAVING COUNT(*) >= 3`, t - 864e5)).map((r) => r.lead_id));
   const priority = { callback: 0, audit_requested: 1, no_show: 2, follow_up: 3, new: 4, attempting: 5, not_now: 6 };
   const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier', 'data', 'cat'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
   const minScore = Number(url.searchParams.get('minScore')) || 0;
   const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
-  const decorated = rows.filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3)).map(decorate); // once per lead: tiers and the queue share it
+  const decorated = rows.filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3) && !capped.has(l.id)).map(decorate); // once per lead: tiers and the queue share it
   const ready = decorated
     .map((l) => seeAppt(l, user))
     .filter((l) => (!f.tz || f.tz.split(',').includes(l.tz_short)) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())

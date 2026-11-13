@@ -43,7 +43,7 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
   return json({
     me: { dials: mine?.dials || 0, talks: mine?.talks || 0, booked: mine?.booked || 0, goal: await dialGoalOf(env, user.id) },
     week: { dials: team?.dials || 0, talks: team?.talks || 0, booked: team?.booked || 0 },
-    pipeline: { byStage, open: leads.length, callableNow: leads.filter((l) => inCallingHours(l.timezone, Date.now(), l.tz_alt)).length, aLeads: leads.filter((l) => l.grade === 'A').length },
+    pipeline: { byStage, open: leads.length, callableNow: leads.filter((l) => inCallingHours(l.timezone, Date.now(), l.tz_alt, l.state)).length, aLeads: leads.filter((l) => l.grade === 'A').length },
     due, meetings,
     clients: { active: real.length, mrr: user.role === 'admin' ? mrr : null, sample: clients.find((c) => c.sample)?.id || null },
     work: { tasksDone: tasks?.done || 0, tasksTotal: tasks?.total || 0, postsWaiting: posts?.n || 0 },
