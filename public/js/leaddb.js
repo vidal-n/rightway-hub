@@ -205,6 +205,7 @@ export const comboLabel = (grade, engage) => `${grade || '?'}${engageTier(engage
 
 // ---------- search catalog ----------
 // What the database can filter on. The Worker builds SQL only from this list (sql is a fixed column or expression, never user text).
+// Call roll up columns live in table lead_roll (joined as DB_FROM in src/leaddb.js), so they are written lead_roll.r_*.
 // type: text (contains), pick (any of), range (min and max), bool (yes or no), qual (a qualification answer).
 export const FILTER_CATS = [
   ['business', 'Business'], ['contact', 'Contact and data'], ['calls', 'Call history'], ['qual', 'Qualification'], ['scores', 'Scores'], ['comply', 'Compliance'],
@@ -229,18 +230,18 @@ export const FILTERS = [
   { k: 'scrubbed', cat: 'contact', label: 'Scrubbed', type: 'bool', sql: '(scrubbed_at IS NOT NULL)' },
   { k: 'researched', cat: 'contact', label: 'Researched', type: 'bool', sql: '(intel_at IS NOT NULL)' },
   { k: 'stale', cat: 'contact', label: 'Data older than 6 months', type: 'bool', sql: '(COALESCE(scrubbed_at, created_at) < @stale)' },
-  { k: 'r_dials', cat: 'calls', label: 'Times dialed', type: 'range', sql: 'COALESCE(r_dials,0)' },
-  { k: 'never', cat: 'calls', label: 'Never called', type: 'bool', sql: '(COALESCE(r_dials,0) = 0)' },
-  { k: 'reached_owner', cat: 'calls', label: 'Reached the owner', type: 'bool', sql: '(COALESCE(r_owner,0) > 0)' },
-  { k: 'staff_only', cat: 'calls', label: 'Only reached staff', type: 'bool', sql: '(COALESCE(r_staff,0) > 0 AND COALESCE(r_owner,0) = 0)' },
-  { k: 'menu', cat: 'calls', label: 'Hit a phone menu', type: 'bool', sql: '(COALESCE(r_menu,0) > 0)' },
-  { k: 'vm_only', cat: 'calls', label: 'Voicemail only', type: 'bool', sql: '(COALESCE(r_vm,0) > 0 AND COALESCE(r_connects,0) = 0)' },
-  { k: 'fast_hang', cat: 'calls', label: 'Hung up on us fast', type: 'bool', sql: '(COALESCE(r_fast_hangs,0) > 0)' },
-  { k: 'dead', cat: 'calls', label: 'Dead or wrong number', type: 'bool', sql: '(COALESCE(r_dead,0) + COALESCE(r_wrong,0) > 0)' },
-  { k: 'r_talk', cat: 'calls', label: 'Total talk (minutes)', type: 'range', sql: '(COALESCE(r_talk,0) / 60.0)' },
-  { k: 'r_longest', cat: 'calls', label: 'Longest call (minutes)', type: 'range', sql: '(COALESCE(r_longest,0) / 60.0)' },
-  { k: 'r_last_by', cat: 'calls', label: 'Last call reached', type: 'pick', sql: 'r_last_by', options: ANSWERED_BY.map(([k, n]) => [k, n]) },
-  { k: 'r_obj', cat: 'calls', label: 'Last objection', type: 'pick', sql: 'r_obj', options: OBJECTIONS.map(([k, n]) => [k, n]) },
+  { k: 'r_dials', cat: 'calls', label: 'Times dialed', type: 'range', sql: 'COALESCE(lead_roll.r_dials,0)' },
+  { k: 'never', cat: 'calls', label: 'Never called', type: 'bool', sql: '(COALESCE(lead_roll.r_dials,0) = 0)' },
+  { k: 'reached_owner', cat: 'calls', label: 'Reached the owner', type: 'bool', sql: '(COALESCE(lead_roll.r_owner,0) > 0)' },
+  { k: 'staff_only', cat: 'calls', label: 'Only reached staff', type: 'bool', sql: '(COALESCE(lead_roll.r_staff,0) > 0 AND COALESCE(lead_roll.r_owner,0) = 0)' },
+  { k: 'menu', cat: 'calls', label: 'Hit a phone menu', type: 'bool', sql: '(COALESCE(lead_roll.r_menu,0) > 0)' },
+  { k: 'vm_only', cat: 'calls', label: 'Voicemail only', type: 'bool', sql: '(COALESCE(lead_roll.r_vm,0) > 0 AND COALESCE(lead_roll.r_connects,0) = 0)' },
+  { k: 'fast_hang', cat: 'calls', label: 'Hung up on us fast', type: 'bool', sql: '(COALESCE(lead_roll.r_fast_hangs,0) > 0)' },
+  { k: 'dead', cat: 'calls', label: 'Dead or wrong number', type: 'bool', sql: '(COALESCE(lead_roll.r_dead,0) + COALESCE(lead_roll.r_wrong,0) > 0)' },
+  { k: 'r_talk', cat: 'calls', label: 'Total talk (minutes)', type: 'range', sql: '(COALESCE(lead_roll.r_talk,0) / 60.0)' },
+  { k: 'r_longest', cat: 'calls', label: 'Longest call (minutes)', type: 'range', sql: '(COALESCE(lead_roll.r_longest,0) / 60.0)' },
+  { k: 'r_last_by', cat: 'calls', label: 'Last call reached', type: 'pick', sql: 'lead_roll.r_last_by', options: ANSWERED_BY.map(([k, n]) => [k, n]) },
+  { k: 'r_obj', cat: 'calls', label: 'Last objection', type: 'pick', sql: 'lead_roll.r_obj', options: OBJECTIONS.map(([k, n]) => [k, n]) },
   { k: 'called_days', cat: 'calls', label: 'Last called (days ago)', type: 'range', sql: '((@now - last_call_at) / 86400000.0)' },
   { k: 'qual_n', cat: 'qual', label: 'Qualification answers', type: 'range', sql: 'COALESCE(qual_n,0)' },
   ...['dm', 'wants_more', 'current_help', 'spend', 'urgency', 'funds', 'deciders', 'gbp_access', 'site_owner', 'employees'].map((k) => ({ k: `qual_${k}`, cat: 'qual', label: QMAP[k].label, type: 'pick', sql: `json_extract(qual, '$.${k}')`, options: QMAP[k].options })),
@@ -250,7 +251,7 @@ export const FILTERS = [
   { k: 'engage_score', cat: 'scores', label: 'Engagement score', type: 'range', sql: 'COALESCE(engage_score,0)' },
   { k: 'dnc', cat: 'comply', label: 'Do not call', type: 'bool', sql: '(dnc = 1)' },
   { k: 'sms_consent', cat: 'comply', label: 'Said yes to texts', type: 'bool', sql: '(sms_consent = 1)' },
-  { k: 'calls_24h', cat: 'comply', label: '3 calls in the last 24 hours', type: 'bool', sql: '(COALESCE(r_24h,0) >= 3 AND last_call_at > @day)' },
+  { k: 'calls_24h', cat: 'comply', label: '3 calls in the last 24 hours', type: 'bool', sql: '(COALESCE(lead_roll.r_24h,0) >= 3 AND last_call_at > @day)' },
 ];
 export const FILTER_MAP = Object.fromEntries(FILTERS.map((f) => [f.k, f]));
 
@@ -259,9 +260,9 @@ export const COLUMNS = [
   ['business', 'Business', 'business'], ['owner', 'Owner or contact', "COALESCE(owner_name, contact_name, '')"], ['phone', 'Phone', 'phone_digits'], ['phone_type', 'Phone type', 'phone_type'],
   ['email', 'Email', 'email'], ['city', 'City', 'city'], ['state', 'State', 'state'], ['industry', 'Industry', "COALESCE(industry, category, '')"], ['stage', 'Stage', 'stage'],
   ['combo', 'Grade', 'score'], ['reach_score', 'Reach', 'reach_score'], ['engage_score', 'Engagement', 'engage_score'], ['reviews', 'Reviews', 'reviews'], ['rating', 'Rating', 'rating'],
-  ['map_rank', 'Map rank', 'map_rank'], ['r_dials', 'Dials', 'r_dials'], ['r_connects', 'Connects', 'r_connects'], ['r_owner', 'Owner reached', 'r_owner'],
-  ['r_talk', 'Talk', 'r_talk'], ['r_longest', 'Longest call', 'r_longest'], ['r_last_by', 'Last reached', 'r_last_by'], ['r_last_dispo', 'Last result', 'r_last_dispo'],
-  ['r_obj', 'Objection', 'r_obj'], ['last_call_at', 'Last called', 'last_call_at'], ['qual_n', 'Qualified', 'qual_n'], ['data_score', 'Data', 'data_score'],
+  ['map_rank', 'Map rank', 'map_rank'], ['r_dials', 'Dials', 'lead_roll.r_dials'], ['r_connects', 'Connects', 'lead_roll.r_connects'], ['r_owner', 'Owner reached', 'lead_roll.r_owner'],
+  ['r_talk', 'Talk', 'lead_roll.r_talk'], ['r_longest', 'Longest call', 'lead_roll.r_longest'], ['r_last_by', 'Last reached', 'lead_roll.r_last_by'], ['r_last_dispo', 'Last result', 'lead_roll.r_last_dispo'],
+  ['r_obj', 'Objection', 'lead_roll.r_obj'], ['last_call_at', 'Last called', 'last_call_at'], ['qual_n', 'Qualified', 'qual_n'], ['data_score', 'Data', 'data_score'],
   ['source', 'Source', 'source'], ['created_at', 'Added', 'created_at'],
 ];
 export const DEFAULT_COLUMNS = ['business', 'owner', 'phone_type', 'industry', 'city', 'combo', 'reach_score', 'r_dials', 'r_owner', 'r_talk', 'r_last_by', 'r_last_dispo', 'last_call_at'];

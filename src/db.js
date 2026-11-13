@@ -166,6 +166,9 @@ const SCHEMA = [
     call_sid TEXT, status TEXT, at INTEGER NOT NULL, by TEXT)`,
   `CREATE INDEX IF NOT EXISTS act_lead ON activities (lead_id, at)`,
   `CREATE INDEX IF NOT EXISTS act_at ON activities (at)`,
+  // Per lead call roll up for the Lead database (src/leaddb.js). Its own table: D1 allows 100 columns a table and leads is close to that.
+  `CREATE TABLE IF NOT EXISTS lead_roll (
+    lead_id TEXT PRIMARY KEY, r_dials INTEGER, r_connects INTEGER, r_owner INTEGER, r_staff INTEGER, r_menu INTEGER, r_vm INTEGER, r_noans INTEGER, r_dead INTEGER, r_wrong INTEGER, r_talk INTEGER, r_longest INTEGER, r_fast_hangs INTEGER, r_shortest INTEGER, r_last_by TEXT, r_last_dispo TEXT, r_last_secs INTEGER, r_obj TEXT, r_first_at INTEGER, r_owner_at INTEGER, r_to_owner INTEGER, r_24h INTEGER, r_convs INTEGER, r_service INTEGER)`,
   `CREATE TABLE IF NOT EXISTS work_orders (
     id TEXT PRIMARY KEY, token TEXT UNIQUE NOT NULL, lead_id TEXT, client_id TEXT, plan TEXT NOT NULL, monthly_cents INTEGER NOT NULL,
     setup_cents INTEGER NOT NULL, business TEXT, contact_name TEXT, email TEXT, terms TEXT, pay_url TEXT, status TEXT NOT NULL DEFAULT 'sent',
@@ -231,10 +234,6 @@ const ADD_COLUMNS = [
   // Lead database: what each call reached, and the per lead roll up (src/leaddb.js, public/js/leaddb.js).
   ['activities', 'answered_by TEXT'], ['activities', 'hangup_stage TEXT'], ['activities', 'objection TEXT'], ['activities', 'attempt_no INTEGER'], ['activities', 'dispo_id TEXT'],
   ['leads', 'qual TEXT'], ['leads', 'qual_n INTEGER'], ['leads', 'menu_path TEXT'], ['leads', 'reach_score INTEGER'], ['leads', 'engage_score INTEGER'], ['leads', 'roll_at INTEGER'],
-  ['leads', 'r_dials INTEGER'], ['leads', 'r_connects INTEGER'], ['leads', 'r_owner INTEGER'], ['leads', 'r_staff INTEGER'], ['leads', 'r_menu INTEGER'], ['leads', 'r_vm INTEGER'],
-  ['leads', 'r_noans INTEGER'], ['leads', 'r_dead INTEGER'], ['leads', 'r_wrong INTEGER'], ['leads', 'r_talk INTEGER'], ['leads', 'r_longest INTEGER'], ['leads', 'r_fast_hangs INTEGER'],
-  ['leads', 'r_shortest INTEGER'], ['leads', 'r_last_by TEXT'], ['leads', 'r_last_dispo TEXT'], ['leads', 'r_last_secs INTEGER'], ['leads', 'r_obj TEXT'], ['leads', 'r_first_at INTEGER'],
-  ['leads', 'r_owner_at INTEGER'], ['leads', 'r_to_owner INTEGER'], ['leads', 'r_24h INTEGER'], ['leads', 'r_convs INTEGER'], ['leads', 'r_service INTEGER'],
 ];
 
 let ready = null;
@@ -245,18 +244,56 @@ let ready = null;
 const fingerprint = () => { let h = 5381; for (const s of [...SCHEMA, ...ADD_COLUMNS.map((c) => c.join('.'))]) for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return `v${SCHEMA.length}.${ADD_COLUMNS.length}.${(h >>> 0).toString(36)}`; };
 const SCHEMA_V = fingerprint();
 
-async function migrate(env) {
-  await env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s)));
-  const tables = [...new Set(ADD_COLUMNS.map((c) => c[0]))];
-  const infos = await env.DB.batch(tables.map((t) => env.DB.prepare(`SELECT name FROM pragma_table_info('${t}')`)));
-  const have = Object.fromEntries(tables.map((t, i) => [t, new Set((infos[i].results || []).map((r) => r.name))]));
-  for (const [table, col] of ADD_COLUMNS) {
-    if (have[table].has(col.split(' ')[0])) continue;
-    try { await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${col}`).run(); } catch (e) {
-      if (!/duplicate column/i.test(String(e?.message || e))) throw e; // another isolate got there first
+// Columns an earlier deploy added and that now live elsewhere. The Nov 2026 Lead database deploy put 29 roll up columns on leads, which ran
+// past D1's limit of 100 columns a table: the ALTER failed, migrate threw, and every request answered "Almost ready". They moved to lead_roll.
+const DROP_COLUMNS = [
+  ['leads', ['r_dials', 'r_connects', 'r_owner', 'r_staff', 'r_menu', 'r_vm', 'r_noans', 'r_dead', 'r_wrong', 'r_talk', 'r_longest', 'r_fast_hangs', 'r_shortest',
+    'r_last_by', 'r_last_dispo', 'r_last_secs', 'r_obj', 'r_first_at', 'r_owner_at', 'r_to_owner', 'r_24h', 'r_convs', 'r_service']],
+];
+export const D1_MAX_COLUMNS = 100;
+
+// Runs one statement list as a batch (one D1 query), and one by one when the batch fails, so a single bad statement does not stop the rest.
+async function tryAll(env, sqls, okErr, errors) {
+  if (!sqls.length) return;
+  try { await env.DB.batch(sqls.map((q) => env.DB.prepare(q))); return; } catch { /* fall through */ }
+  for (const q of sqls) {
+    try { await env.DB.prepare(q).run(); } catch (e) {
+      const m = String(e?.message || e);
+      if (!okErr.test(m)) errors.push(`${q.slice(0, 80)}: ${m.slice(0, 160)}`);
     }
   }
-  await env.DB.prepare('INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v').bind('schema_v', SCHEMA_V).run();
+}
+
+// Never throws: a schema step that fails is logged and saved in settings.schema_err, and the Hub still opens. The stamp is only written when
+// everything worked, so the next cold Worker tries the failed step again.
+async function migrate(env) {
+  const errors = [];
+  await tryAll(env, SCHEMA, /already exists/i, errors);
+  const tables = [...new Set([...ADD_COLUMNS.map((c) => c[0]), ...DROP_COLUMNS.map((d) => d[0])])];
+  let infos = [];
+  try { infos = await env.DB.batch(tables.map((t) => env.DB.prepare(`SELECT name FROM pragma_table_info('${t}')`))); } catch (e) { errors.push(`table info: ${e?.message || e}`); }
+  const have = Object.fromEntries(tables.map((t, i) => [t, new Set((infos[i]?.results || []).map((r) => r.name))]));
+  const drops = [];
+  for (const [table, cols] of DROP_COLUMNS) for (const c of cols) if (have[table]?.has(c)) { drops.push(`ALTER TABLE ${table} DROP COLUMN ${c}`); have[table].delete(c); }
+  await tryAll(env, drops, /no such column/i, errors);
+  const adds = [];
+  for (const [table, col] of ADD_COLUMNS) {
+    const name = col.split(' ')[0];
+    if (!have[table] || have[table].has(name)) continue;
+    if (have[table].size >= D1_MAX_COLUMNS) { errors.push(`${table}.${name}: table already has ${D1_MAX_COLUMNS} columns`); continue; }
+    adds.push(`ALTER TABLE ${table} ADD COLUMN ${col}`); have[table].add(name);
+  }
+  await tryAll(env, adds, /duplicate column/i, errors); // another isolate may have got there first
+  try {
+    const up = 'INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v';
+    if (errors.length) {
+      console.error('schema', errors);
+      await env.DB.prepare(up).bind('schema_err', JSON.stringify({ at: Date.now(), errors: errors.slice(0, 20) })).run();
+    } else {
+      await env.DB.batch([env.DB.prepare(up).bind('schema_v', SCHEMA_V), env.DB.prepare("DELETE FROM settings WHERE k = 'schema_err'")]);
+    }
+  } catch (e) { console.error('schema stamp', e?.message || e); }
+  return errors;
 }
 
 export function hasDb(env) {
@@ -270,7 +307,7 @@ export async function ensureSchema(env) {
       const stamp = await env.DB.prepare("SELECT v FROM settings WHERE k = 'schema_v'").first().catch(() => null);
       if (stamp?.v === SCHEMA_V) return;
       await migrate(env);
-    })().catch((err) => { ready = null; throw err; });
+    })().catch((err) => { console.error('schema', err?.message || err); }); // the Hub still tries to open; the next cold Worker retries
   }
   await ready;
 }

@@ -406,6 +406,7 @@ route('POST', '/api/leads/bulk', async ({ env, user, body }) => {
 route('GET', '/api/leads/:id', async ({ env, user, params }) => {
   requireStaff(user);
   const l = await leadOr404(env, params.id);
+  Object.assign(l, await (await import('./leaddb.js')).rollOf(env, l.id)); // call roll up (Lead database), kept in its own table
   const activities = await all(env, 'SELECT * FROM activities WHERE lead_id = ? ORDER BY at DESC LIMIT 200', l.id);
   const orders = await all(env, 'SELECT id, token, plan, kind, setup_cents, monthly_cents, status, signed_name, signed_at, paid_at, created_at FROM work_orders WHERE lead_id = ? ORDER BY created_at DESC', l.id);
   let intel = null;
@@ -547,10 +548,10 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   // db=1: the rep's "Dial this search" from the Lead database (src/leaddb.js), applied as SQL.
   let dbSql = '', dbVals = [];
   if (url.searchParams.get('db') === '1') {
-    const { dialFilterOf } = await import('./leaddb.js');
+    const { dialFilterOf, DB_FROM } = await import('./leaddb.js');
     const { whereFor } = await import('../public/js/leaddb.js');
     const w = whereFor(await dialFilterOf(env, user.id), { now: t });
-    if (w.vals.length < 80) { dbSql = ` AND id IN (SELECT id FROM leads WHERE ${w.where})`; dbVals = w.vals; }
+    if (w.vals.length < 80) { dbSql = ` AND id IN (SELECT leads.id FROM ${DB_FROM} WHERE ${w.where})`; dbVals = w.vals; }
   }
   const rows = await all(env, `SELECT ${LIST_COLS} FROM leads WHERE dnc = 0 AND stage IN (${useStages.map(() => '?').join(',')})
     AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL${dbSql} ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...useStages, t, ...dbVals);

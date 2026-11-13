@@ -1,7 +1,7 @@
 // Lead database and call intelligence (Pipeline, "Lead database" and "Call insights" tabs).
 // Modeled on Apollo.io and ZoomInfo search (category filters, saved searches, column picker, export), and the call analytics in Orum, Nooks and Gong
 // (who answered, pickup by hour and attempt, talk time buckets, fast hang ups, objection types). The pure parts live in public/js/leaddb.js.
-// Every lead carries a roll up of its own calls (leads.r_*), kept current when a result is saved and by the cron, so search and sort never re-read every call.
+// Every lead carries a roll up of its own calls (table lead_roll, r_* columns; leads itself is near D1's 100 column limit), kept current when a result is saved and by the cron, so search and sort never re-read every call.
 import { HttpError, json } from './util.js';
 import { all, first, run, batch, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
@@ -14,6 +14,15 @@ import { dtf } from '../public/js/fmtcache.js';
 const OUTBOUND = "type IN ('call','manual_call') AND (status IS NULL OR status NOT IN ('inbound','missed','voicemail','inbound_answered'))";
 const R_COLS = ['r_dials', 'r_connects', 'r_owner', 'r_staff', 'r_menu', 'r_vm', 'r_noans', 'r_dead', 'r_wrong', 'r_talk', 'r_longest', 'r_fast_hangs', 'r_shortest',
   'r_last_by', 'r_last_dispo', 'r_last_secs', 'r_obj', 'r_first_at', 'r_owner_at', 'r_to_owner', 'r_24h', 'r_convs', 'r_service'];
+// Every Lead database query reads leads with its roll up. Filter and sort SQL (public/js/leaddb.js) names roll up columns as lead_roll.r_*.
+export const DB_FROM = 'leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id';
+const R_SELECT = R_COLS.map((c) => `lead_roll.${c} AS ${c}`).join(', ');
+
+// The roll up for one lead, to merge into the lead panel (GET /api/leads/:id).
+export async function rollOf(env, leadId) {
+  const r = await first(env, `SELECT ${R_COLS.join(', ')} FROM lead_roll WHERE lead_id = ?`, leadId).catch(() => null);
+  return r || {};
+}
 
 // Work out and save the roll up, scores and attempt numbers for these leads (any number; read 90 at a time, D1 allows 100 values a statement).
 export async function rollupLeads(env, ids = []) {
@@ -33,9 +42,9 @@ export async function rollupLeads(env, ids = []) {
       const list = by.get(l.id) || [];
       const r = rollup(list, t);
       const facts = { ...l, ...r, owner_known: isPersonName(l.owner_name || ''), likely_owner: likelyOwner(l) };
-      const set = { ...r, reach_score: reachScore(facts), engage_score: engageScore(facts, t), roll_at: t };
-      const cols = Object.keys(set);
-      stmts.push([`UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), l.id]);
+      stmts.push(['UPDATE leads SET reach_score = ?, engage_score = ?, roll_at = ? WHERE id = ?', reachScore(facts), engageScore(facts, t), t, l.id]);
+      stmts.push([`INSERT INTO lead_roll (lead_id, ${R_COLS.join(', ')}) VALUES (?, ${R_COLS.map(() => '?').join(', ')})
+        ON CONFLICT(lead_id) DO UPDATE SET ${R_COLS.map((k) => `${k} = excluded.${k}`).join(', ')}`, l.id, ...R_COLS.map((k) => r[k] ?? null)]);
       // Attempt number on each dial, for "pickup by attempt". Shells nobody dialed do not count.
       let n = 0;
       for (const c of list) {
@@ -52,7 +61,8 @@ export async function rollupLeads(env, ids = []) {
 
 // Cron: keep the roll up current for leads that changed or were never rolled up (a few dozen a run).
 export async function rollTick(env, max = 40) {
-  const rows = await all(env, 'SELECT id FROM leads WHERE roll_at IS NULL OR roll_at < updated_at OR (last_call_at IS NOT NULL AND last_call_at > roll_at) LIMIT ?', max);
+  const rows = await all(env, `SELECT id FROM leads WHERE roll_at IS NULL OR roll_at < updated_at OR (last_call_at IS NOT NULL AND last_call_at > roll_at)
+    OR NOT EXISTS (SELECT 1 FROM lead_roll WHERE lead_roll.lead_id = leads.id) LIMIT ?`, max);
   if (rows.length) await rollupLeads(env, rows.map((r) => r.id));
   return rows.length;
 }
@@ -69,7 +79,7 @@ export async function saveCallDetail(env, activityId, leadId, detail = {}, dispo
 
 // ---------- search ----------
 const LIST = `id, business, contact_name, owner_name, phone, phone_digits, phone_type, email, email_status, website, city, state, zip, industry, category, stage, grade, score,
-  rating, reviews, map_rank, source, tags, attempts, last_call_at, dnc, data_score, qual_n, reach_score, engage_score, menu_path, created_at, ${R_COLS.join(', ')}`;
+  rating, reviews, map_rank, source, tags, attempts, last_call_at, dnc, data_score, qual_n, reach_score, engage_score, menu_path, created_at, ${R_SELECT}`;
 const sortSql = (key) => (COLUMN_MAP[key] ? COLUMN_MAP[key][2] : 'score');
 function parseFilter(url) {
   let f = {};
@@ -88,8 +98,8 @@ route('GET', '/api/leaddb/search', async ({ env, user, url }) => {
   const per = Math.min(200, Math.max(10, Number(url.searchParams.get('per')) || 50));
   const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
   const [count, rows] = await Promise.all([
-    first(env, `SELECT COUNT(*) AS n FROM leads WHERE ${where}`, ...vals),
-    all(env, `SELECT ${LIST} FROM leads WHERE ${where} ${orderBy(url)} LIMIT ? OFFSET ?`, ...vals, per, (page - 1) * per),
+    first(env, `SELECT COUNT(*) AS n FROM ${DB_FROM} WHERE ${where}`, ...vals),
+    all(env, `SELECT ${LIST} FROM ${DB_FROM} WHERE ${where} ${orderBy(url)} LIMIT ? OFFSET ?`, ...vals, per, (page - 1) * per),
   ]);
   return json({ total: count?.n || 0, page, per, filter, rows });
 });
@@ -119,12 +129,12 @@ route('GET', '/api/leaddb/health', async ({ env, user }) => {
       SUM(CASE WHEN website IS NOT NULL AND website != '' THEN 1 ELSE 0 END) AS website,
       SUM(CASE WHEN intel_at IS NOT NULL THEN 1 ELSE 0 END) AS researched,
       SUM(CASE WHEN scrubbed_at IS NOT NULL THEN 1 ELSE 0 END) AS scrubbed,
-      SUM(CASE WHEN COALESCE(r_dials, 0) = 0 THEN 1 ELSE 0 END) AS never,
-      SUM(CASE WHEN COALESCE(r_owner, 0) > 0 THEN 1 ELSE 0 END) AS reached_owner,
+      SUM(CASE WHEN COALESCE(lead_roll.r_dials, 0) = 0 THEN 1 ELSE 0 END) AS never,
+      SUM(CASE WHEN COALESCE(lead_roll.r_owner, 0) > 0 THEN 1 ELSE 0 END) AS reached_owner,
       SUM(CASE WHEN COALESCE(qual_n, 0) > 0 THEN 1 ELSE 0 END) AS qualified,
       SUM(CASE WHEN dnc = 1 THEN 1 ELSE 0 END) AS dnc,
       SUM(CASE WHEN COALESCE(scrubbed_at, created_at) < ? THEN 1 ELSE 0 END) AS stale
-    FROM leads`, t - 182 * 864e5);
+    FROM ${DB_FROM}`, t - 182 * 864e5);
   return json({ health: h || {} });
 });
 
@@ -133,7 +143,7 @@ const csvCell = (v) => { const s = v == null ? '' : String(v); return /[",\n]/.t
 route('GET', '/api/leaddb/export', async ({ env, user, url }) => {
   requireAdmin(user);
   const { where, vals } = whereFor(parseFilter(url), { now: now() });
-  const rows = await all(env, `SELECT ${LIST} FROM leads WHERE ${where} ${orderBy(url)} LIMIT 5000`, ...vals);
+  const rows = await all(env, `SELECT ${LIST} FROM ${DB_FROM} WHERE ${where} ${orderBy(url)} LIMIT 5000`, ...vals);
   const cols = ['business', 'owner_name', 'contact_name', 'phone', 'phone_type', 'email', 'email_status', 'website', 'city', 'state', 'zip', 'industry', 'category', 'stage', 'grade', 'score',
     'reach_score', 'engage_score', 'rating', 'reviews', 'map_rank', 'source', 'tags', 'r_dials', 'r_connects', 'r_owner', 'r_staff', 'r_menu', 'r_vm', 'r_talk', 'r_longest', 'r_fast_hangs', 'r_last_by', 'r_last_dispo', 'r_obj',
     'menu_path', 'qual_n', 'data_score', 'dnc', 'last_call_at', 'created_at'];
@@ -211,7 +221,7 @@ route('GET', '/api/leaddb/insights', async ({ env, user, url }) => {
   const from = t - days * 864e5;
   const rep = user.role === 'admin' ? (url.searchParams.get('rep') || '') : '';
   const { where, vals, filter } = whereFor(parseFilter(url), { now: t });
-  const scoped = Object.keys(filter).length ? ` AND a.lead_id IN (SELECT id FROM leads WHERE ${where})` : '';
+  const scoped = Object.keys(filter).length ? ` AND a.lead_id IN (SELECT leads.id FROM ${DB_FROM} WHERE ${where})` : '';
   const rows = await all(env, `SELECT a.id, a.lead_id, a.at, a.answered_at, a.duration, a.status, a.outcome, a.dispo, a.dispo_id, a.answered_by, a.hangup_stage, a.objection, a.attempt_no, a.by,
       l.business, l.industry, l.category, l.phone_type, l.state, l.source, l.grade, l.reviews, l.timezone
     FROM activities a LEFT JOIN leads l ON l.id = a.lead_id

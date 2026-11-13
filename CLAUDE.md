@@ -738,6 +738,10 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   'ET,CT', `?` unknown; `filterLeads` and the dialer queue accept the list). Test mic (`public/hub/micquick.js`, button in the Phone tab bar). Client logo opening screen (`public/hub/splash.js`, `GET /api/clients/:id/logo`):
   plays once per session when a client opens the app and right after they upload a logo. Tests `test/appfeel.test.js`. Known and not fixed: V could not hear the other person on some calls (iPad); not reproduced here (see "iPad mic and fixed frame" below for the mic hold, which is the suspected fix, unconfirmed on a real iPad). The Hub being slow or "did not load" may be Cloudflare's free Workers CPU limit (bare 503s): check the plan.
 
+- D1 column limit (Nov 2026, the Hub showed "Almost ready" after the Lead database deploy): D1 allows 100 columns a table. The deploy added 29 roll up columns to `leads` (78 to 107), the ALTER failed, `migrate()` threw and every request failed.
+  Fix: the per lead call roll up lives in its own table `lead_roll` (lead_id plus the `r_*` columns); `DB_FROM` in `src/leaddb.js` joins it, filter and sort SQL in `public/js/leaddb.js` writes `lead_roll.r_*`, `rollOf` merges it into `GET /api/leads/:id`. `DROP_COLUMNS` in `src/db.js` removes the stray `r_*` columns from leads.
+  `migrate()` never throws now: each step runs as one batch and falls back to one by one, a failing step is logged and saved in settings `schema_err`, the stamp is only written when everything worked (so the next cold Worker retries), and the Hub opens either way. The test shim refuses an ALTER past 100 columns like D1, and `test/schema.test.js` fails when leads passes 90 columns. New lead data goes in its own table.
+
 ## Stack
 - Cloudflare Worker (`src/worker.js`) serves `/api/*` and `/r/*`; static app in `public/` (plain ES modules, no build step, no deps).
   Hub API in `src/hub.js` plus feature modules that register routes in `src/router.js` (public routes skip the x-rw check), auth in `src/auth.js` (PBKDF2 100k, SHA-256 hashed session tokens in an HttpOnly

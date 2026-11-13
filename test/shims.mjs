@@ -14,7 +14,12 @@ class Stmt {
     return col ? plain[col] : plain;
   }
   async all() { return { results: this._s().all(...this.args).map((r) => ({ ...r })), success: true }; }
-  async run() { const r = this._s().run(...this.args); return { success: true, meta: { changes: Number(r.changes) } }; }
+  async run() {
+    // D1 allows 100 columns a table (https://developers.cloudflare.com/d1/platform/limits/). Plain SQLite allows 2000, so mirror D1 here.
+    const alt = /^\s*ALTER\s+TABLE\s+(\w+)\s+ADD\s+COLUMN/i.exec(this.sql);
+    if (alt && this.db.prepare(`SELECT COUNT(*) AS n FROM pragma_table_info('${alt[1]}')`).get().n >= 100) throw new Error('D1_ERROR: too many columns on ' + alt[1] + ': SQLITE_ERROR');
+    const r = this._s().run(...this.args); return { success: true, meta: { changes: Number(r.changes) } };
+  }
 }
 
 export function d1(path = ':memory:') {
