@@ -166,6 +166,13 @@ const SCHEMA = [
     call_sid TEXT, status TEXT, at INTEGER NOT NULL, by TEXT)`,
   `CREATE INDEX IF NOT EXISTS act_lead ON activities (lead_id, at)`,
   `CREATE INDEX IF NOT EXISTS act_at ON activities (at)`,
+  // Workflows (src/workflows.js): the builder's saved workflows and each lead's run through one.
+  `CREATE TABLE IF NOT EXISTS workflows (id TEXT PRIMARY KEY, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, trigger TEXT, steps TEXT, stop_on_reply INTEGER NOT NULL DEFAULT 0,
+    reenter INTEGER NOT NULL DEFAULT 0, runs INTEGER NOT NULL DEFAULT 0, last_run_at INTEGER, created_by TEXT, created_at INTEGER, updated_at INTEGER)`,
+  `CREATE TABLE IF NOT EXISTS wf_runs (id TEXT PRIMARY KEY, wf_id TEXT NOT NULL, lead_id TEXT, client_id TEXT, event TEXT, step INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL,
+    next_at INTEGER, note TEXT, log TEXT, created_at INTEGER, updated_at INTEGER)`,
+  `CREATE INDEX IF NOT EXISTS wf_runs_due ON wf_runs (status, next_at)`,
+  `CREATE INDEX IF NOT EXISTS wf_runs_lead ON wf_runs (lead_id, wf_id)`,
   // Per lead call roll up for the Lead database (src/leaddb.js). Its own table: D1 allows 100 columns a table and leads is close to that.
   `CREATE TABLE IF NOT EXISTS lead_roll (
     lead_id TEXT PRIMARY KEY, r_dials INTEGER, r_connects INTEGER, r_owner INTEGER, r_staff INTEGER, r_menu INTEGER, r_vm INTEGER, r_noans INTEGER, r_dead INTEGER, r_wrong INTEGER, r_talk INTEGER, r_longest INTEGER, r_fast_hangs INTEGER, r_shortest INTEGER, r_last_by TEXT, r_last_dispo TEXT, r_last_secs INTEGER, r_obj TEXT, r_first_at INTEGER, r_owner_at INTEGER, r_to_owner INTEGER, r_24h INTEGER, r_convs INTEGER, r_service INTEGER)`,

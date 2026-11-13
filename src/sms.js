@@ -41,6 +41,7 @@ export function canText(lead, hasInbound) {
   return null;
 }
 
+const wf = (env, type, p, defer) => import('./workflows.js').then((m) => m.fire(env, type, p, defer)).catch(() => {});
 route('GET', '/api/inbox', async ({ env, user }) => {
   requireStaff(user);
   const rows = await all(env, `SELECT l.id, l.business, l.contact_name, l.phone, l.stage, l.sms_stop,
@@ -83,11 +84,18 @@ route('POST', '/api/leads/:id/sms-consent', async ({ env, user, params, body }) 
 });
 
 // One path for every outbound text (Hub, dialer, Slack reply), so the consent, STOP and calling hours rules always apply.
-export async function sendText(env, lead, rawText, user, origin) {
+// opts.replyToCall: a workflow answering a call they just made to us (missed call text back). It counts as their own contact for
+// ONE text within 30 minutes of the call, the industry practice for a consumer started contact; STOP and do not call still block it.
+export async function sendText(env, lead, rawText, user, origin, opts = {}) {
   if (!twilioReady(env)) throw new HttpError('Texting needs the Twilio keys in Cloudflare.', 503);
   let text = String(rawText || '').trim().slice(0, 600);
   if (!text) throw new HttpError('Type a message first.');
-  const inbound = await first(env, "SELECT MAX(at) AS at FROM messages WHERE lead_id = ? AND direction = 'in'", lead.id).then((r) => (r?.at ? r : null));
+  let inbound = await first(env, "SELECT MAX(at) AS at FROM messages WHERE lead_id = ? AND direction = 'in'", lead.id).then((r) => (r?.at ? r : null));
+  if (!inbound && opts.replyToCall) {
+    const call = await first(env, "SELECT MAX(at) AS at FROM activities WHERE lead_id = ? AND type = 'call' AND status IN ('missed','voicemail','inbound')", lead.id);
+    const sent = await first(env, "SELECT 1 AS x FROM messages WHERE lead_id = ? AND direction = 'out' AND at > ?", lead.id, (call?.at || 0));
+    if (call?.at && now() - call.at < 30 * 60e3 && !sent) inbound = { at: call.at };
+  }
   const why = canText(lead, Boolean(inbound));
   if (why) throw new HttpError(why, 409);
   const to = e164(lead.phone);
@@ -104,7 +112,7 @@ export async function sendText(env, lead, rawText, user, origin) {
   const last = await first(env, "SELECT CASE WHEN direction = 'in' THEN to_num ELSE from_num END AS ours FROM messages WHERE lead_id = ? ORDER BY at DESC LIMIT 1", lead.id);
   const fromNum = e164(last?.ours) || env.TWILIO_FROM;
   const id = newId('m_');
-  await run(env, "INSERT INTO messages (id, lead_id, direction, body, from_num, to_num, status, by, at, read) VALUES (?, ?, 'out', ?, ?, ?, 'queued', ?, ?, 1)", id, lead.id, text, fromNum, to, user.id, now());
+  await run(env, "INSERT INTO messages (id, lead_id, direction, body, from_num, to_num, status, by, at, read) VALUES (?, ?, 'out', ?, ?, ?, 'queued', ?, ?, 1)", id, lead.id, text, fromNum, to, user?.id || null, now());
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`, {
     method: 'POST',
     headers: { Authorization: `Basic ${btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`)}`, 'content-type': 'application/x-www-form-urlencoded' },
@@ -116,7 +124,7 @@ export async function sendText(env, lead, rawText, user, origin) {
     throw new HttpError(ERROR_HELP[data.code] || `Twilio: ${data.message || `HTTP ${res.status}`}`, 502);
   }
   await run(env, 'UPDATE messages SET sid = ?, status = ? WHERE id = ?', data.sid || null, data.status || 'queued', id);
-  await logActivity(env, { lead_id: lead.id, type: 'sms', status: 'out', body: text, by: user.id });
+  await logActivity(env, { lead_id: lead.id, type: 'sms', status: 'out', body: text, by: user?.id || null });
   return id;
 }
 
@@ -156,6 +164,7 @@ route('POST', '/api/twilio/sms', async ({ env, request, defer }) => {
   } else {
     await run(env, 'UPDATE leads SET updated_at = ? WHERE id = ?', now(), leadId);
     await logActivity(env, { lead_id: leadId, type: 'sms', status: 'in', body });
+    await wf(env, 'text_in', { leadId, text: body }, defer);
     const lineOwner = await import('./lines.js').then((m) => m.ownerOfLine(env, p.To)).catch(() => null);
     if (lineOwner) {
       // A personal line: only its owner hears about it, and it can forward to their mobile.
@@ -201,6 +210,7 @@ route('POST', '/api/twilio/voice', async ({ env, request, url, defer }) => {
   const who = lead?.business || prettyNum(from) || 'Unknown caller';
   if (!clients.length && !cells.length) {
     await run(env, "UPDATE activities SET status = 'missed' WHERE id = ?", aid);
+    await missedFlow(env, aid, from, defer);
     return twiml(await voicemailTwiml(env, url.origin, aid));
   }
   // A callback: the rep sees who it is and when we last called them.
@@ -218,6 +228,22 @@ route('POST', '/api/twilio/voice', async ({ env, request, url, defer }) => {
   return twiml(`<Dial callerId="${xml(callerId)}" answerOnBridge="true" timeout="20" ${rec} action="${xml(`${url.origin}/api/twilio/voice-done?a=${aid}`)}">${nouns}</Dial>`);
 }, { public: true });
 
+// A missed call starts the "Missed call" workflows. A caller we do not know becomes a lead first, like an unknown texter does.
+async function missedFlow(env, aid, from, defer) {
+  const num = e164(from);
+  if (!num) return;
+  let lead = await first(env, 'SELECT id FROM leads WHERE phone_digits = ? ORDER BY updated_at DESC LIMIT 1', digits(num));
+  if (!lead) {
+    // Only when a missed call workflow is on (it needs a lead to text); otherwise "Add as lead" on the call list stays the way in.
+    const wants = await first(env, "SELECT 1 AS x FROM workflows WHERE enabled = 1 AND trigger LIKE '%missed_call%'").catch(() => null);
+    if (!wants) return;
+    const id = await insertLead(env, { business: `Caller ${num}`, phone: num, phone_digits: digits(num), source: 'inbound call' });
+    lead = { id };
+    await run(env, 'UPDATE activities SET lead_id = ? WHERE id = ? AND lead_id IS NULL', id, aid);
+  }
+  await wf(env, 'missed_call', { leadId: lead.id }, defer);
+}
+
 function agoText(at) {
   const h = Math.round((now() - at) / 3600e3);
   if (h < 1) return 'less than an hour ago';
@@ -233,6 +259,7 @@ route('POST', '/api/twilio/voice-done', async ({ env, request, url, defer }) => 
   await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', status === 'completed' ? 'inbound_answered' : 'missed', Number(p.DialCallDuration || 0), aid);
   if (status === 'completed') return twiml('<Hangup/>');
   const a = await first(env, 'SELECT a.from_num, l.business FROM activities a LEFT JOIN leads l ON l.id = a.lead_id WHERE a.id = ?', aid);
+  await missedFlow(env, aid, a?.from_num, defer);
   await notifyLater({ env, defer }, { to: 'staff', kind: 'voicemail', title: `Missed call: ${a?.business || prettyNum(a?.from_num) || 'Unknown caller'}`, body: 'They may leave a voicemail. Tap to call back.', url: '/#/phone/calls', tag: `call-${aid}`, slack: false, actions: [{ text: 'Mark heard', action_id: 'call_heard', value: aid }] });
   return twiml(await voicemailTwiml(env, url.origin, aid));
 }, { public: true });

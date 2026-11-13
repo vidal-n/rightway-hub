@@ -676,6 +676,8 @@ import './nav.js';
 import './avail.js';
 import './chat.js';
 import './leaddb.js';
+import './workflows.js';
+import './conversations.js';
 import './hubcal.js';
 import './files.js';
 import './hubmail.js';

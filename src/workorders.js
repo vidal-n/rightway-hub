@@ -134,6 +134,7 @@ route('POST', '/api/public/wo/:token/sign', async ({ env, params, request, url, 
   await run(env, "UPDATE work_orders SET status = 'signed', signed_name = ?, signed_at = ?, signed_ip = ?, signed_ua = ?, signed_font = ?, initials = ?, initials_font = ? WHERE id = ?", name, now(), ip, ua, font, initials, initialsFont, o.id);
   if (o.lead_id) {
     await logActivity(env, { lead_id: o.lead_id, type: 'work_order', body: `Work order signed by ${name}` });
+    await import('./workflows.js').then((m) => m.fire(env, 'work_order_signed', { leadId: o.lead_id })).catch(() => {});
     await run(env, "UPDATE leads SET stage = CASE WHEN stage IN ('won') THEN stage ELSE 'follow_up' END, next_action = 'Waiting on payment', next_action_at = ?, updated_at = ? WHERE id = ?", now() + 864e5, now(), o.lead_id);
   }
   const signedRow = await first(env, 'SELECT * FROM work_orders WHERE id = ?', o.id);

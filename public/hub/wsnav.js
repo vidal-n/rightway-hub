@@ -45,6 +45,7 @@ export function wireWsNav() {
   if (swiped) {
     sessionStorage.removeItem('rw-swipe');
     const main = document.getElementById('view');
+    if (main) { main.style.transform = ''; main.style.opacity = ''; main.style.transition = ''; }
     main?.classList.add(swiped === 'next' ? 'swipe-l' : 'swipe-r');
     setTimeout(() => main?.classList.remove('swipe-l', 'swipe-r'), 400);
   }
@@ -68,18 +69,57 @@ export function wireWsNav() {
   // A page drawn after the shell (most pages fetch, then draw) gets its tab rows checked too.
   let dt = null;
   new MutationObserver(() => { if (!dt) dt = setTimeout(() => { dt = null; dedupeTabs(); fades(); }, 80); }).observe(document.body, { childList: true, subtree: true });
+  // Page swipe like iOS: the page follows the finger with a hint of the tab it is heading to, then flies off and the next tab
+  // slides in, or springs back when the swipe is too short. Vertical drags stay normal scrolling (axis lock after 10px).
   let s = null;
+  const main = () => document.getElementById('view');
+  const neighbor = (dir) => { const links = tabRows(); const i = Math.max(0, links.findIndex((a) => a.classList.contains('is-active'))); return links[i + (dir === 'next' ? 1 : -1)] || null; };
+  const hint = (dir, on) => {
+    let h = document.getElementById('swhint');
+    if (!on) { h?.remove(); return; }
+    const n = neighbor(dir);
+    if (!h) { h = document.createElement('div'); h.id = 'swhint'; h.className = 'swhint'; document.body.appendChild(h); }
+    h.dataset.side = dir === 'next' ? 'right' : 'left';
+    h.textContent = n ? n.textContent.trim() : dir === 'next' ? 'Last tab' : 'First tab';
+    h.classList.toggle('none', !n);
+    return Boolean(n);
+  };
   document.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' || !e.target.closest?.('#vscroll') || e.target.closest(SKIP) || scrollsSideways(e.target)) { s = null; return; }
-    s = { x: e.clientX, y: e.clientY, t: Date.now(), id: e.pointerId };
+    s = { x: e.clientX, y: e.clientY, t: Date.now(), id: e.pointerId, axis: null, ok: false };
   }, { passive: true });
+  document.addEventListener('pointermove', (e) => {
+    if (!s || e.pointerId !== s.id) return;
+    const dx = e.clientX - s.x, dy = e.clientY - s.y;
+    if (!s.axis && Math.hypot(dx, dy) > 10) s.axis = Math.abs(dx) > Math.abs(dy) * 1.3 ? 'x' : 'y';
+    if (s.axis !== 'x' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const dir = dx < 0 ? 'next' : 'back';
+    s.ok = hint(dir, true);
+    const pull = s.ok ? dx * 0.85 : dx * 0.22; // rubber band at the first and last tab
+    const m = main();
+    if (m) { m.style.transition = 'none'; m.style.transform = `translateX(${pull}px)`; m.style.opacity = String(1 - Math.min(0.4, Math.abs(pull) / innerWidth)); }
+    const h = document.getElementById('swhint');
+    if (h) h.style.opacity = String(Math.min(1, Math.abs(dx) / 90));
+  }, { passive: true });
+  const springBack = () => { const m = main(); if (m) { m.style.transition = 'transform .38s cubic-bezier(.32,.72,0,1), opacity .25s'; m.style.transform = ''; m.style.opacity = ''; setTimeout(() => { if (m) m.style.transition = ''; }, 400); } hint('', false); };
   document.addEventListener('pointerup', (e) => {
     if (!s || e.pointerId !== s.id) return;
-    const d = swipeDir({ dx: e.clientX - s.x, dy: e.clientY - s.y, dt: Date.now() - s.t }, { minX: 70, maxY: 40, maxMs: 600, ratio: 2 });
+    const dx = e.clientX - s.x, dt = Date.now() - s.t;
+    const fast = Math.abs(dx) / Math.max(1, dt) > 0.45;
+    const go = s.axis === 'x' && s.ok && (Math.abs(dx) > innerWidth * 0.28 || (fast && Math.abs(dx) > 50));
     s = null;
-    if (d) stepTab(d);
+    if (!go) { springBack(); return; }
+    const dir = dx < 0 ? 'next' : 'back';
+    const m = main();
+    hint('', false);
+    if (m && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      m.style.transition = 'transform .2s cubic-bezier(.32,.72,0,1), opacity .2s';
+      m.style.transform = `translateX(${dir === 'next' ? -innerWidth * 0.6 : innerWidth * 0.6}px)`; m.style.opacity = '0';
+      import('./sound.js').then((x) => x.play('swipe')).catch(() => {});
+      setTimeout(() => stepTab(dir), 160);
+    } else stepTab(dir);
   });
-  document.addEventListener('pointercancel', () => { s = null; });
+  document.addEventListener('pointercancel', () => { if (s) springBack(); s = null; });
   // Two finger swipe on a trackpad: sideways wheel movement with nothing that scrolls sideways under the pointer.
   let acc = 0, accT = 0, lock = 0;
   document.addEventListener('wheel', (e) => {

@@ -135,6 +135,7 @@ export async function handleStripeEvent(env, event) {
     const paid = event.type === 'invoice.paid';
     await run(env, 'UPDATE clients SET billing_status = ? WHERE id = ?', paid ? 'active' : 'past_due', c.id);
     await logActivity(env, { client_id: c.id, type: 'payment', body: paid ? `Invoice paid: $${((o.amount_paid || 0) / 100).toFixed(2)}` : 'Payment failed. Stripe will retry.' });
+    if (paid) await import('./workflows.js').then((m) => m.fire(env, 'payment_received', { clientId: c.id })).catch(() => {});
     if (!paid) {
       const cl = await first(env, 'SELECT name FROM clients WHERE id = ?', c.id);
       await notify(env, { to: 'admins', kind: 'money', title: `Payment failed: ${cl?.name || 'a client'}`, body: 'Stripe will retry. Check their card in the Billing tab.', url: `/#/client/${c.id}/billing` }).catch(() => {});

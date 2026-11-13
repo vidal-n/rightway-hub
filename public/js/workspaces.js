@@ -4,12 +4,12 @@
 export const WORKSPACES = [
   ['home', 'Home', 'home', [['Today', '#/'], ['Calendar', '#/calendar'], ['Notifications', '#/notifications', '', 'alerts'], ['Training', '#/training']]],
   ['sell', 'Sell', 'phone', [['Dialer', '#/phone'], ['Pipeline', '#/pipeline', '', 'pipeline'], ['Lead database', '#/pipeline/database'], ['Lead finder', '#/finder', 'admin'], ['Agents', '#/agents'], ['Scan tool', '/scan.html', 'close']]],
-  ['inbox', 'Inbox', 'msg', [['Texts', '#/phone/texts', '', 'texts'], ['Calls', '#/phone/history', '', 'calls'], ['Meetings', '#/phone/meet'], ['Slack', '#/slack', '', 'slack'], ['Mail', '#/mail']]],
+  ['inbox', 'Inbox', 'msg', [['All conversations', '#/conversations', '', 'inbox'], ['Texts', '#/phone/texts', '', 'texts'], ['Calls', '#/phone/history', '', 'calls'], ['Meetings', '#/phone/meet'], ['Slack', '#/slack', '', 'slack'], ['Mail', '#/mail']]],
   ['clients', 'Clients', 'users', [['All clients', '#/clients', 'deliver'], ['Client view', '#/clients/view', 'close']]],
   ['deliver', 'Deliver', 'check', [['My work', '#/work', 'deliver', 'work'], ['Posts to publish', '#/work/posts', 'deliver'], ['Schedule', '#/work/schedule'], ['Hours', '#/work/hours', 'deliver'], ['Guides', '#/work/guides', 'deliver']]],
   ['insights', 'Insights', 'chart', [['Call insights', '#/pipeline/insights'], ['Call analytics', '#/agents/analytics'], ['Master sheet', '#/agents/sheet']]],
   ['money', 'Money', 'money', [['Payments', '#/payments', 'admin'], ['Budget', '#/settings/budget', 'admin']]],
-  ['automate', 'Automate', 'spark', [['Automations', '#/automations', 'admin'], ['Google', '#/google'], ['Vault', '#/vault', 'admin']]],
+  ['automate', 'Automate', 'spark', [['Workflows', '#/automations/workflows', 'admin'], ['Booking reminders', '#/automations', 'admin'], ['Google', '#/google'], ['Vault', '#/vault', 'admin']]],
   ['settings', 'Settings', 'cog', [['Settings', '#/settings'], ['Agents and roles', '#/settings/team', 'admin'], ['Files', '#/settings/files', 'admin'], ['Bug reports', '#/settings/bugs', 'admin']]],
 ];
 // Routes whose workspace is not obvious from the tab list (longest prefix wins, then these).

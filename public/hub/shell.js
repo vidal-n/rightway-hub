@@ -261,7 +261,7 @@ export function paintMaint(on) {
 
 // ---------- command palette ----------
 export const PAGES = [
-  ['Dashboard', '#/'], ['Dialer', '#/phone'], ['Keypad (dial out)', '#/phone/out'], ['Meetings: start or join Google Meet', '#/phone/meet'], ['Texts', '#/phone/texts'], ['History: all calls', '#/phone/history'], ['Voicemail', '#/phone/history/voicemail'], ['Missed calls', '#/phone/history/missed'],
+  ['Dashboard', '#/'], ['All conversations (inbox)', '#/conversations'], ['Workflows (automations)', '#/automations/workflows', 'admin'], ['Dialer', '#/phone'], ['Keypad (dial out)', '#/phone/out'], ['Meetings: start or join Google Meet', '#/phone/meet'], ['Texts', '#/phone/texts'], ['History: all calls', '#/phone/history'], ['Voicemail', '#/phone/history/voicemail'], ['Missed calls', '#/phone/history/missed'],
   ['Recordings', '#/phone/recordings'], ['Agents', '#/agents'], ['Call analytics', '#/agents/analytics'], ['Pipeline', '#/pipeline'], ['Lead finder', '#/finder'], ['My work', '#/work'],
   ['Hours', '#/work/hours'], ['Task guides', '#/work/guides'], ['Clients', '#/clients'], ['Client view', '#/clients/view'], ['Scan tool', '/scan.html'],
   ['Training', '#/training'], ['Scripts', '#/training/scripts'], ['Objection drills', '#/training/drills'], ['Slack', '#/slack'], ['Mail', '#/mail'],

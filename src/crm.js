@@ -161,12 +161,14 @@ async function leadOr404(env, id) {
   return l;
 }
 
+const wf = (env, type, p, defer) => import('./workflows.js').then((m) => m.fire(env, type, p, defer)).catch(() => {});
 export async function insertLead(env, data, by = null) {
   const l = { ...cleanNewLead(data), id: newId('ld_'), created_at: now(), updated_at: now(), owner_id: by };
   if (!l.stage) l.stage = 'new';
   Object.assign(l, rescore(l));
   const cols = Object.keys(l);
   await run(env, `INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...cols.map((k) => l[k]));
+  await wf(env, 'lead_created', { leadId: l.id, source: l.source || '' }); // workflows (src/workflows.js)
   return l.id;
 }
 
@@ -424,6 +426,8 @@ route('PATCH', '/api/leads/:id', async ({ env, user, params, body }) => {
   Object.assign(set, rescore({ ...l, ...set }));
   await updateLead(env, l.id, set);
   if (set.stage && set.stage !== l.stage) await logActivity(env, { lead_id: l.id, type: 'stage', body: `Moved to ${set.stage.replace('_', ' ')}`, by: user.id });
+  if (set.stage && set.stage !== l.stage) await wf(env, 'stage_changed', { leadId: l.id, stage: set.stage });
+  if (set.tags != null) { const had = new Set(String(l.tags || '').split(',').map((t) => t.trim().toLowerCase())); for (const t of String(set.tags).split(',').map((x) => x.trim().toLowerCase()).filter(Boolean)) if (!had.has(t)) await wf(env, 'tag_added', { leadId: l.id, tag: t }); }
   return json({ lead: seeAppt(decorate(await leadOr404(env, l.id)), user) });
 });
 
@@ -459,6 +463,9 @@ export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activ
   const { saveCallDetail, rollupLeads } = await import('./leaddb.js');
   await saveCallDetail(env, actId, l.id, detail || {}, d.id).catch((e) => console.error('call detail', e.message));
   await rollupLeads(env, [l.id]).catch((e) => console.error('roll up', e.message));
+  await wf(env, 'call_result', { leadId: l.id, outcome: d.acts, dispo: d.id });
+  if (set.stage && set.stage !== l.stage) await wf(env, 'stage_changed', { leadId: l.id, stage: set.stage });
+  if (d.acts === 'booked') await wf(env, 'appointment_booked', { leadId: l.id });
   return d;
 }
 
@@ -516,6 +523,7 @@ export async function convertLead(env, lead, plan, by) {
   const list = tasksForMonth({ ...c, has_setup: false }, month);
   await batch(env, list.map((t, i) => ['INSERT INTO tasks (id, client_id, month, kind, title, sort, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', newId('t_'), id, month, t.kind, t.title, i, now()]));
   await logActivity(env, { lead_id: lead.id, client_id: id, type: 'stage', body: 'Won: client created', by });
+  await wf(env, 'client_created', { leadId: lead.id, clientId: id });
   await autoChatFor(env, id).catch(() => {}); // their private chat with the team is ready from day one
   return id;
 }
@@ -629,6 +637,7 @@ route('POST', '/api/public/lead', async ({ env, request, defer }) => {
   data.next_action = 'Call within 5 minutes: website audit request';
   const id = await insertLead(env, data, null);
   await logActivity(env, { lead_id: id, type: 'stage', body: `Website audit request${data.sms_consent ? ' (agreed to texts)' : ''}` });
+  await wf(env, 'form_submitted', { leadId: id, source: data.source || 'web form' }, defer);
   await notifyLater({ env, defer }, { to: 'staff', kind: 'lead', title: `New audit request: ${data.business || data.contact_name || 'website form'}`, body: [data.contact_name, data.phone, data.city].filter(Boolean).join(' · ') + '. Call within 5 minutes.', url: `/#/pipeline`, urgent: true, actions: [{ text: 'Claim', action_id: 'lead_claim', value: id, style: 'primary' }] });
   const redirect = b.redirect && /^https:\/\/(www\.)?rightwaygrowth\.com\//.test(b.redirect) ? b.redirect : null;
   if (!ct.includes('json') && redirect) return Response.redirect(redirect, 303);

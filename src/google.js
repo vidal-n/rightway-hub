@@ -294,6 +294,7 @@ route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body, defer 
   const closer = await first(env, 'SELECT name FROM users WHERE id = ?', closerId);
   await logActivity(env, { lead_id: lead.id, type: 'meeting', by: user.id,
     body: `Audit ${moved ? 'moved to' : 'booked for'} ${new Date(start).toISOString()}${closerId !== user.id ? `, ${closer?.name || 'a teammate'} runs it` : ''}${g.google ? ', Google invite sent' : gErr ? ` (Google failed: ${gErr})` : ' (Hub only)'}` });
+  await import('./workflows.js').then((w) => w.fire(env, 'appointment_booked', { leadId: lead.id })).catch(() => {});
   if (closerId !== user.id) {
     await notifyLater({ env, defer }, { to: [closerId], kind: 'meeting', title: `You have a new audit: ${lead.business}`, body: new Date(start).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }), url: `/#/pipeline/${lead.id}` });
   }
@@ -440,6 +441,7 @@ route('POST', '/api/public/book', async ({ env, request, defer }) => {
   const rep = set.closer_id;
   const repName = rep ? ((await first(env, 'SELECT name FROM users WHERE id = ?', rep))?.name || '').split(' ')[0] : '';
   await logActivity(env, { lead_id: leadId, type: 'meeting', body: `${full.meet_at ? 'Rebooked' : 'Booked'} online for ${new Date(start).toISOString()}${repName ? ` with ${repName}` : ''}${m.google ? ', Google invite sent' : ''}${b.sms_consent ? ', agreed to text reminders' : ''}` });
+  await import('./workflows.js').then((w) => w.fire(env, 'appointment_booked', { leadId }, defer)).catch(() => {});
   const when = new Date(start).toLocaleString('en-US', { timeZone: cfg.tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const note = gErr ? ` Google Calendar failed (${gErr}) so the time is held in the Hub without a Meet link: reconnect Google on the Google page and send them a link.`
     : !link ? ' No meeting link: call them at the time, or send a link.' : '';
