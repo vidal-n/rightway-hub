@@ -7,6 +7,7 @@ import { scopeFromLead } from './scopeof.js';
 import { tierOf as scopeTier } from '../public/js/scope.js';
 import { tierOf as callTier, cleanIds } from '../public/js/campaign.js';
 import { route } from './router.js';
+import { callRule, factsFrom } from '../public/js/callrules.js';
 import { scoreLead, dupKeys, callCategory, personOf } from '../public/js/leadintel.js';
 import { resolveDispo } from './dispo.js';
 import { notifyLater } from './notify.js';
@@ -67,6 +68,23 @@ export function e164(phone) {
   if (d.length === 10) return `+1${d}`;
   if (String(phone || '').trim().startsWith('+') && d.length > 7) return `+${String(phone).replace(/\D/g, '')}`;
   return null;
+}
+
+// Who set a lead's callback and what the last call's result was (src/callrules.js rules), for these leads only.
+export async function callFacts(env, ids) {
+  const rows = [];
+  for (let i = 0; i < ids.length; i += 90) {
+    const part = ids.slice(i, i + 90);
+    rows.push(...await all(env, `SELECT lead_id, outcome, by, at FROM activities WHERE lead_id IN (${part.map(() => '?').join(',')}) AND type IN ('call','manual_call') AND outcome IS NOT NULL AND at > ? ORDER BY at DESC`, ...part, now() - 45 * 864e5));
+  }
+  return factsFrom(rows);
+}
+export async function callBlock(env, lead, user) {
+  const facts = (await callFacts(env, [lead.id])).get(lead.id) || {};
+  const ids = [facts.callbackBy, lead.owner_id].filter(Boolean);
+  const names = {};
+  for (const id of ids) names[id] = (await first(env, 'SELECT name FROM users WHERE id = ?', id).catch(() => null))?.name || null;
+  return callRule(lead, facts, user, now(), names);
 }
 
 // Playbook cadence for no answer: day 1, 2, 4, 7, 14, then recycle in 60 days.
@@ -620,6 +638,8 @@ route('GET', '/api/leads/:id/call-check', async ({ env, user, params }) => {
   const row = await blockedFor(env, lead);
   if (row) return json({ ok: false, reason: blockText(row) });
   if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) return json({ ok: false, reason: "It's outside calling hours in the lead's time zone. Call later." });
+  const rule = await callBlock(env, lead, user);
+  if (rule) return json({ ok: false, reason: rule.why });
   return json({ ok: true });
 });
 route('DELETE', '/api/dialer/campaign', async ({ env, user }) => { requireStaff(user); await run(env, 'UPDATE users SET campaign = NULL WHERE id = ?', user.id); return json({ ok: true }); });
@@ -655,7 +675,11 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const minScore = Number(url.searchParams.get('minScore')) || 0;
   const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
   const blockKeys = await blockedKeys(env); // copies of a Do Not Call business (another phone, same name and place or website) never come up
-  const decorated = rows.filter((l) => !leadBlocked(blockKeys, l)).filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3) && !capped.has(l.id)).map(decorate); // once per lead: tiers and the queue share it
+  const open = rows.filter((l) => !leadBlocked(blockKeys, l)).filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3) && !capped.has(l.id));
+  // Callbacks belong to the teammate who set them, and a lead that did not answer waits 24 hours (src/callrules.js), whatever list it is on.
+  const touched = open.filter((l) => l.stage === 'callback' || (l.attempts || 0) > 0 || l.last_call_at);
+  const facts = touched.length ? await callFacts(env, touched.map((l) => l.id)) : new Map();
+  const decorated = open.filter((l) => !callRule(l, facts.get(l.id), user, t)).map(decorate); // once per lead: tiers and the queue share it
   const ready = decorated
     .map((l) => seeAppt(l, user))
     .filter((l) => (!f.tz || f.tz.split(',').includes(l.tz_short)) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())

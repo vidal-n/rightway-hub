@@ -130,6 +130,8 @@ route('POST', '/api/voice/prepare', async ({ env, user, body }) => {
     if (!to) throw new HttpError('This lead has no valid phone number.');
     if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError(lead.state === 'MD' ? "Maryland allows sales calls 9am to 8pm only. Call later." : "It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
     await capCheck(env, lead.id);
+    const rule = await (await import('./crm.js')).callBlock(env, lead, user); // callbacks stay with whoever set them, 24 hours after no answer
+    if (rule) throw new HttpError(rule.why, 409);
     const activityId = await logActivity(env, { lead_id: lead.id, type: 'call', status: 'ready', by: user.id });
     await run(env, 'UPDATE activities SET to_num = ?, from_num = ? WHERE id = ?', to, from, activityId);
     await tagScript(env, activityId, b.script, b.scriptV, b.scriptHow);
