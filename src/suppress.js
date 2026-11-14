@@ -11,8 +11,7 @@ import { HttpError, json } from './util.js';
 import { all, first, run, batch, newId, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
-import { dupKeys } from '../public/js/leadintel.js';
-import { REASONS, MANUAL_REASONS, OPTIONAL_ACTS, reasonForAct, reasonLabel, isLegal, rowsFor, tenDigits, summarize, registryAge } from '../public/js/suppress.js';
+import { blockKeys, REASONS, MANUAL_REASONS, OPTIONAL_ACTS, reasonForAct, reasonLabel, isLegal, rowsFor, tenDigits, summarize, registryAge } from '../public/js/suppress.js';
 import { dayKey } from './day.js';
 
 const text = (v, n = 300) => (v == null ? null : String(v).replace(/\u0000/g, '').trim().slice(0, n) || null);
@@ -40,17 +39,42 @@ export function suppressStatements(leads, reason, { by = null, note = null, sour
 export async function suppressMany(env, leads, reason, opts = {}) {
   const ops = suppressStatements(leads, reason, opts);
   for (let i = 0; i < ops.length; i += 100) await batch(env, ops.slice(i, i + 100));
+  // A request not to be called covers every copy of the business already in the Hub (Nov 2026): mark them too, so nobody on the team can dial one.
+  if (isLegal(reason) && opts.copies !== false && leads.length <= 20) for (const l of leads) await markCopies(env, l, opts.by || null).catch((e) => console.error('mark copies', e));
   return ops.length;
 }
 export const suppress = (env, lead, reason, opts) => suppressMany(env, [lead], reason, opts);
 
 // An active entry that stops a call or text to this lead (any of its keys), legal ones first.
 export async function blockedFor(env, lead) {
-  const keys = dupKeys(lead).slice(0, 4);
+  if (lead?.dnc || lead?.stage === 'dnc') return { key: null, grp: null, reason: 'dnc', note: null, at: null, business: lead.business || null }; // the lead's own flag always counts
+  await backfillDnc(env);
+  const keys = blockKeys(lead).slice(0, 8);
   if (!keys.length) return null;
   return first(env, `SELECT key, grp, reason, note, at, business FROM suppressions WHERE key IN (${keys.map(() => '?').join(',')}) AND blocks = 1 AND lifted_at IS NULL
     ORDER BY CASE WHEN reason IN ('dnc','registry') THEN 0 ELSE 1 END LIMIT 1`, ...keys).catch(() => null);
 }
+// Leads flagged Do Not Call before the list existed (or by a path that skipped it) get their entries once, so their copies are blocked too.
+// Runs in slices of 300 until none are left, then stamps settings `supp_backfill`.
+const backfilled = new WeakSet(); // one check per database per Worker start
+async function backfillDnc(env) {
+  if (backfilled.has(env.DB)) return;
+  const done = await first(env, "SELECT v FROM settings WHERE k = 'supp_backfill'").catch(() => ({ v: '1' }));
+  if (done?.v) { backfilled.add(env.DB); return; }
+  const rows = await all(env, `SELECT id, business, phone, phone_digits, website, city, zip, state FROM leads
+    WHERE (dnc = 1 OR stage = 'dnc') AND id NOT IN (SELECT lead_id FROM suppressions WHERE lead_id IS NOT NULL AND lifted_at IS NULL AND blocks = 1) LIMIT 300`).catch(() => []);
+  if (rows.length) await suppressMany(env, rows, 'dnc', { source: 'backfill', note: 'Marked Do Not Call before the list existed.' });
+  if (rows.length < 300) { await setSetting(env, 'supp_backfill', String(now())); backfilled.add(env.DB); }
+}
+// Every active blocking key at once, so a whole list of leads can be checked without a query each (the dialer queue, saved call lists).
+// A lead is blocked when ANY of its keys (phone, website domain, name plus place) is here, so a second copy of a business that
+// asked not to be called, with another phone number, is kept out too.
+export async function blockedKeys(env) {
+  await backfillDnc(env);
+  const rows = await all(env, 'SELECT key FROM suppressions WHERE blocks = 1 AND lifted_at IS NULL').catch(() => []);
+  return new Set(rows.map((r) => r.key));
+}
+export const leadBlocked = (keys, lead) => Boolean(lead?.dnc) || lead?.stage === 'dnc' || blockKeys(lead).some((k) => keys.has(k));
 export async function blockedPhone(env, raw) {
   const d = tenDigits(raw);
   return d ? blockedFor(env, { phone_digits: d }) : null;
@@ -66,7 +90,7 @@ export async function guardLead(env, lead, what = 'call') {
 }
 // Email is only stopped by requests not to be contacted.
 export async function emailBlocked(env, lead) {
-  const keys = dupKeys(lead).slice(0, 4);
+  const keys = blockKeys(lead).slice(0, 8);
   if (!keys.length) return null;
   return first(env, `SELECT reason FROM suppressions WHERE key IN (${keys.map(() => '?').join(',')}) AND lifted_at IS NULL AND reason IN ('dnc','registry') LIMIT 1`, ...keys).catch(() => null);
 }
@@ -238,7 +262,97 @@ route('GET', '/api/suppress/export', async ({ env, user }) => {
 
 // The entry on a lead, for its panel (active entries only, blocking or not).
 export async function entryFor(env, lead) {
-  const keys = dupKeys(lead).slice(0, 4);
+  const keys = blockKeys(lead).slice(0, 8);
   if (!keys.length) return null;
   return first(env, `SELECT grp, reason, blocks, note, source, at FROM suppressions WHERE key IN (${keys.map(() => '?').join(',')}) AND lifted_at IS NULL ORDER BY blocks DESC, at DESC LIMIT 1`, ...keys).catch(() => null);
 }
+
+
+// ---------- copies of a Do Not Call business (Nov 2026, V: a partner called a lead already on Do Not Call; pipeline and leads are one list for the whole company) ----------
+// Modeled on the suppression propagation in Outreach and Apollo.io: one request not to be called covers every record of that business.
+const LEGAL_KEYS = "SELECT key FROM suppressions WHERE blocks = 1 AND lifted_at IS NULL AND reason IN ('dnc','registry')";
+async function legalKeys(env) { await backfillDnc(env); return new Set((await all(env, LEGAL_KEYS).catch(() => [])).map((r) => r.key)); }
+
+// Put these copies on Do Not Call: flag, stage, no next step, a line on their timeline, and their own keys on the list (their other phone numbers too).
+async function flagCopies(env, copies, why, by) {
+  if (!copies.length) return 0;
+  const t = now();
+  for (let i = 0; i < copies.length; i += 40) {
+    const part = copies.slice(i, i + 40);
+    const ph = part.map(() => '?').join(',');
+    await batch(env, [
+      [`UPDATE leads SET dnc = 1, stage = 'dnc', next_action_at = NULL, next_action = 'Do not call', updated_at = ? WHERE id IN (${ph})`, t, ...part.map((l) => l.id)],
+      ...part.map((l) => [`INSERT INTO activities (id, lead_id, type, body, by, at) VALUES (?, ?, 'stage', ?, ?, ?)`, newId('a_'), l.id, `Do not call: ${why}`, by, t]),
+    ]).catch((e) => console.error('flag copies', e));
+  }
+  await suppressMany(env, copies, 'dnc', { by, source: 'copy', note: why, copies: false });
+  return copies.length;
+}
+
+// After a lead goes on the list: find copies by phone, website or the business name, keep those that share a key, and flag them.
+export async function markCopies(env, lead, by = null) {
+  const mine = new Set(blockKeys(lead));
+  if (!mine.size) return 0;
+  const digits = tenDigits(lead.phone_digits || lead.phone);
+  const stem = String(lead.business || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter((w) => w.length >= 4).sort((a, b) => b.length - a.length)[0] || '';
+  const dom = String(lead.website || '').toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/^www\./, '').split(/[/?#]/)[0];
+  const where = [], vals = [];
+  if (digits) { where.push('phone_digits = ?'); vals.push(digits); }
+  if (dom && dom.includes('.')) { where.push('LOWER(website) LIKE ?'); vals.push(`%${dom}%`); }
+  if (stem) { where.push('LOWER(business) LIKE ?'); vals.push(`%${stem}%`); }
+  if (!where.length) return 0;
+  const rows = await all(env, `SELECT id, business, phone, phone_digits, website, city, zip, state, dnc, stage FROM leads WHERE dnc = 0 AND stage != 'dnc' AND id != ? AND (${where.join(' OR ')}) LIMIT 200`, lead.id || '', ...vals);
+  const copies = rows.filter((r) => blockKeys(r).some((k) => mine.has(k)));
+  return flagCopies(env, copies, `copy of ${String(lead.business || 'a business').slice(0, 80)}, which is on the do not call list`, by);
+}
+
+// A slice of the sweep: leads after `after` (by id) that match a legal key but are not flagged. Returns where to continue.
+export async function sweepSlice(env, after = '', limit = 250, by = null) {
+  const keys = await legalKeys(env);
+  const rows = await all(env, `SELECT id, business, phone, phone_digits, website, city, zip, state, dnc, stage FROM leads WHERE id > ? ORDER BY id LIMIT ?`, after || '', limit);
+  const hit = rows.filter((r) => !(r.dnc || r.stage === 'dnc') && blockKeys(r).some((k) => keys.has(k)));
+  const marked = await flagCopies(env, hit, 'matched a business on the do not call list', by);
+  return { scanned: rows.length, marked, next: rows.length === limit ? rows[rows.length - 1].id : null };
+}
+
+// Keys written before this change used the ZIP or the city, not both. Add the other form for every active entry, once (slices of 200 entries).
+export async function reindexKeys(env) {
+  const done = await first(env, "SELECT v FROM settings WHERE k = 'supp_reindex'").catch(() => ({ v: 'x' }));
+  if (done?.v === 'done') return 0;
+  const after = done?.v || '';
+  const groups = await all(env, `SELECT grp, reason, MIN(lead_id) AS lead_id, MIN(business) AS business, MIN(phone) AS phone, MIN(website) AS website, MIN(city) AS city, MIN(state) AS state, MIN(at) AS at
+    FROM suppressions WHERE lifted_at IS NULL AND grp > ? AND business IS NOT NULL GROUP BY grp ORDER BY grp LIMIT 200`, after);
+  const ops = [];
+  for (const g of groups) for (const r of rowsFor(g, g.reason)) ops.push([`INSERT OR IGNORE INTO suppressions (key, grp, reason, blocks, lead_id, business, phone, website, city, state, note, source, by, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    r.key, g.grp, g.reason, r.blocks, g.lead_id, g.business, g.phone, g.website, g.city, g.state, 'Extra key added so copies are found', 'reindex', null, g.at]);
+  for (let i = 0; i < ops.length; i += 100) await batch(env, ops.slice(i, i + 100)).catch((e) => console.error('reindex', e));
+  await setSetting(env, 'supp_reindex', groups.length < 200 ? 'done' : groups[groups.length - 1].grp);
+  return groups.length;
+}
+
+// Cron: finish the key reindex, then check every lead against the list once a day (a few hundred a run). Cursor in settings `comp_sweep` {day, after, marked}.
+export async function sweepTick(env, limit = 250) {
+  if (await reindexKeys(env)) return 0;
+  let st = {};
+  try { st = JSON.parse((await first(env, "SELECT v FROM settings WHERE k = 'comp_sweep'").catch(() => null))?.v || '{}'); } catch { st = {}; }
+  const today = dayKey(now());
+  if (st.done === today) return 0;
+  const r = await sweepSlice(env, st.after || '', limit, null);
+  const marked = (st.marked || 0) + r.marked;
+  await setSetting(env, 'comp_sweep', JSON.stringify(r.next ? { after: r.next, marked, day: st.day || today } : { done: today, last: now(), marked }));
+  return r.scanned;
+}
+
+route('POST', '/api/suppress/sweep', async ({ env, user, body }) => {
+  requireAdmin(user);
+  const b = await body();
+  await reindexKeys(env);
+  const r = await sweepSlice(env, String(b.after || ''), 250, user.id);
+  return json(r);
+});
+route('GET', '/api/suppress/sweep', async ({ env, user }) => {
+  requireStaff(user);
+  let st = {};
+  try { st = JSON.parse((await first(env, "SELECT v FROM settings WHERE k = 'comp_sweep'"))?.v || '{}'); } catch { st = {}; }
+  return json({ last: st.last || null, marked: st.marked || 0, running: Boolean(st.after) });
+});

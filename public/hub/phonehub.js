@@ -199,7 +199,7 @@ export async function textsPage(app, user, openId = '') {
     if (!wide()) { const m = textModal(lead, { rep, onChange: () => {} }); m.el.closest('.modal-bg')?.addEventListener('click', () => setTimeout(async () => { if (await load()) $('#phlist', view).innerHTML = rows(); }, 50)); return; }
     const host = $('#phdetail', view);
     host.innerHTML = `<div class="ph-card"><div class="ph-head"><span class="ph-av">${esc(initials(lead.business))}</span><div><h2>${esc(lead.business)}</h2>
-      <p class="small">${lead.phone ? `<a href="tel:${esc(lead.phone)}">${esc(lead.phone)}</a>` : ''}${lead.email ? ` · <a href="mailto:${esc(lead.email)}" id="tmail">${esc(lead.email)}</a>` : ' · <span class="muted">No email on file</span>'}</p></div></div>
+      <p class="small">${lead.phone ? `<a href="tel:${esc(lead.phone)}" data-tel-lead="${esc(lead.id)}">${esc(lead.phone)}</a>` : ''}${lead.email ? ` · <a href="mailto:${esc(lead.email)}" id="tmail">${esc(lead.email)}</a>` : ' · <span class="muted">No email on file</span>'}</p></div></div>
       <div class="row ph-acts">${lead.phone ? `<button class="btn btn-mint btn-sm" id="tcall">${icon.phone}Call</button>` : ''}<button class="btn btn-ghost btn-sm" id="tlead">Open lead</button></div>
       <div id="tthread"></div></div>`;
     stop = textPanel($('#tthread', host), lead, { rep, onChange: () => {} });

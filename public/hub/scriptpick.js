@@ -1,4 +1,5 @@
 // Pick a script before dialing (Nov 2026, V: we pick a script before we start dialing, and every call is tracked under it).
+// Since the two step workflow (Nov 2026) the pick is made on the Pipeline (public/hub/callsetup.js); the dialer only shows it.
 // The rep picks once a day per device; when an owner runs a split test, the Hub picks per lead instead (same lead, same script).
 // Modeled on Orum's and Nooks' script selector next to the dialer and Outreach's even per prospect split.
 import { api, modal, esc } from './core.js';
@@ -62,31 +63,16 @@ export function scriptTag(lead) {
   return { key, how, v: g ? versionOf(g[2].map((id) => S[id] || '')) : null };
 }
 
-// Before the first call of the day: make sure a choice is made. Resolves with the choice, or null when the rep closes the picker.
-export async function ensureScript({ force = false } = {}) {
-  await loadScriptTest();
-  if (!force && pickedScript()) return pickedScript();
-  if (!force && test.on && !test.allowPick) return 'test';
-  return new Promise((resolve) => {
-    let done = false;
-    const cur = pickedScript({ anyDay: true }) || (test.on ? 'test' : null);
-    const card = (k, name, about) => `<button type="button" class="sp-card${k === cur ? ' on' : ''}" data-k="${k}"><b>${esc(name)}</b><span>${esc(about)}</span></button>`;
-    const testCard = test.on ? card('test', `Follow the split test: ${test.variants.map((k) => scriptName(k)).join(' vs ')}`, 'The Hub picks the script for each lead, so the comparison stays fair. Recommended while the test runs.') : '';
-    const mine = !test.on || test.allowPick;
-    const m = modal(`<div class="modal-head"><h3>Pick your script</h3></div>
-      <p class="small muted">Every call is saved with the script you used, so we can see which one books the most meetings. You can change it any time from the Script button in the dialer.</p>
-      <div class="sp-list">${testCard}${mine ? `${test.on ? '<p class="small muted sp-or">Or use your own script (your calls still count in the analytics, but not in the split test):</p>' : ''}${DIAL_SCRIPTS.map((k) => card(k, scriptName(k), ABOUT[k] || '')).join('')}` : '<p class="small muted">Your owner has the split test set so the Hub picks for everyone.</p>'}</div>`,
-    { onClose: () => { if (!done) resolve(null); } });
-    m.el.querySelectorAll('.sp-card').forEach((b) => b.addEventListener('click', () => { done = true; setPicked(b.dataset.k); m.close(); resolve(b.dataset.k); }));
-  });
-}
-
-// The button in the dialer header: shows what this rep is dialing with and opens the picker.
-export function scriptChip() {
+// What the dialer shows now that the choice is made on the Pipeline (Call setup): the script, or the split test, as plain text.
+export function scriptText() {
   const pick = pickedScript({ anyDay: true });
   const following = test.on && (pick === 'test' || !pick || !test.allowPick);
-  if (following) return `<button type="button" class="btn btn-ghost btn-sm sp-chip" id="dscript" title="Split test running: the Hub picks the script per lead. Tap to change.">Script: split test (${test.variants.map((k) => esc(scriptName(k))).join(' vs ')})</button>`;
+  if (following) return `Split test (${test.variants.map((k) => scriptName(k)).join(' vs ')})`;
   const k = pickedScript();
-  const shown = k && k !== 'test' ? k : (pick && pick !== 'test' ? pick : null);
-  return `<button type="button" class="btn ${k ? 'btn-ghost' : 'btn-primary'} btn-sm sp-chip" id="dscript" title="Tap to change your script">${shown ? `Script: ${esc(scriptName(shown))}${test.on ? ' (own pick)' : ''}` : 'Pick a script'}</button>`;
+  return k && k !== 'test' ? `${scriptName(k)}${test.on ? ' (own pick)' : ''}` : 'None picked yet';
+}
+// The small label in the dialer header. A link to the place where it is chosen.
+export function scriptLabel() {
+  const ok = Boolean(pickedScript()) || (test.on && !test.allowPick);
+  return `<a class="btn ${ok ? 'btn-ghost' : 'btn-primary'} btn-sm sp-chip" id="dscript" href="#/pipeline" title="The script is chosen on the Pipeline, in Set up the call list.">Script: ${esc(scriptText())}</a>`;
 }

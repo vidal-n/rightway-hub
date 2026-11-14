@@ -102,7 +102,7 @@ export async function homePage(app, user) {
     const tone = (a) => ({ on_call: 'live', available: 'good', break: 'warn', lunch: 'warn', offline: 'gray', maintenance: 'maint' })[a.status] || 'info';
     box.innerHTML = `<div class="card-head"><h2>Team floor</h2><a class="btn btn-ghost btn-sm" href="#/agents">Agents</a></div>
       <div style="display:grid;gap:10px">${r.agents.map((a) => `<div class="row" style="flex-wrap:nowrap;gap:10px">${miniAvatar(a)}<div style="flex:1;min-width:0"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</b>
-        <span class="small"><i class="dot ${tone(a)}" style="margin-right:6px"></i>${esc(a.call ? `with ${a.call.business || 'a lead'}` : st(a))}</span></div>${admin && a.call?.canJoin ? `<button type="button" class="btn btn-ghost btn-sm" data-listen="${esc(a.call.id)}" data-who="${esc(a.name)}">Listen</button>` : ''}<span class="badge gray mono">${a.today.dials} dials</span></div>`).join('')}</div>`;
+        <span class="small"><i class="dot ${tone(a)}" style="margin-right:6px"></i>${esc(a.call ? `with ${a.call.business || 'a lead'}` : st(a))}</span></div>${a.call?.canJoin ? `<button type="button" class="btn btn-ghost btn-sm" data-listen="${esc(a.call.id)}" data-who="${esc(a.name)}">Listen</button>` : ''}<span class="badge gray mono">${a.today.dials} dials</span></div>`).join('')}</div>`;
     $$('[data-listen]', box).forEach((b) => b.addEventListener('click', async () => {
       const a = r.agents.find((x) => x.call?.id === b.dataset.listen);
       busy(b, true);

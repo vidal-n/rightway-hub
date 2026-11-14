@@ -65,10 +65,11 @@ async function callRows(env, from, to, rep) {
 }
 
 // Can this viewer listen, whisper or barge on this call? Always answers, with a plain reason when not, so the buttons never just vanish.
-export function joinState(viewer, call, target) {
-  if (!viewer || viewer.role !== 'admin') return { ok: false, why: '' };
+// Owners and agents can listen, whisper and barge on each other's calls from the list (Nov 2026, V: like Convoso's live monitoring), except on a personal line.
+export function joinState(viewer, call, target, hidden = null) {
+  if (!viewer || !['admin', 'team'].includes(viewer.role)) return { ok: false, why: '' };
   if (call.by === viewer.id) return { ok: false, why: 'This is your own call.' };
-  if (target?.role === 'admin') return { ok: false, why: 'Owners cannot listen to each other.' };
+  if (hidden && call.from_num && hidden.has(call.from_num)) return { ok: false, why: "This call is on someone's personal line, which stays private." };
   if (call.status === 'ringing_you') return { ok: false, why: 'This call is still ringing them.', wait: true };
   if (!call.conf_sid) {
     if (call.status === 'in-progress') return { ok: false, why: 'This call came in through the phone number, so it is not on a line you can join. Calls placed from the Hub can be joined.' };
@@ -88,6 +89,7 @@ route('GET', '/api/agents', async ({ env, user }) => {
   const logs = await all(env, 'SELECT user_id, status, start_at, end_at FROM agent_log WHERE start_at < ? AND (end_at IS NULL OR end_at > ?)', t, day);
   const calls = await callRows(env, day, t + 1);
   const stats = callStats(calls, { users });
+  const hidden = await import('./lines.js').then((m) => m.hiddenLines(env, user)).catch(() => new Set());
   const out = users.map((u) => {
     const online = u.last_seen && t - u.last_seen < STALE && u.status && u.status !== 'offline';
     const call = live.find((c) => c.by === u.id && (c.status !== 'ready' || t - c.at < 120e3));
@@ -97,13 +99,13 @@ route('GET', '/api/agents', async ({ env, user }) => {
     return {
       id: u.id, name: u.name || u.email, email: u.email, role: u.role, avatar: u.avatar_at || null, online: Boolean(online),
       status: call ? 'on_call' : online ? u.status : 'offline', picked: u.status || 'offline', since: call ? call.answered_at || call.at : u.status_at, lastSeen: u.last_seen,
-      call: call ? { id: call.id, business: call.business, leadId: call.lead_id, number: call.to_num, status: call.status, answeredAt: call.answered_at, at: call.at, join: joinState(user, call, u), canJoin: joinState(user, call, u).ok, monitoredBy: call.mon_by, mode: call.mon_mode, mine: call.mon_by === user.id } : null,
+      call: call ? { id: call.id, business: call.business, leadId: call.lead_id, number: call.to_num, status: call.status, answeredAt: call.answered_at, at: call.at, join: joinState(user, call, u, hidden), canJoin: joinState(user, call, u, hidden).ok, monitoredBy: call.mon_by, mode: call.mon_mode, mine: call.mon_by === user.id } : null,
       today: { login: st.login, per: st.per, dials: s?.dials || 0, connects: s?.connects || 0, booked: s?.booked || 0, talk: s?.talk || 0, avgHandle: s?.avgHandle || 0, avgTalk: s?.avgTalk || 0 },
     };
   });
   const order = { on_call: 0, available: 1, meeting: 2, training: 2, admin: 2, maintenance: 2, break: 3, lunch: 3, offline: 9 };
   out.sort((a, b) => (order[a.status] ?? 5) - (order[b.status] ?? 5) || String(a.name).localeCompare(String(b.name)));
-  return json({ agents: out, canMonitor: user.role === 'admin', me: user.id, team: stats.total });
+  return json({ agents: out, canMonitor: true, me: user.id, team: stats.total });
 });
 
 // Call analytics. Owners see everyone (or one rep); a teammate sees their own numbers.

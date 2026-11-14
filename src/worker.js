@@ -21,6 +21,7 @@ import { researchTick } from './autoresearch.js';
 import { scrubTick } from './scrub.js';
 import { finderTick } from './leadfinder.js';
 import { rollTick } from './leaddb.js';
+import { sweepTick } from './suppress.js';
 import { workflowTick } from './workflows.js';
 import { costTick } from './costs.js';
 import { masterTick, inviteTick } from './teamcal.js';
@@ -63,6 +64,7 @@ export default {
       await socialAutoTick(env).catch((e) => console.error('social autopilot', e));
       // Lead database: keep each lead's call roll up and scores current (no outside calls).
       await rollTick(env, 40).catch((e) => console.error('lead roll up', e));
+      await sweepTick(env, 250).catch((e) => console.error('do not call sweep', e));
       await workflowTick(env, 15).catch((e) => console.error('workflows', e));
     })());
   },

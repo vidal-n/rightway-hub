@@ -10,6 +10,7 @@ import { CITIES, DEFAULT_TOP, chunkAreas } from '/js/cities.js';
 import { STATES, NEW_FILING_STATES } from '/js/registries.js';
 import { TARGET_INDUSTRIES } from '/js/leadintel.js';
 import { directoryLinks } from '/js/freedata.js';
+import { zoneStates } from '/js/timezone.js';
 import { mountPlays } from './plays.js';
 import { planFor, readFilters as readFilterGuide, readIndustries, southFloridaAreas, SOUTH_FLORIDA, weakness, gapLabel } from '/js/plays.js';
 const MINE_KEY = 'rw-finder-industries';
@@ -99,7 +100,7 @@ async function homePage(view) {
       <label class="field" style="margin-top:10px"><span>Other keyword (optional)</span><input id="fextra" placeholder="e.g. pool cleaning"></label>
 
       ${STEP(2, 'Where', 'Pick states, then the cities in them. Each state brings its biggest cities, already ticked.')}
-      <div class="guide" id="g2">Home turf first: calls to Miami and Fort Lauderdale are local and meetings are easy. Start with three cities, then widen when a play books audits. <button type="button" class="btn btn-ghost btn-sm" id="fsfl">Use South Florida (12 cities)</button></div>
+      <div class="guide" id="g2">Home turf first: calls to Miami and Fort Lauderdale are local and meetings are easy. Start with three cities, then widen when a play books audits. <button type="button" class="btn btn-ghost btn-sm" id="fsfl">Use South Florida (12 cities)</button> <button type="button" class="btn btn-ghost btn-sm" id="fmt">Use Mountain time (${zoneStates('MT').length} states)</button></div>
       <div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div id="fstatebox" style="flex:1 1 260px;min-width:0"></div>
         <label class="field" style="flex:0 0 160px"><span>Cities per state ${COST_IC('Each city is searched for every industry, so more cities cost more')}</span><select id="ftop">${[3, 5, 10, 20, 50].map((n) => `<option value="${n}"${n === DEFAULT_TOP ? ' selected' : ''}>${n === 50 ? 'All' : `Top ${n}`}</option>`).join('')}</select></label>
@@ -253,6 +254,14 @@ async function homePage(view) {
   });
 
   $('#fnew', view).addEventListener('change', (e) => { if (e.target.matches('[data-f]')) drawGuides(); });
+  // Mountain time (Nov 2026, V: scrape mountain time leads): ticks CO, ID, MT, NM, UT and WY with their biggest cities. Arizona is its own zone
+  // (no daylight saving), so pick it from the states list when you want it. Modeled on the time zone filters in Apollo.io and Scrap.io.
+  $('#fmt', view).addEventListener('click', () => {
+    const mt = zoneStates('MT');
+    prevStates = mt; stateSel.set(mt);
+    cities.setOptions(citiesOf(mt), topCities(mt, topN()));
+    est();
+  });
   $('#fsfl', view).addEventListener('click', () => {
     prevStates = ['FL']; stateSel.set(['FL']);
     const sfl = southFloridaAreas(SOUTH_FLORIDA.length);

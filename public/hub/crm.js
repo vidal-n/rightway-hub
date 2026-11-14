@@ -11,13 +11,14 @@ import { loadDispos, keyed, dispositionModal, isoWhen } from './dispo.js';
 import { saveDial } from './resume.js';
 import { mountLayout } from './widgets.js';
 import { showCallScript, setScriptOn, scriptOn } from './scriptpane.js';
-import { ensureScript, scriptChip, scriptTag, loadScriptTest } from './scriptpick.js';
+import { scriptLabel, scriptText, scriptTag, loadScriptTest } from './scriptpick.js';
+import { mountCallSetup, scriptReady } from './callsetup.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { hoverCards, hoverHtml } from './hovercard.js';
 import { isPersonName, titleLike } from '/js/names.js';
-import { placeCall, startPhone, onPhoneState, phoneState, hangUp, contactRows, initialsOf, takeCallDraft, wrapUp } from './phone.js';
-import { warmAudio, holdMic, dropMic } from './audioset.js';
+import { placeCall, startPhone, onPhoneState, phoneState, hangUp, contactRows, initialsOf, takeCallDraft, wrapUp, closeCallWindow } from './phone.js';
+import { warmAudio, holdMic, dropMic, isApple, micHeld } from './audioset.js';
 import { arriving, leaving } from './dialwin.js';
 import { testLeads, testIntel } from '/js/testleads.js';
 import { testTextModal, testBookModal, testLeadModal, testSummaryHtml } from './testdial.js';
@@ -61,6 +62,21 @@ async function refreshDispos() { try { DISP = keyed((await loadDispos()).disposi
 let REP = '', VOICE = 'I';
 export const setRep = (user) => { REP = (user?.name || '').split(' ')[0] || ''; VOICE = user?.role === 'admin' ? 'I' : 'we'; };
 const telHref = (p) => `tel:${String(p || '').replace(/[^\d+]/g, '')}`;
+// A tel: link opens the phone app and the Hub cannot see it, so every lead's phone link asks the server first (Do Not Call list, copies of a
+// business on it, calling hours). Without this a rep could dial a lead the owner had already put on the list.
+if (!window.__rwTelGuard) {
+  window.__rwTelGuard = true;
+  document.addEventListener('click', async (e) => {
+    const a = e.target.closest?.('a[data-tel-lead]');
+    if (!a || a.dataset.telOk === '1') return;
+    e.preventDefault();
+    try {
+      const r = await api(`/api/leads/${encodeURIComponent(a.dataset.telLead)}/call-check`);
+      if (!r.ok) { toast(r.reason || 'Do not call this lead.', true); return; }
+    } catch (err) { toast(err.message || 'Could not check this number. Do not call yet.', true); return; }
+    a.dataset.telOk = '1'; a.click(); setTimeout(() => { delete a.dataset.telOk; }, 1500);
+  }, true);
+}
 
 // ---------- pipeline ----------
 const TZS = [['ET', 'Eastern'], ['CT', 'Central'], ['MT', 'Mountain'], ['AZ', 'Arizona'], ['PT', 'Pacific'], ['AK', 'Alaska'], ['HI', 'Hawaii'], ['?', 'Unknown']];
@@ -103,6 +119,7 @@ export async function pipelinePage(app, user, openId, screen) {
   document.addEventListener('click', playShut); document.addEventListener('keydown', playShut);
   let playOpen = false;
   let offHover = null;
+  let setupRef = null;
 
   // The Pipeline's current filters as a dialer filter. A stage narrows it to one column.
   const dialFilter = (stage = '') => ({ tz: tzSel(p).filter((z) => z !== '?').join(','), grade: (p.f.grades || []).join(','), state: p.f.state || '', industry: p.f.industry || '', tag: p.f.tag || '', city: p.f.city || '', data: p.f.phoneType === 'mobile' ? 'mobile' : p.f.owner === 'yes' ? 'owner' : p.f.email ? 'email' : '', stage });
@@ -180,10 +197,11 @@ export async function pipelinePage(app, user, openId, screen) {
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
       </div>
         </section>
-        <section class="fstep wide go" data-sec="work"><header><span class="fn">4</span><div><h3>Call and work the list</h3>
+        <section class="fstep wide go" data-sec="work"><header><span class="fn">4</span><div><h3>Set up the call list</h3>
           <p class="fstats" data-sec="stats"><b>${open.length}</b> open · <b>${open.filter((l) => l.grade === 'A').length}</b> A leads · <b>${open.filter((l) => l.callable_now).length}</b> callable now · <b>${(by.audit_booked || []).length}</b> audits booked · <b>${(by.won || []).length}</b> won</p></div></header>
           <div class="row"><div class="seg"><button class="${p.view === 'board' ? 'is-on' : ''}" data-view="board">Board</button><button class="${p.view === 'list' ? 'is-on' : ''}" data-view="list">List</button></div>
-            <a class="btn btn-mint" href="#/phone" id="godial">${icon.phone}Dial this list</a></div></section>
+            <a class="btn btn-ghost" href="#/phone" id="godial" title="Open the dialer with the list you saved last">${icon.phone}Open the dialer</a></div>
+          <div class="csetup" id="csetup"></div></section>
       </div>
       <div id="scstrip"></div>
       <div id="pbody"></div>`;
@@ -236,12 +254,12 @@ export async function pipelinePage(app, user, openId, screen) {
     el.innerHTML = `
       <div class="row" style="margin-bottom:10px"><label class="field" style="flex:0 1 220px"><select id="grp">${GROUPS.map(([k, n]) => `<option value="${k}"${p.group === k ? ' selected' : ''}>Group: ${n}</option>`).join('')}</select></label>
         <div class="bulk" id="bulk" ${selected.size ? '' : 'hidden'}><b id="selc">${selected.size} selected</b>
-          <button class="btn btn-ghost btn-sm" data-bulk="research">Research</button><button class="btn btn-ghost btn-sm" data-bulk="scrub">Scrub</button><button class="btn btn-ghost btn-sm" data-bulk="callnow">Call next</button>
+          <button class="btn btn-ghost btn-sm" data-bulk="research">Research</button><button class="btn btn-ghost btn-sm" data-bulk="scrub">Scrub</button><button class="btn btn-ghost btn-sm" data-bulk="callnow">Call next</button><button class="btn btn-mint btn-sm" data-bulk="makelist" title="Use only the ticked leads as today's call list">Make call list</button>
           <select id="bstage"><option value="">Move to...</option>${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
           <button class="btn btn-ghost btn-sm" data-bulk="tag">Tag</button><button class="btn btn-danger btn-sm" data-bulk="delete">Delete</button></div></div>
       <div class="table-wrap"><table class="leads-table"><thead><tr><th><input type="checkbox" id="selall"></th>${COLS.map(([k, n, s]) => `<th><button class="th" data-sort="${s}">${n}${p.sort.replace('-', '') === s.replace('-', '') ? (p.sort.startsWith('-') ? ' ↓' : ' ↑') : ''}</button></th>`).join('')}</tr></thead>
       <tbody>${[...groups.entries()].map(([g, ls]) => `${p.group ? `<tr class="grp"><td colspan="${COLS.length + 1}">${esc(g)} <span class="small">${ls.length}</span></td></tr>` : ''}${ls.slice(0, PER_LIST).map(row).join('')}${ls.length > PER_LIST ? `<tr class="more"><td colspan="${COLS.length + 1}"><a class="btn btn-ghost btn-sm" href="${p.group ? `#/pipeline/group/${esc(p.group)}/${encodeURIComponent(g)}` : '#/pipeline/stage/all'}">Open all ${ls.length}${p.group ? ` in ${esc(g)}` : ' leads'} in a full screen</a></td></tr>` : ''}`).join('') || `<tr><td colspan="${COLS.length + 1}" class="muted">No leads match.</td></tr>`}</tbody></table></div>`;
-    const syncBulk = () => { $('#bulk', el).hidden = !selected.size; $('#selc', el).textContent = `${selected.size} selected`; };
+    const syncBulk = () => { $('#bulk', el).hidden = !selected.size; $('#selc', el).textContent = `${selected.size} selected`; setupRef?.refresh(); };
     $('#grp', el).addEventListener('change', (e) => { p.group = e.target.value; render(); });
     $$('[data-sort]', el).forEach((b) => b.addEventListener('click', () => { const s = b.dataset.sort; const base = s.replace('-', ''); p.sort = p.sort.replace('-', '') === base ? (p.sort.startsWith('-') ? base : `-${base}`) : s; render(); }));
     $$('tbody tr[data-id]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (e.target.classList.contains('sel')) return; leadModal(tr.dataset.id, reload); }));
@@ -255,6 +273,7 @@ export async function pipelinePage(app, user, openId, screen) {
       const a = b.dataset.bulk;
       if (a === 'research') return researchMany(all.filter((l) => selected.has(l.id)), reload);
       if (a === 'scrub') return scrubMany(all.filter((l) => selected.has(l.id)), reload);
+      if (a === 'makelist') { (p.call ||= {}).mine = true; savePipe(p); setupRef?.refresh(); setupRef?.focus(); return; }
       if (a === 'tag') { const t = prompt('Tag to add'); if (t) bulk('tag', t); return; }
       if (a === 'delete' && !confirm(`Delete ${selected.size} leads and their history?`)) return;
       bulk(a);
@@ -272,10 +291,10 @@ export async function pipelinePage(app, user, openId, screen) {
     $('#playbtn', view)?.addEventListener('click', (e) => { e.stopPropagation(); playOpen = !playOpen; pbody.hidden = !playOpen; e.currentTarget.setAttribute('aria-expanded', String(playOpen)); });
     $$('[data-play]', view).forEach((c) => c.addEventListener('change', () => { lay[c.dataset.play] = c.checked; applyPlay(); }));
     $('#playreset', view)?.addEventListener('click', () => { Object.keys(lay).forEach((k) => { lay[k] = true; }); $$('[data-play]', view).forEach((c) => { c.checked = true; }); applyPlay(); });
+    setupRef = mountCallSetup($('#csetup', view), { rows: filterLeads(all, p), p, selected, stageLabel: STAGE_LABEL, save: () => savePipe(p) });
     $('#addl', view).addEventListener('click', () => leadForm(null, reload));
     $('#imp', view).addEventListener('click', () => importModal(reload));
     $('#dups', view).addEventListener('click', () => duplicatesModal(reload));
-    $('#godial', view).addEventListener('click', () => { try { localStorage.setItem('rw-dial-filter', JSON.stringify(dialFilter())); } catch { /* ignore */ } });
     // Time zone tabs are multi select: tap one to add it, tap again to take it off, All clears them.
     $$('[data-tz]', view).forEach((b) => b.addEventListener('click', () => { const k = b.dataset.tz; if (!k) p.tz = ''; else { const cur = tzSel(p); p.tz = (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]).join(','); } render(); }));
     $$('[data-grade]', view).forEach((b) => b.addEventListener('click', () => { const g = b.dataset.grade; const s = new Set(p.f.grades || []); if (s.has(g)) s.delete(g); else s.add(g); p.f.grades = [...s]; render(); }));
@@ -635,7 +654,7 @@ function contactStrip(l, scrub) {
   const tag = l.email && l.email_status ? (EMAIL_STATUS_LABEL[l.email_status] || '') : '';
   const site = l.website ? String(l.website).replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '') : '';
   return `<div class="lm-contact">
-    <div class="lmc"><i>Phone</i>${l.phone ? `<a href="${telHref(l.phone)}">${esc(l.phone)}</a>` : '<span class="muted">None</span>'}</div>
+    <div class="lmc"><i>Phone</i>${l.phone ? `<a href="${telHref(l.phone)}" data-tel-lead="${esc(l.id)}">${esc(l.phone)}</a>` : '<span class="muted">None</span>'}</div>
     <div class="lmc lmc-mail"><i>Email</i>${l.email ? `<a href="mailto:${esc(l.email)}" id="lmailx" title="Write to them from the Hub">${esc(l.email)}</a>${tag ? ` <span class="badge ${bad ? 'bad' : 'gray'}">${esc(tag)}</span>` : ''}`
       : `<span class="muted">No email on file</span> <button type="button" class="linkbtn small" id="laddmail2">Add it</button>`}${found.length ? `<small class="muted">Also found: ${found.slice(0, 2).map((e) => esc(e)).join(', ')}</small>` : ''}</div>
     ${site ? `<div class="lmc"><i>Website</i><a href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}" target="_blank" rel="noopener">${esc(site)}</a></div>` : ''}
@@ -658,7 +677,7 @@ export async function leadModal(id, onChange) {
       <button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     ${contactStrip(l, data.scrub)}
     <div class="row lm-actions">
-      ${l.phone ? `<a class="btn btn-mint" href="${telHref(l.phone)}">${icon.phone}${esc(l.phone)}</a>` : ''}
+      ${l.phone ? `<a class="btn btn-mint" href="${telHref(l.phone)}" data-tel-lead="${esc(l.id)}">${icon.phone}${esc(l.phone)}</a>` : ''}
       ${l.email ? `<button class="btn btn-ghost" id="lmailbtn">${icon.mail}Email</button>` : '<button class="btn btn-ghost" id="laddmail">' + icon.mail + 'Add email</button>'}
       <button class="btn btn-ghost" id="lmeetbtn">Add appointment</button>
       <button class="btn btn-ghost" id="lbooklink" title="A personal booking page link for this lead">Booking link</button>
@@ -1079,10 +1098,9 @@ export async function dialerPage(app, user) {
   const view = staffShell(app, user, 'dialer');
   let flt = {};
   try { flt = JSON.parse(localStorage.getItem(DIAL_KEY) || '{}'); } catch { flt = {}; }
-  // Script tests: the header chip shows today's script (or the owner's split test) and opens the picker.
-  function paintChip() { const b = $('#dscript', view); if (b) { b.outerHTML = scriptChip(); $('#dscript', view)?.addEventListener('click', pickAgain); } }
-  // Changing the script redraws the call prep on the new script, unless a call or the countdown is running.
-  async function pickAgain() { if (await ensureScript({ force: true })) { paintChip(); if (phase === 'idle' && !power) render(); } }
+  // The script is chosen on the Pipeline (Call setup). The dialer only shows it.
+  function paintChip() { const b = $('#dscript', view); if (b) b.outerHTML = scriptLabel(); }
+  const needScript = async () => { await loadScriptTest(); if (scriptReady()) return true; toast('Pick the script for today in the Pipeline first.', true); setTimeout(() => { location.hash = '#/pipeline'; }, 900); return false; };
   loadScriptTest().then(paintChip);
   // Researching the next leads as you dial costs money, so it starts off (Nov 2026). The old saved choice is ignored once.
   let auto = false;
@@ -1112,6 +1130,16 @@ export async function dialerPage(app, user) {
   let phase = 'idle';
   const busyPhase = () => phase === 'calling' || phase === 'wrap' || phoneState().onCall;
   const bookedDuring = new Set();
+  // Redial (Nov 2026, V: the iPad mic dropped back to the built in one mid call and burned leads): hang up, log the call as a bad connection
+  // (no attempt counted, the lead stays where it was) and call the same lead again. Modeled on the redial in Orum and Nooks power dialers.
+  let redialLead = null, lastDialed = null;
+  const glitchLog = (l) => (testMode ? Promise.resolve() : api(`/api/leads/${l.id}/outcome`, { method: 'POST', body: { dispo: 'glitch', note: 'Bad connection, redialed.' } }).catch((e) => toast(e.message, true)));
+  const redialPlace = () => setTimeout(() => { phase = 'idle'; const b = document.getElementById('dhub'); if (b && !phoneState().onCall) b.click(); }, 700);
+  const redialNow = (l) => {
+    if (phase === 'wrap') return;
+    if (!phoneState().onCall) return toast('No call to redial. Tap Call.', true);
+    redialLead = l.id; takeCallDraft(); hangUp(); toast('Hanging up and calling them again.');
+  };
   // Test power dial: pretend leads and a pretend call so anyone can watch the whole flow. Nothing is dialed, saved or counted.
   let testMode = false;
   let testLog = [];
@@ -1167,6 +1195,8 @@ export async function dialerPage(app, user) {
     if (pdBox && phase !== 'calling') { e.preventDefault(); powerStop(); toast('Dialing stopped.'); }
   };
   document.addEventListener('keydown', onEsc);
+  // A mic held open for single calls on iPad is let go when you leave the dialer (power dial keeps its own through the pause chip).
+  window.addEventListener('hashchange', () => { if (!power && !phoneState().onCall) dropMic(); }, { once: true });
   const sessClock = () => { const t = Math.floor((Date.now() - pdStart) / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
   const powerStep = () => {
     clearInterval(pdTimer);
@@ -1257,7 +1287,8 @@ export async function dialerPage(app, user) {
   const upcoming = (cal.meetings || []).filter((m) => m.meet_at > Date.now() - 3600e3).slice(0, 4);
   // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.
   setTimeout(() => api('/api/balances/status').then((b) => { const el = document.getElementById('lowbal'); if (el && b.low?.length) el.innerHTML = `<div class="card" style="border-color:#E8A33D;margin-bottom:12px"><b>${b.low.map((x) => esc(x.name)).join(' and ')} balance ${b.low.some((x) => x.empty) ? 'is empty' : 'is low'}.</b> <span class="small">${b.low.some((x) => x.key === 'twilio') ? 'Calls and texts stop when Twilio runs out. ' : ''}${b.low.some((x) => x.key === 'dataforseo') ? 'Research and scans stop when DataForSEO runs out. ' : ''}An owner can add funds from the Dashboard.</span></div>`; }).catch(() => {}), 50);
-  const filterText = Object.entries(flt).filter(([k, v]) => v && k !== 'tier' && k !== 'cat' && k !== 'db').map(([k, v]) => (k === 'label' ? `Lead database search: ${v}` : k === 'stage' ? `Column: ${String(v).split(',').map((x) => STAGE_LABEL[x] || x).join(', ')}` : `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`)).join(' · ');
+  const filterText = Object.entries(flt).filter(([k, v]) => v && !['tier', 'cat', 'db', 'campaign'].includes(k)).map(([k, v]) => (k === 'label' ? (flt.db ? `Lead database search: ${v}` : String(v)) : k === 'stage' ? `Column: ${String(v).split(',').map((x) => STAGE_LABEL[x] || x).join(', ')}` : `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`)).join(' · ');
+  const listText = q.campaign ? `${q.campaign.label || `${q.campaign.total} leads`}${q.campaign.at ? `, saved ${new Date(q.campaign.at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}` : flt.campaign ? 'No list saved yet. Set one up in the Pipeline.' : filterText || 'Everyone who is due and inside calling hours';
   let lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true };
   let layOpen = false;
   // Click anywhere else, or press Escape, to close the layout menu.
@@ -1279,26 +1310,18 @@ export async function dialerPage(app, user) {
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
           ${testMode ? '' : `<label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label>`}<a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
-          ${testMode ? '' : scriptChip()}
+          ${testMode ? '' : scriptLabel()}
           <button class="btn btn-ghost btn-sm" id="pdtest" title="Try power dialing with pretend leads and a pretend call. Nothing is dialed or saved.">${testMode ? 'Exit test' : 'Test power dial'}</button>
           ${dialOn() ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
       ${testMode ? '<div class="card test-banner"><b>Test mode.</b> Seven pretend leads run the whole dialer, from Start power dial to the result popup and the next lead. Nothing is dialed, texted, booked or saved, and it costs nothing. <a href="#/training/warmup">Warm up in Training</a>. <button type="button" class="btn btn-ghost btn-sm" id="pdtestx">Exit test</button></div>' : ''}
       ${dialTabs('queue', user)}
-      <div class="dropfilters">
-        <label class="dropf" data-sec="tiers"><span>Quality</span><select id="dtier" data-tier-sel aria-label="Quality">${[['', 'Best first', 'all'], ['hot', 'Hot', 'A grade, callbacks, audit requests'], ['good', 'Good', 'B grade'], ['maybe', 'Maybe', 'C grade'], ['low', 'Low', 'D grade'], ['fresh', 'Not researched', 'researching in the background']]
-          .map(([k, n]) => `<option value="${k}"${(flt.tier || '') === k ? ' selected' : ''}>${esc(n)} (${k ? (q.tiers?.[k] ?? 0) : Object.values(q.tiers || {}).reduce((a, b) => a + b, 0)})</option>`).join('')}</select></label>
-        <label class="dropf" data-sec="cats"><span>Call type</span><select id="dcat" data-cat-sel aria-label="Call type">${[['', 'All', 'every call type'], ...CALL_CATS.map((c) => [c.id, c.label, c.lead])]
-          .filter(([k]) => !k || q.cats?.[k] || (flt.cat || '') === k)
-          .map(([k, n]) => `<option value="${k}"${(flt.cat || '') === k ? ' selected' : ''}>${esc(n)} (${k ? (q.cats?.[k] ?? 0) : Object.values(q.cats || {}).reduce((a, b) => a + b, 0)})</option>`).join('')}</select></label>
-      </div>
-      ${fold('dfilters', 'More filters and research status', `<div class="row small" style="margin:-4px 0 10px;gap:8px">Data: <div class="seg">${[['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Has an email']].map(([k, n]) => `<button type="button" data-dq="${k}" class="${(flt.data || '') === k ? 'is-on' : ''}">${n}</button>`).join('')}</div></div>
-      <div id="rsx" class="small muted" style="margin:6px 0 0"></div>
-      ${filterText ? `<div class="row small" style="margin:6px 0 0">Dialing: ${esc(filterText)} <button class="linkbtn" id="dclear">Dial everyone instead</button></div>` : ''}`, Boolean(filterText))}
+      <div class="dsetup card" data-sec="setup"><div><b>Today's list</b><span>${esc(listText)}</span></div><div><b>Script</b><span>${esc(scriptText())}</span></div><div class="dsetup-go"><a class="btn btn-ghost btn-sm" href="#/pipeline">Change in Pipeline</a>${flt.campaign || filterText ? '<button class="linkbtn" id="dclear" title="Forget the saved list and dial everyone who is due">Clear the list</button>' : ''}</div></div>
+      <div id="rsx" class="small muted" style="margin:0 0 6px"></div>
       <div class="dstrip" aria-label="Today"><span class="dgoal"><b>${q.stats.dials}</b> dials <i>of ${user.role === 'admin' ? `<button type="button" class="goal-btn" id="dgoal" title="Click to change your daily dial goal">${q.stats.goal || 60}</button>` : `<span class="goal-fixed" title="Your owner sets your daily dial goal">${q.stats.goal || 60}</span>`}</i><em class="dgbar" aria-hidden="true"><u style="width:${Math.min(100, Math.round((100 * q.stats.dials) / (q.stats.goal || 60)))}%"></u></em>${q.stats.dials >= (q.stats.goal || 60) ? '<b class="gdone">Goal hit</b>' : ''}</span><span><b>${q.stats.talks}</b> owner talks</span><span><b>${q.stats.booked}</b> booked</span><span><b>${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</b> contact rate</span>
         <div class="dlayout"><button type="button" class="dl-btn" id="dlaybtn" aria-expanded="${layOpen}" aria-haspopup="true">Customize layout</button>
           <div class="dlayout-body" id="dlaybody" role="group" aria-label="Customize layout"${layOpen ? '' : ' hidden'}>
             <p class="small muted" style="margin:0">Show or hide. Saved for you on this computer.</p>
-            ${[['queue', 'Up next list'], ['prep', 'Script and research'], ['tiers', 'Quality tabs'], ['cats', 'Call type tabs'], ['upcoming', 'Coming up appointments'], ['links', 'Map, profile and website buttons'], ['notes', 'Note and callback time'], ['compact', 'Tighter spacing']]
+            ${[['queue', 'Up next list'], ['prep', 'Script and research'], ['upcoming', 'Coming up appointments'], ['links', 'Map, profile and website buttons'], ['notes', 'Note and callback time'], ['compact', 'Tighter spacing']]
               .map(([k, n]) => `<label><input type="checkbox" data-lay="${k}"${lay[k] ? ' checked' : ''}> ${n}</label>`).join('')}
             <label title="While a call is up, the script for that lead sits next to the call window"><input type="checkbox" id="dcs"${scriptOn() ? ' checked' : ''}> Script beside the call window</label>
             <button type="button" class="btn btn-ghost btn-sm" id="dlayreset">Show everything</button></div></div></div>
@@ -1320,8 +1343,8 @@ export async function dialerPage(app, user) {
             <div class="dial-phone">${esc(l.phone || '')}</div>
             <div class="pd-live dial-infobox" style="padding:0;margin-top:10px">${contactRows(callInfo(l).filter((x) => ['Email', 'Owner', 'Website', 'Google'].includes(x.k)))}</div>
             <div class="row" style="margin-top:14px">
-              ${dialOn() ? `<button class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" id="dhub">${icon.phone}Call</button>` : ''}
-              <a class="btn ${dialOn() ? 'btn-ghost' : 'btn-mint btn-xl'}" style="width:auto;${dialOn() ? '' : 'flex:1 1 200px'}" href="${telHref(l.phone)}" id="dtel">${dialOn() ? '' : icon.phone}Call from my phone</a>
+              ${dialOn() ? `<button class="btn btn-mint btn-xl" style="width:auto;flex:1 1 200px" id="dhub">${icon.phone}Call</button>${lastDialed === l.id ? '<button class="btn btn-ghost" id="dredial" title="The call dropped or they could not hear you. Calls them again, nothing counted against the lead.">Redial</button>' : ''}` : ''}
+              <a class="btn ${dialOn() ? 'btn-ghost' : 'btn-mint btn-xl'}" style="width:auto;${dialOn() ? '' : 'flex:1 1 200px'}" href="${telHref(l.phone)}" data-tel-lead="${esc(l.id)}" id="dtel">${dialOn() ? '' : icon.phone}Call from my phone</a>
             </div>
             ${me.twilio && !testMode ? `<div class="row" style="margin-top:10px;align-items:flex-end">${nums.numbers.length > 1 ? callerSelect(nums.numbers) : ''}<span id="pbadge" style="margin-bottom:10px">${testMode ? '' : phoneBadge()}</span></div>` : ''}
             <div class="row" data-sec="links" style="margin-top:12px">
@@ -1350,7 +1373,7 @@ export async function dialerPage(app, user) {
       g.classList.toggle('lw-cols', custom);
       if (custom) g.style.setProperty('--dg-cols', shown.length ? shown.map((id) => COLS[id]).join(' ') : '1fr'); else g.style.removeProperty('--dg-cols');
     }, items: [
-      ['filters', 'Quality and call type', '.dropfilters'], ['strip', 'Today: dials and goal', '.dstrip'], ['upcoming', 'Coming up', '.upcoming'],
+      ['setup', 'Today\'s list and script', '.dsetup'], ['strip', 'Today: dials and goal', '.dstrip'], ['upcoming', 'Coming up', '.upcoming'],
       ['queue', 'Up next', '.dial-grid > .dial-queue'], ['lead', 'Call card', '.dial-grid > .dial-left'], ['prep', 'Script and research', '.dial-grid > .dial-prep'],
       ['callcard', 'Who to call', '.dial-left > .dial-card'], ['actions', 'Skip and book', '.dial-left > .dial-after'],
       ['p-script', 'Script', '.dial-prep details.fold[data-fold="script"]'], ['p-snapshot', 'Their numbers', '.dial-prep details.fold[data-fold="snapshot"]'],
@@ -1377,9 +1400,6 @@ export async function dialerPage(app, user) {
     offDialHover = hoverCards(view, { selector: '[data-jump]', build: (el) => leadHover(q.queue[Number(el.dataset.jump)]) });
     $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto2', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
     $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
-    $$('[data-dq]', view).forEach((b) => b.addEventListener('click', () => { flt = { ...flt, data: b.dataset.dq }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); }));
-    $('#dcat', view)?.addEventListener('change', (e) => { flt = { ...flt, cat: e.target.value }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); });
-    $('#dtier', view)?.addEventListener('change', (e) => { flt = { ...flt, tier: e.target.value }; try { localStorage.setItem(DIAL_KEY, JSON.stringify(flt)); } catch { /* ignore */ } dialerPage(app, user); });
     $('#pdwh', view)?.addEventListener('change', (e) => setWait(e.target.value));
     $('#pdtest', view)?.addEventListener('click', () => {
       if (testMode) return dialerPage(app, user);
@@ -1390,8 +1410,7 @@ export async function dialerPage(app, user) {
     $('#pdtestx', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
     $('#tsagain', view)?.addEventListener('click', () => startTest());
     $('#tsexit', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
-    $('#dscript', view)?.addEventListener('click', pickAgain);
-    $('#pdgo', view)?.addEventListener('click', async () => { if (!testMode && !power && !(await ensureScript())) return; warmAudio(); if (testMode) unlockSpeech(); if (!power) holdMic(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); if (!testMode) saveDial({ start: true, running: true, filter: flt, label: filterText, calls: pdCalls }); window.dispatchEvent(new Event('rw-power')); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
+    $('#pdgo', view)?.addEventListener('click', async () => { if (!testMode && !power && !(await needScript())) return; warmAudio(); if (testMode) unlockSpeech(); if (!power) holdMic(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); if (!testMode) saveDial({ start: true, running: true, filter: flt, label: filterText, calls: pdCalls }); window.dispatchEvent(new Event('rw-power')); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
     prefetch(l);
@@ -1403,19 +1422,22 @@ export async function dialerPage(app, user) {
     const bookedId = (DISP.find((d) => d.acts === 'booked') || { id: 'booked' }).id;
     $('#dbook', view).addEventListener('click', () => (testMode ? testBook(l) : bookModal(l, () => afterBooking(l, bookedId))));
     const callerVal = bindCaller(view);
+    $('#dredial', view)?.addEventListener('click', () => { if (busyPhase()) return redialNow(l); glitchLog(l).then(() => redialPlace()); });
     $('#dhub', view)?.addEventListener('click', async (e) => {
       const btn = e.currentTarget;
       if (phase === 'wrap' || phoneState().onCall) return toast('Finish this call and save the result first.', true);
       if (testMode) { warmAudio(); unlockSpeech(); if (!power) holdMic(); }   // inside the tap: iPhone and iPad only start mic and voice from a tap
-      if (!testMode && !power && !(await ensureScript())) return;
-      phase = 'calling';
+      else if (isApple() && !micHeld()) holdMic();   // iPad: one mic stays open between calls so the system does not drop back to the built in mic and speaker
+      if (!testMode && !power && !(await needScript())) return;
+      phase = 'calling'; lastDialed = l.id;
       busy(btn, true);
       try {
         showCallScript({ lead: l, intel: intelCache.get(l.id) || null, rep: REP, voice: VOICE });
         await placeCall({ test: testMode, script: testMode ? null : scriptTag(l), outcome: l.test_outcome, onLive: () => { if (testMode) practiceModal({ persona: l.persona, lead: l, onScore: (n) => testScore.set(l.id, n), onFinish: () => { if (phoneState().onCall) hangUp(); } }); }, leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
-          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : [['Script', () => setScriptOn(!scriptOn())]]), ['Text them', () => (testMode ? testText(l) : textModal(l, { rep: REP }))], ['Book appointment', () => (testMode ? testBook(l) : bookModal(l, () => afterBooking(l, bookedId))), 'primary'], ['Full details', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {}))]] },
+          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : [['Script', () => setScriptOn(!scriptOn())]]), ['Redial', () => redialNow(l)], ['Text them', () => (testMode ? testText(l) : textModal(l, { rep: REP }))], ['Book appointment', () => (testMode ? testBook(l) : bookModal(l, () => afterBooking(l, bookedId))), 'primary'], ['Full details', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {}))]] },
           onEnd: ({ answered }) => {
             if (testMode && !power) dropMic();   // a single test call lets go of the mic when it ends
+            if (redialLead === l.id) { redialLead = null; phase = 'idle'; glitchLog(l); redialPlace(); return; }
             const dr = takeCallDraft();
             if (skipDispo === l.id) { skipDispo = null; phase = 'idle'; return; }
             // The same window turns into the result picker. The next call waits until it is saved.
@@ -1451,11 +1473,12 @@ export async function dialerPage(app, user) {
   // The result opens inside the call window itself (wrapUp). Skipping it parks the power dial on a small "Waiting for the result" box.
   const openDispo = (l, answered, dr) => {
     const w = whoIs(l);
-    const powerLine = `<button type="button" class="cb-book" data-pbook>Book appointment</button>${power ? `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="small muted">Next call starts ${pdWait} second${pdWait === 1 ? '' : 's'} after you save.</span><button type="button" class="cbp-stop" data-pstop>Stop dialing</button></div>` : ''}`;
+    const powerLine = `<button type="button" class="cb-book" data-pbook>Book appointment</button><button type="button" class="cb-q cb-redial" data-predial title="They could not hear you, or the line or your mic dropped. Nothing is counted against the lead.">Redial, bad connection</button>${power ? `<div class="row" style="justify-content:space-between;margin-top:8px"><span class="small muted">Next call starts ${pdWait} second${pdWait === 1 ? '' : 's'} after you save.</span><button type="button" class="cbp-stop" data-pstop>Stop dialing</button></div>` : ''}`;
     wrapUp({ lead: testMode ? null : l, title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), note: dr.note, callbackAt: dr.when,
       sub: answered ? 'Pick how it went. It moves the lead to the right next step.' : 'No one picked up? Pick the result.', answered, skipLabel: 'Later',
       foot: powerLine, footBind: (el) => {
         el.querySelector('[data-pbook]')?.addEventListener('click', () => (testMode ? testBook(l) : bookModal(l, () => { bookedDuring.add(l.id); toast('Booked. Pick the result and Save.'); })));
+        el.querySelector('[data-predial]')?.addEventListener('click', async () => { closeCallWindow(); phase = 'idle'; await glitchLog(l); redialPlace(); });
         el.querySelector('[data-pstop]')?.addEventListener('click', () => { powerStop(); toast('Dialing stopped.'); const r = el.querySelector('.row'); if (r) r.innerHTML = '<span class="small muted">Dialing stopped. Save the result to finish.</span>'; });
       },
       onSkip: () => { phase = 'idle'; if (power) holdPower(() => { phase = 'wrap'; openDispo(l, answered, dr); }); },

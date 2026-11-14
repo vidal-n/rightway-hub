@@ -35,11 +35,19 @@ export const reasonLabel = (r) => REASONS[r]?.label || 'On the list';
 export const isLegal = (r) => Boolean(REASONS[r]?.legal);
 export const blocksEmail = (r) => Boolean(REASONS[r]?.email);
 
+// Every key a copy of this business could be found by (Nov 2026, V: a partner called a lead already on Do Not Call). `dupKeys` writes the name key with the ZIP
+// when there is one, else the city, so "ABC Roofing, Miami 33139" and "ABC Roofing, Miami" (no ZIP) never met. The Do Not Call list writes and checks both.
+export function blockKeys(l) {
+  const zip = (String(l?.zip || '').match(/\d{5}/) || [''])[0];
+  const set = new Set([...dupKeys(l || {}), ...dupKeys({ ...l, zip: zip || '' }), ...dupKeys({ ...l, zip: '' })]);
+  return [...set];
+}
+
 // The rows written for one lead and reason: one per dedupe key, with `blocks` 1 when that key stops a call or text.
 export function rowsFor(lead, reason) {
   const def = REASONS[reason];
   if (!def) return [];
-  return dupKeys(lead).map((key) => ({ key, blocks: def.dedupeOnly ? 0 : def.all ? 1 : key.startsWith('p:') ? 1 : 0 }));
+  return blockKeys(lead).map((key) => ({ key, blocks: def.dedupeOnly ? 0 : def.all ? 1 : key.startsWith('p:') ? 1 : 0 }));
 }
 
 // A phone number the way keys store it: 10 digits, no leading 1.

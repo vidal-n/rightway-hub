@@ -248,7 +248,7 @@ const ADD_COLUMNS = [
   // Lead database: what each call reached, and the per lead roll up (src/leaddb.js, public/js/leaddb.js).
   ['activities', 'answered_by TEXT'], ['activities', 'hangup_stage TEXT'], ['activities', 'objection TEXT'], ['activities', 'attempt_no INTEGER'], ['activities', 'dispo_id TEXT'],
   ['activities', 'script TEXT'], ['activities', 'script_v TEXT'], ['activities', 'script_how TEXT'],
-  ['leads', 'qual TEXT'], ['leads', 'qual_n INTEGER'], ['leads', 'menu_path TEXT'], ['leads', 'reach_score INTEGER'], ['leads', 'engage_score INTEGER'], ['leads', 'roll_at INTEGER'],
+  ['users', 'campaign TEXT'], ['leads', 'qual TEXT'], ['leads', 'qual_n INTEGER'], ['leads', 'menu_path TEXT'], ['leads', 'reach_score INTEGER'], ['leads', 'engage_score INTEGER'], ['leads', 'roll_at INTEGER'],
 ];
 
 let ready = null;

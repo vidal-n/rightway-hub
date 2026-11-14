@@ -20,9 +20,9 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
   const month = monthKey();
   const appt = apptScope(user);
   const [mine, team, stages, leads, due, meetings, clients, tasks, posts, unread, orders, recent] = await Promise.all([
-    first(env, `SELECT SUM(type = 'call') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
+    first(env, `SELECT SUM(type = 'call' AND COALESCE(outcome, '') != 'glitch') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
       FROM activities WHERE type IN ('call','meeting') AND by = ? AND at >= ?`, user.id, day),
-    first(env, `SELECT SUM(type = 'call') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
+    first(env, `SELECT SUM(type = 'call' AND COALESCE(outcome, '') != 'glitch') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
       FROM activities WHERE type IN ('call','meeting') AND at >= ?`, week),
     all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage'),
     all(env, `SELECT timezone, tz_alt, grade FROM leads WHERE dnc = 0 AND stage IN (${OPEN.map(() => '?').join(',')})`, ...OPEN),

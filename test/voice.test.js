@@ -138,7 +138,7 @@ test('browser calling: owner token sets up Twilio once, prepared calls dial from
     assert.equal(m.seen.filter((x) => x.url.endsWith('/Participants/CAboss1.json')).pop().body.get('Muted'), 'false');
     // A non-owner identity cannot join
     r = await hook(t, '/api/twilio/client-voice', { monitor: act, mode: 'listen', From: 'client:rw_nobody', CallSid: 'CAx' });
-    assert.match(r.data, /Only an owner/);
+    assert.match(r.data, /Only the team/);
     // Call ends: duration saved, nothing live
     m.state.cust = 'completed';
     await hook(t, `/api/twilio/cust-status?a=${act}`, { CallStatus: 'completed', CallDuration: '95' });
@@ -209,11 +209,12 @@ test('browser calling: owner token sets up Twilio once, prepared calls dial from
       const tokenStr = inv.data.inviteUrl.split('/#/invite/')[1];
       const acc = await t.call('POST', '/api/auth/invite/accept', { token: tokenStr, name: 'Rep', password: 'another long password' });
       assert.equal(acc.status, 200, JSON.stringify(acc.data));
-      assert.equal((await t.call('GET', '/api/voice/live')).status, 403);
+      // agents can see live calls to listen in (Nov 2026)
+      assert.equal((await t.call('GET', '/api/voice/live')).status, 200);
       assert.equal((await t.call('GET', '/api/voice/setup')).status, 403);
       assert.equal((await t.call('GET', '/api/recordings')).data.recordings.length, 0);
       assert.equal((await t.call('GET', `/api/recordings/${act2}/audio`)).status, 404);
-      assert.equal((await t.call('POST', `/api/voice/monitor/${act}`, { mode: 'listen' })).status, 403);
+      assert.equal((await t.call('POST', `/api/voice/monitor/${act}`, { mode: 'listen' })).status, 409);
       await t.call('POST', '/api/auth/logout', {});
       await t.call('POST', '/api/auth/login', { email: 'v@rightwaygrowth.com', password: 'correct horse battery' });
     } else {
@@ -263,7 +264,7 @@ test('custom dispositions: owner edits the list, results drive the lead, dial ou
   const t = setup();
   await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
   let r = await t.call('GET', '/api/dispositions');
-  assert.equal(r.data.dispositions.length, 17);
+  assert.equal(r.data.dispositions.length, 18);
   assert.equal(r.data.dispositions.find((d) => d.id === "not_owner").acts, "gatekeeper");
   assert.equal(r.data.custom, false);
   // Bad lists are refused
@@ -316,7 +317,7 @@ test('custom dispositions: owner edits the list, results drive the lead, dial ou
 
   // Reset to default
   r = await t.call('PUT', '/api/dispositions', { reset: true });
-  assert.equal(r.data.dispositions.length, 17);
+  assert.equal(r.data.dispositions.length, 18);
 });
 
 test('agents: status, presence, login time, live call, analytics with handle time and lead quality', async () => {
@@ -363,11 +364,13 @@ test('listen, whisper and barge: always explained, never silently missing', asyn
   assert.deepEqual(joinState(boss, { by: 'u2', status: 'in-progress', conf_sid: 'CF1' }, rep), { ok: true, why: '' });
   assert.equal(joinState(boss, { by: 'u2', status: 'ringing', conf_sid: 'CF1' }, rep).ok, true, 'can listen while it rings');
   assert.match(joinState(boss, { by: 'u1', status: 'in-progress', conf_sid: 'CF1' }, boss).why, /your own/);
-  assert.match(joinState(boss, { by: 'u3', status: 'in-progress', conf_sid: 'CF1' }, other).why, /Owners cannot/);
+  assert.equal(joinState(boss, { by: 'u3', status: 'in-progress', conf_sid: 'CF1' }, other).ok, true, 'owners can listen to each other');
+  assert.match(joinState(boss, { by: 'u3', status: 'in-progress', conf_sid: 'CF1', from_num: '+13055550111' }, other, new Set(['+13055550111'])).why, /personal line/);
   const early = joinState(boss, { by: 'u2', status: 'connecting', conf_sid: null }, rep);
   assert.equal(early.ok, false); assert.equal(early.wait, true); assert.match(early.why, /Starting up/);
   assert.match(joinState(boss, { by: 'u2', status: 'in-progress', conf_sid: null }, rep).why, /phone number/);
-  assert.equal(joinState(rep, { by: 'u3', status: 'in-progress', conf_sid: 'CF1' }, other).ok, false, 'teammates never monitor');
+  assert.equal(joinState(rep, { by: 'u3', status: 'in-progress', conf_sid: 'CF1' }, other).ok, true, 'agents can listen to each other and to owners');
+  assert.equal(joinState({ id: 'c1', role: 'client' }, { by: 'u3', status: 'in-progress', conf_sid: 'CF1' }, other).ok, false, 'clients never');
 });
 
 test('recordings play whole, seek with ranges, and download', async () => {

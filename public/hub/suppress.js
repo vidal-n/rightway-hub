@@ -70,6 +70,9 @@ export async function suppressPage(app, user) {
       <div class="card"><h3 style="margin:0 0 8px">Added in the last 30 days</h3>${series.length ? `<div class="bg-chart">${stackBars(st.days.map(dayLabel), series, { h: 190, pad: 28 })}</div>` : '<p class="muted small">Nothing added in the last 30 days.</p>'}
         ${Object.keys(st.reps).length ? `<p class="small muted" style="margin:8px 0 0">By person: ${Object.entries(st.reps).map(([n, c]) => `${esc(n)} ${c}`).join(', ')}</p>` : ''}</div>
     </div>
+    ${owner ? `<div class="card" style="margin-bottom:14px" id="sp-sweep"><h3 style="margin:0 0 6px">Check every lead against this list</h3>
+      <p class="small muted" style="margin:0 0 8px">One list for the whole company. This looks at every lead, including copies with another phone number or no ZIP, and puts any copy of a business on Do Not Call on Do Not Call too, so nobody can dial it. It also runs by itself once a day, and the moment a lead goes on the list. Free, no outside calls.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap;align-items:center"><button class="btn btn-primary" id="sp-sweepgo">Check now</button><span class="small" id="sp-sweepmsg"></span></div></div>` : ''}
     ${owner ? `<div class="card" style="margin-bottom:14px" id="sp-registry"><h3 style="margin:0 0 6px">Scrub against a do not call registry</h3>
       <p class="small muted" style="margin:0 0 8px">Business to business calls are mostly outside the federal registry, but owners of small shops often list a personal or cell number, and states add their own rules (Florida keeps its own list). Download your list from donotcall.gov (and your state's list), then choose the file here. The file is read in your browser and never uploaded: only the numbers that match your leads are sent. ${esc(reg.text)}.</p>
       <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end"><label class="field" style="flex:1 1 180px;margin:0"><span>Name of the list</span><input id="sp-label" value="National Do Not Call Registry" maxlength="60"></label>
@@ -117,6 +120,23 @@ export async function suppressPage(app, user) {
   });
 
   // Registry scrub: the file is read here, in chunks, and only numbers that match our leads are sent.
+  $('#sp-sweepgo', view)?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget, msg = $('#sp-sweepmsg', view);
+    btn.disabled = true;
+    try {
+      let after = '', scanned = 0, marked = 0;
+      for (;;) {
+        const r = await api('/api/suppress/sweep', { method: 'POST', body: { after } });
+        scanned += r.scanned; marked += r.marked;
+        msg.textContent = `Checked ${fmt.int(scanned)} leads, ${fmt.int(marked)} put on Do Not Call...`;
+        if (!r.next) break;
+        after = r.next;
+      }
+      msg.textContent = `Done. Checked ${fmt.int(scanned)} leads. ${marked ? `${fmt.int(marked)} copies of businesses on the list are now Do Not Call.` : 'No copies found, every lead is clean.'}`;
+      if (marked) toast(`${marked} lead${marked === 1 ? '' : 's'} put on Do Not Call`);
+    } catch (err) { msg.textContent = err.message; }
+    btn.disabled = false;
+  });
   $('#sp-scrub', view)?.addEventListener('click', async (e) => {
     const files = [...($('#sp-file', view).files || [])];
     const prog = $('#sp-prog', view);

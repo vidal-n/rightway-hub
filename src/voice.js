@@ -173,11 +173,11 @@ route('POST', '/api/twilio/client-voice', async ({ env, request, url }) => {
 
   if (p.monitor) {
     const u = await userForIdentity(env, p.From);
-    if (!u || u.role !== 'admin') return no('Only an owner can listen to calls.');
+    if (!u || !['admin', 'team'].includes(u.role)) return no('Only the team can listen to calls.');
     const a = await first(env, 'SELECT * FROM activities WHERE id = ?', p.monitor);
     if (!a || !LIVE.includes(a.status)) return no('That call has ended.');
     if (!a.conf_sid) return no('That call is not on a line you can join yet. Try again in a moment.');
-    if (!(await import('./lines.js').then((m) => m.canSeeCallBy(env, u, a.by)))) return no('Owners cannot listen to each other.');
+    if (a.from_num && (await import('./lines.js').then((m) => m.hiddenLines(env, u))).has(a.from_num)) return no('That call is on a personal line.');
     const mode = MODES.includes(p.mode) ? p.mode : 'listen';
     await run(env, 'UPDATE activities SET mon_sid = ?, mon_by = ?, mon_mode = ? WHERE id = ?', p.CallSid || null, u.id, mode, a.id);
     const coach = mode === 'whisper' && a.call_sid ? ` coach="${xml(a.call_sid)}"` : '';
@@ -341,7 +341,7 @@ route('POST', '/api/voice/calls/:id/disposition', async ({ env, user, params, bo
 
 // ---------- owner tools: live calls, listen, whisper, barge ----------
 route('GET', '/api/voice/live', async ({ env, user }) => {
-  requireAdmin(user);
+  requireStaff(user);
   const rows = await all(env, `SELECT a.id, a.at, a.status, a.answered_at, a.to_num, a.from_num, a.by, a.mon_by, a.mon_mode, u.name AS rep, l.business
     FROM activities a LEFT JOIN users u ON u.id = a.by LEFT JOIN leads l ON l.id = a.lead_id
     WHERE a.conf_sid IS NOT NULL AND a.status IN ('connecting','ringing','in-progress') AND a.at > ? ORDER BY a.at DESC LIMIT 30`, now() - 4 * 3600e3);
@@ -349,7 +349,7 @@ route('GET', '/api/voice/live', async ({ env, user }) => {
 });
 
 route('POST', '/api/voice/monitor/:id', async ({ env, user, params, body }) => {
-  requireAdmin(user);
+  requireStaff(user);
   const mode = (await body()).mode;
   if (!MODES.includes(mode)) throw new HttpError('Pick listen, whisper or barge.');
   const a = await first(env, 'SELECT * FROM activities WHERE id = ?', params.id);

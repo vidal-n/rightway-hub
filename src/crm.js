@@ -5,6 +5,7 @@ import { requireStaff, requireAdmin } from './auth.js';
 import { PLANS, tasksForMonth, monthKey } from './plans.js';
 import { scopeFromLead } from './scopeof.js';
 import { tierOf as scopeTier } from '../public/js/scope.js';
+import { tierOf as callTier, cleanIds } from '../public/js/campaign.js';
 import { route } from './router.js';
 import { scoreLead, dupKeys, callCategory, personOf } from '../public/js/leadintel.js';
 import { resolveDispo } from './dispo.js';
@@ -17,7 +18,7 @@ import { can } from '../public/js/jobs.js';
 import { cleanNewLead, queueScrub } from './scrub.js';
 import { contactFromImport } from '../public/js/names.js';
 import { resolveZone, canCallNow, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
-import { suppress, suppressMany, suppressedMap, noteHits, noteOutcome, entryFor } from './suppress.js';
+import { suppress, suppressMany, suppressedMap, noteHits, noteOutcome, entryFor, blockedKeys, leadBlocked, blockedFor, blockText } from './suppress.js';
 
 // A booking, however it was made: a call that ended in booked or a callback, or an audit booked from the lead, the booking page or the calendar.
 // Moved audits do not count again. Used by the dialer strip, the dashboard and the analytics.
@@ -84,6 +85,10 @@ export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, not
       else { set.stage = lead.stage === 'new' || lead.stage === 'not_now' ? 'attempting' : lead.stage; set.next_action_at = at + NEXT_AFTER_ATTEMPT[attempts] * DAY; set.next_action = `Call attempt ${attempts + 1}`; }
       break;
     }
+    case 'glitch':
+      // The line or the mic failed, not the lead: nothing changes, no attempt is counted and no 3 hour wait. It still counts toward the 3 calls a day Florida cap, which is the law, not our rule.
+      delete set.last_call_at;
+      break;
     case 'callback':
       if (!callbackAt) throw new HttpError('Pick a callback time.');
       Object.assign(set, { stage: 'callback', next_action_at: callbackAt, next_action: 'Callback' });
@@ -225,7 +230,8 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
   requireStaff(user);
   const q = (url.searchParams.get('q') || '').trim().toLowerCase();
   const stage = url.searchParams.get('stage');
-  let rows = await all(env, `SELECT ${LIST_COLS} FROM leads ${stage ? 'WHERE stage = ?' : ''} ORDER BY updated_at DESC LIMIT 5000`, ...(stage ? [stage] : []));
+  // dials and last_dispo come from the call roll up (src/leaddb.js): the Pipeline's Call setup splits fresh leads from follow ups by them.
+  let rows = await all(env, `SELECT ${LIST_COLS}, lead_roll.r_dials AS dials, lead_roll.r_last_dispo AS last_dispo FROM leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id ${stage ? 'WHERE leads.stage = ?' : ''} ORDER BY leads.updated_at DESC LIMIT 5000`, ...(stage ? [stage] : []));
   const qd = q.replace(/\D/g, '');
   if (q) rows = rows.filter((l) => [l.business, l.contact_name, l.phone, l.email, l.city, l.industry, l.category, l.zip, l.tags].some((v) => String(v || '').toLowerCase().includes(q))
     || (qd.length >= 4 && qd.length === q.replace(/[\s()+-]/g, '').length && String(l.phone || '').replace(/\D/g, '').includes(qd)));
@@ -582,32 +588,74 @@ async function fullRows(env, list, user) {
   }
   return list.map((l) => (byId.has(l.id) ? seeAppt(decorate(byId.get(l.id)), user) : l));
 }
+// The call campaign: the exact leads a person picked on the Pipeline for today's dialing, saved on their own account.
+async function campaignOf(env, userId) {
+  const r = await first(env, 'SELECT campaign FROM users WHERE id = ?', userId);
+  try { const c = r?.campaign ? JSON.parse(r.campaign) : null; return { ids: cleanIds(c?.ids), label: String(c?.label || ''), at: Number(c?.at) || 0 }; } catch { return { ids: [], label: '', at: 0 }; }
+}
+route('GET', '/api/dialer/campaign', async ({ env, user }) => { requireStaff(user); const c = await campaignOf(env, user.id); return json({ total: c.ids.length, label: c.label, at: c.at }); });
+route('PUT', '/api/dialer/campaign', async ({ env, user, body }) => {
+  requireStaff(user);
+  const b = await body();
+  let ids = cleanIds(b.ids);
+  if (!ids.length) throw new HttpError('Pick at least one lead for the list.');
+  // Leave out anyone on the Do Not Call list or a copy of a business on it, whoever put them there (the list is the whole company's).
+  const keys = await blockedKeys(env);
+  const found = [];
+  for (let i = 0; i < ids.length; i += 90) found.push(...await all(env, `SELECT id, dnc, stage, phone, phone_digits, website, business, city, zip FROM leads WHERE id IN (${ids.slice(i, i + 90).map(() => '?').join(',')})`, ...ids.slice(i, i + 90)));
+  const bad = new Set(found.filter((l) => l.stage === 'dnc' || leadBlocked(keys, l)).map((l) => l.id));
+  const removed = ids.filter((id) => bad.has(id)).length;
+  ids = ids.filter((id) => !bad.has(id));
+  if (!ids.length) throw new HttpError('Every lead on that list is on the Do Not Call list.', 409);
+  const c = { ids, label: String(b.label || '').slice(0, 160), at: now() };
+  await run(env, 'UPDATE users SET campaign = ? WHERE id = ?', JSON.stringify(c), user.id);
+  return json({ total: ids.length, label: c.label, at: c.at, removed });
+});
+// Before a call from the rep's own phone (a tel: link, which the Hub cannot see): the same checks the browser phone makes.
+route('GET', '/api/leads/:id/call-check', async ({ env, user, params }) => {
+  requireStaff(user);
+  const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', params.id);
+  if (!lead) throw new HttpError('Lead not found.', 404);
+  if (lead.dnc || lead.stage === 'dnc') return json({ ok: false, reason: 'This lead is on Do Not Call. Do not call them.' });
+  const row = await blockedFor(env, lead);
+  if (row) return json({ ok: false, reason: blockText(row) });
+  if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) return json({ ok: false, reason: "It's outside calling hours in the lead's time zone. Call later." });
+  return json({ ok: true });
+});
+route('DELETE', '/api/dialer/campaign', async ({ env, user }) => { requireStaff(user); await run(env, 'UPDATE users SET campaign = NULL WHERE id = ?', user.id); return json({ ok: true }); });
 route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   requireStaff(user);
   const t = now();
   // `stage` (a Pipeline column, or several joined by commas) narrows the queue to those stages. Only stages that can be called count.
   const stages = (url.searchParams.get('stage') || '').split(',').map((x) => x.trim()).filter((x) => CALLABLE.includes(x));
   const useStages = stages.length ? stages : CALLABLE;
+  // campaign=1: the list this person saved on the Pipeline (Call setup). Any stage but won and do not call, no due date check
+  // (they picked these leads on purpose), the same calling hours, 3 hour wait and Florida cap as always.
+  const camp = url.searchParams.get('campaign') === '1' ? await campaignOf(env, user.id) : null;
   // Light columns only for the sort, the filters and the counts (full rows carry big research JSON). The few rows sent back are read in full below.
   // db=1: the rep's "Dial this search" from the Lead database (src/leaddb.js), applied as SQL.
   let dbSql = '', dbVals = [];
-  if (url.searchParams.get('db') === '1') {
+  if (!camp && url.searchParams.get('db') === '1') {
     const { dialFilterOf, DB_FROM } = await import('./leaddb.js');
     const { whereFor } = await import('../public/js/leaddb.js');
     const w = whereFor(await dialFilterOf(env, user.id), { now: t });
     if (w.vals.length < 80) { dbSql = ` AND id IN (SELECT leads.id FROM ${DB_FROM} WHERE ${w.where})`; dbVals = w.vals; }
   }
-  const rows = await all(env, `SELECT ${LIST_COLS} FROM leads WHERE dnc = 0 AND stage IN (${useStages.map(() => '?').join(',')})
-    AND ('p:' || phone_digits) NOT IN (SELECT key FROM suppressions WHERE blocks = 1 AND lifted_at IS NULL)
+  const supp = `AND ('p:' || phone_digits) NOT IN (SELECT key FROM suppressions WHERE blocks = 1 AND lifted_at IS NULL)`;
+  const rows = camp
+    ? (camp.ids.length ? await all(env, `SELECT ${LIST_COLS} FROM leads WHERE dnc = 0 AND stage NOT IN ('won', 'dnc') AND id IN (SELECT value FROM json_each(?)) ${supp} AND phone_digits IS NOT NULL LIMIT 2000`, JSON.stringify(camp.ids)) : [])
+    : await all(env, `SELECT ${LIST_COLS} FROM leads WHERE dnc = 0 AND stage IN (${useStages.map(() => '?').join(',')})
+    ${supp}
     AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL${dbSql} ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...useStages, t, ...dbVals);
   // Florida caps sales calls at 3 per person in 24 hours on the same subject (Fla. Stat. 501.616(6)): leads dialed 3 times since this time yesterday wait.
   const capped = new Set((await all(env, `SELECT lead_id FROM activities WHERE type IN ('call','manual_call') AND at > ? AND lead_id IS NOT NULL
       AND (status IS NULL OR status NOT IN ('inbound','missed','voicemail','inbound_answered')) AND NOT (status = 'ready' AND outcome IS NULL) GROUP BY lead_id HAVING COUNT(*) >= 3`, t - 864e5)).map((r) => r.lead_id));
-  const priority = { callback: 0, audit_requested: 1, no_show: 2, follow_up: 3, new: 4, attempting: 5, not_now: 6 };
+  const priority = { callback: 0, audit_requested: 1, no_show: 2, follow_up: 3, new: 4, attempting: 5, audit_booked: 6, not_now: 7, lost: 8 };
   const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier', 'data', 'cat'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
   const minScore = Number(url.searchParams.get('minScore')) || 0;
   const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
-  const decorated = rows.filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3) && !capped.has(l.id)).map(decorate); // once per lead: tiers and the queue share it
+  const blockKeys = await blockedKeys(env); // copies of a Do Not Call business (another phone, same name and place or website) never come up
+  const decorated = rows.filter((l) => !leadBlocked(blockKeys, l)).filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3) && !capped.has(l.id)).map(decorate); // once per lead: tiers and the queue share it
   const ready = decorated
     .map((l) => seeAppt(l, user))
     .filter((l) => (!f.tz || f.tz.split(',').includes(l.tz_short)) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())
@@ -625,11 +673,11 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   // `count=1`: only how many are callable right now (the "pick up where you left off" prompt), no lead rows.
   if (url.searchParams.get('count')) return json({ count: now_.length });
   const dayBegin = dayFrom(url.searchParams.get('since'));
-  const stats = await first(env, `SELECT SUM(type = 'call') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
+  const stats = await first(env, `SELECT SUM(type = 'call' AND COALESCE(outcome, '') != 'glitch') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
       FROM activities WHERE type IN ('call','meeting') AND by = ? AND at >= ?`, user.id, dayBegin);
   const page = now_.slice(0, Number(url.searchParams.get('limit')) || 50);
   const queue = await fullRows(env, page, user);
-  return json({ queue, waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0, goal: await dialGoalOf(env, user.id) }, tiers, cats });
+  return json({ campaign: camp ? { total: camp.ids.length, label: camp.label, at: camp.at } : null, queue, waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0, goal: await dialGoalOf(env, user.id) }, tiers, cats });
 });
 // Where this person left off, from the server so it works on any device and with no local record: their last call (business and
 // time) and how many calls they made in the last 12 hours. Modeled on the resume prompts in Close.com and Outreach dialers.
@@ -641,12 +689,8 @@ route('GET', '/api/dialer/resume', async ({ env, user }) => {
   const recent = await first(env, `SELECT COUNT(*) AS n FROM activities WHERE type = 'call' AND by = ? AND at >= ?`, user.id, t - 12 * 3600e3);
   return json({ last: last ? { business: last.business || 'a lead', at: last.at, id: last.lead_id } : null, calls: recent?.n || 0 });
 });
-// Quality tiers: callbacks and booked follow ups always count as hot; not researched yet is its own queue.
-export function tierOf(l) {
-  if (['callback', 'audit_requested', 'no_show'].includes(l.stage)) return 'hot';
-  if (!l.intel_at && !l.grade) return 'fresh';
-  return { A: 'hot', B: 'good', C: 'maybe', D: 'low' }[l.grade] || (l.intel_at ? 'maybe' : 'fresh');
-}
+// Quality tiers: callbacks and booked follow ups always count as hot; not researched yet is its own queue (shared with the Pipeline, public/js/campaign.js).
+export const tierOf = callTier;
 
 // Website form (public). Add the Hub's /api/public/lead as the form action on rightwaygrowth.com.
 const ALLOWED_ORIGINS = ['https://rightwaygrowth.com', 'https://www.rightwaygrowth.com'];

@@ -3021,3 +3021,18 @@ ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
   .ins-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .ins-tile { padding: 9px 10px; } .ins-tile b { font-size: 18px; }
 }
 .dp-q .chip.on, .dp-q .chip.on:hover, .db-presets .chip.on, .db-presets .chip.on:hover { background: var(--btn); color: var(--btn-ink); border-color: transparent; }
+
+/* Call setup on the Pipeline and the slim dialer summary (Nov 2026) */
+.csetup { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; width: 100%; }
+.cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px; align-items: start; }
+.cs-grid > * { min-width: 0; }
+.cs-wide { grid-column: 1 / -1; }
+.cs-h { display: block; font-weight: 600; margin-bottom: 6px; }
+.cs-kind { flex-wrap: wrap; }
+.cs-results, .cs-stages { margin-top: 8px; }
+.cs-foot { display: flex; gap: 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-top: 12px; }
+.cs-sum { margin: 0; flex: 1 1 280px; min-width: 0; }
+.dsetup { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 10px 14px; margin: 0 0 12px; }
+.dsetup > div { min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.dsetup b { font-size: 12px; color: var(--muted); font-weight: 600; }
+.dsetup .dsetup-go { margin-left: auto; flex-direction: row; align-items: center; gap: 10px; }

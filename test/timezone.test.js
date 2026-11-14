@@ -149,3 +149,12 @@ test('fix-timezones repairs leads in slices and leaves booking zones alone', asy
   const again = await t.call('POST', '/api/leads/fix-timezones', {});
   assert.equal(again.data.fixed, 0);
 });
+
+test('zoneStates lists the Mountain time states for the Lead finder shortcut', async () => {
+  const { zoneStates } = await import('../public/js/timezone.js');
+  const { CITIES } = await import('../public/js/cities.js');
+  assert.deepEqual(zoneStates('MT'), ['CO', 'ID', 'MT', 'NM', 'UT', 'WY']);
+  assert.deepEqual(zoneStates('AZ'), ['AZ']);
+  assert.deepEqual(zoneStates('nope'), []);
+  for (const c of zoneStates('MT')) assert.ok(CITIES[c].length >= 10, `${c} has cities to tick`);
+});

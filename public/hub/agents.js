@@ -25,7 +25,7 @@ export async function agentsPage(app, user, sub, inPhone = false) {
     ${inPhone ? `${dialTabs('agents', user)}<p class="small" style="margin:-4px 0 12px"><a href="#/agents/analytics">Call analytics</a> · <a href="#/agents/sheet">Master sheet</a></p>` : tabs('board')}
     <div class="stats" id="agtot"></div>
     <div class="legend" style="margin:-6px 0 14px">${[['on_call', 'On a call'], ...STATUSES.map(([k, l]) => [k, l])].map(([k, l]) => `<span><i class="dot ${statusTone(k)}"></i>${esc(l)}</span>`).join('')}
-      ${user.role === 'admin' ? '<span style="display:inline"><b>Listen</b>: nobody hears you · <b>Whisper</b>: only the agent hears you · <b>Barge</b>: everyone hears you</span>' : ''}</div>
+      ${['admin', 'team'].includes(user.role) ? '<span style="display:inline"><b>Listen</b>: nobody hears you · <b>Whisper</b>: only the agent hears you · <b>Barge</b>: everyone hears you</span>' : ''}</div>
     <div class="ag-grid" id="ags"><div class="skeleton"></div></div>`;
   const paintMine = (s) => $$('#mine [data-st]', view).forEach((b) => b.classList.toggle('is-on', b.dataset.st === s.status));
   const offS = onStatus(paintMine);

@@ -29,6 +29,8 @@ const MAIN = {
   MT: 'CO MT NM UT WY ID'.split(' '),
   AZ: ['AZ'], PT: 'CA NV OR WA'.split(' '), AK: ['AK'], HI: ['HI'],
 };
+// States whose main zone is `zone` (ET, CT, MT, AZ, PT), for the Lead finder's time zone shortcuts. Split states appear under their main zone only.
+export const zoneStates = (zone) => [...(MAIN[zone] || [])].sort();
 const MAIN_OF = {};
 for (const [z, list] of Object.entries(MAIN)) for (const s of list) MAIN_OF[s] = z;
 

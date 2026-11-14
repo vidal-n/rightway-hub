@@ -213,8 +213,14 @@ export async function applyLive(device) {
 }
 
 // ---------- the microphone ----------
+// iPhone and iPad: the system picks the mic and speaker (Control Center, the Bluetooth headset, a plugged in USB mic). Every time this page
+// told Twilio to switch devices ('default', the saved id, unset after a call) or opened a second mic with other settings, iPadOS dropped the
+// route back to the built in mic and speaker mid call. So on Apple devices we never switch devices ourselves and we open the mic with
+// exactly the settings Twilio uses, so the browser keeps one capture and one route for the whole session.
+export const isApple = () => { try { return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); } catch { return false; } };
 // Open the mic with the saved device; if that exact device is gone, say so and fall back to the default one.
 export async function openMic(cfg) {
+  if (isApple()) cfg = { ...cfg, mic: '' };   // never pin a device on iPad: the system route stays in charge
   const gum = (c) => navigator.mediaDevices.getUserMedia({ audio: c });
   try { return { stream: await gum(constraintsFor(cfg)), fellBack: false }; }
   catch (e) {
@@ -242,8 +248,8 @@ export async function prepareAudio(device) {
       await a.speakerDevices.set([cfg.out]); await a.ringtoneDevices.set([cfg.out]);
     }
   } catch { /* keep the default speaker */ }
-  // Microphone: use the saved one when it is still connected, otherwise the default.
-  const want = cfg.mic || (p.processor ? 'default' : '');
+  // Microphone: use the saved one when it is still connected, otherwise the default. Not on iPhone or iPad (see isApple).
+  const want = isApple() ? '' : (cfg.mic || (p.processor ? 'default' : ''));
   if (want) {
     try {
       const list = [...(a.availableInputDevices?.values?.() || [])].map((d) => ({ id: d.deviceId }));
@@ -310,6 +316,7 @@ let lostAt = 0;
 document.addEventListener('rw-audio-lost', async () => {
   const d = curDevice; if (!d?.audio || !(d.calls?.length || d.activeCall) || Date.now() - lostAt < 3000) return;
   lostAt = Date.now();
+  if (isApple()) { toast('Your microphone changed. If they cannot hear you, tap Redial.', true); return; }
   toast('Your microphone disconnected. Switching to the default one.', true);
   try { await d.audio.setInputDevice('default'); } catch { try { await d.audio.unsetInputDevice(); } catch { /* ignore */ } }
 });
@@ -333,10 +340,10 @@ export function watchDevices(device) {
     if (gone.some((d) => d.deviceId === cfg.mic || d.deviceId === cfg.out)) toast(`${gone[0].label} disconnected. The default is being used until it comes back.`);
     else if (added.length) toast(`${added[0].label} connected.`);
     // Mid call: move to the saved device again once it returns.
-    if (cfg.mic && added.some((d) => d.deviceId === cfg.mic) && device?.audio) { try { await device.audio.setInputDevice(cfg.mic); } catch { /* ignore */ } }
+    if (!isApple() && cfg.mic && added.some((d) => d.deviceId === cfg.mic) && device?.audio) { try { await device.audio.setInputDevice(cfg.mic); } catch { /* ignore */ } }
     // A headset plugged in or connected in the middle of a call: follow the system default so they are heard on it.
     const live = Boolean(device?.calls?.length || device?.activeCall);
-    if (live && !cfg.mic && added.some((d) => d.kind === 'audioinput') && Date.now() - lastSwap > 4000) {
+    if (live && !isApple() && !cfg.mic && added.some((d) => d.kind === 'audioinput') && Date.now() - lastSwap > 4000) {
       lastSwap = Date.now();
       await wait(700);
       try { await device.audio.setInputDevice('default'); toast('Switched your microphone to the new headset.'); } catch { /* keep the current one */ }
@@ -391,7 +398,8 @@ export function audioPanel({ device = null } = {}) {
     const tips = advice({ ios, micLabel, outLabel });
     $('#audbody', el).innerHTML = `
       <section class="aud-sec"><h3>Microphone</h3>
-        <select id="amic" aria-label="Microphone"><option value="">Default${ins[0]?.label ? ` (${esc(ins.find((d) => d.deviceId === 'default')?.label?.replace(/^Default - /, '') || ins[0].label)})` : ''}</option>
+        ${isApple() ? '<p class="small muted" style="margin:0 0 6px">On iPad and iPhone the system picks the mic and speaker (Control Center, your headset). The Hub no longer switches them, so it cannot flip back to the built in ones in the middle of a call.</p>' : ''}
+        <select id="amic" aria-label="Microphone"${isApple() ? ' disabled' : ''}><option value="">Default${ins[0]?.label ? ` (${esc(ins.find((d) => d.deviceId === 'default')?.label?.replace(/^Default - /, '') || ins[0].label)})` : ''}</option>
           ${ins.filter((d) => d.deviceId !== 'default').map((d, i) => `<option value="${esc(d.deviceId)}"${d.deviceId === cfg.mic ? ' selected' : ''}>${esc(deviceLabel(d, i))}</option>`).join('')}</select>
         <div class="aud-meters">
           <div><span class="small muted">Your mic</span><div class="aud-meter" aria-hidden="true"><i id="ameterin"></i></div></div>
@@ -450,7 +458,7 @@ export function audioPanel({ device = null } = {}) {
   const wire = (cfg0) => {
     const root = $('#audbody', el);
     const refresh = () => { const c = loadAudio(); const pl = plan(c); const g = pl.gate; $('#agate', root).value = g; $('#agtv', root).textContent = g || 'Off'; const ai = Math.round(pl.ai * 100); $('#aai', root).value = ai; $('#aaiv', root).textContent = ai ? `${ai}%` : 'Off'; };
-    $('#amic', root).addEventListener('change', async (e) => { set({ mic: e.target.value, level: 0, lock: false }); if (device?.audio && e.target.value) { try { await device.audio.setInputDevice(e.target.value); } catch { toast('Could not use that microphone.', true); } } paint(); });
+    $('#amic', root).addEventListener('change', async (e) => { set({ mic: e.target.value, level: 0, lock: false }); if (!isApple() && device?.audio && e.target.value) { try { await device.audio.setInputDevice(e.target.value); } catch { toast('Could not use that microphone.', true); } } paint(); });
     $('#aout', root)?.addEventListener('change', async (e) => { set({ out: e.target.value }); try { if (device?.audio?.isOutputSelectionSupported) { await device.audio.speakerDevices.set(e.target.value ? [e.target.value] : []); await device.audio.ringtoneDevices.set(e.target.value ? [e.target.value] : []); } } catch { toast('Could not switch the speaker.', true); } });
     $('#again', root).addEventListener('input', (e) => { $('#agv', root).textContent = `${e.target.value}%`; set({ gain: Number(e.target.value) }); });
     $('#agate', root).addEventListener('input', (e) => { const v = Number(e.target.value); $('#agtv', root).textContent = v || 'Off'; set({ gate: v }); });
