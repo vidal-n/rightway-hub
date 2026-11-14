@@ -63,7 +63,8 @@ export default {
       if (used < 35) await ensureClientChats(env, 1).catch((e) => console.error('client chats', e));
       await socialAutoTick(env).catch((e) => console.error('social autopilot', e));
       // Lead database: keep each lead's call roll up and scores current (no outside calls).
-      await rollTick(env, 40).catch((e) => console.error('lead roll up', e));
+      // 150 a minute: a 10,000 lead import has its call roll up, reach and engagement scores within about an hour.
+      await rollTick(env, 150).catch((e) => console.error('lead roll up', e));
       await sweepTick(env, 250).catch((e) => console.error('do not call sweep', e));
       await workflowTick(env, 15).catch((e) => console.error('workflows', e));
     })());

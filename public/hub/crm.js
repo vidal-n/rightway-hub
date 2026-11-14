@@ -33,7 +33,7 @@ import { PHONE_TYPE_LABEL, EMAIL_STATUS_LABEL } from '/js/scrub.js';
 import { bothTimes, validZone, fromInputs, inputsIn } from '/js/apptime.js';
 const yourZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
 import { licenseSearchUrl, sunbizSearchUrl } from '/js/freedata.js';
-import { boardColumns, columnByKey, loadable, modeOf, modeGroups, SHOW, showFilter, reachedOf } from '/js/boardcols.js';
+import { boardColumns, columnByKey, loadable, modeOf, modeGroups, SHOW, showFilter, reachedOf, pivot } from '/js/boardcols.js';
 import { objectionLabel } from '/js/leaddb.js';
 import { calledBefore } from '/js/campaign.js';
 import { registryFor } from '/js/registries.js';
@@ -104,23 +104,18 @@ function sortLeads(rows, sort) {
   });
 }
 
-// Every lead, page after page (the server sends 2,500 at a time; there is no cap on the total). Nov 2026, V: the Pipeline stopped at 5,000.
-export async function loadAllLeads(onProgress) {
-  let d = await api('/api/leads');
-  const out = { ...d, leads: d.leads.slice() };
-  while (d.next) {
-    onProgress?.(out.leads.length, out.total);
-    d = await api(`/api/leads?after=${encodeURIComponent(d.next)}`);
-    out.leads.push(...d.leads);
-  }
-  return out;
+// Every lead, with no cap: kept on this device and brought up to date with only what changed (public/hub/leadcache.js).
+export async function loadAllLeads(user, onProgress, opts) {
+  const { loadLeads } = await import('./leadcache.js');
+  const leads = await loadLeads(user || window.__rwUser || { id: 'me' }, onProgress, opts);
+  return { leads, total: leads.length };
 }
 export async function pipelinePage(app, user, openId, screen) {
   setRep(user);
   const view = staffShell(app, user, 'pipeline');
   let data;
   try {
-    data = await loadAllLeads((n, total) => { if (document.body.contains(view)) view.innerHTML = `<div class="card" style="max-width:520px"><b>Loading every lead</b><p class="small muted" style="margin:6px 0 10px">${n.toLocaleString()} of ${Number(total || 0).toLocaleString()}</p><div class="progress"><span style="width:${total ? Math.round((n / total) * 100) : 10}%"></span></div></div>`; });
+    data = await loadAllLeads(user, (n, total, phase) => { if (document.body.contains(view)) view.innerHTML = `<div class="card" style="max-width:520px"><b>${phase === 'update' ? 'Bringing your leads up to date' : 'Loading every lead'}</b><p class="small muted" style="margin:6px 0 10px">${n.toLocaleString()} of ${Number(total || 0).toLocaleString()}${phase === 'download' ? '. The first load keeps a copy on this device, so next time only changes come down.' : ''}</p><div class="progress"><span style="width:${total ? Math.round((n / total) * 100) : 10}%"></span></div></div>`; });
   } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   // #/pipeline/<leadId> (links from the calendar, mail and elsewhere) opens that lead on top of the board.
   if (openId && /^ld_/.test(openId)) setTimeout(() => leadModal(openId, () => pipelinePage(app, user)), 0);
@@ -266,6 +261,7 @@ export async function pipelinePage(app, user, openId, screen) {
             <div class="csetup" id="csetup"></div>
           </details></section>
       </div>
+      <section class="pivot card" id="pivot" data-sec="pivot"></section>
       <div class="boardbar"><div class="seg" role="group" aria-label="View"><button class="${p.view === 'board' ? 'is-on' : ''}" data-view="board">Board</button><button class="${p.view === 'list' ? 'is-on' : ''}" data-view="list">List</button></div>
         ${p.view === 'board'
           ? `<label class="bb-sel"><span>Columns by</span><select id="bmode" aria-label="Columns by">${modeOptions(p.board || 'stage')}</select></label>`
@@ -273,17 +269,53 @@ export async function pipelinePage(app, user, openId, screen) {
         <label class="bb-sel"><span>Show</span><select id="bshow" aria-label="Show">${SHOW.map(([k, n]) => `<option value="${k}"${(p.show || 'all') === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
         ${p.view === 'board' ? `<label class="bb-sel"><span>Cards a column</span><select id="bper" aria-label="Cards a column">${PER_CHOICES.map((n) => `<option${(p.per || 10) === n ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
           <label class="row small bb-chk" title="Leads nobody has called yet get their own first column. Turn off to see them inside the other columns."><input type="checkbox" id="bsplit"${(p.split ?? Boolean(modeOf(p.board || 'stage').sales)) ? ' checked' : ''}> Not contacted yet first</label>` : ''}
-        <span class="spacer"></span><span class="small muted" id="bcount">${shown(rows).length.toLocaleString()} of ${all.length.toLocaleString()} leads in view</span>
+        <span class="spacer"></span><span class="small muted" id="bcount">${shown(rows).length.toLocaleString()} of ${all.length.toLocaleString()} leads in view</span><button type="button" class="linkbtn small" id="reloadall" title="Download every lead again instead of only what changed">Reload all</button>
         <button type="button" class="btn btn-mint btn-sm" id="loadpicked" hidden></button>
         <a class="btn btn-ghost btn-sm" href="#/phone" id="godial" title="Open the dialer with the list you loaded">${icon.phone}Open the dialer</a></div>
       <div id="scstrip"></div>
       <div id="pbody"></div>`;
     const body = $('#pbody', view);
     if (p.view === 'list') renderList(body, shown(rows)); else renderBoard(body, shown(rows));
+    renderPivot($('#pivot', view), shown(rows));
     wire();
     resumeScrub(reload);
   };
 
+  // Breakdown: any field by any field (default time zone by call coverage), every lead counted once, any cell loads as a call list.
+  // Modeled on pivot views in Close.com reporting and Apollo.io's grouped search counts.
+  const renderPivot = (el, rowsIn) => {
+    if (!el) return;
+    const open = p.pivotOpen !== false;
+    const rm = p.pvRow || 'tz', cm = p.pvCol || 'coverage';
+    const pv = open ? pivot(rm, cm, rowsIn, colOpts()) : null;
+    const cellIds = new Map();
+    const cell = (r, c) => { const ls = r.cells.get(c.label) || []; if (!ls.length) return '<td class="pv-0">0</td>'; const k = `${r.label}\u0001${c.label}`; cellIds.set(k, { leads: ls, label: `${r.label}, ${c.label}` }); return `<td><button type="button" class="pv-c" data-pv="${esc(k)}" title="${esc(`${r.label}, ${c.label}`)}">${ls.length.toLocaleString()}</button></td>`; };
+    el.innerHTML = `<div class="pv-head"><button type="button" class="pv-tog" id="pvtog" aria-expanded="${open}"><b>Breakdown</b><span class="small muted">${esc(modeOf(rm).label)} by ${esc(modeOf(cm).label)}</span></button>
+      ${open ? `<label class="bb-sel"><span>Rows</span><select id="pvrow">${modeOptions(rm)}</select></label><label class="bb-sel"><span>Columns</span><select id="pvcol">${modeOptions(cm)}</select></label>` : ''}</div>
+      ${open ? `<div class="table-wrap pv-wrap"><table class="pv"><thead><tr><th>${esc(modeOf(rm).label)}</th>${pv.cols.map((c) => `<th>${esc(c.label)}</th>`).join('')}<th>Total</th></tr></thead>
+        <tbody>${pv.rows.map((r) => `<tr><th scope="row">${esc(r.label)}</th>${pv.cols.map((c) => cell(r, c)).join('')}<td class="pv-t">${r.total.toLocaleString()}</td></tr>`).join('') || `<tr><td colspan="${pv.cols.length + 2}" class="muted">No leads in view.</td></tr>`}</tbody>
+        <tfoot><tr><th>Total</th>${pv.cols.map((c) => `<td>${c.total.toLocaleString()}</td>`).join('')}<td class="pv-t">${pv.total.toLocaleString()}</td></tr></tfoot></table></div>
+        <p class="small muted" style="margin:6px 0 0">Tap a number to see those leads or load them as your call list. Filters, time zone tabs and Show above all apply.</p>` : ''}`;
+    $('#pvtog', el).addEventListener('click', () => { p.pivotOpen = !open; savePipe(p); renderPivot(el, rowsIn); });
+    $('#pvrow', el)?.addEventListener('change', (e) => { p.pvRow = e.target.value; savePipe(p); renderPivot(el, rowsIn); });
+    $('#pvcol', el)?.addEventListener('change', (e) => { p.pvCol = e.target.value; savePipe(p); renderPivot(el, rowsIn); });
+    $$('[data-pv]', el).forEach((b) => b.addEventListener('click', () => {
+      const { leads, label } = cellIds.get(b.dataset.pv) || {};
+      if (!leads) return;
+      const free = leads.filter((l) => l.phone && !l.held && !l.dnc && !['dnc', 'won'].includes(l.stage));
+      const m = modal(`<div class="card-head"><h2>${esc(label)}</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+        <p class="small muted" style="margin:0 0 10px">${leads.length.toLocaleString()} leads. ${free.length.toLocaleString()} can go on a call list${leads.length - free.length ? ` (the rest are on someone's list, won, Do not call or have no phone)` : ''}.</p>
+        <div class="row" style="gap:8px;margin-bottom:10px"><button class="btn btn-mint" id="pvload"${free.length ? '' : ' disabled'}>${icon.phone}Load ${free.length.toLocaleString()} as my call list</button></div>
+        <div class="fs-grid pv-list">${sortLeads(leads, '-score').slice(0, 30).map(card).join('')}</div>${leads.length > 30 ? `<p class="small muted">Showing the best 30 of ${leads.length.toLocaleString()}.</p>` : ''}`);
+      $$('.lead-card', m.el).forEach((c) => c.addEventListener('click', () => { m.close(); leadModal(c.dataset.id, reload); }));
+      $('#pvload', m.el)?.addEventListener('click', async (e) => {
+        if (claims.mine.total && !confirm(`Replace the ${claims.mine.total} leads on your list with these ${free.length}? Your old list closes out and those leads go back to the pool.`)) return;
+        busy(e.currentTarget, true);
+        const ok = await loadList(free.map((l) => l.id), label.slice(0, 150));
+        if (!ok) { busy(e.currentTarget, false); m.close(); setupRef?.focus(); }
+      });
+    }));
+  };
   const renderBoard = (el, rowsIn) => {
     const mode = p.board || 'stage';
     const cols = boardColumns(mode, sortLeads(rowsIn, '-score'), colOpts());
@@ -429,6 +461,7 @@ export async function pipelinePage(app, user, openId, screen) {
     $('#bper', view)?.addEventListener('change', (e) => { p.per = Number(e.target.value) || 10; render(); });
     $('#bsplit', view)?.addEventListener('change', (e) => { p.split = e.target.checked; picked.clear(); render(); });
     $('#lcols', view)?.addEventListener('click', pickColumns);
+    $('#reloadall', view)?.addEventListener('click', async () => { const { forgetLeads } = await import('./leadcache.js'); await forgetLeads(user); reload(); });
     $('#closemine', view)?.addEventListener('click', () => closeOut(''));
     $$('[data-release]', view).forEach((b) => b.addEventListener('click', () => closeOut(b.dataset.release)));
     $$('[data-view]', view).forEach((b) => b.addEventListener('click', () => { p.view = b.dataset.view; render(); }));
@@ -1177,7 +1210,7 @@ function importModal(onDone) {
       if (wantScrub && ids.length) { m.close(); await scrubMany(ids.map((id) => ({ id })), onDone, { lookup: wantLookup }); }
       if (wantRes && ids.length) {
         const set = new Set(ids);
-        const fresh = (await loadAllLeads()).leads.filter((l) => set.has(l.id) && !l.researched && ['A', 'B'].includes(l.grade)).slice(0, 100);
+        const fresh = (await loadAllLeads(window.__rwUser)).leads.filter((l) => set.has(l.id) && !l.researched && ['A', 'B'].includes(l.grade)).slice(0, 100);
         m.close();
         researchMany(fresh, onDone, { depth });
       }

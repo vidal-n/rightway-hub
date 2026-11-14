@@ -3094,3 +3094,35 @@ ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
   .leads-table tr.more { display: table-row; }
   .leads-table th:first-child, .leads-table td:first-child { width: 36px; }
 }
+/* Breakdown (pivot) on the Pipeline, Nov 2026 */
+.pivot { margin: 0 0 12px; padding: 12px 14px; }
+.pivot .pv-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.pivot .pv-tog { display: inline-flex; align-items: baseline; gap: 8px; background: none; border: 0; padding: 4px 0; cursor: pointer; color: var(--ink); font: inherit; margin-right: auto; }
+.pivot .pv-tog b { font: 600 15px var(--display); }
+.pivot .pv-tog::after { content: ''; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); opacity: .6; align-self: center; }
+.pivot .pv-tog[aria-expanded=true]::after { transform: rotate(-135deg); }
+.pivot .bb-sel { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.pivot .bb-sel span { font: 600 12px var(--body); color: var(--muted); }
+.pivot .bb-sel select { width: auto; max-width: 240px; min-height: 34px; padding: 4px 28px 4px 10px; }
+.pv-wrap { margin-top: 10px; overflow-x: auto; }
+.pv { border-collapse: collapse; font-size: 13.5px; min-width: 100%; width: max-content; }
+.pv th, .pv td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.pv thead th { font: 600 12px var(--body); color: var(--muted); text-align: right; vertical-align: bottom; white-space: normal; max-width: 130px; }
+.pv th:first-child, .pv tbody th { text-align: left; font-weight: 600; }
+.pv tfoot td, .pv tfoot th, .pv .pv-t { font-weight: 700; }
+.pv .pv-0 { color: var(--muted); opacity: .5; }
+.pv .pv-c { font: 600 13.5px var(--mono, monospace); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 3px 9px; cursor: pointer; color: var(--ink); min-width: 46px; text-align: right; }
+.pv .pv-c:hover { border-color: var(--mint-strong); background: var(--mint-soft); }
+.pv-list { max-height: 50vh; overflow: auto; }
+@media (max-width: 700px) { .pivot .bb-sel { flex: 1 1 100%; } .pivot .bb-sel select { flex: 1 1 auto; max-width: none; } }
+.cov-tz { grid-column: 1 / -1; }
+.pv th, .pv td { overflow-wrap: normal; word-break: normal; }
+.pv thead th { min-width: 70px; }
+.col-head { flex-wrap: wrap; }
+.col-head .col-t { flex: 1 1 110px; }
+.col-t b { overflow-wrap: break-word; word-break: normal; }
+/* Table cells break words only when a word truly cannot fit (no "Mia mi"); wide tables scroll inside their card. */
+.hub .main td, .hub .main th { overflow-wrap: break-word; word-break: normal; }
+.hub .main .pv th, .hub .main .pv td { overflow-wrap: normal; word-break: normal; hyphens: none; }
+.hub .main .pv thead th { min-width: 84px; }
+.pivot .bb-sel span, .boardbar .bb-sel span { white-space: nowrap; }

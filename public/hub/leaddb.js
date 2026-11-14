@@ -1,6 +1,8 @@
 // Pipeline, Lead database tab: every business we know, searchable by anything we have learned about it and every call made to it.
 // Modeled on Apollo.io and ZoomInfo search: filters in categories down the side, ready made and saved searches, a column picker, sortable columns,
 // data coverage numbers at the top, export, and "Dial this search" straight into the power dialer. Catalog and SQL whitelist: public/js/leaddb.js.
+import { ZONE_SHORT } from '/js/timezone.js';
+const TZ_NAME = { ET: 'Eastern (ET)', CT: 'Central (CT)', MT: 'Mountain (MT)', AZ: 'Arizona (AZ)', PT: 'Pacific (PT)', AK: 'Alaska (AK)', HI: 'Hawaii (HI)' };
 import { donut } from '../js/charts.js';
 import { $, $$, esc, api, toast, fmt, modal, busy } from './core.js';
 import { staffShell, pipeTabs } from './staff.js';
@@ -83,6 +85,9 @@ export async function databasePage(app, user) {
         return `<div class="ins-donut">${donut([{ label: 'Never called', value: never, color: 'var(--c-slate)' }, { label: 'Called, owner not reached', value: called, color: 'var(--c-amber)' }, { label: 'Reached the owner', value: owner, color: 'var(--c-green)' }], { center: fmt.int(H.total || 0), sub: 'businesses' })}
           <ul class="ins-legend"><li><i style="background:var(--c-slate)"></i>Never called<b class="mono">${fmt.int(never)}</b></li><li><i style="background:var(--c-amber)"></i>Called, owner not reached<b class="mono">${fmt.int(called)}</b></li><li><i style="background:var(--c-green)"></i>Reached the owner<b class="mono">${fmt.int(owner)}</b></li><li><i style="background:var(--bad)"></i>Do not call<b class="mono">${fmt.int(dnc)}</b></li><li><i style="background:var(--c-violet)"></i>Qualification answers on file<b class="mono">${fmt.int(H.qualified || 0)}</b></li><li><i style="background:var(--line-2)"></i>Data over 6 months old<b class="mono">${fmt.int(H.stale || 0)}</b></li></ul></div>`;
       })()}</div>
+      ${(H.byTz || []).length ? `<div class="card cov-tz"><div class="card-head"><h3>Call coverage by time zone</h3><span class="small muted">every lead, imports included</span></div>
+        <div class="table-wrap"><table class="pv"><thead><tr><th>Time zone</th><th>Businesses</th><th>Never called</th><th>Called, owner not reached</th><th>Reached the owner</th><th>Do not call</th><th>Qualification on file</th></tr></thead>
+        <tbody>${H.byTz.map((r) => { const called = Math.max(0, (r.total || 0) - (r.never || 0) - (r.reached_owner || 0)); return `<tr><th scope="row">${esc(TZ_NAME[ZONE_SHORT[r.tz]] || 'Not known')}</th><td>${fmt.int(r.total)}</td><td>${fmt.int(r.never)}</td><td>${fmt.int(called)}</td><td>${fmt.int(r.reached_owner)}</td><td>${fmt.int(r.dnc)}</td><td>${fmt.int(r.qualified)}</td></tr>`; }).join('')}</tbody></table></div></div>` : ''}
     </div>
     <div class="db-wrap">
       <details class="db-side card"${window.innerWidth >= 1000 ? ' open' : ''}><summary class="row" style="justify-content:space-between"><h2 style="margin:0">Filters</h2><button class="linkbtn" id="dbclear">Clear all</button></summary>

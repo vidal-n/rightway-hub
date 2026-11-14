@@ -79,3 +79,18 @@ test('time zone columns show every Pacific lead, and Show narrows before the col
   assert.deepEqual(reached.find((c) => c.label === 'Talked to the owner').leads.map((l) => l.id), ['pt2']);
   assert.ok(boardColumns('objection', more, { split: false }).some((c) => c.leads.some((l) => l.id === 'pt2') && c.label !== 'Not called yet'));
 });
+
+import { pivot, coverageOf } from '../public/js/boardcols.js';
+test('call coverage buckets match the Lead database donut, and the pivot counts every lead once per time zone', () => {
+  assert.equal(coverageOf({ stage: 'new' }), 'Never called');
+  assert.equal(coverageOf({ stage: 'attempting', dials: 1 }), 'Called, owner not reached');
+  assert.equal(coverageOf({ stage: 'attempting', dials: 2, owner_talks: 1 }), 'Reached the owner');
+  assert.equal(coverageOf({ stage: 'dnc', dnc: 1, dials: 1 }), 'Do not call');
+  const pv = pivot('tz', 'coverage', more);
+  const pt = pv.rows.find((r) => r.label === 'Pacific (PT)');
+  assert.equal(pt.total, 2);
+  assert.equal(pt.cells.get('Never called').length, 1);
+  assert.equal(pt.cells.get('Reached the owner').length, 1);
+  assert.equal(pv.rows.reduce((n, r) => n + r.total, 0), more.length);
+  assert.deepEqual(pv.cols.map((c) => c.label).slice(0, 2), ['Never called', 'Called, owner not reached'], 'coverage keeps its order');
+});

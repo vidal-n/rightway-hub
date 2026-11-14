@@ -136,7 +136,14 @@ route('GET', '/api/leaddb/health', async ({ env, user }) => {
       SUM(CASE WHEN COALESCE(scrubbed_at, created_at) < ? THEN 1 ELSE 0 END) AS stale
     FROM ${DB_FROM}`, t - 182 * 864e5);
   const sup = await first(env, 'SELECT COUNT(DISTINCT grp) AS n FROM suppressions WHERE lifted_at IS NULL').catch(() => null);
-  return json({ health: { ...(h || {}), suppressed: sup?.n || 0 } });
+  // Call coverage for every time zone (Nov 2026, V: the same picture per time zone, for every lead, imports included).
+  const byTz = await all(env, `SELECT COALESCE(leads.timezone, '') AS tz, COUNT(*) AS total,
+      SUM(CASE WHEN COALESCE(lead_roll.r_dials, 0) = 0 THEN 1 ELSE 0 END) AS never,
+      SUM(CASE WHEN COALESCE(lead_roll.r_owner, 0) > 0 THEN 1 ELSE 0 END) AS reached_owner,
+      SUM(CASE WHEN leads.dnc = 1 THEN 1 ELSE 0 END) AS dnc,
+      SUM(CASE WHEN COALESCE(leads.qual_n, 0) > 0 THEN 1 ELSE 0 END) AS qualified
+    FROM ${DB_FROM} GROUP BY 1 ORDER BY total DESC`).catch(() => []);
+  return json({ health: { ...(h || {}), suppressed: sup?.n || 0, byTz } });
 });
 
 // CSV of a search (owners: the whole list leaves the Hub).

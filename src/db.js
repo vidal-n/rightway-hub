@@ -218,6 +218,16 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS finder_jobs_status ON finder_jobs (status, created_at)`,
   `CREATE TABLE IF NOT EXISTS finder_results (job_id TEXT NOT NULL, rkey TEXT NOT NULL, data TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'new', lead_id TEXT, PRIMARY KEY (job_id, rkey))`,
   `CREATE TABLE IF NOT EXISTS vault_access (item_id TEXT NOT NULL, user_id TEXT NOT NULL, eph TEXT NOT NULL, wiv TEXT NOT NULL, wkey TEXT NOT NULL, PRIMARY KEY (item_id, user_id))`,
+  // Lead sync (Nov 2026, V: tens of thousands of leads, load everything): every change to a lead or its call roll up stamps lead_sync, and a
+  // deleted lead lands in lead_gone, so the Pipeline only downloads what changed since its last visit (GET /api/leads?pack=1&since=).
+  `CREATE TABLE IF NOT EXISTS lead_sync (lead_id TEXT PRIMARY KEY, at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS lead_sync_at ON lead_sync (at)`,
+  `CREATE TABLE IF NOT EXISTS lead_gone (lead_id TEXT PRIMARY KEY, at INTEGER NOT NULL)`,
+  `CREATE TRIGGER IF NOT EXISTS leads_sync_ins AFTER INSERT ON leads BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
+  `CREATE TRIGGER IF NOT EXISTS leads_sync_upd AFTER UPDATE ON leads BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
+  `CREATE TRIGGER IF NOT EXISTS leads_sync_del AFTER DELETE ON leads BEGIN INSERT INTO lead_gone (lead_id, at) VALUES (OLD.id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; DELETE FROM lead_sync WHERE lead_id = OLD.id; END`,
+  `CREATE TRIGGER IF NOT EXISTS roll_sync_ins AFTER INSERT ON lead_roll BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
+  `CREATE TRIGGER IF NOT EXISTS roll_sync_upd AFTER UPDATE ON lead_roll BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
 ];
 
 // Columns added after the first release. SQLite has no ADD COLUMN IF NOT EXISTS, so duplicates are ignored.

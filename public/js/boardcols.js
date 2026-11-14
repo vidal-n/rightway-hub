@@ -42,6 +42,14 @@ const reached = (l) => {
   return 'Never picked up';
 };
 export const reachedOf = reached;
+// Call coverage, the same four buckets as the Lead database donut: where every business stands.
+export const COVERAGE = ['Never called', 'Called, owner not reached', 'Reached the owner', 'Do not call'];
+export function coverageOf(l) {
+  if (isDead(l)) return 'Do not call';
+  if ((l.owner_talks || 0) > 0) return 'Reached the owner';
+  return calledBefore(l) ? 'Called, owner not reached' : 'Never called';
+}
+const scoreBand = (v, none) => (v == null || v === '' ? none : band(v, [[24, 'Low (under 25)'], [49, 'Fair (25 to 49)'], [74, 'Good (50 to 74)'], [100, 'High (75 and up)']]));
 const goodEmail = (l) => Boolean(l.email) && !['bad', 'no_mail_server'].includes(l.email_status);
 const firstTag = (l) => String(l.tags || '').split(',').map((x) => x.trim()).filter(Boolean)[0] || 'No tag';
 
@@ -49,6 +57,7 @@ const firstTag = (l) => String(l.tags || '').split(',').map((x) => x.trim()).fil
 // sales: these columns are about calling, so "Not contacted yet" splits out by default.
 export const BOARD_MODES = [
   // Calling
+  { id: 'coverage', label: 'Call coverage', group: 'Calling', key: coverageOf, order: COVERAGE },
   { id: 'stage', label: 'Stage', group: 'Calling', sales: true },
   { id: 'result', label: 'Last result (disposition)', group: 'Calling', sales: true },
   { id: 'reached', label: 'Who picked up', group: 'Calling', sales: true, key: reached,
@@ -62,6 +71,15 @@ export const BOARD_MODES = [
   { id: 'lastby', label: 'Last called by', group: 'Calling', sales: true, key: (l, c) => (l.last_by ? (c.users[l.last_by] || 'A teammate') : calledBefore(l) ? 'Not known' : 'Not called yet') },
   { id: 'next', label: 'Next step due', group: 'Calling', sales: true, key: (l, c) => due(l.next_action_at, c.now),
     order: ['Overdue', 'Due today', 'This week', 'This month', 'Later', 'No next step'] },
+  { id: 'convs', label: 'Owner conversations', group: 'Calling', sales: true,
+    key: (l) => ((l.convs || 0) > 0 ? 'Talked a minute or more' : (l.owner_talks || 0) > 0 ? 'Talked under a minute' : calledBefore(l) ? 'No owner conversation' : 'Not called yet'),
+    order: ['Talked a minute or more', 'Talked under a minute', 'No owner conversation', 'Not called yet'] },
+  { id: 'hangs', label: 'Hung up fast', group: 'Calling', sales: true,
+    key: (l) => ((l.fast_hangs || 0) > 1 ? 'Hung up fast more than once' : (l.fast_hangs || 0) === 1 ? 'Hung up fast once' : calledBefore(l) ? 'Never hung up fast' : 'Not called yet'),
+    order: ['Never hung up fast', 'Hung up fast once', 'Hung up fast more than once', 'Not called yet'] },
+  { id: 'reach', label: 'Reach score', group: 'Calling', key: (l) => scoreBand(l.reach_score, 'Not scored yet'), order: ['High (75 and up)', 'Good (50 to 74)', 'Fair (25 to 49)', 'Low (under 25)', 'Not scored yet'] },
+  { id: 'engage', label: 'Engagement score', group: 'Calling', key: (l) => scoreBand(l.engage_score, 'Not scored yet'), order: ['High (75 and up)', 'Good (50 to 74)', 'Fair (25 to 49)', 'Low (under 25)', 'Not scored yet'] },
+  { id: 'qual', label: 'Qualification answers', group: 'Calling', key: (l) => ((l.qual_n || 0) >= 4 ? '4 or more answers' : (l.qual_n || 0) > 0 ? '1 to 3 answers' : 'None on file'), order: ['4 or more answers', '1 to 3 answers', 'None on file'] },
   { id: 'holder', label: 'Whose call list', group: 'Calling', key: (l) => (l.held ? `${l.held}'s list` : l.mine ? 'My list' : 'Not on a list'), order: ['My list', 'Not on a list'] },
   // Lead quality
   { id: 'grade', label: 'Grade', group: 'Lead quality', sales: true },
@@ -153,3 +171,20 @@ export function boardColumns(mode, leads, opts = {}) {
 // Columns whose leads may be loaded as a call list (the server still drops anyone on Do Not Call or another agent's list).
 export const loadable = (key) => !['won', 'dead', 'stage:won', 'stage:lost', 'stage:dnc'].includes(key);
 export const columnByKey = (mode, leads, key, opts) => boardColumns(mode, leads, opts).find((c) => c.key === key) || null;
+
+// Two fields at once (rows by one, columns by the other), like a pivot table: every lead counted once in one cell.
+// Default on the Pipeline: time zone by call coverage. Cells keep their leads so a cell can be loaded as a call list.
+export function pivot(rowMode, colMode, leads, opts = {}) {
+  const o = { ...opts, split: false };
+  const rows = boardColumns(rowMode, leads, o);
+  const colKeys = new Map();
+  const out = rows.filter((r) => r.leads.length).map((r) => {
+    const cells = new Map();
+    for (const c of boardColumns(colMode, r.leads, o)) if (c.leads.length) { cells.set(c.label, c.leads); colKeys.set(c.label, (colKeys.get(c.label) || 0) + c.leads.length); }
+    return { key: r.key, label: r.label, total: r.leads.length, cells };
+  });
+  // Column order: the mode's own order first (from a run over everyone), then the rest by size.
+  const order = boardColumns(colMode, leads, o).map((c) => c.label);
+  const cols = [...colKeys.entries()].sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0])).map(([label, total]) => ({ label, total }));
+  return { rows: out, cols, total: leads.length };
+}

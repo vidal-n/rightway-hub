@@ -277,7 +277,8 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
   const lim = Number(url.searchParams.get('limit')) || 0;
   const cols = `${LIST_COLS}, lead_roll.r_dials AS dials, lead_roll.r_last_dispo AS last_dispo, lead_roll.r_connects AS connects, lead_roll.r_owner AS owner_talks,
     lead_roll.r_vm AS voicemails, lead_roll.r_noans AS no_answers, lead_roll.r_talk AS talk, lead_roll.r_last_by AS last_by, lead_roll.r_obj AS last_objection,
-    lead_roll.r_convs AS convs, lead_roll.r_menu AS menus, lead_roll.r_staff AS staff_talks, lead_roll.r_fast_hangs AS fast_hangs`;
+    lead_roll.r_convs AS convs, lead_roll.r_menu AS menus, lead_roll.r_staff AS staff_talks, lead_roll.r_fast_hangs AS fast_hangs,
+    leads.reach_score, leads.engage_score, leads.qual_n`;
   const where = []; const vals = [];
   if (stage) { where.push('leads.stage = ?'); vals.push(stage); }
   let rows; let next = null;
@@ -293,15 +294,29 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
     rows = await all(env, `SELECT ${cols} FROM leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id WHERE ${where.join(' AND ')} ORDER BY leads.updated_at DESC LIMIT ?`, ...vals, Math.min(lim || 200, 500));
   } else {
     if (after) { where.push('leads.id > ?'); vals.push(after); }
+    // since: only leads (or their call roll up) that changed after that moment, from the lead_sync stamps (src/db.js triggers).
+    const since = Number(url.searchParams.get('since')) || 0;
+    const from = since ? 'lead_sync JOIN leads ON leads.id = lead_sync.lead_id' : 'leads';
+    if (since) { where.push('lead_sync.at > ?'); vals.push(since); }
     const size = lim > 0 ? Math.min(lim, LEAD_PAGE) : LEAD_PAGE;
-    rows = await all(env, `SELECT ${cols} FROM leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY leads.id LIMIT ?`, ...vals, size + 1);
+    rows = await all(env, `SELECT ${cols} FROM ${from} LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY leads.id LIMIT ?`, ...vals, size + 1);
     next = rows.length > size ? rows[size - 1].id : null;
     if (next) rows = rows.slice(0, size);
     if (lim > 0) next = null;
   }
   // Counts only on the first page (the Pipeline shows them once).
-  const counts = after ? null : await all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage');
+  const counts = after || url.searchParams.get('pack') === '1' ? null : await all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage');
   const total = after ? null : (await first(env, 'SELECT COUNT(*) AS n FROM leads'))?.n || 0;
+  // pack=1 (the Pipeline's cache, public/hub/leadcache.js): column names once and one array per lead, about a third of the bytes, and
+  // no time based fields (the browser works out local time and "callable now" itself, so a cached lead never goes stale). With since,
+  // the first page also lists leads deleted after that moment.
+  if (url.searchParams.get('pack') === '1') {
+    const out = rows.map((l) => { const { intel, scrub_data, ...rest } = seeAppt(l, user); return rest; });
+    const keys = out.length ? Object.keys(out[0]) : [];
+    const since = Number(url.searchParams.get('since')) || 0;
+    const gone = since && !after ? (await all(env, 'SELECT lead_id FROM lead_gone WHERE at > ?', since)).map((r) => r.lead_id) : [];
+    return json({ cols: keys, rows: out.map((l) => keys.map((k) => l[k] ?? null)), next, total, gone, now: now() });
+  }
   return json({ leads: rows.map((l) => seeAppt(decorate(l), user)), next, total, counts: counts ? Object.fromEntries(counts.map((c) => [c.stage, c.n])) : null });
 });
 
