@@ -15,8 +15,23 @@ export function scriptReady() {
   return Boolean(pickedScript()) || (t.on && !t.allowPick);
 }
 
+// Load a set of leads as this person's call list and open the dialer (used by the setup box below and by each column's Load button).
+// Returns false when it could not (no script picked, nothing left after other agents' leads are left out).
+export async function loadList(ids, label, { skipped = 0 } = {}) {
+  await loadScriptTest();
+  if (!scriptReady()) { toast('Pick the script for today first. It is the last box in Set up the call list.', true); return false; }
+  try {
+    const r = await api('/api/dialer/campaign', { method: 'PUT', body: { ids: ids.slice(0, MAX_CAMPAIGN), label } });
+    try { localStorage.setItem('rw-dial-filter', JSON.stringify({ campaign: '1', label })); } catch { /* ignore */ }
+    const left = (r.taken || 0) + skipped;
+    if (left) toast(`List loaded: ${r.total} leads. ${left} left out because ${r.takenBy?.length ? r.takenBy.map((x) => x.name).join(' and ') : 'another agent'} already ${r.takenBy?.length === 1 || !r.takenBy?.length ? 'has' : 'have'} them on a list.`);
+    location.hash = '#/phone';
+    return true;
+  } catch (err) { toast(err.message, true); return false; }
+}
+
 // host: the box inside step 4. rows: the leads the Pipeline filters let through. selected: ids ticked in the list view.
-export function mountCallSetup(host, { rows, p, selected, stageLabel, save }) {
+export function mountCallSetup(host, { rows, p, selected, stageLabel, save, mine = 0 }) {
   const cs = (p.call = { stages: [...DEFAULT_STAGES], kind: 'fresh', results: [], tier: '', cat: '', data: '', mine: false, ...(p.call || {}) });
   cs.stages = cleanStages(cs.stages);
   if (!cs.stages.length) cs.stages = [...DEFAULT_STAGES];
@@ -28,6 +43,7 @@ export function mountCallSetup(host, { rows, p, selected, stageLabel, save }) {
     const freshN = pool.filter((l) => !calledBefore(l)).length, followN = pool.length - freshN, byResult = followResults(pool);
     cs.results = cs.results.filter((r) => byResult.some(([k]) => k === r));
     const list = campaignRows(rows, { ...cs, only });
+    const heldN = rows.filter((l) => l.held && l.phone && cs.stages.includes(l.stage)).length;
     const ready = list.filter((l) => l.callable_now).length;
     const stageN = (s) => rows.filter((l) => !l.dnc && l.phone && l.stage === s).length;
     const t = currentTest();
@@ -53,8 +69,8 @@ export function mountCallSetup(host, { rows, p, selected, stageLabel, save }) {
         <label class="field"><span>Script for today</span><select id="cs-script" aria-label="Script for today">${scripts}</select></label>
       </div>
       ${selected.size ? `<label class="row small" style="gap:6px;margin-top:8px"><input type="checkbox" id="cs-mine"${cs.mine ? ' checked' : ''}> Only the ${selected.size} lead${selected.size === 1 ? '' : 's'} I ticked in the list</label>` : '<p class="small muted" style="margin:8px 0 0">To hand pick leads, switch to List view and tick the ones you want.</p>'}
-      <div class="cs-foot"><p class="cs-sum" id="cs-sum"><b>${list.length}</b> lead${list.length === 1 ? '' : 's'} on this list${list.length > MAX_CAMPAIGN ? ` (first ${MAX_CAMPAIGN} are saved)` : ''} · <b>${ready}</b> callable right now. The dialer takes callbacks and audit requests first, then the best scores. Time zones, call lists and filters above all carry over.</p>
-        <button type="button" class="btn btn-mint" id="csgo"${list.length ? '' : ' disabled'}>Save the list and open the dialer</button></div>`;
+      <div class="cs-foot"><p class="cs-sum" id="cs-sum"><b>${list.length}</b> lead${list.length === 1 ? '' : 's'} on this list${list.length > MAX_CAMPAIGN ? ` (first ${MAX_CAMPAIGN} are saved)` : ''} · <b>${ready}</b> callable right now.${heldN ? ` <b>${heldN}</b> more ${heldN === 1 ? 'is' : 'are'} on other agents' lists and left out.` : ''} The dialer takes callbacks and audit requests first, then the best scores. Time zones, call lists and filters above all carry over.</p>
+        <button type="button" class="btn btn-mint" id="csgo"${list.length ? '' : ' disabled'}>Load this list and open the dialer</button></div>`;
     $$('[data-ckind]', host).forEach((b) => b.addEventListener('click', () => { cs.kind = b.dataset.ckind; save(); draw(); }));
     $$('[data-cres]', host).forEach((b) => b.addEventListener('click', () => { const r = b.dataset.cres; cs.results = cs.results.includes(r) ? cs.results.filter((x) => x !== r) : [...cs.results, r]; save(); draw(); }));
     $$('[data-cstage]', host).forEach((b) => b.addEventListener('click', () => { const s = b.dataset.cstage; cs.stages = cs.stages.includes(s) ? cs.stages.filter((x) => x !== s) : [...cs.stages, s]; if (!cs.stages.length) cs.stages = [...DEFAULT_STAGES]; save(); draw(); }));
@@ -66,12 +82,10 @@ export function mountCallSetup(host, { rows, p, selected, stageLabel, save }) {
     $('#csgo', host).addEventListener('click', async (e) => {
       if (!list.length) return toast('No leads match. Change the stages or filters.', true);
       if (!scriptReady()) { toast('Pick the script for today first.', true); $('#cs-script', host)?.focus(); return; }
+      if (mine && !confirm(`Replace the ${mine} leads on your list with these ${list.length}? Your old list closes out and those leads go back to the pool.`)) return;
       const btn = e.currentTarget; busy(btn, true);
-      try {
-        await api('/api/dialer/campaign', { method: 'PUT', body: { ids: list.slice(0, MAX_CAMPAIGN).map((l) => l.id), label } });
-        try { localStorage.setItem('rw-dial-filter', JSON.stringify({ campaign: '1', label })); } catch { /* ignore */ }
-        location.hash = '#/phone';
-      } catch (err) { toast(err.message, true); busy(btn, false); }
+      const ok = await loadList(list.map((l) => l.id), label);
+      if (!ok) busy(btn, false);
     });
   };
   draw();

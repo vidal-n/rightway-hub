@@ -149,6 +149,7 @@ async function route() {
   if (parts[0] === 'pipeline' && parts[1] === 'suppression') return import('./suppress.js').then((m) => m.suppressPage(app, u));
   if (parts[0] === 'pipeline' && parts[1] === 'insights') return import('./leadinsights.js').then((m) => m.insightsPage(app, u));
   if (parts[0] === 'pipeline' && parts[1] === 'stage' && parts[2]) return pipelinePage(app, u, null, { kind: 'stage', key: decodeURIComponent(parts[2]) });
+  if (parts[0] === 'pipeline' && parts[1] === 'col' && parts[2] && parts[3]) return pipelinePage(app, u, null, { kind: 'col', mode: decodeURIComponent(parts[2]), key: decodeURIComponent(parts[3]) });
   if (parts[0] === 'pipeline' && parts[1] === 'group' && parts[2] && parts[3] != null) return pipelinePage(app, u, null, { kind: 'group', field: decodeURIComponent(parts[2]), value: decodeURIComponent(parts[3]) });
   if (parts[0] === 'pipeline') return pipelinePage(app, u, parts[1]);
   if (parts[0] === 'team' || (parts[0] === 'settings' && parts[1] === 'team')) return teamPage(app, u);

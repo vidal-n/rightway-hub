@@ -21,7 +21,10 @@ async function fromServer() {
   srv = { at: Date.now(), v };
   return v;
 }
+// Does this person have a call list loaded? The dialer is locked without one, so Resume sends them to the Pipeline instead.
+let hasList = null;
 export async function where() {
+  hasList = (await fromServer())?.list ?? null;
   const local = offered();
   const rec = local || {};
   if (local) return { rec, history: true };
@@ -38,6 +41,7 @@ async function leftNow() { return null; }
 
 // Restore the list, warm the phone inside this tap, open the dialer and start. The dialer starts itself (rw-autostart).
 export async function resumeNow() {
+  if (hasList === false) { location.hash = '#/pipeline'; return; } // no await here: iPad and iPhone only start audio inside the tap
   const rec = read() || {};
   try { localStorage.setItem('rw-dial-filter', JSON.stringify(rec.filter || {})); sessionStorage.setItem('rw-autostart', '1'); } catch { /* ignore */ }
   try { const a = await import('./audioset.js'); a.warmAudio(); a.holdMic(); } catch { /* the dialer asks again if it has to */ }
@@ -48,6 +52,7 @@ export async function resumeNow() {
 // Words for the strip and popup, whatever the state: ready to resume, nobody callable, or a first dial.
 export function stateText(rec, n, history) {
   const last = lastLine(rec);
+  if (hasList === false) return { head: 'Load a list first', line: 'The dialer only runs a list you load in the Pipeline. Pick who to call there, then start.', btn: 'Open the Pipeline', go: true };
   const list = rec.label ? `, ${rec.label}` : '';
   if (n === 0) return { head: history ? 'Pick up where you left off' : 'Power dial', line: `No one is callable right now${list}. Calling hours are 8am to 8pm in their time zone.${last ? ` Last call ${last}.` : ''}`, btn: 'Open the dialer', go: false };
   if (!history) return { head: 'Ready to dial', line: `${n == null ? 'Your call list is ready.' : `${n} ${n === 1 ? 'lead is' : 'leads are'} callable right now.`}`, btn: 'Start power dial', go: true };

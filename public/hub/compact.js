@@ -2,6 +2,7 @@
 // popovers of Linear, Attio and Close Smart Views: one button shows what is picked, a tap opens the full list.
 // Nothing is copied: the original row (with its own click handlers) is shown as the popover, so every page keeps working.
 // A row folds when it has 5 or more choices on any screen, or 3 or more on a phone or tablet.
+import { fitFixed, watchPops } from './fitpop.js';
 const ROWS = '.chips, .db-presets, .tz-tabs, .tiers, .sp-chips, .sc-chips, .db-chips, .gm-chips, .sl-chips';
 const CHOICE = ':scope > button, :scope > a, :scope > label';
 let open = null;
@@ -23,12 +24,7 @@ function close() {
   open.btn.setAttribute('aria-expanded', 'false');
   open = null;
 }
-function place(row, btn) {
-  const r = btn.getBoundingClientRect();
-  row.style.left = `${Math.max(8, Math.min(r.left, innerWidth - Math.min(360, innerWidth * 0.92) - 8))}px`;
-  const below = innerHeight - r.bottom;
-  if (below < 240 && r.top > below) { row.style.top = ''; row.style.bottom = `${innerHeight - r.top + 6}px`; } else { row.style.bottom = ''; row.style.top = `${r.bottom + 6}px`; }
-}
+function place(row, btn) { fitFixed(row, btn); }
 
 export function compactRows(root = document) {
   const small = matchMedia('(max-width: 1024px)').matches;
@@ -52,8 +48,8 @@ export function compactRows(root = document) {
       const was = open?.row === row;
       close();
       if (was) return;
-      place(row, b);
       row.classList.add('cmp-open');
+      place(row, b); // after it shows, so its real size is known
       b.setAttribute('aria-expanded', 'true');
       open = { row, btn: b };
       import('./sound.js').then((m) => m.play('tick')).catch(() => {});
@@ -65,6 +61,7 @@ export function compactRows(root = document) {
 
 let wired = false;
 export function wireCompact() {
+  watchPops();
   compactRows();
   const vs = document.getElementById('vscroll');
   if (vs && !vs.__rwCmp) { vs.__rwCmp = true; vs.addEventListener('scroll', close, { passive: true }); }

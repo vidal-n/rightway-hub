@@ -179,6 +179,18 @@ route('PUT', '/api/leaddb/dial', async ({ env, user, body }) => {
   await setSetting(env, `leaddb_dial:${user.id}`, JSON.stringify(f));
   return json({ ok: true, filter: f });
 });
+// "Dial this search" now loads the search as the person's call list (the dialer only runs a saved list), through the same claim rules.
+route('POST', '/api/leaddb/load-list', async ({ env, user, body }) => {
+  requireStaff(user);
+  const b = await body();
+  const f = cleanFilter(b.f || {});
+  await setSetting(env, `leaddb_dial:${user.id}`, JSON.stringify(f));
+  const w = whereFor(f, { now: Date.now() });
+  if (w.vals.length >= 80) throw new HttpError('That search has too many filters to load as a list. Remove a few.', 400);
+  const rows = await all(env, `SELECT leads.id AS id FROM ${DB_FROM} WHERE ${w.where} AND leads.dnc = 0 AND leads.stage NOT IN ('won', 'dnc') AND leads.phone_digits IS NOT NULL ORDER BY leads.score DESC LIMIT 2000`, ...w.vals);
+  const { saveCampaign } = await import('./crm.js');
+  return json(await saveCampaign(env, user, rows.map((r) => r.id), String(b.label || 'Lead database search').slice(0, 160)));
+});
 export async function dialFilterOf(env, userId) {
   try { return cleanFilter(JSON.parse((await getSettings(env))[`leaddb_dial:${userId}`] || '{}')); } catch { return {}; }
 }

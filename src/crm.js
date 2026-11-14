@@ -79,7 +79,28 @@ export async function callFacts(env, ids) {
   }
   return factsFrom(rows);
 }
+// List claims (Nov 2026, V: a lead one agent loaded on a list cannot be on another agent's list until the first agent closes the campaign out;
+// modeled on lead locking in the Close.com and Outreach dial lists). A claim is a lead id inside a person's saved campaign (`users.campaign`).
+export async function campaignHolders(env, exceptUserId) {
+  const rows = await all(env, "SELECT id, name, email, campaign FROM users WHERE campaign IS NOT NULL AND id != ?", exceptUserId || '');
+  const held = new Map(); const lists = [];
+  for (const u of rows) {
+    let c; try { c = JSON.parse(u.campaign); } catch { continue; }
+    const ids = cleanIds(c?.ids); if (!ids.length) continue;
+    const who = { userId: u.id, name: u.name || u.email, at: Number(c.at) || 0, label: String(c.label || ''), total: ids.length };
+    lists.push(who);
+    for (const id of ids) if (!held.has(id)) held.set(id, who);
+  }
+  return { held, lists };
+}
+// Who else holds this one lead (a LIKE on the saved ids keeps it to one query for a single lead).
+export async function claimOf(env, leadId, userId) {
+  const r = await first(env, "SELECT id, name, email FROM users WHERE campaign IS NOT NULL AND id != ? AND campaign LIKE ? ESCAPE '\\' LIMIT 1", userId || '', `%"${String(leadId).replace(/[\\%_"]/g, (m) => (m === '"' ? '' : `\\${m}`))}"%`);
+  return r ? { userId: r.id, name: r.name || r.email } : null;
+}
 export async function callBlock(env, lead, user) {
+  const held = await claimOf(env, lead.id, user.id);
+  if (held) return { code: 'claimed', why: `${held.name} has this lead on a call list. They have to close out that campaign before anyone else can call it.` };
   const facts = (await callFacts(env, [lead.id])).get(lead.id) || {};
   const ids = [facts.callbackBy, lead.owner_id].filter(Boolean);
   const names = {};
@@ -612,10 +633,9 @@ async function campaignOf(env, userId) {
   try { const c = r?.campaign ? JSON.parse(r.campaign) : null; return { ids: cleanIds(c?.ids), label: String(c?.label || ''), at: Number(c?.at) || 0 }; } catch { return { ids: [], label: '', at: 0 }; }
 }
 route('GET', '/api/dialer/campaign', async ({ env, user }) => { requireStaff(user); const c = await campaignOf(env, user.id); return json({ total: c.ids.length, label: c.label, at: c.at }); });
-route('PUT', '/api/dialer/campaign', async ({ env, user, body }) => {
-  requireStaff(user);
-  const b = await body();
-  let ids = cleanIds(b.ids);
+// Save a list for this person. Leads on the Do Not Call list, and leads another person already holds on their own list, are left out.
+export async function saveCampaign(env, user, rawIds, label) {
+  let ids = cleanIds(rawIds);
   if (!ids.length) throw new HttpError('Pick at least one lead for the list.');
   // Leave out anyone on the Do Not Call list or a copy of a business on it, whoever put them there (the list is the whole company's).
   const keys = await blockedKeys(env);
@@ -625,9 +645,30 @@ route('PUT', '/api/dialer/campaign', async ({ env, user, body }) => {
   const removed = ids.filter((id) => bad.has(id)).length;
   ids = ids.filter((id) => !bad.has(id));
   if (!ids.length) throw new HttpError('Every lead on that list is on the Do Not Call list.', 409);
-  const c = { ids, label: String(b.label || '').slice(0, 160), at: now() };
+  const { held } = await campaignHolders(env, user.id);
+  const takenBy = new Map();
+  for (const id of ids) { const h = held.get(id); if (h) takenBy.set(h.name, (takenBy.get(h.name) || 0) + 1); }
+  const taken = [...takenBy.values()].reduce((a, b) => a + b, 0);
+  ids = ids.filter((id) => !held.has(id));
+  const names = [...takenBy.entries()].map(([n, c]) => `${n} (${c})`).join(', ');
+  if (!ids.length) throw new HttpError(`Every one of those leads is on ${names}'s list. They have to close out that campaign first.`, 409);
+  const c = { ids, label: String(label || '').slice(0, 160), at: now() };
   await run(env, 'UPDATE users SET campaign = ? WHERE id = ?', JSON.stringify(c), user.id);
-  return json({ total: ids.length, label: c.label, at: c.at, removed });
+  return { total: ids.length, label: c.label, at: c.at, removed, taken, takenBy: [...takenBy.entries()].map(([name, n]) => ({ name, n })) };
+}
+route('PUT', '/api/dialer/campaign', async ({ env, user, body }) => {
+  requireStaff(user);
+  const b = await body();
+  return json(await saveCampaign(env, user, b.ids, b.label));
+});
+// Everyone's lists: who holds which leads. The Pipeline marks held leads and keeps them out of a new list.
+route('GET', '/api/dialer/claims', async ({ env, user }) => {
+  requireStaff(user);
+  const mine = await campaignOf(env, user.id);
+  const { held, lists } = await campaignHolders(env, user.id);
+  const idx = new Map(lists.map((l, i) => [l.userId, i]));
+  const map = {}; for (const [id, h] of held) map[id] = idx.get(h.userId);
+  return json({ mine: { total: mine.ids.length, label: mine.label, at: mine.at, ids: mine.ids }, lists, held: map });
 });
 // Before a call from the rep's own phone (a tel: link, which the Hub cannot see): the same checks the browser phone makes.
 route('GET', '/api/leads/:id/call-check', async ({ env, user, params }) => {
@@ -642,7 +683,15 @@ route('GET', '/api/leads/:id/call-check', async ({ env, user, params }) => {
   if (rule) return json({ ok: false, reason: rule.why });
   return json({ ok: true });
 });
-route('DELETE', '/api/dialer/campaign', async ({ env, user }) => { requireStaff(user); await run(env, 'UPDATE users SET campaign = NULL WHERE id = ?', user.id); return json({ ok: true }); });
+// Close out a campaign: frees every lead on it for the rest of the team. A person closes their own; owners can close anyone's.
+route('DELETE', '/api/dialer/campaign', async ({ env, user, url }) => {
+  requireStaff(user);
+  const who = url.searchParams.get('user') || user.id;
+  if (who !== user.id && user.role !== 'admin') throw new HttpError('Only an owner can close out someone else\'s campaign.', 403);
+  const had = await campaignOf(env, who);
+  await run(env, 'UPDATE users SET campaign = NULL WHERE id = ?', who);
+  return json({ ok: true, freed: had.ids.length });
+});
 route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   requireStaff(user);
   const t = now();
@@ -675,7 +724,9 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const minScore = Number(url.searchParams.get('minScore')) || 0;
   const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
   const blockKeys = await blockedKeys(env); // copies of a Do Not Call business (another phone, same name and place or website) never come up
-  const open = rows.filter((l) => !leadBlocked(blockKeys, l)).filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3) && !capped.has(l.id));
+  // A lead on someone else's call list is theirs until they close it out (when both lists hold it, the one saved first keeps it).
+  const { held: heldBy } = await campaignHolders(env, user.id);
+  const open = rows.filter((l) => !leadBlocked(blockKeys, l)).filter((l) => { const h = heldBy.get(l.id); return !h || (camp && h.at > camp.at); }).filter((l) => !(l.last_call_at && t - l.last_call_at < 3 * 3600e3) && !capped.has(l.id));
   // Callbacks belong to the teammate who set them, and a lead that did not answer waits 24 hours (src/callrules.js), whatever list it is on.
   const touched = open.filter((l) => l.stage === 'callback' || (l.attempts || 0) > 0 || l.last_call_at);
   const facts = touched.length ? await callFacts(env, touched.map((l) => l.id)) : new Map();
@@ -701,7 +752,7 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
       FROM activities WHERE type IN ('call','meeting') AND by = ? AND at >= ?`, user.id, dayBegin);
   const page = now_.slice(0, Number(url.searchParams.get('limit')) || 50);
   const queue = await fullRows(env, page, user);
-  return json({ campaign: camp ? { total: camp.ids.length, label: camp.label, at: camp.at } : null, queue, waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0, goal: await dialGoalOf(env, user.id) }, tiers, cats });
+  return json({ campaign: camp && camp.ids.length ? { total: camp.ids.length, label: camp.label, at: camp.at } : null, needList: Boolean(camp && !camp.ids.length), queue, waitingForHours: later, stats: { dials: stats?.dials || 0, talks: stats?.talks || 0, booked: stats?.booked || 0, goal: await dialGoalOf(env, user.id) }, tiers, cats });
 });
 // Where this person left off, from the server so it works on any device and with no local record: their last call (business and
 // time) and how many calls they made in the last 12 hours. Modeled on the resume prompts in Close.com and Outreach dialers.
@@ -711,7 +762,7 @@ route('GET', '/api/dialer/resume', async ({ env, user }) => {
   const last = await first(env, `SELECT a.at AS at, l.business AS business, l.id AS lead_id FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
     WHERE a.type = 'call' AND a.by = ? ORDER BY a.at DESC LIMIT 1`, user.id);
   const recent = await first(env, `SELECT COUNT(*) AS n FROM activities WHERE type = 'call' AND by = ? AND at >= ?`, user.id, t - 12 * 3600e3);
-  return json({ last: last ? { business: last.business || 'a lead', at: last.at, id: last.lead_id } : null, calls: recent?.n || 0 });
+  return json({ last: last ? { business: last.business || 'a lead', at: last.at, id: last.lead_id } : null, calls: recent?.n || 0, list: (await campaignOf(env, user.id)).ids.length > 0 });
 });
 // Quality tiers: callbacks and booked follow ups always count as hot; not researched yet is its own queue (shared with the Pipeline, public/js/campaign.js).
 export const tierOf = callTier;

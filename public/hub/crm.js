@@ -12,7 +12,7 @@ import { saveDial } from './resume.js';
 import { mountLayout } from './widgets.js';
 import { showCallScript, setScriptOn, scriptOn } from './scriptpane.js';
 import { scriptLabel, scriptText, scriptTag, loadScriptTest } from './scriptpick.js';
-import { mountCallSetup, scriptReady } from './callsetup.js';
+import { mountCallSetup, scriptReady, loadList } from './callsetup.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { hoverCards, hoverHtml } from './hovercard.js';
@@ -33,6 +33,8 @@ import { PHONE_TYPE_LABEL, EMAIL_STATUS_LABEL } from '/js/scrub.js';
 import { bothTimes, validZone, fromInputs, inputsIn } from '/js/apptime.js';
 const yourZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
 import { licenseSearchUrl, sunbizSearchUrl } from '/js/freedata.js';
+import { boardColumns, columnByKey, loadable, BOARD_MODES } from '/js/boardcols.js';
+import { calledBefore } from '/js/campaign.js';
 import { registryFor } from '/js/registries.js';
 import { RESEARCH_DEPTHS, adsLine, adLibraryLinks, directoryLinks } from '/js/freedata.js';
 
@@ -40,8 +42,6 @@ export const STAGE_LABEL = {
   new: 'New lead', attempting: 'Attempting', callback: 'Callback set', audit_requested: 'Audit requested', audit_booked: 'Audit booked',
   no_show: 'No-show', follow_up: 'Following up', won: 'Won', not_now: 'Not now', lost: 'Lost', dnc: 'Do not call',
 };
-// Stages the dialer can call (the same list the server uses).
-const DIALABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
 const BOARD = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won'];
 const CLOSED = ['not_now', 'lost', 'dnc'];
 // Built in results, used until the custom list loads and for older call records.
@@ -84,7 +84,7 @@ const GRADES = ['A', 'B', 'C', 'D'];
 const GROUPS = [['', 'No grouping'], ['tz_short', 'Time zone'], ['state', 'State'], ['city', 'City'], ['industry', 'Industry'], ['grade', 'Grade'], ['stage', 'Stage'], ['source', 'Source'], ['tags', 'Tag']];
 const PIPE_KEY = 'rw-pipe-v2';
 const tzSel = (p) => String(p.tz || '').split(',').filter(Boolean);
-const loadPipe = () => { try { return { view: 'board', tz: '', group: '', sort: '-score', f: {}, ...JSON.parse(localStorage.getItem(PIPE_KEY) || '{}') }; } catch { return { view: 'board', tz: '', group: '', sort: '-score', f: {} }; } };
+const loadPipe = () => { try { return { view: 'board', board: 'stage', tz: '', group: '', sort: '-score', f: {}, ...JSON.parse(localStorage.getItem(PIPE_KEY) || '{}') }; } catch { return { view: 'board', board: 'stage', tz: '', group: '', sort: '-score', f: {} }; } };
 const PIPE_LAYOUT = [['get', 'Step 1: Get leads'], ['clean', 'Step 2: Clean up'], ['tz', 'Time zone tabs'], ['lists', 'Call list chips'], ['stats', 'Numbers line']];
 const loadLay = () => { const d = { get: true, clean: true, tz: true, lists: true, stats: true }; try { return { ...d, ...JSON.parse(localStorage.getItem('rw-pipe-layout') || '{}') }; } catch { return d; } };
 const savePipe = (p) => { try { localStorage.setItem(PIPE_KEY, JSON.stringify(p)); } catch { /* private mode */ } };
@@ -109,6 +109,10 @@ export async function pipelinePage(app, user, openId, screen) {
   const p = loadPipe();
   p.f ||= {};
   const all = data.leads;
+  // Who holds which leads on a call list (src/crm.js campaignHolders): held leads wear a badge and never go on a new list.
+  const claims = await api('/api/dialer/claims').catch(() => ({ mine: { total: 0, ids: [], label: '', at: 0 }, lists: [], held: {} }));
+  const mineSet = new Set(claims.mine.ids || []);
+  for (const l of all) { const i = claims.held[l.id]; l.held = i == null ? '' : claims.lists[i].name; l.mine = mineSet.has(l.id); }
   const states = [...new Set(all.map((l) => l.state).filter(Boolean))].sort();
   const sources = [...new Set(all.map((l) => l.source).filter(Boolean))].sort();
   const industries = [...new Set(all.map((l) => l.industry).filter(Boolean))].sort();
@@ -123,13 +127,36 @@ export async function pipelinePage(app, user, openId, screen) {
 
   // The Pipeline's current filters as a dialer filter. A stage narrows it to one column.
   const dialFilter = (stage = '') => ({ tz: tzSel(p).filter((z) => z !== '?').join(','), grade: (p.f.grades || []).join(','), state: p.f.state || '', industry: p.f.industry || '', tag: p.f.tag || '', city: p.f.city || '', data: p.f.phoneType === 'mobile' ? 'mobile' : p.f.owner === 'yes' ? 'owner' : p.f.email ? 'email' : '', stage });
-  // "Dial this column": open the dialer with only that stage's leads (and the filters set above).
-  view.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-dialcol]'); if (!b) return;
+  // "Load" on a column: that column's leads (minus anyone held on another list) become this person's call list.
+  view.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-loadcol]'); if (!b) return;
     e.preventDefault();
-    try { localStorage.setItem('rw-dial-filter', JSON.stringify(dialFilter(b.dataset.dialcol))); } catch { /* ignore */ }
-    location.hash = '#/phone';
+    const mode = screen?.kind === 'col' ? screen.mode : screen ? 'stage' : (p.board || 'stage');
+    const col = columnByKey(mode, filterLeads(all, p), b.dataset.loadcol, STAGE_LABEL);
+    if (!col) return;
+    const pool = col.leads.filter((l) => l.phone && !l.held);
+    if (!pool.length) return toast(col.leads.length ? 'Every lead in that column is already on another list.' : 'Nothing in that column to call.', true);
+    if (claims.mine.total && !confirm(`Replace the ${claims.mine.total} leads on your list with these ${pool.length}? Your old list closes out and those leads go back to the pool.`)) return;
+    busy(b, true);
+    const ok = await loadList(pool.map((l) => l.id), `${col.label}${p.tz ? ` (${p.tz})` : ''}`, { skipped: col.leads.length - pool.length });
+    if (!ok) { busy(b, false); setupRef?.focus(); }
   });
+  const closeOut = async (userId) => {
+    const own = !userId;
+    if (!confirm(own ? 'Close out your campaign? Every lead on it goes back to the pool for the whole team.' : 'Close out this person\'s campaign? Their leads go back to the pool.')) return;
+    try { const r = await api(`/api/dialer/campaign${own ? '' : `?user=${encodeURIComponent(userId)}`}`, { method: 'DELETE' }); toast(`Closed out. ${r.freed} lead${r.freed === 1 ? '' : 's'} freed.`); try { localStorage.removeItem('rw-dial-filter'); } catch { /* ignore */ } reload(); }
+    catch (err) { toast(err.message, true); }
+  };
+  // Who is calling what: your own list with Close out, and every other list with who holds it (owners can close those out too).
+  const listsStrip = () => {
+    const m = claims.mine;
+    const when = (t) => (t ? new Date(t).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '');
+    return `<section class="liststrip" data-sec="lists-in-play" aria-label="Call lists in play">
+      <div class="ls-row ls-mine"><b>Your list</b>${m.total ? `<span class="ls-what"><b>${m.total}</b> leads · ${esc(m.label || 'No name')}${m.at ? ` · loaded ${esc(when(m.at))}` : ''}</span><span class="ls-btns"><a class="btn btn-mint btn-sm" href="#/phone">${icon.phone}Open the dialer</a><button type="button" class="btn btn-ghost btn-sm" id="closemine">Close out my campaign</button></span>`
+        : '<span class="ls-what muted">Nothing loaded. The dialer stays locked until you load a list.</span><span class="ls-btns"><button type="button" class="btn btn-mint btn-sm" data-opensetup>Build a call list</button></span>'}</div>
+      ${claims.lists.map((o) => `<div class="ls-row"><b>${esc(o.name)}</b><span class="ls-what"><b>${o.total}</b> leads held · ${esc(o.label || 'No name')}${o.at ? ` · since ${esc(when(o.at))}` : ''}</span>${user.role === 'admin' ? `<span class="ls-btns"><button type="button" class="btn btn-ghost btn-sm" data-release="${esc(o.userId)}">Close out</button></span>` : ''}</div>`).join('')}
+    </section>`;
+  };
   const render = () => {
     savePipe(p);
     const rows = filterLeads(all, p);
@@ -152,6 +179,7 @@ export async function pipelinePage(app, user, openId, screen) {
             ${PIPE_LAYOUT.map(([k, n]) => `<label><input type="checkbox" data-play="${k}"${lay[k] ? ' checked' : ''}> ${n}</label>`).join('')}
             <button type="button" class="btn btn-ghost btn-sm" id="playreset">Show everything</button></div></div></div></div>
       ${pipeTabs('board')}
+      ${listsStrip()}
       <div class="flow">
         <section class="fstep" data-sec="get"><header><span class="fn">1</span><div><h3>Get leads</h3><p>Find new businesses or bring a list in.</p></div></header>
           <div class="row">${user.role === 'admin' ? `<a class="btn btn-ghost btn-sm" href="#/finder">Lead finder</a>` : ''}<button class="btn btn-ghost btn-sm" id="imp">${icon.upload}Import a list</button><button class="btn btn-ghost btn-sm" id="addl">${icon.plus}Add one lead</button></div></section>
@@ -197,30 +225,35 @@ export async function pipelinePage(app, user, openId, screen) {
           <span class="spacer"></span><button class="btn btn-ghost btn-sm" id="fclear">Clear filters</button></div>
       </div>
         </section>
-        <section class="fstep wide go" data-sec="work"><header><span class="fn">4</span><div><h3>Set up the call list</h3>
-          <p class="fstats" data-sec="stats"><b>${open.length}</b> open · <b>${open.filter((l) => l.grade === 'A').length}</b> A leads · <b>${open.filter((l) => l.callable_now).length}</b> callable now · <b>${(by.audit_booked || []).length}</b> audits booked · <b>${(by.won || []).length}</b> won</p></div></header>
-          <div class="row"><div class="seg"><button class="${p.view === 'board' ? 'is-on' : ''}" data-view="board">Board</button><button class="${p.view === 'list' ? 'is-on' : ''}" data-view="list">List</button></div>
-            <a class="btn btn-ghost" href="#/phone" id="godial" title="Open the dialer with the list you saved last">${icon.phone}Open the dialer</a></div>
-          <div class="csetup" id="csetup"></div></section>
+        <section class="fstep wide go" data-sec="work">
+          <details class="csfold" id="csfold"${p.setupOpen ? ' open' : ''}>
+            <summary><span class="fn">4</span><div><h3>Set up the call list</h3>
+              <p class="fstats" data-sec="stats"><b>${open.length}</b> open · <b>${rows.filter((l) => !l.held && !['won', 'lost', 'dnc'].includes(l.stage) && l.phone && !calledBefore(l)).length}</b> fresh and free to load · <b>${open.filter((l) => l.grade === 'A').length}</b> A leads · <b>${open.filter((l) => l.callable_now).length}</b> callable now · <b>${(by.audit_booked || []).length}</b> audits booked · <b>${(by.won || []).length}</b> won</p></div>
+              <span class="cs-cue"><span class="cs-open">Hide</span><span class="cs-shut">Build a custom list</span></span></summary>
+            <div class="csetup" id="csetup"></div>
+          </details></section>
       </div>
+      <div class="boardbar"><div class="seg" role="group" aria-label="View"><button class="${p.view === 'board' ? 'is-on' : ''}" data-view="board">Board</button><button class="${p.view === 'list' ? 'is-on' : ''}" data-view="list">List</button></div>
+        ${p.view === 'board' ? `<div class="seg" role="group" aria-label="Board columns by"><span class="seg-l">Columns by</span>${BOARD_MODES.map(([k, n]) => `<button class="${(p.board || 'stage') === k ? 'is-on' : ''}" data-board="${k}">${n}</button>`).join('')}</div>` : ''}
+        <span class="spacer"></span><span class="small muted">${rows.length} leads in view</span>
+        <a class="btn btn-ghost btn-sm" href="#/phone" id="godial" title="Open the dialer with the list you loaded">${icon.phone}Open the dialer</a></div>
       <div id="scstrip"></div>
       <div id="pbody"></div>`;
     const body = $('#pbody', view);
-    if (p.view === 'list') renderList(body, rows); else renderBoard(body, by);
+    if (p.view === 'list') renderList(body, rows); else renderBoard(body, rows);
     wire();
     resumeScrub(reload);
   };
 
-  const renderBoard = (el, by) => {
-    el.innerHTML = `<div class="board">${BOARD.map((s) => column(s, sortLeads(by[s] || [], '-score'))).join('')}</div>
-      <details class="card" style="margin-top:18px"><summary style="cursor:pointer;font-weight:600">Closed: not now, lost, do not call (${CLOSED.reduce((n, s) => n + (by[s] || []).length, 0)})</summary>
-        <div class="board" style="margin-top:14px">${CLOSED.map((s) => column(s, by[s] || [])).join('')}</div></details>`;
+  const renderBoard = (el, rowsIn) => {
+    const mode = p.board || 'stage';
+    el.innerHTML = `<div class="board" data-mode="${esc(mode)}">${boardColumns(mode, sortLeads(rowsIn, '-score'), STAGE_LABEL).map((c) => column(c, mode)).join('')}</div>`;
     $$('.lead-card', el).forEach((c) => {
       c.addEventListener('click', () => leadModal(c.dataset.id, reload));
       c.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', c.dataset.id); c.classList.add('dragging'); });
       c.addEventListener('dragend', () => c.classList.remove('dragging'));
     });
-    $$('.col', el).forEach((col) => {
+    $$('.col[data-stage]', el).forEach((col) => {
       col.addEventListener('dragover', (e) => { e.preventDefault(); col.classList.add('drop-on'); });
       col.addEventListener('dragleave', () => col.classList.remove('drop-on'));
       col.addEventListener('drop', async (e) => {
@@ -291,14 +324,18 @@ export async function pipelinePage(app, user, openId, screen) {
     $('#playbtn', view)?.addEventListener('click', (e) => { e.stopPropagation(); playOpen = !playOpen; pbody.hidden = !playOpen; e.currentTarget.setAttribute('aria-expanded', String(playOpen)); });
     $$('[data-play]', view).forEach((c) => c.addEventListener('change', () => { lay[c.dataset.play] = c.checked; applyPlay(); }));
     $('#playreset', view)?.addEventListener('click', () => { Object.keys(lay).forEach((k) => { lay[k] = true; }); $$('[data-play]', view).forEach((c) => { c.checked = true; }); applyPlay(); });
-    $('#gosetup', view)?.addEventListener('click', () => setupRef?.focus());
-    setupRef = mountCallSetup($('#csetup', view), { rows: filterLeads(all, p), p, selected, stageLabel: STAGE_LABEL, save: () => savePipe(p) });
+    $$('#gosetup, [data-opensetup]', view).forEach((b) => b.addEventListener('click', () => { const f = $('#csfold', view); if (f) { f.open = true; p.setupOpen = true; savePipe(p); } setupRef?.focus(); }));
+    $('#csfold', view)?.addEventListener('toggle', (e) => { p.setupOpen = e.currentTarget.open; savePipe(p); });
+    setupRef = mountCallSetup($('#csetup', view), { rows: filterLeads(all, p), p, selected, stageLabel: STAGE_LABEL, save: () => savePipe(p), mine: claims.mine.total });
     $('#addl', view).addEventListener('click', () => leadForm(null, reload));
     $('#imp', view).addEventListener('click', () => importModal(reload));
     $('#dups', view).addEventListener('click', () => duplicatesModal(reload));
     // Time zone tabs are multi select: tap one to add it, tap again to take it off, All clears them.
     $$('[data-tz]', view).forEach((b) => b.addEventListener('click', () => { const k = b.dataset.tz; if (!k) p.tz = ''; else { const cur = tzSel(p); p.tz = (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]).join(','); } render(); }));
     $$('[data-grade]', view).forEach((b) => b.addEventListener('click', () => { const g = b.dataset.grade; const s = new Set(p.f.grades || []); if (s.has(g)) s.delete(g); else s.add(g); p.f.grades = [...s]; render(); }));
+    $$('[data-board]', view).forEach((b) => b.addEventListener('click', () => { p.board = b.dataset.board; render(); }));
+    $('#closemine', view)?.addEventListener('click', () => closeOut(''));
+    $$('[data-release]', view).forEach((b) => b.addEventListener('click', () => closeOut(b.dataset.release)));
     $$('[data-view]', view).forEach((b) => b.addEventListener('click', () => { p.view = b.dataset.view; render(); }));
     $('#fmore', view).addEventListener('click', () => { p.open = !p.open; $('#fpanel', view).hidden = !p.open; savePipe(p); });
     let t;
@@ -350,10 +387,15 @@ export async function pipelinePage(app, user, openId, screen) {
   };
   const fullScreen = () => {
     const rows0 = filterLeads(all, p);
-    let title; let rows;
+    let title; let rows; let colKey = '';
+    const mode = screen.kind === 'col' ? screen.mode : 'stage';
     if (screen.kind === 'group') { const v = screen.value; rows = rows0.filter((l) => (String(l[screen.field] ?? '') || 'None') === v); title = `${v}`; }
-    else if (screen.key === 'all') { rows = rows0; title = 'All leads in this view'; }
-    else { rows = rows0.filter((l) => l.stage === screen.key); title = STAGE_LABEL[screen.key] || 'Leads'; }
+    else if (screen.kind === 'stage' && screen.key === 'all') { rows = rows0; title = 'All leads in this view'; }
+    else {
+      colKey = screen.kind === 'col' ? screen.key : screen.key === 'new' ? 'fresh' : `stage:${screen.key}`;
+      const c = columnByKey(mode, rows0, colKey, STAGE_LABEL);
+      rows = c ? c.leads : []; title = c ? c.label : STAGE_LABEL[screen.key] || 'Leads';
+    }
     rows = sortLeads(rows, p.sort || '-score');
     let q = ''; let shown = 50;
     const draw = () => {
@@ -364,7 +406,7 @@ export async function pipelinePage(app, user, openId, screen) {
       $$('#fsl .lead-card', view).forEach((c) => c.addEventListener('click', () => leadModal(c.dataset.id, () => pipelinePage(app, user, null, screen))));
       $('#fsmore', view)?.addEventListener('click', () => { shown += 50; draw(); });
     };
-    view.innerHTML = `<div class="fullscreen-list"><div class="page-head"><div><a class="btn btn-ghost btn-sm" href="#/pipeline">&lsaquo; Back to the pipeline</a><h1 style="margin-top:10px">${esc(title)}</h1><p class="small muted" id="fscount"></p></div>${screen.kind !== 'group' && DIALABLE.includes(screen.key) ? `<button type="button" class="btn btn-mint" data-dialcol="${esc(screen.key)}">${icon.phone}Dial this column</button>` : ''}</div>
+    view.innerHTML = `<div class="fullscreen-list"><div class="page-head"><div><a class="btn btn-ghost btn-sm" href="#/pipeline">&lsaquo; Back to the pipeline</a><h1 style="margin-top:10px">${esc(title)}</h1><p class="small muted" id="fscount"></p></div>${colKey && loadable(colKey) ? `<button type="button" class="btn btn-mint" data-loadcol="${esc(colKey)}">${icon.phone}Load this column as my list</button>` : ''}</div>
       <label class="field"><input id="fsq" placeholder="Search this list" autocomplete="off"></label><div class="fs-grid" id="fsl"></div></div>`;
     $('#fsq', view).addEventListener('input', (e) => { q = e.target.value; shown = 50; draw(); });
     draw();
@@ -435,16 +477,17 @@ async function duplicatesModal(onDone) {
 }
 
 const PER_LIST = 10;
-function column(stage, leads) {
-  const more = leads.length > PER_LIST;
-  return `<section class="col" data-stage="${stage}"><header class="col-head"><b>${STAGE_LABEL[stage]}</b><span class="col-tools">${DIALABLE.includes(stage) && leads.length ? `<button type="button" class="col-dial" data-dialcol="${esc(stage)}" title="Dial only the ${esc(STAGE_LABEL[stage])} column. Leads not due yet or called in the last 3 hours wait.">${icon.phone}Dial</button>` : ''}<span class="badge gray">${leads.length}</span></span></header>
-    <div class="col-body">${leads.slice(0, PER_LIST).map(card).join('')}${more ? `<a class="btn btn-ghost btn-sm col-all" href="#/pipeline/stage/${esc(stage)}">Open all ${leads.length} in a full screen</a>` : ''}</div></section>`;
+function column(c, mode) {
+  const more = c.leads.length > PER_LIST;
+  const key = esc(c.key);
+  return `<section class="col" data-col="${key}"${c.drop ? ` data-stage="${esc(c.drop)}"` : ''}><header class="col-head"><div class="col-t"><b>${esc(c.label)}</b>${c.hint ? `<small>${esc(c.hint)}</small>` : ''}</div><span class="col-tools">${loadable(c.key) && c.leads.length ? `<button type="button" class="col-dial" data-loadcol="${key}" title="Make this column your call list. Leads another agent already holds are left out.">${icon.phone}Load</button>` : ''}<span class="badge gray">${c.leads.length}</span></span></header>
+    <div class="col-body">${c.leads.slice(0, PER_LIST).map(card).join('') || '<p class="small muted col-empty">Nothing here.</p>'}${more ? `<a class="btn btn-ghost btn-sm col-all" href="#/pipeline/col/${esc(mode)}/${encodeURIComponent(c.key)}">Open all ${c.leads.length} in a full screen</a>` : ''}</div></section>`;
 }
 function card(l) {
   return `<article class="lead-card" draggable="true" data-id="${esc(l.id)}">
     <div class="row lc-top" style="gap:8px;flex-wrap:nowrap">${gradeBadge(l.grade, l.score)}<div style="min-width:0"><div class="item-title">${esc(l.business)}</div>
     <div class="item-sub">${esc([l.industry || l.category, [l.city, l.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '))}</div></div></div>
-    <div class="row small" style="margin-top:6px;gap:6px">${l.next_action_at ? `<span class="badge ${l.next_action_at <= Date.now() ? 'warn' : 'gray'}">${esc(dueText(l.next_action_at))}</span>` : ''}
+    <div class="row small" style="margin-top:6px;gap:6px">${l.held ? `<span class="badge warn" title="${esc(l.held)} loaded this lead on a call list. It stays theirs until they close out the campaign.">${esc(l.held)}'s list</span>` : l.mine ? '<span class="badge" title="On your call list">My list</span>' : ''}${l.next_action_at ? `<span class="badge ${l.next_action_at <= Date.now() ? 'warn' : 'gray'}">${esc(dueText(l.next_action_at))}</span>` : ''}
       ${l.meet_at && l.meet_at > Date.now() - 3600e3 ? `<span class="badge">Meet ${esc(new Date(l.meet_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</span>` : ''}
       ${l.reviews != null ? `<span>${l.reviews} rev</span>` : ''}${l.map_rank ? `<span>${l.map_rank > 20 ? '20+' : `#${l.map_rank}`}</span>` : ''}${l.tz_known ? `<span class="${l.callable_now ? 'ok-dot' : ''}">${esc(l.tz_short)}${l.tz_alt_short ? `/${esc(l.tz_alt_short)}` : ''} ${esc(l.local_time)}</span>` : ''}</div></article>`;
 }
@@ -1106,7 +1149,8 @@ export async function dialerPage(app, user) {
   // Researching the next leads as you dial costs money, so it starts off (Nov 2026). The old saved choice is ignored once.
   let auto = false;
   try { auto = localStorage.getItem('rw-dial-auto2') === '1'; } catch { /* ignore */ }
-  const qs = new URLSearchParams(Object.entries(flt).filter(([k, v]) => v && k !== 'label')).toString();
+  // The dialer only runs the list this person loaded on the Pipeline (Nov 2026, V). Nothing else is ever asked for.
+  const qs = 'campaign=1';
   let me, q, cal, nums = { numbers: [] };
   try { [me, q, cal, nums] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150&since=${new Date().setHours(0, 0, 0, 0)}${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] })), api('/api/dialer/numbers').catch(() => ({ numbers: [] }))]); }
   catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
@@ -1146,7 +1190,9 @@ export async function dialerPage(app, user) {
   let testLog = [];
   const testHist = new Map();
   const testHit = (l, text) => { const a = testHist.get(l.id) || []; a.push(text); testHist.set(l.id, a); };
-  const dialOn = () => Boolean(me.twilio) || testMode;
+  // No saved list: the dialer is locked until one is loaded from the Pipeline (Test power dial still works, it uses pretend leads).
+  const needList = () => !q.campaign && !testMode;
+  const dialOn = () => (Boolean(me.twilio) && !needList()) || testMode;
   const testNote = (what) => toast(`Test mode: ${what} is for real leads. Nothing happens here.`);
   const testScore = new Map();
   const testBook = (l) => testBookModal(l, () => { const id = (DISP.find((d) => d.acts === 'booked') || { id: 'booked' }).id; testHit(l, 'Audit booked (pretend)'); afterBooking(l, id); });
@@ -1289,7 +1335,7 @@ export async function dialerPage(app, user) {
   // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.
   setTimeout(() => api('/api/balances/status').then((b) => { const el = document.getElementById('lowbal'); if (el && b.low?.length) el.innerHTML = `<div class="card" style="border-color:#E8A33D;margin-bottom:12px"><b>${b.low.map((x) => esc(x.name)).join(' and ')} balance ${b.low.some((x) => x.empty) ? 'is empty' : 'is low'}.</b> <span class="small">${b.low.some((x) => x.key === 'twilio') ? 'Calls and texts stop when Twilio runs out. ' : ''}${b.low.some((x) => x.key === 'dataforseo') ? 'Research and scans stop when DataForSEO runs out. ' : ''}An owner can add funds from the Dashboard.</span></div>`; }).catch(() => {}), 50);
   const filterText = Object.entries(flt).filter(([k, v]) => v && !['tier', 'cat', 'db', 'campaign'].includes(k)).map(([k, v]) => (k === 'label' ? (flt.db ? `Lead database search: ${v}` : String(v)) : k === 'stage' ? `Column: ${String(v).split(',').map((x) => STAGE_LABEL[x] || x).join(', ')}` : `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`)).join(' · ');
-  const listText = q.campaign ? `${q.campaign.label || `${q.campaign.total} leads`}${q.campaign.at ? `, saved ${new Date(q.campaign.at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}` : flt.campaign ? 'No list saved yet. Set one up in the Pipeline.' : filterText || 'Everyone who is due and inside calling hours';
+  const listText = q.campaign ? `${q.campaign.label || `${q.campaign.total} leads`}${q.campaign.at ? `, saved ${new Date(q.campaign.at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}` : 'No list loaded. Load one in the Pipeline.';
   let lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true };
   let layOpen = false;
   // Click anywhere else, or press Escape, to close the layout menu.
@@ -1316,7 +1362,7 @@ export async function dialerPage(app, user) {
           ${dialOn() ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
       ${testMode ? '<div class="card test-banner"><b>Test mode.</b> Seven pretend leads run the whole dialer, from Start power dial to the result popup and the next lead. Nothing is dialed, texted, booked or saved, and it costs nothing. <a href="#/training/warmup">Warm up in Training</a>. <button type="button" class="btn btn-ghost btn-sm" id="pdtestx">Exit test</button></div>' : ''}
       ${dialTabs('queue', user)}
-      <div class="dsetup card" data-sec="setup"><div><b>Today's list</b><span>${esc(listText)}</span></div><div><b>Script</b><span>${esc(scriptText())}</span></div><div class="dsetup-go"><a class="btn btn-ghost btn-sm" href="#/pipeline">Change in Pipeline</a>${flt.campaign || filterText ? '<button class="linkbtn" id="dclear" title="Forget the saved list and dial everyone who is due">Clear the list</button>' : ''}</div></div>
+      <div class="dsetup card" data-sec="setup"><div><b>Today's list</b><span>${esc(listText)}</span></div><div><b>Script</b><span>${esc(scriptText())}</span></div><div class="dsetup-go"><a class="btn btn-ghost btn-sm" href="#/pipeline">Change in Pipeline</a>${q.campaign ? '<button class="linkbtn" id="dclear" title="Close out the campaign and free these leads for the rest of the team">Close out this campaign</button>' : ''}</div></div>
       <div id="rsx" class="small muted" style="margin:0 0 6px"></div>
       <div class="dstrip" aria-label="Today"><span class="dgoal"><b>${q.stats.dials}</b> dials <i>of ${user.role === 'admin' ? `<button type="button" class="goal-btn" id="dgoal" title="Click to change your daily dial goal">${q.stats.goal || 60}</button>` : `<span class="goal-fixed" title="Your owner sets your daily dial goal">${q.stats.goal || 60}</span>`}</i><em class="dgbar" aria-hidden="true"><u style="width:${Math.min(100, Math.round((100 * q.stats.dials) / (q.stats.goal || 60)))}%"></u></em>${q.stats.dials >= (q.stats.goal || 60) ? '<b class="gdone">Goal hit</b>' : ''}</span><span><b>${q.stats.talks}</b> owner talks</span><span><b>${q.stats.booked}</b> booked</span><span><b>${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</b> contact rate</span>
         <div class="dlayout"><button type="button" class="dl-btn" id="dlaybtn" aria-expanded="${layOpen}" aria-haspopup="true">Customize layout</button>
@@ -1329,7 +1375,7 @@ export async function dialerPage(app, user) {
       <div id="lowbal"></div>
       ${upcoming.length ? `<div class="card upcoming" data-sec="upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(bothTimes(m.meet_at, validZone(m.timezone) || yourZone(), yourZone()))} ${esc(m.business)}</span>
         ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}${can(window.__rwUser, 'close') ? `<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>` : ''}`).join('')}</div>` : ''}
-      ${!l && testMode ? testSummaryHtml(testLog) : !l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a></div>` : `
+      ${needList() ? `<div class="card empty dial-gate"><h3>Load a list from the Pipeline first</h3><p>The dialer only runs the list you load in the Pipeline. Pick who to call and the script for today there, then come back here and press Start power dial.</p><a class="btn btn-mint btn-xl" href="#/pipeline">Go to the Pipeline</a></div>` : !l && testMode ? testSummaryHtml(testLog) : !l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><div class="row" style="justify-content:center;gap:8px"><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a>${q.campaign ? '<button type="button" class="btn btn-ghost" id="dclose">Close out this campaign</button>' : ''}</div></div>` : `
       <div class="dial-grid${lay.queue ? '' : ' no-queue'}${lay.prep ? '' : ' no-prep'}${lay.compact ? ' tight' : ''}">
         <aside class="dial-queue card" aria-label="Up next"><div class="card-head"><h3>Up next</h3><span class="small muted">${Math.max(0, q.queue.length - idx - 1)} after this</span></div>
           <ol>${q.queue.slice(idx, idx + 10).map((x, i) => `<li><button type="button" data-jump="${idx + i}" class="${i === 0 ? 'is-on' : ''}">${gradeBadge(x.grade, x.score)}<span class="dq-t"><b>${esc(x.business)}</b><small>${esc([x.city, x.state].filter(Boolean).join(', '))}${x.local_time ? ` · ${esc(x.local_time)}` : ''}</small>${catChip(callCategory(x))}</span></button></li>`).join('')}</ol></aside>
@@ -1400,7 +1446,13 @@ export async function dialerPage(app, user) {
     offDialHover?.();
     offDialHover = hoverCards(view, { selector: '[data-jump]', build: (el) => leadHover(q.queue[Number(el.dataset.jump)]) });
     $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto2', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
-    $('#dclear', view)?.addEventListener('click', () => { try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } dialerPage(app, user); });
+    const closeCampaign = async () => {
+      if (!confirm('Close out your campaign? Every lead on it goes back to the pool for the whole team, and the dialer locks until you load a new list.')) return;
+      try { const r = await api('/api/dialer/campaign', { method: 'DELETE' }); try { localStorage.removeItem(DIAL_KEY); } catch { /* ignore */ } toast(`Closed out. ${r.freed} lead${r.freed === 1 ? '' : 's'} freed.`); location.hash = '#/pipeline'; }
+      catch (err) { toast(err.message, true); }
+    };
+    $('#dclear', view)?.addEventListener('click', closeCampaign);
+    $('#dclose', view)?.addEventListener('click', closeCampaign);
     $('#pdwh', view)?.addEventListener('change', (e) => setWait(e.target.value));
     $('#pdtest', view)?.addEventListener('click', () => {
       if (testMode) return dialerPage(app, user);

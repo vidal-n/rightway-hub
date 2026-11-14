@@ -57,6 +57,7 @@ test('the dialer queue and prepare keep another agent off a callback and off a l
     await call('PUT', '/api/dialer/campaign', { ids: [id('Alpha'), id('Bravo'), id('Charlie')] }, ownerCookie);
     let q = await call('GET', '/api/dialer/queue?campaign=1', undefined, ownerCookie);
     assert.deepEqual(q.data.queue.map((l) => l.business).sort(), ['Alpha Roofing', 'Charlie Roofing'], 'V keeps his own callback, Bravo waits 24 hours');
+    await call('DELETE', '/api/dialer/campaign', undefined, ownerCookie); // V closes out, so the leads are free for Kiron's list
     // Kiron saves the same list: Alpha (V's callback) and Bravo (no answer) stay out, only the new lead is his.
     await call('PUT', '/api/dialer/campaign', { ids: [id('Alpha'), id('Bravo'), id('Charlie')] }, kiron);
     q = await call('GET', '/api/dialer/queue?campaign=1', undefined, kiron);

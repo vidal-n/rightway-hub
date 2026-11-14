@@ -38,7 +38,7 @@ export const disqualified = (l) => Boolean(l.dnc) || l.stage === 'dnc' || DISQUA
 export function campaignPool(leads, { stages } = {}) {
   const st = cleanStages(stages);
   const use = st.length ? st : DEFAULT_STAGES;
-  return (leads || []).filter((l) => l && l.phone && !disqualified(l) && use.includes(l.stage));
+  return (leads || []).filter((l) => l && l.phone && !l.held && !disqualified(l) && use.includes(l.stage)); // `held`: on another agent's list
 }
 // kind: 'fresh' (never called, the default, so nobody dials a lead a teammate already worked), 'follow' (called before, narrowed by last result)
 // or 'all'. `only` (a set of ids) restricts it to leads ticked by hand and ignores kind.

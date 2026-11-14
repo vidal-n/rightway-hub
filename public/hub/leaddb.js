@@ -71,7 +71,7 @@ export async function databasePage(app, user) {
   const H = health || {};
   view.innerHTML = `
     <div class="page-head"><div><p class="eyebrow">CRM</p><h1>Lead database</h1><p class="small muted" style="margin:4px 0 0">Every business, everything we know about it, and every call we made to it. Search, sort, save the search, then dial it.</p></div>
-      <div class="row" style="gap:8px;flex-wrap:wrap">${owner ? '<button class="btn btn-ghost btn-sm" id="dbexport">Export CSV</button>' : ''}<button class="btn btn-primary btn-sm" id="dbdial">Dial this search</button></div></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap">${owner ? '<button class="btn btn-ghost btn-sm" id="dbexport">Export CSV</button>' : ''}<button class="btn btn-primary btn-sm" id="dbdial">Load as my call list</button></div></div>
     ${pipeTabs('database')}
     ${meta.pending ? `<div class="banner" style="margin-bottom:12px">${fmt.int(meta.pending)} businesses still need their call history added up. It runs on its own a few dozen a minute${owner ? ', or <button class="linkbtn" id="dbrebuild">add them all up now</button>' : ''}.</div>` : ''}
     <div class="db-charts">
@@ -195,9 +195,10 @@ export async function databasePage(app, user) {
   $('#dbdial', view).addEventListener('click', async (e) => {
     busy(e.currentTarget, true);
     try {
-      await api('/api/leaddb/dial', { method: 'PUT', body: { f: st.f } });
       const label = Object.keys(st.f).length ? Object.keys(st.f).map((k) => chipText(k, st.f[k])).join('; ').slice(0, 120) : 'Everyone';
-      localStorage.setItem('rw-dial-filter', JSON.stringify({ db: '1', label }));
+      const r = await api('/api/leaddb/load-list', { method: 'POST', body: { f: st.f, label: `Lead database: ${label}` } });
+      localStorage.setItem('rw-dial-filter', JSON.stringify({ campaign: '1', label: r.label }));
+      if (r.taken) toast(`${r.taken} lead${r.taken === 1 ? ' is' : 's are'} left out because ${r.takenBy.map((x) => x.name).join(' and ')} already ${r.takenBy.length === 1 ? 'has' : 'have'} them on a list.`);
       location.hash = '#/phone';
     } catch (err) { busy(e.currentTarget, false); toast(err.message, true); }
   });
