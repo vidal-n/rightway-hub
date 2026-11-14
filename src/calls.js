@@ -181,13 +181,26 @@ route('POST', '/api/twilio/bridge', async ({ env, request, url }) => {
   if (!a || !to || lead?.dnc || (lead && await blockedFor(env, lead)) || (manualTo && await blockedPhone(env, manualTo.slice(2)))) return twiml('<Say>This number cannot be called.</Say><Hangup/>');
   const callerId = url.searchParams.get('from') || env.TWILIO_FROM;
   await run(env, "UPDATE activities SET status = 'connecting' WHERE id = ?", a.id);
-  return twiml(`<Say voice="Polly.Joanna">${manualTo ? 'Dialing.' : `Calling ${xml(lead.business)}.`}</Say><Dial callerId="${xml(callerId)}" answerOnBridge="true" timeout="25" record="do-not-record" action="${xml(`${url.origin}/api/twilio/dial-done?a=${a.id}`)}"><Number>${xml(to)}</Number></Dial>`);
+  return twiml(`<Say voice="Polly.Joanna">${manualTo ? 'Dialing.' : `Calling ${xml(lead.business)}.`}</Say><Dial callerId="${xml(callerId)}" answerOnBridge="true" timeout="25" record="do-not-record" action="${xml(`${url.origin}/api/twilio/dial-done?a=${a.id}`)}"><Number statusCallbackEvent="answered" statusCallback="${xml(`${url.origin}/api/twilio/bridge-leg?a=${a.id}`)}">${xml(to)}</Number></Dial>`);
+}, { public: true });
+
+// The lead picked up on a "Use my phone" call: it is live, and its leg can be moved into a room when someone joins to coach.
+route('POST', '/api/twilio/bridge-leg', async ({ env, request, url }) => {
+  const p = await verifiedParams(env, request);
+  const id = url.searchParams.get('a') || '';
+  if (id && (!p.CallStatus || ['in-progress', 'answered'].includes(p.CallStatus))) {
+    await run(env, "UPDATE activities SET status = 'in-progress', answered_at = COALESCE(answered_at, ?), cust_sid = COALESCE(cust_sid, ?) WHERE id = ? AND status IN ('connecting','ringing')", now(), p.CallSid || null, id);
+  }
+  return twiml('');
 }, { public: true });
 
 // The lead's side ended: save how long you talked.
 route('POST', '/api/twilio/dial-done', async ({ env, request, url }) => {
   const p = await verifiedParams(env, request);
   const id = url.searchParams.get('a') || '';
+  // Someone joined to coach: the lead's leg already moved into the call's room, so the rep's mobile follows it there.
+  const moved = await first(env, 'SELECT in_conf FROM activities WHERE id = ?', id);
+  if (moved?.in_conf && (p.DialCallStatus || 'completed') === 'completed') return twiml(await import('./voice.js').then((m) => m.roomFor(url.origin, id, 'agent')));
   await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', p.DialCallStatus || 'completed', Number(p.DialCallDuration || 0), id);
   return twiml('<Hangup/>');
 }, { public: true });

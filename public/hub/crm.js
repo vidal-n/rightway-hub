@@ -33,7 +33,8 @@ import { PHONE_TYPE_LABEL, EMAIL_STATUS_LABEL } from '/js/scrub.js';
 import { bothTimes, validZone, fromInputs, inputsIn } from '/js/apptime.js';
 const yourZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
 import { licenseSearchUrl, sunbizSearchUrl } from '/js/freedata.js';
-import { boardColumns, columnByKey, loadable, BOARD_MODES } from '/js/boardcols.js';
+import { boardColumns, columnByKey, loadable, modeOf, modeGroups, SHOW, showFilter, reachedOf } from '/js/boardcols.js';
+import { objectionLabel } from '/js/leaddb.js';
 import { calledBefore } from '/js/campaign.js';
 import { registryFor } from '/js/registries.js';
 import { RESEARCH_DEPTHS, adsLine, adLibraryLinks, directoryLinks } from '/js/freedata.js';
@@ -81,7 +82,11 @@ if (!window.__rwTelGuard) {
 // ---------- pipeline ----------
 const TZS = [['ET', 'Eastern'], ['CT', 'Central'], ['MT', 'Mountain'], ['AZ', 'Arizona'], ['PT', 'Pacific'], ['AK', 'Alaska'], ['HI', 'Hawaii'], ['?', 'Unknown']];
 const GRADES = ['A', 'B', 'C', 'D'];
-const GROUPS = [['', 'No grouping'], ['tz_short', 'Time zone'], ['state', 'State'], ['city', 'City'], ['industry', 'Industry'], ['grade', 'Grade'], ['stage', 'Stage'], ['source', 'Source'], ['tags', 'Tag']];
+// Older saved list groupings (a lead field) map onto the board's "Columns by" choices, which the list now shares.
+const OLD_GROUP = { tz_short: 'tz', state: 'state', city: 'city', industry: 'industry', grade: 'grade', stage: 'stage', source: 'source', tags: 'tag' };
+const PER_CHOICES = [10, 25, 50, 100];
+// One "Columns by" / "Group by" menu with every field we collect, grouped (public/js/boardcols.js).
+const modeOptions = (sel, none = '') => `${none ? `<option value=""${!sel ? ' selected' : ''}>${esc(none)}</option>` : ''}${modeGroups().map(([g, ms]) => `<optgroup label="${esc(g)}">${ms.map((m) => `<option value="${m.id}"${sel === m.id ? ' selected' : ''}>${esc(m.label)}</option>`).join('')}</optgroup>`).join('')}`;
 const PIPE_KEY = 'rw-pipe-v2';
 const tzSel = (p) => String(p.tz || '').split(',').filter(Boolean);
 const loadPipe = () => { try { return { view: 'board', board: 'stage', tz: '', group: '', sort: '-score', f: {}, ...JSON.parse(localStorage.getItem(PIPE_KEY) || '{}') }; } catch { return { view: 'board', board: 'stage', tz: '', group: '', sort: '-score', f: {} }; } };
@@ -99,20 +104,48 @@ function sortLeads(rows, sort) {
   });
 }
 
+// Every lead, page after page (the server sends 2,500 at a time; there is no cap on the total). Nov 2026, V: the Pipeline stopped at 5,000.
+export async function loadAllLeads(onProgress) {
+  let d = await api('/api/leads');
+  const out = { ...d, leads: d.leads.slice() };
+  while (d.next) {
+    onProgress?.(out.leads.length, out.total);
+    d = await api(`/api/leads?after=${encodeURIComponent(d.next)}`);
+    out.leads.push(...d.leads);
+  }
+  return out;
+}
 export async function pipelinePage(app, user, openId, screen) {
   setRep(user);
   const view = staffShell(app, user, 'pipeline');
   let data;
-  try { data = await api('/api/leads'); } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
+  try {
+    data = await loadAllLeads((n, total) => { if (document.body.contains(view)) view.innerHTML = `<div class="card" style="max-width:520px"><b>Loading every lead</b><p class="small muted" style="margin:6px 0 10px">${n.toLocaleString()} of ${Number(total || 0).toLocaleString()}</p><div class="progress"><span style="width:${total ? Math.round((n / total) * 100) : 10}%"></span></div></div>`; });
+  } catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   // #/pipeline/<leadId> (links from the calendar, mail and elsewhere) opens that lead on top of the board.
   if (openId && /^ld_/.test(openId)) setTimeout(() => leadModal(openId, () => pipelinePage(app, user)), 0);
   const p = loadPipe();
   p.f ||= {};
   const all = data.leads;
   // Who holds which leads on a call list (src/crm.js campaignHolders): held leads wear a badge and never go on a new list.
-  const claims = await api('/api/dialer/claims').catch(() => ({ mine: { total: 0, ids: [], label: '', at: 0 }, lists: [], held: {} }));
+  const [claims, team] = await Promise.all([
+    api('/api/dialer/claims').catch(() => ({ mine: { total: 0, ids: [], label: '', at: 0 }, lists: [], held: {} })),
+    api('/api/team').catch(() => ({ users: [] })),
+  ]);
+  const userNames = Object.fromEntries((team.users || []).map((u) => [u.id, u.name || u.email]));
   const mineSet = new Set(claims.mine.ids || []);
-  for (const l of all) { const i = claims.held[l.id]; l.held = i == null ? '' : claims.lists[i].name; l.mine = mineSet.has(l.id); }
+  for (const l of all) {
+    const i = claims.held[l.id]; l.held = i == null ? '' : claims.lists[i].name; l.mine = mineSet.has(l.id);
+    // Worked out once so the list can show and sort by them.
+    l.reached = reachedOf(l); l.last_by_name = l.last_by ? userNames[l.last_by] || '' : ''; l.cat_label = callCategory(l).label;
+    l.objection_label = l.last_objection ? objectionLabel(l.last_objection) : ''; l.list_label = l.held ? `${l.held}'s list` : l.mine ? 'My list' : '';
+  }
+  if (p.group && OLD_GROUP[p.group]) p.group = OLD_GROUP[p.group];
+  if (!modeOf(p.board || 'stage') || modeOf(p.board).id !== (p.board || 'stage')) p.board = 'stage';
+  // Board options shared by the columns, the Load buttons and the full screen lists, so they always agree.
+  const colOpts = () => ({ stageLabel: STAGE_LABEL, users: userNames, split: p.split == null ? undefined : p.split });
+  const shown = (rows) => showFilter(rows, p.show || 'all');
+  const picked = new Set();
   const states = [...new Set(all.map((l) => l.state).filter(Boolean))].sort();
   const sources = [...new Set(all.map((l) => l.source).filter(Boolean))].sort();
   const industries = [...new Set(all.map((l) => l.industry).filter(Boolean))].sort();
@@ -131,8 +164,8 @@ export async function pipelinePage(app, user, openId, screen) {
   view.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-loadcol]'); if (!b) return;
     e.preventDefault();
-    const mode = screen?.kind === 'col' ? screen.mode : screen ? 'stage' : (p.board || 'stage');
-    const col = columnByKey(mode, filterLeads(all, p), b.dataset.loadcol, STAGE_LABEL);
+    const mode = screen?.kind === 'col' ? screen.mode : screen ? 'stage' : (p.view === 'list' && p.group ? p.group : (p.board || 'stage'));
+    const col = columnByKey(mode, shown(filterLeads(all, p)), b.dataset.loadcol, colOpts());
     if (!col) return;
     const pool = col.leads.filter((l) => l.phone && !l.held);
     if (!pool.length) return toast(col.leads.length ? 'Every lead in that column is already on another list.' : 'Nothing in that column to call.', true);
@@ -234,20 +267,42 @@ export async function pipelinePage(app, user, openId, screen) {
           </details></section>
       </div>
       <div class="boardbar"><div class="seg" role="group" aria-label="View"><button class="${p.view === 'board' ? 'is-on' : ''}" data-view="board">Board</button><button class="${p.view === 'list' ? 'is-on' : ''}" data-view="list">List</button></div>
-        ${p.view === 'board' ? `<div class="seg" role="group" aria-label="Board columns by"><span class="seg-l">Columns by</span>${BOARD_MODES.map(([k, n]) => `<button class="${(p.board || 'stage') === k ? 'is-on' : ''}" data-board="${k}">${n}</button>`).join('')}</div>` : ''}
-        <span class="spacer"></span><span class="small muted">${rows.length} leads in view</span>
+        ${p.view === 'board'
+          ? `<label class="bb-sel"><span>Columns by</span><select id="bmode" aria-label="Columns by">${modeOptions(p.board || 'stage')}</select></label>`
+          : `<label class="bb-sel"><span>Group by</span><select id="grp" aria-label="Group by">${modeOptions(p.group || '', 'No grouping')}</select></label><button type="button" class="btn btn-ghost btn-sm" id="lcols">Columns (${listCols().length})</button>`}
+        <label class="bb-sel"><span>Show</span><select id="bshow" aria-label="Show">${SHOW.map(([k, n]) => `<option value="${k}"${(p.show || 'all') === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+        ${p.view === 'board' ? `<label class="bb-sel"><span>Cards a column</span><select id="bper" aria-label="Cards a column">${PER_CHOICES.map((n) => `<option${(p.per || 10) === n ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+          <label class="row small bb-chk" title="Leads nobody has called yet get their own first column. Turn off to see them inside the other columns."><input type="checkbox" id="bsplit"${(p.split ?? Boolean(modeOf(p.board || 'stage').sales)) ? ' checked' : ''}> Not contacted yet first</label>` : ''}
+        <span class="spacer"></span><span class="small muted" id="bcount">${shown(rows).length.toLocaleString()} of ${all.length.toLocaleString()} leads in view</span>
+        <button type="button" class="btn btn-mint btn-sm" id="loadpicked" hidden></button>
         <a class="btn btn-ghost btn-sm" href="#/phone" id="godial" title="Open the dialer with the list you loaded">${icon.phone}Open the dialer</a></div>
       <div id="scstrip"></div>
       <div id="pbody"></div>`;
     const body = $('#pbody', view);
-    if (p.view === 'list') renderList(body, rows); else renderBoard(body, rows);
+    if (p.view === 'list') renderList(body, shown(rows)); else renderBoard(body, shown(rows));
     wire();
     resumeScrub(reload);
   };
 
   const renderBoard = (el, rowsIn) => {
     const mode = p.board || 'stage';
-    el.innerHTML = `<div class="board" data-mode="${esc(mode)}">${boardColumns(mode, sortLeads(rowsIn, '-score'), STAGE_LABEL).map((c) => column(c, mode)).join('')}</div>`;
+    const cols = boardColumns(mode, sortLeads(rowsIn, '-score'), colOpts());
+    el.innerHTML = `<div class="board" data-mode="${esc(mode)}">${cols.map((c) => column(c, mode, p.per || 10, picked.has(c.key))).join('')}</div>`;
+    // Tick several columns, then load them together as one call list.
+    const syncPicked = () => {
+      const b = $('#loadpicked', view); if (!b) return;
+      const ids = new Set(); cols.filter((c) => picked.has(c.key)).forEach((c) => c.leads.forEach((l) => { if (l.phone && !l.held) ids.add(l.id); }));
+      b.hidden = !picked.size; b.textContent = `Load ${picked.size} picked column${picked.size === 1 ? '' : 's'} (${ids.size.toLocaleString()} leads)`;
+      b.onclick = async () => {
+        if (!ids.size) return toast('Nothing in those columns to call.', true);
+        if (claims.mine.total && !confirm(`Replace the ${claims.mine.total} leads on your list with these ${ids.size}? Your old list closes out and those leads go back to the pool.`)) return;
+        busy(b, true);
+        const ok = await loadList([...ids], cols.filter((c) => picked.has(c.key)).map((c) => c.label).join(' + ').slice(0, 150));
+        if (!ok) { busy(b, false); setupRef?.focus(); }
+      };
+    };
+    $$('[data-pickcol]', el).forEach((c) => c.addEventListener('change', () => { if (c.checked) picked.add(c.dataset.pickcol); else picked.delete(c.dataset.pickcol); syncPicked(); }));
+    syncPicked();
     $$('.lead-card', el).forEach((c) => {
       c.addEventListener('click', () => leadModal(c.dataset.id, reload));
       c.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', c.dataset.id); c.classList.add('dragging'); });
@@ -270,30 +325,65 @@ export async function pipelinePage(app, user, openId, screen) {
     });
   };
 
-  const COLS = [['grade', 'Grade', '-score'], ['business', 'Business', 'business'], ['city', 'Area', 'city'], ['tz_short', 'TZ', 'tz_short'], ['industry', 'Industry', 'industry'],
-    ['reviews', 'Reviews', '-reviews'], ['rating', 'Rating', 'rating'], ['map_rank', 'Map rank', 'map_rank'], ['data_score', 'Data', '-data_score'], ['stage', 'Stage', 'stage'], ['next', 'Next', 'next_action_at']];
+  // List view columns: every field we collect, picked per person (saved with the Pipeline settings on this device).
+  const LCOLS = [
+    ['grade', 'Grade', '-score', (l) => gradeBadge(l.grade, l.score)],
+    ['business', 'Business', 'business', (l) => `<b>${esc(l.business)}</b><div class="small">${esc([personOf(l), l.phone, PHONE_TYPE_LABEL[l.phone_type]].filter(Boolean).join(' · '))}</div>`],
+    ['person', 'Owner or contact', 'owner_name', (l) => esc(personOf(l) || '')],
+    ['phone', 'Phone', 'phone', (l) => esc(l.phone || '')],
+    ['phone_type', 'Phone type', 'phone_type', (l) => esc(PHONE_TYPE_LABEL[l.phone_type] || '')],
+    ['email', 'Email', 'email', (l) => (l.email ? `${esc(l.email)}${['bad', 'no_mail_server'].includes(l.email_status) ? ' <span class="badge warn">bad</span>' : ''}` : '')],
+    ['website', 'Website', 'website', (l) => (l.website ? esc(String(l.website).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')) : '<span class="small muted">none</span>')],
+    ['city', 'Area', 'city', (l) => `${esc([l.city, l.state].filter(Boolean).join(', '))}${l.zip ? ` <span class="small">${esc(l.zip)}</span>` : ''}`],
+    ['tz_short', 'TZ', 'tz_short', (l) => (l.tz_short ? `<span class="badge ${l.callable_now ? '' : 'gray'}" title="${l.tz_alt_short ? 'On the line between two zones. Call only when both are inside 8am to 8pm.' : ''}">${esc(l.tz_short)}${l.tz_alt_short ? `/${esc(l.tz_alt_short)}` : ''} ${esc(l.local_time)}</span>` : `<span class="small" title="Time zone unknown. Callable 11am to 8pm Eastern only.">?${l.callable_now ? '' : ' wait'}</span>`)],
+    ['industry', 'Industry', 'industry', (l) => esc(l.industry || l.category || '')],
+    ['cat', 'Call type', 'cat_label', (l) => esc(l.cat_label || '')],
+    ['source', 'Source', 'source', (l) => esc(l.source || '')],
+    ['tags', 'Tags', 'tags', (l) => esc(l.tags || '')],
+    ['reviews', 'Reviews', '-reviews', (l) => esc(l.reviews ?? '')],
+    ['rating', 'Rating', 'rating', (l) => esc(l.rating ?? '')],
+    ['map_rank', 'Map rank', 'map_rank', (l) => (l.map_rank == null ? '' : l.map_rank > 20 ? '20+' : `#${l.map_rank}`)],
+    ['data_score', 'Data', '-data_score', (l) => (l.data_score == null ? '<span class="small muted">not yet</span>' : `<span class="dscore d${l.data_score >= 80 ? 'a' : l.data_score >= 60 ? 'b' : l.data_score >= 40 ? 'c' : 'd'}">${l.data_score}</span>`)],
+    ['stage', 'Stage', 'stage', (l) => `<span class="badge gray">${esc(STAGE_LABEL[l.stage])}</span>`],
+    ['last_dispo', 'Last result', 'last_dispo', (l) => esc(l.last_dispo || '')],
+    ['dials', 'Times called', '-dials', (l) => esc(Math.max(l.dials || 0, l.attempts || 0) || '')],
+    ['reached', 'Who picked up', 'reached', (l) => esc(l.reached || '')],
+    ['objection', 'Last objection', 'objection_label', (l) => esc(l.objection_label || '')],
+    ['owner_talks', 'Owner talks', '-owner_talks', (l) => esc(l.owner_talks || '')],
+    ['talk', 'Talk time', '-talk', (l) => (l.talk ? `${Math.floor(l.talk / 60)}:${String(l.talk % 60).padStart(2, '0')}` : '')],
+    ['last_call_at', 'Last called', '-last_call_at', (l) => (l.last_call_at ? esc(new Date(l.last_call_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })) : '')],
+    ['last_by', 'Last called by', 'last_by_name', (l) => esc(l.last_by_name || '')],
+    ['next', 'Next', 'next_action_at', (l) => `<span class="small">${esc(dueText(l.next_action_at))}</span>`],
+    ['held', 'Call list', 'list_label', (l) => (l.list_label ? `<span class="badge${l.held ? ' warn' : ''}">${esc(l.list_label)}</span>` : '')],
+    ['created_at', 'Added', '-created_at', (l) => (l.created_at ? esc(new Date(l.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })) : '')],
+  ];
+  const LCOL_DEFAULT = ['grade', 'business', 'city', 'tz_short', 'industry', 'reviews', 'last_dispo', 'dials', 'reached', 'data_score', 'stage', 'next'];
+  const listCols = () => { const want = Array.isArray(p.cols) && p.cols.length ? p.cols : LCOL_DEFAULT; return LCOLS.filter((c) => want.includes(c[0])).sort((a, b) => want.indexOf(a[0]) - want.indexOf(b[0])); };
+  const pickColumns = () => {
+    let want = listCols().map((c) => c[0]);
+    const m = modal(`<div class="card-head"><h2>List columns</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
+      <p class="small muted" style="margin:0 0 10px">Tick what to show. Click a column title in the list to sort by it.</p>
+      <div class="db-colpick">${LCOLS.map(([k, n]) => `<label><input type="checkbox" value="${k}"${want.includes(k) ? ' checked' : ''}> ${esc(n)}</label>`).join('')}</div>
+      <div class="row end" style="margin-top:12px;gap:8px"><button class="btn btn-ghost btn-sm" id="lcall">Show all</button><button class="btn btn-ghost btn-sm" id="lcdef">Back to the default</button><button class="btn btn-primary btn-sm" data-close>Done</button></div>`, { onClose: () => { p.cols = want.length ? want : LCOL_DEFAULT.slice(); render(); } });
+    $$('.db-colpick input', m.el).forEach((i) => i.addEventListener('change', () => { want = $$('.db-colpick input', m.el).filter((x) => x.checked).map((x) => x.value); }));
+    $('#lcall', m.el).addEventListener('click', () => { $$('.db-colpick input', m.el).forEach((x) => { x.checked = true; }); want = LCOLS.map((c) => c[0]); });
+    $('#lcdef', m.el).addEventListener('click', () => { want = LCOL_DEFAULT.slice(); m.close(); });
+  };
   const renderList = (el, rows) => {
+    const COLS = listCols();
     const sorted = sortLeads(rows, p.sort);
-    const groups = new Map();
-    if (p.group) for (const l of sorted) { const k = String(l[p.group] ?? '') || 'None'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(l); }
-    else groups.set('', sorted);
-    const row = (l) => `<tr data-id="${esc(l.id)}"><td><input type="checkbox" class="sel" data-id="${esc(l.id)}"${selected.has(l.id) ? ' checked' : ''}></td>
-      <td>${gradeBadge(l.grade, l.score)}</td><td><b>${esc(l.business)}</b><div class="small">${esc([personOf(l), l.phone, PHONE_TYPE_LABEL[l.phone_type]].filter(Boolean).join(' · '))}</div></td>
-      <td>${esc([l.city, l.state].filter(Boolean).join(', '))}${l.zip ? ` <span class="small">${esc(l.zip)}</span>` : ''}</td>
-      <td>${l.tz_short ? `<span class="badge ${l.callable_now ? '' : 'gray'}" title="${l.tz_alt_short ? 'On the line between two zones. Call only when both are inside 8am to 8pm.' : ''}">${esc(l.tz_short)}${l.tz_alt_short ? `/${esc(l.tz_alt_short)}` : ''} ${esc(l.local_time)}</span>` : `<span class="small" title="Time zone unknown. Callable 11am to 8pm Eastern only.">?${l.callable_now ? '' : ' wait'}</span>`}</td>
-      <td>${esc(l.industry || l.category || '')}</td><td>${l.reviews ?? ''}</td><td>${l.rating ?? ''}</td><td>${l.map_rank == null ? '' : l.map_rank > 20 ? '20+' : `#${l.map_rank}`}</td>
-      <td>${l.data_score == null ? '<span class="small muted">not yet</span>' : `<span class="dscore d${l.data_score >= 80 ? 'a' : l.data_score >= 60 ? 'b' : l.data_score >= 40 ? 'c' : 'd'}">${l.data_score}</span>`}</td>
-      <td><span class="badge gray">${esc(STAGE_LABEL[l.stage])}</span></td><td class="small">${esc(dueText(l.next_action_at))}</td></tr>`;
+    const groups = p.group ? boardColumns(p.group, sorted, colOpts()) : [{ key: '', label: '', leads: sorted }];
+    const row = (l) => `<tr data-id="${esc(l.id)}"><td><input type="checkbox" class="sel" data-id="${esc(l.id)}"${selected.has(l.id) ? ' checked' : ''}></td>${COLS.map((c) => `<td class="lc-${c[0]}">${c[3](l)}</td>`).join('')}</tr>`;
+    const per = p.per || 10;
     el.innerHTML = `
-      <div class="row" style="margin-bottom:10px"><label class="field" style="flex:0 1 220px"><select id="grp">${GROUPS.map(([k, n]) => `<option value="${k}"${p.group === k ? ' selected' : ''}>Group: ${n}</option>`).join('')}</select></label>
+      <div class="row" style="margin-bottom:10px">
         <div class="bulk" id="bulk" ${selected.size ? '' : 'hidden'}><b id="selc">${selected.size} selected</b>
           <button class="btn btn-ghost btn-sm" data-bulk="research">Research</button><button class="btn btn-ghost btn-sm" data-bulk="scrub">Scrub</button><button class="btn btn-ghost btn-sm" data-bulk="callnow">Call next</button><button class="btn btn-mint btn-sm" data-bulk="makelist" title="Use only the ticked leads as today's call list">Make call list</button>
           <select id="bstage"><option value="">Move to...</option>${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
           <button class="btn btn-ghost btn-sm" data-bulk="tag">Tag</button><button class="btn btn-danger btn-sm" data-bulk="delete">Delete</button></div></div>
-      <div class="table-wrap"><table class="leads-table"><thead><tr><th><input type="checkbox" id="selall"></th>${COLS.map(([k, n, s]) => `<th><button class="th" data-sort="${s}">${n}${p.sort.replace('-', '') === s.replace('-', '') ? (p.sort.startsWith('-') ? ' ↓' : ' ↑') : ''}</button></th>`).join('')}</tr></thead>
-      <tbody>${[...groups.entries()].map(([g, ls]) => `${p.group ? `<tr class="grp"><td colspan="${COLS.length + 1}">${esc(g)} <span class="small">${ls.length}</span></td></tr>` : ''}${ls.slice(0, PER_LIST).map(row).join('')}${ls.length > PER_LIST ? `<tr class="more"><td colspan="${COLS.length + 1}"><a class="btn btn-ghost btn-sm" href="${p.group ? `#/pipeline/group/${esc(p.group)}/${encodeURIComponent(g)}` : '#/pipeline/stage/all'}">Open all ${ls.length}${p.group ? ` in ${esc(g)}` : ' leads'} in a full screen</a></td></tr>` : ''}`).join('') || `<tr><td colspan="${COLS.length + 1}" class="muted">No leads match.</td></tr>`}</tbody></table></div>`;
+      <div class="table-wrap"><table class="leads-table"><thead><tr><th><input type="checkbox" id="selall"></th>${COLS.map(([k, n, s]) => `<th class="lc-${k}"><button class="th" data-sort="${s}">${n}${p.sort.replace('-', '') === s.replace('-', '') ? (p.sort.startsWith('-') ? ' ↓' : ' ↑') : ''}</button></th>`).join('')}</tr></thead>
+      <tbody>${groups.filter((g) => g.leads.length || !p.group).map((g) => `${p.group ? `<tr class="grp"><td colspan="${COLS.length + 1}">${esc(g.label)} <span class="small">${g.leads.length.toLocaleString()}</span>${loadable(g.key) && g.leads.length ? ` <button type="button" class="col-dial" data-loadcol="${esc(g.key)}">${icon.phone}Load</button>` : ''}</td></tr>` : ''}${g.leads.slice(0, p.group ? per : Math.max(per, 50)).map(row).join('')}${g.leads.length > (p.group ? per : Math.max(per, 50)) ? `<tr class="more"><td colspan="${COLS.length + 1}"><a class="btn btn-ghost btn-sm" href="${p.group ? `#/pipeline/col/${esc(p.group)}/${encodeURIComponent(g.key)}` : '#/pipeline/stage/all'}">Open all ${g.leads.length.toLocaleString()}${p.group ? ` in ${esc(g.label)}` : ' leads'} in a full screen</a></td></tr>` : ''}`).join('') || `<tr><td colspan="${COLS.length + 1}" class="muted">No leads match.</td></tr>`}</tbody></table></div>`;
     const syncBulk = () => { $('#bulk', el).hidden = !selected.size; $('#selc', el).textContent = `${selected.size} selected`; setupRef?.refresh(); };
-    $('#grp', el).addEventListener('change', (e) => { p.group = e.target.value; render(); });
     $$('[data-sort]', el).forEach((b) => b.addEventListener('click', () => { const s = b.dataset.sort; const base = s.replace('-', ''); p.sort = p.sort.replace('-', '') === base ? (p.sort.startsWith('-') ? base : `-${base}`) : s; render(); }));
     $$('tbody tr[data-id]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (e.target.classList.contains('sel')) return; leadModal(tr.dataset.id, reload); }));
     $$('.sel', el).forEach((c) => c.addEventListener('change', () => { if (c.checked) selected.add(c.dataset.id); else selected.delete(c.dataset.id); syncBulk(); }));
@@ -333,7 +423,12 @@ export async function pipelinePage(app, user, openId, screen) {
     // Time zone tabs are multi select: tap one to add it, tap again to take it off, All clears them.
     $$('[data-tz]', view).forEach((b) => b.addEventListener('click', () => { const k = b.dataset.tz; if (!k) p.tz = ''; else { const cur = tzSel(p); p.tz = (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]).join(','); } render(); }));
     $$('[data-grade]', view).forEach((b) => b.addEventListener('click', () => { const g = b.dataset.grade; const s = new Set(p.f.grades || []); if (s.has(g)) s.delete(g); else s.add(g); p.f.grades = [...s]; render(); }));
-    $$('[data-board]', view).forEach((b) => b.addEventListener('click', () => { p.board = b.dataset.board; render(); }));
+    $('#bmode', view)?.addEventListener('change', (e) => { p.board = e.target.value; p.split = null; picked.clear(); render(); });
+    $('#grp', view)?.addEventListener('change', (e) => { p.group = e.target.value; render(); });
+    $('#bshow', view)?.addEventListener('change', (e) => { p.show = e.target.value; picked.clear(); render(); });
+    $('#bper', view)?.addEventListener('change', (e) => { p.per = Number(e.target.value) || 10; render(); });
+    $('#bsplit', view)?.addEventListener('change', (e) => { p.split = e.target.checked; picked.clear(); render(); });
+    $('#lcols', view)?.addEventListener('click', pickColumns);
     $('#closemine', view)?.addEventListener('click', () => closeOut(''));
     $$('[data-release]', view).forEach((b) => b.addEventListener('click', () => closeOut(b.dataset.release)));
     $$('[data-view]', view).forEach((b) => b.addEventListener('click', () => { p.view = b.dataset.view; render(); }));
@@ -390,10 +485,10 @@ export async function pipelinePage(app, user, openId, screen) {
     let title; let rows; let colKey = '';
     const mode = screen.kind === 'col' ? screen.mode : 'stage';
     if (screen.kind === 'group') { const v = screen.value; rows = rows0.filter((l) => (String(l[screen.field] ?? '') || 'None') === v); title = `${v}`; }
-    else if (screen.kind === 'stage' && screen.key === 'all') { rows = rows0; title = 'All leads in this view'; }
+    else if (screen.kind === 'stage' && screen.key === 'all') { rows = shown(rows0); title = 'All leads in this view'; }
     else {
       colKey = screen.kind === 'col' ? screen.key : screen.key === 'new' ? 'fresh' : `stage:${screen.key}`;
-      const c = columnByKey(mode, rows0, colKey, STAGE_LABEL);
+      const c = columnByKey(mode, shown(rows0), colKey, colOpts());
       rows = c ? c.leads : []; title = c ? c.label : STAGE_LABEL[screen.key] || 'Leads';
     }
     rows = sortLeads(rows, p.sort || '-score');
@@ -476,12 +571,12 @@ async function duplicatesModal(onDone) {
   });
 }
 
-const PER_LIST = 10;
-function column(c, mode) {
-  const more = c.leads.length > PER_LIST;
+function column(c, mode, per = 10, on = false) {
+  const more = c.leads.length > per;
   const key = esc(c.key);
-  return `<section class="col" data-col="${key}"${c.drop ? ` data-stage="${esc(c.drop)}"` : ''}><header class="col-head"><div class="col-t"><b>${esc(c.label)}</b>${c.hint ? `<small>${esc(c.hint)}</small>` : ''}</div><span class="col-tools">${loadable(c.key) && c.leads.length ? `<button type="button" class="col-dial" data-loadcol="${key}" title="Make this column your call list. Leads another agent already holds are left out.">${icon.phone}Load</button>` : ''}<span class="badge gray">${c.leads.length}</span></span></header>
-    <div class="col-body">${c.leads.slice(0, PER_LIST).map(card).join('') || '<p class="small muted col-empty">Nothing here.</p>'}${more ? `<a class="btn btn-ghost btn-sm col-all" href="#/pipeline/col/${esc(mode)}/${encodeURIComponent(c.key)}">Open all ${c.leads.length} in a full screen</a>` : ''}</div></section>`;
+  const can = loadable(c.key) && c.leads.length;
+  return `<section class="col" data-col="${key}"${c.drop ? ` data-stage="${esc(c.drop)}"` : ''}><header class="col-head">${can ? `<input type="checkbox" class="col-pick" data-pickcol="${key}" title="Pick this column to load it together with others"${on ? ' checked' : ''} aria-label="Pick ${esc(c.label)}">` : ''}<div class="col-t"><b>${esc(c.label)}</b>${c.hint ? `<small>${esc(c.hint)}</small>` : ''}</div><span class="col-tools">${can ? `<button type="button" class="col-dial" data-loadcol="${key}" title="Make this column your call list. Leads another agent already holds are left out.">${icon.phone}Load</button>` : ''}<span class="badge gray">${c.leads.length.toLocaleString()}</span></span></header>
+    <div class="col-body">${c.leads.slice(0, per).map(card).join('') || '<p class="small muted col-empty">Nothing here.</p>'}${more ? `<a class="btn btn-ghost btn-sm col-all" href="#/pipeline/col/${esc(mode)}/${encodeURIComponent(c.key)}">Open all ${c.leads.length.toLocaleString()} in a full screen</a>` : ''}</div></section>`;
 }
 function card(l) {
   return `<article class="lead-card" draggable="true" data-id="${esc(l.id)}">
@@ -1082,7 +1177,7 @@ function importModal(onDone) {
       if (wantScrub && ids.length) { m.close(); await scrubMany(ids.map((id) => ({ id })), onDone, { lookup: wantLookup }); }
       if (wantRes && ids.length) {
         const set = new Set(ids);
-        const fresh = (await api('/api/leads')).leads.filter((l) => set.has(l.id) && !l.researched && ['A', 'B'].includes(l.grade)).slice(0, 100);
+        const fresh = (await loadAllLeads()).leads.filter((l) => set.has(l.id) && !l.researched && ['A', 'B'].includes(l.grade)).slice(0, 100);
         m.close();
         researchMany(fresh, onDone, { depth });
       }

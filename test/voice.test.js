@@ -229,10 +229,10 @@ test('browser calling: owner token sets up Twilio once, prepared calls dial from
 
     // Incoming calls ring the browser phone (no mobile saved), with the caller's number passed along
     r = await hook(t, '/api/twilio/voice', { From: '+17865550111', To: '+19547374725', CallSid: 'CA9' });
-    assert.match(r.data, new RegExp(`<Client><Identity>${identity}</Identity>`));
+    assert.match(r.data, new RegExp(`<Client[^>]*><Identity>${identity}</Identity>`));
     assert.match(r.data, /name="caller" value="\+17865550111"/);
     assert.match(r.data, /callerId="\+19547374725"/);
-    assert.doesNotMatch(r.data, /<Number>/);
+    assert.doesNotMatch(r.data, /<Number[ >]/);
   } finally { m.restore(); }
 });
 
@@ -365,10 +365,13 @@ test('listen, whisper and barge: always explained, never silently missing', asyn
   assert.equal(joinState(boss, { by: 'u2', status: 'ringing', conf_sid: 'CF1' }, rep).ok, true, 'can listen while it rings');
   assert.match(joinState(boss, { by: 'u1', status: 'in-progress', conf_sid: 'CF1' }, boss).why, /your own/);
   assert.equal(joinState(boss, { by: 'u3', status: 'in-progress', conf_sid: 'CF1' }, other).ok, true, 'owners can listen to each other');
-  assert.match(joinState(boss, { by: 'u3', status: 'in-progress', conf_sid: 'CF1', from_num: '+13055550111' }, other, new Set(['+13055550111'])).why, /personal line/);
+  assert.equal(joinState(boss, { by: 'u3', status: 'in-progress', conf_sid: 'CF1', from_num: '+13055550111' }, other, new Set(['+13055550111'])).ok, true, 'personal lines can be joined too (V, for training)');
+  assert.equal(joinState(boss, { by: null, taker: 'u2', status: 'inbound', answered_at: 5, conf_sid: null }).ok, true, 'answered incoming calls can be joined');
+  assert.match(joinState({ id: 'u2', role: 'team' }, { by: null, taker: 'u2', status: 'inbound', answered_at: 5 }).why, /your own/);
   const early = joinState(boss, { by: 'u2', status: 'connecting', conf_sid: null }, rep);
   assert.equal(early.ok, false); assert.equal(early.wait, true); assert.match(early.why, /Starting up/);
-  assert.match(joinState(boss, { by: 'u2', status: 'in-progress', conf_sid: null }, rep).why, /phone number/);
+  assert.match(joinState(boss, { by: 'u2', status: 'in-progress', conf_sid: null }, rep).why, /Starting up/);
+  assert.equal(joinState(boss, { by: 'u2', status: 'in-progress', conf_sid: null, cust_sid: 'CAlead1' }).ok, true, '"Use my phone" calls can be joined once the lead answers');
   assert.equal(joinState(rep, { by: 'u3', status: 'in-progress', conf_sid: 'CF1' }, other).ok, true, 'agents can listen to each other and to owners');
   assert.equal(joinState({ id: 'c1', role: 'client' }, { by: 'u3', status: 'in-progress', conf_sid: 'CF1' }, other).ok, false, 'clients never');
 });
@@ -404,4 +407,79 @@ test('recordings play whole, seek with ranges, and download', async () => {
     assert.match(r.headers.get('content-disposition'), /attachment; filename="call-1.mp3"/);
     assert.equal(hits, 1, 'Twilio is asked once, then the kept copy answers every seek');
   } finally { globalThis.fetch = realFetch; }
+});
+
+// Nov 2026, V: listen, whisper and barge on every call, incoming ones too, for training.
+test('incoming calls: who answered shows on Agents, and joining moves the call into a room the coach can join', async () => {
+  const t = setup();
+  await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  const m = mockTwilio();
+  try {
+    const me = (await t.call('GET', '/api/voice/token')).data.identity;
+    const inv = await t.call('POST', '/api/team/invite', { email: 'kiron@rightwaygrowth.com', name: 'Kiron', role: 'team' });
+    assert.equal(inv.status, 200);
+    const team = (await t.call('GET', '/api/team')).data;
+    const kid = (team.users || team.team || team).find((u) => u.email === 'kiron@rightwaygrowth.com').id;
+    let r = await hook(t, '/api/twilio/voice', { From: '+17865550111', To: '+19547374725', CallSid: 'CAparent1' });
+    assert.match(r.data, /statusCallbackEvent="answered"/);
+    const act = r.data.match(/name="act" value="([^"]+)"/)[1];
+    // Kiron's open Hub answers.
+    await hook(t, `/api/twilio/inbound-leg?a=${act}`, { To: `client:rw_${kid}`, CallSid: 'CAleg1', CallStatus: 'in-progress' });
+    r = await t.call('GET', '/api/agents');
+    const k = r.data.agents.find((a) => a.id === kid);
+    assert.equal(k.status, 'on_call');
+    assert.equal(k.call.inbound, true);
+    assert.equal(k.call.join.ok, true);
+    r = await t.call('GET', '/api/voice/live');
+    assert.ok(r.data.calls.some((c) => c.id === act), 'the incoming call is in the live list');
+    // V whispers: Kiron's leg is moved into the room, V joins it coaching Kiron's leg.
+    r = await hook(t, '/api/twilio/client-voice', { monitor: act, mode: 'whisper', From: `client:${me}`, CallSid: 'CAmon1' });
+    assert.match(r.data, new RegExp(`<Conference[^>]*>rw_${act}</Conference>`));
+    assert.match(r.data, /coach="CAleg1"/);
+    const moved = m.seen.find((x) => x.url.endsWith('/Calls/CAleg1.json'));
+    assert.ok(moved, 'the answered leg was redirected');
+    assert.match(moved.body.get('Twiml'), new RegExp(`rw_${act}`));
+    // The caller's side finishes its Dial and follows into the same room.
+    r = await hook(t, `/api/twilio/voice-done?a=${act}`, { DialCallStatus: 'completed', DialCallDuration: '40' });
+    assert.match(r.data, new RegExp(`participantLabel="customer"[^>]*>rw_${act}</Conference>`));
+    // The room starts: nobody is dialed out (the caller is already there).
+    const before = m.seen.filter((x) => x.url.includes('/Participants.json')).length;
+    await hook(t, `/api/twilio/conf-status?a=${act}`, { StatusCallbackEvent: 'conference-start', ConferenceSid: 'CFin1' });
+    assert.equal(m.seen.filter((x) => x.url.includes('/Participants.json')).length, before);
+    // Switching to barge works on the room.
+    r = await t.call('POST', `/api/voice/monitor/${act}`, { mode: 'barge' });
+    assert.equal(r.status, 200);
+    // The call ends: it is an answered incoming call with a length, not an outbound dial.
+    await hook(t, `/api/twilio/conf-status?a=${act}`, { StatusCallbackEvent: 'conference-end', ConferenceSid: 'CFin1' });
+    const row = await t.env.DB.prepare('SELECT status, ended_at, taker, by FROM activities WHERE id = ?').bind(act).first();
+    assert.equal(row.status, 'inbound_answered');
+    assert.ok(row.ended_at);
+    assert.equal(row.taker, kid);
+    assert.equal(row.by, null);
+  } finally { m.restore(); }
+});
+
+test('"Use my phone" calls: the lead answering makes it live, joining moves the lead into a room and the rep follows', async () => {
+  const t = setup();
+  await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  const m = mockTwilio();
+  try {
+    const me = (await t.call('GET', '/api/voice/token')).data.identity;
+    const act = 'a_bridge1';
+    await t.env.DB.prepare("INSERT INTO activities (id, type, status, at, by, call_sid, to_num) VALUES (?, 'manual_call', 'connecting', ?, 'u_rep', 'CArepmobile', '+19545550101')").bind(act, Date.now()).run();
+    await hook(t, `/api/twilio/bridge-leg?a=${act}`, { CallSid: 'CAleadleg', CallStatus: 'in-progress' });
+    let row = await t.env.DB.prepare('SELECT status, cust_sid FROM activities WHERE id = ?').bind(act).first();
+    assert.equal(row.status, 'in-progress'); assert.equal(row.cust_sid, 'CAleadleg');
+    let r = await hook(t, '/api/twilio/client-voice', { monitor: act, mode: 'whisper', From: `client:${me}`, CallSid: 'CAmon2' });
+    assert.match(r.data, /coach="CArepmobile"/);
+    assert.ok(m.seen.find((x) => x.url.endsWith('/Calls/CAleadleg.json')), "the lead's leg was moved");
+    r = await hook(t, `/api/twilio/dial-done?a=${act}`, { DialCallStatus: 'completed', DialCallDuration: '30' });
+    assert.match(r.data, new RegExp(`participantLabel="agent"[^>]*>rw_${act}</Conference>`));
+    const before = m.seen.filter((x) => x.url.includes('/Participants.json')).length;
+    await hook(t, `/api/twilio/conf-status?a=${act}`, { StatusCallbackEvent: 'conference-start', ConferenceSid: 'CFbr1' });
+    assert.equal(m.seen.filter((x) => x.url.includes('/Participants.json')).length, before, 'nobody is dialed out again');
+    await hook(t, `/api/twilio/conf-status?a=${act}`, { StatusCallbackEvent: 'conference-end', ConferenceSid: 'CFbr1' });
+    row = await t.env.DB.prepare('SELECT status FROM activities WHERE id = ?').bind(act).first();
+    assert.equal(row.status, 'completed');
+  } finally { m.restore(); }
 });

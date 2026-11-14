@@ -294,10 +294,10 @@ test('voicemail: missed call records, voicemail lands on the call, inbox lists i
   await run(t.env, "INSERT INTO settings (k, v) VALUES ('voice_clients', '[]') ON CONFLICT(k) DO NOTHING");
   await t.call('PUT', '/api/me/phone', { phone: '954 555 0001' });
   r = await hook('/api/twilio/voice', { From: '+13055550188', To: '+13055073393', CallSid: 'CA2' });
-  assert.match(r.data, /<Number>\+19545550001<\/Number>/);
+  assert.match(r.data, /<Number[^>]*>\+19545550001<\/Number>/);
   await t.call('PUT', '/api/voicemail/settings', { greeting: 'Hi, you reached <b>Rightway</b>.' });
   r = await hook('/api/twilio/voice', { From: '+13055550199', To: '+13055073393', CallSid: 'CA3' });
-  assert.ok(r.data.includes('<Number>')); // still rings the mobile
+  assert.match(r.data, /<Number[ >]/); // still rings the mobile
 });
 
 test('Google profile helpers: metrics, reviews, checks and reply drafts', () => {

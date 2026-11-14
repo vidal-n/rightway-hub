@@ -220,8 +220,10 @@ route('POST', '/api/twilio/voice', async ({ env, request, url, defer }) => {
   const last = lead ? await first(env, "SELECT at FROM activities WHERE lead_id = ? AND type = 'call' AND status NOT IN ('inbound','missed','voicemail','inbound_answered') ORDER BY at DESC LIMIT 1", lead.id) : null;
   const back = last && now() - last.at < 30 * 864e5 ? `Calling back (you called ${agoText(last.at)})` : '';
   const param = (k, v) => (v ? `<Parameter name="${k}" value="${xml(v)}"/>` : '');
-  const nouns = clients.map((id) => `<Client><Identity>${xml(id)}</Identity>${param('caller', from)}${param('who', lead?.business)}${param('called', e164(p.To))}${param('leadId', lead?.id)}${param('context', back)}</Client>`).join('')
-    + cells.map((n) => `<Number>${xml(n)}</Number>`).join('');
+  // Each ringing leg tells us when it is answered, so the Agents page knows who took the call (and listen, whisper and barge can reach it).
+  const leg = `statusCallbackEvent="answered" statusCallback="${xml(`${url.origin}/api/twilio/inbound-leg?a=${aid}`)}"`;
+  const nouns = clients.map((id) => `<Client ${leg}><Identity>${xml(id)}</Identity>${param('act', aid)}${param('caller', from)}${param('who', lead?.business)}${param('called', e164(p.To))}${param('leadId', lead?.id)}${param('context', back)}</Client>`).join('')
+    + cells.map((n) => `<Number ${leg}>${xml(n)}</Number>`).join('');
   // Phones and tablets with notifications on light up and buzz while it rings; saved mobiles ring as a normal call.
   await notifyLater({ env, defer }, { to: lineOwner ? [lineOwner.id] : 'staff', kind: 'call', title: `Incoming call: ${who}`, body: [prettyNum(from), back].filter(Boolean).join(' · ') || 'Answer in the Hub', url: '/#/phone/calls', tag: `call-${aid}`, urgent: true, slack: false });
   const callerId = e164(p.To) || env.TWILIO_FROM;
@@ -255,11 +257,27 @@ function agoText(at) {
   return `${d} day${d === 1 ? '' : 's'} ago`;
 }
 
+// A ringing leg of an incoming call was answered: by a teammate's open Hub (client:rw_<id>) or their saved mobile.
+route('POST', '/api/twilio/inbound-leg', async ({ env, request, url }) => {
+  const p = await verifiedParams(env, request);
+  const aid = url.searchParams.get('a') || '';
+  if (!aid || (p.CallStatus && !['in-progress', 'answered'].includes(p.CallStatus))) return twiml('');
+  const to = String(p.To || '');
+  let uid = null;
+  if (to.startsWith('client:rw_')) uid = to.slice('client:rw_'.length);
+  else if (digits(to)) uid = (await first(env, "SELECT id FROM users WHERE role IN ('admin','team') AND phone IS NOT NULL AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone,'+',''),'(',''),')',''),'-',''),' ','') LIKE ?", `%${digits(to).slice(-10)}`))?.id || null;
+  await run(env, 'UPDATE activities SET taker = COALESCE(taker, ?), agent_sid = COALESCE(agent_sid, ?), answered_at = COALESCE(answered_at, ?) WHERE id = ?', uid, p.CallSid || null, now(), aid);
+  return twiml('');
+}, { public: true });
+
 route('POST', '/api/twilio/voice-done', async ({ env, request, url, defer }) => {
   const p = await verifiedParams(env, request);
   const status = p.DialCallStatus || 'completed';
   const aid = url.searchParams.get('a') || '';
-  await run(env, 'UPDATE activities SET status = ?, duration = ? WHERE id = ?', status === 'completed' ? 'inbound_answered' : 'missed', Number(p.DialCallDuration || 0), aid);
+  // Someone joined to listen, whisper or barge: the teammate's leg already moved into the call's room, so the caller follows it there.
+  const moving = await first(env, 'SELECT id, in_conf FROM activities WHERE id = ?', aid);
+  if (moving?.in_conf && status === 'completed') return twiml(await import('./voice.js').then((m) => m.callerRoomTwiml(url.origin, aid)));
+  await run(env, 'UPDATE activities SET status = ?, duration = ?, ended_at = COALESCE(ended_at, ?) WHERE id = ?', status === 'completed' ? 'inbound_answered' : 'missed', Number(p.DialCallDuration || 0), now(), aid);
   if (status === 'completed') return twiml('<Hangup/>');
   const a = await first(env, 'SELECT a.from_num, l.business FROM activities a LEFT JOIN leads l ON l.id = a.lead_id WHERE a.id = ?', aid);
   await missedFlow(env, aid, a?.from_num, defer);

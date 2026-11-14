@@ -265,19 +265,44 @@ async function refreshScore(env, id) {
 }
 
 // ---------- routes ----------
+// Every lead, in pages (Nov 2026, V: "when I see all it only shows 5000, we have way more"). There used to be a hard LIMIT 5000 here,
+// newest first, so older leads (and their time zones) never reached the Pipeline. Now the page asks again with `after` until `next` is null.
+// A search (`q`) runs in SQL over every lead.
+export const LEAD_PAGE = 2500;
 route('GET', '/api/leads', async ({ env, user, url }) => {
   requireStaff(user);
   const q = (url.searchParams.get('q') || '').trim().toLowerCase();
   const stage = url.searchParams.get('stage');
-  // dials and last_dispo come from the call roll up (src/leaddb.js): the Pipeline's Call setup splits fresh leads from follow ups by them.
-  let rows = await all(env, `SELECT ${LIST_COLS}, lead_roll.r_dials AS dials, lead_roll.r_last_dispo AS last_dispo FROM leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id ${stage ? 'WHERE leads.stage = ?' : ''} ORDER BY leads.updated_at DESC LIMIT 5000`, ...(stage ? [stage] : []));
-  const qd = q.replace(/\D/g, '');
-  if (q) rows = rows.filter((l) => [l.business, l.contact_name, l.phone, l.email, l.city, l.industry, l.category, l.zip, l.tags].some((v) => String(v || '').toLowerCase().includes(q))
-    || (qd.length >= 4 && qd.length === q.replace(/[\s()+-]/g, '').length && String(l.phone || '').replace(/\D/g, '').includes(qd)));
+  const after = url.searchParams.get('after') || '';
   const lim = Number(url.searchParams.get('limit')) || 0;
-  if (lim > 0) rows = rows.slice(0, Math.min(lim, 200));
-  const counts = await all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage');
-  return json({ leads: rows.map((l) => seeAppt(decorate(l), user)), counts: Object.fromEntries(counts.map((c) => [c.stage, c.n])) });
+  const cols = `${LIST_COLS}, lead_roll.r_dials AS dials, lead_roll.r_last_dispo AS last_dispo, lead_roll.r_connects AS connects, lead_roll.r_owner AS owner_talks,
+    lead_roll.r_vm AS voicemails, lead_roll.r_noans AS no_answers, lead_roll.r_talk AS talk, lead_roll.r_last_by AS last_by, lead_roll.r_obj AS last_objection,
+    lead_roll.r_convs AS convs, lead_roll.r_menu AS menus, lead_roll.r_staff AS staff_talks, lead_roll.r_fast_hangs AS fast_hangs`;
+  const where = []; const vals = [];
+  if (stage) { where.push('leads.stage = ?'); vals.push(stage); }
+  let rows; let next = null;
+  if (q) {
+    // dials and last_dispo come from the call roll up (src/leaddb.js): the Pipeline's Call setup splits fresh leads from follow ups by them.
+    const qd = q.replace(/\D/g, '');
+    const like = `%${q.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
+    const fields = ['business', 'contact_name', 'owner_name', 'phone', 'email', 'city', 'industry', 'category', 'zip', 'tags'];
+    const ors = fields.map((f) => `LOWER(COALESCE(leads.${f}, '')) LIKE ? ESCAPE '\\'`);
+    const ov = fields.map(() => like);
+    if (qd.length >= 4 && qd.length === q.replace(/[\s()+-]/g, '').length) { ors.push('leads.phone_digits LIKE ?'); ov.push(`%${qd}%`); }
+    where.push(`(${ors.join(' OR ')})`); vals.push(...ov);
+    rows = await all(env, `SELECT ${cols} FROM leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id WHERE ${where.join(' AND ')} ORDER BY leads.updated_at DESC LIMIT ?`, ...vals, Math.min(lim || 200, 500));
+  } else {
+    if (after) { where.push('leads.id > ?'); vals.push(after); }
+    const size = lim > 0 ? Math.min(lim, LEAD_PAGE) : LEAD_PAGE;
+    rows = await all(env, `SELECT ${cols} FROM leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY leads.id LIMIT ?`, ...vals, size + 1);
+    next = rows.length > size ? rows[size - 1].id : null;
+    if (next) rows = rows.slice(0, size);
+    if (lim > 0) next = null;
+  }
+  // Counts only on the first page (the Pipeline shows them once).
+  const counts = after ? null : await all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage');
+  const total = after ? null : (await first(env, 'SELECT COUNT(*) AS n FROM leads'))?.n || 0;
+  return json({ leads: rows.map((l) => seeAppt(decorate(l), user)), next, total, counts: counts ? Object.fromEntries(counts.map((c) => [c.stage, c.n])) : null });
 });
 
 route('POST', '/api/leads', async ({ env, user, body }) => {

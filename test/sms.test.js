@@ -104,7 +104,7 @@ test('inbound call rings the owner phone, missed call plays a message', async ()
   const t = setup(); await owner(t);
   await t.call('PUT', '/api/me/phone', { phone: '954 555 0001' });
   let r = await hook(t, '/api/twilio/voice', { From: '+13055550188', To: '+13055073393', CallSid: 'CA9' });
-  assert.match(r.data, /<Number>\+19545550001<\/Number>/); assert.match(r.data, /do-not-record/);
+  assert.match(r.data, /<Number[^>]*>\+19545550001<\/Number>/); assert.match(r.data, /do-not-record/);
   const a = /a=(a_[^"&]+)/.exec(r.data)[1];
   r = await hook(t, `/api/twilio/voice-done?a=${a}`, { DialCallStatus: 'no-answer', DialCallDuration: '0' });
   // signature covers the full URL including the query, so the helper above signs without it: expect rejection, then sign properly.

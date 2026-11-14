@@ -2,20 +2,22 @@
 import { $, $$, esc, toast, modal } from './core.js';
 import { quickLinks, saveQuick, ensurePrefs } from './nav.js';
 
-const DEFAULTS = ['#/phone', '#/pipeline', '#/calendar'];
+const DEFAULTS = ['#/pipeline', '#/phone', '#/calendar'];
+// The Pipeline is step one, the dialer step two (Nov 2026, V): a saved list that has the dialer right before the Pipeline gets them swapped.
+const pipelineFirst = (l) => { if (!l) return l; const a = l.indexOf('#/phone'), b = l.indexOf('#/pipeline'); if (a < 0 || b < 0 || b < a) return l; const o = l.slice(); o[a] = '#/pipeline'; o[b] = '#/phone'; return o; };
 const same = (href) => { const h = location.hash || '#/'; return href === h || (href !== '#/' && href.startsWith('#') && h.startsWith(href) && (h.length === href.length || '/?'.includes(h[href.length]))); };
 
 export function mountQuickBar(host, user, pages) {
   if (!host) return;
   const ok = (href) => pages.some((p) => p[1] === href);
   const draw = () => {
-    const mine = (quickLinks() || DEFAULTS).filter(ok);
+    const mine = pipelineFirst(quickLinks() || DEFAULTS).filter(ok);
     const rows = mine.map((href) => pages.find((p) => p[1] === href)).filter(Boolean);
     host.innerHTML = `<span class="qb-cap">Quick</span>${rows.map(([name, href]) => `<a class="qb-chip${same(href) ? ' is-on' : ''}" href="${esc(href)}">${esc(String(name).split(':')[0])}</a>`).join('')}<button type="button" class="qb-edit" aria-label="Edit quick links" title="Choose your quick links">+ Edit</button>`;
     $('.qb-edit', host).onclick = edit;
   };
   const edit = () => {
-    let list = (quickLinks() || DEFAULTS).filter(ok);
+    let list = pipelineFirst(quickLinks() || DEFAULTS).filter(ok);
     const m = modal(`<div class="card-head"><h2>Your quick links</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
       <p class="small muted" style="margin:0 0 10px">Tick the pages you want in the bar at the top. Move them to put them in your order. Only you see this.</p>
       <ul class="list cust-list" id="ql"></ul>

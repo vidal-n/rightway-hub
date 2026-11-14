@@ -161,6 +161,47 @@ const room = (id) => `rw_${id}`;
 const LIVE = ['connecting', 'ringing', 'in-progress'];
 const MODES = ['listen', 'whisper', 'barge'];
 
+// Incoming calls (Nov 2026, V: listen, whisper and barge on every call, no matter the line, for training; modeled on Convoso live monitoring).
+// An incoming call is a plain bridge from the caller to whoever answered, which nobody can join. The first time someone joins one, the
+// teammate's leg is moved into the call's room and the caller follows it there through the Dial's action URL (/api/twilio/voice-done),
+// so the call carries on and the coach joins the same room. Both sides hear about a second of quiet while it moves.
+export const inboundLive = (a, t = now()) => Boolean(a && a.status === 'inbound' && a.answered_at && !a.ended_at && t - a.at < 4 * 3600e3);
+export const isLive = (a) => Boolean(a && (LIVE.includes(a.status) || inboundLive(a)));
+// A "Use my phone" call the lead answered: a bridge from the rep's mobile to the lead, joined the same way (the lead's leg moves, the rep follows).
+export const bridgeLive = (a, t = now()) => Boolean(a && a.status === 'in-progress' && !a.conf_sid && a.cust_sid && String(a.cust_sid).startsWith('CA') && !a.ended_at && t - a.at < 4 * 3600e3);
+// Whisper coaches the teammate's own leg: the browser leg on calls we placed, the answered leg on incoming calls.
+const coachSid = (a) => (a.in_conf ? a.agent_sid : a.call_sid);
+const roomTwiml = (origin, aid, label) => `<Dial><Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="true" waitUrl="" participantLabel="${label}" statusCallback="${xml(`${origin}/api/twilio/conf-status?a=${aid}`)}" statusCallbackEvent="start end join leave">${xml(room(aid))}</Conference></Dial>`;
+export const callerRoomTwiml = (origin, aid) => roomTwiml(origin, aid, 'customer');
+export const roomFor = (origin, aid, label) => roomTwiml(origin, aid, label);
+async function moveBridgeToRoom(env, a, origin) {
+  if (a.in_conf) return;
+  // The rep's mobile leg is the one a whisper coaches.
+  const claim = await run(env, 'UPDATE activities SET in_conf = 1, agent_sid = COALESCE(agent_sid, call_sid) WHERE id = ? AND (in_conf IS NULL OR in_conf = 0)', a.id);
+  if (!claim?.meta?.changes) return;
+  try { await twilioPost(env, `Calls/${a.cust_sid}.json`, { Twiml: `<Response>${roomTwiml(origin, a.id, 'customer')}</Response>` }); }
+  catch (e) { await run(env, 'UPDATE activities SET in_conf = 0 WHERE id = ?', a.id); throw e; }
+}
+async function moveInboundToRoom(env, a, origin) {
+  if (a.in_conf) return;
+  const claim = await run(env, 'UPDATE activities SET in_conf = 1, cust_sid = COALESCE(cust_sid, call_sid) WHERE id = ? AND (in_conf IS NULL OR in_conf = 0)', a.id);
+  if (!claim?.meta?.changes) return;
+  try {
+    let leg = a.agent_sid;
+    if (!leg && a.call_sid) {
+      const q = new URLSearchParams({ ParentCallSid: a.call_sid, Status: 'in-progress' });
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Calls.json?${q}`, { headers: { Authorization: twAuth(env) } });
+      leg = (await res.json().catch(() => ({}))).calls?.[0]?.sid || null;
+      if (leg) await run(env, 'UPDATE activities SET agent_sid = ? WHERE id = ?', leg, a.id);
+    }
+    if (!leg) throw new Error('No answered leg found.');
+    await twilioPost(env, `Calls/${leg}.json`, { Twiml: `<Response>${roomTwiml(origin, a.id, 'agent')}</Response>` });
+  } catch (e) {
+    await run(env, 'UPDATE activities SET in_conf = 0, cust_sid = NULL WHERE id = ? AND cust_sid = call_sid', a.id);
+    throw e;
+  }
+}
+
 async function userForIdentity(env, from) {
   const ident = String(from || '').replace(/^client:/, '');
   if (!ident.startsWith('rw_')) return null;
@@ -177,12 +218,17 @@ route('POST', '/api/twilio/client-voice', async ({ env, request, url }) => {
     const u = await userForIdentity(env, p.From);
     if (!u || !['admin', 'team'].includes(u.role)) return no('Only the team can listen to calls.');
     const a = await first(env, 'SELECT * FROM activities WHERE id = ?', p.monitor);
-    if (!a || !LIVE.includes(a.status)) return no('That call has ended.');
-    if (!a.conf_sid) return no('That call is not on a line you can join yet. Try again in a moment.');
-    if (a.from_num && (await import('./lines.js').then((m) => m.hiddenLines(env, u))).has(a.from_num)) return no('That call is on a personal line.');
+    if (!isLive(a)) return no('That call has ended.');
+    if (inboundLive(a) && !a.in_conf) {
+      try { await moveInboundToRoom(env, a, url.origin); } catch { return no('That call could not be opened for listening. Try again in a moment.'); }
+    } else if (bridgeLive(a) && !a.in_conf) {
+      try { await moveBridgeToRoom(env, a, url.origin); } catch { return no('That call could not be opened for listening. Try again in a moment.'); }
+    } else if (!a.conf_sid && !a.in_conf) return no('That call is not on a line you can join yet. Try again in a moment.');
+    const fresh = await first(env, 'SELECT * FROM activities WHERE id = ?', a.id);
     const mode = MODES.includes(p.mode) ? p.mode : 'listen';
     await run(env, 'UPDATE activities SET mon_sid = ?, mon_by = ?, mon_mode = ? WHERE id = ?', p.CallSid || null, u.id, mode, a.id);
-    const coach = mode === 'whisper' && a.call_sid ? ` coach="${xml(a.call_sid)}"` : '';
+    const c = coachSid(fresh);
+    const coach = mode === 'whisper' && c ? ` coach="${xml(c)}"` : '';
     return twiml(`<Dial><Conference beep="false" startConferenceOnEnter="false" endConferenceOnExit="false" muted="${mode === 'listen'}"${coach} participantLabel="coach" statusCallback="${xml(`${url.origin}/api/twilio/conf-status?a=${a.id}`)}" statusCallbackEvent="leave" waitUrl="">${room(a.id)}</Conference></Dial>`);
   }
 
@@ -250,7 +296,8 @@ route('POST', '/api/twilio/conf-status', async ({ env, request, url }) => {
     if (a.cust_sid && a.cust_sid.startsWith('CA') && !a.answered_at) {
       await twilioPost(env, `Calls/${a.cust_sid}.json`, { Status: 'canceled' }).catch(() => twilioPost(env, `Calls/${a.cust_sid}.json`, { Status: 'completed' }).catch(() => {}));
     }
-    await run(env, `UPDATE activities SET status = CASE WHEN status IN ('connecting','ringing') THEN 'canceled' WHEN status = 'in-progress' THEN 'completed' ELSE status END, mon_sid = NULL, ended_at = COALESCE(ended_at, ?) WHERE id = ?`, now(), a.id);
+    await run(env, `UPDATE activities SET status = CASE WHEN status IN ('connecting','ringing') THEN 'canceled' WHEN status = 'in-progress' THEN 'completed' WHEN status = 'inbound' THEN 'inbound_answered' ELSE status END,
+      duration = CASE WHEN in_conf = 1 AND answered_at IS NOT NULL THEN CAST((? - answered_at) / 1000 AS INTEGER) ELSE duration END, mon_sid = NULL, ended_at = COALESCE(ended_at, ?) WHERE id = ?`, now(), now(), a.id);
   } else if (ev === 'participant-leave' && p.CallSid && p.CallSid === a.mon_sid) {
     await run(env, 'UPDATE activities SET mon_sid = NULL, mon_by = NULL, mon_mode = NULL WHERE id = ?', a.id);
   }
@@ -346,7 +393,9 @@ route('GET', '/api/voice/live', async ({ env, user }) => {
   requireStaff(user);
   const rows = await all(env, `SELECT a.id, a.at, a.status, a.answered_at, a.to_num, a.from_num, a.by, a.mon_by, a.mon_mode, u.name AS rep, l.business
     FROM activities a LEFT JOIN users u ON u.id = a.by LEFT JOIN leads l ON l.id = a.lead_id
-    WHERE a.conf_sid IS NOT NULL AND a.status IN ('connecting','ringing','in-progress') AND a.at > ? ORDER BY a.at DESC LIMIT 30`, now() - 4 * 3600e3);
+    WHERE ((a.conf_sid IS NOT NULL AND a.status IN ('connecting','ringing','in-progress')) OR (a.status = 'inbound' AND a.answered_at IS NOT NULL AND a.ended_at IS NULL)
+      OR (a.status = 'in-progress' AND a.conf_sid IS NULL AND a.cust_sid LIKE 'CA%' AND a.ended_at IS NULL))
+      AND a.at > ? ORDER BY a.at DESC LIMIT 30`, now() - 4 * 3600e3);
   return json({ calls: rows.map((r) => ({ ...r, mine: r.mon_by === user.id })) });
 });
 
@@ -355,10 +404,10 @@ route('POST', '/api/voice/monitor/:id', async ({ env, user, params, body }) => {
   const mode = (await body()).mode;
   if (!MODES.includes(mode)) throw new HttpError('Pick listen, whisper or barge.');
   const a = await first(env, 'SELECT * FROM activities WHERE id = ?', params.id);
-  if (!a || !LIVE.includes(a.status)) throw new HttpError('That call has ended.', 409);
+  if (!isLive(a)) throw new HttpError('That call has ended.', 409);
   if (!a.mon_sid || !a.conf_sid || a.mon_by !== user.id) throw new HttpError('Join the call first.', 409);
   const f = mode === 'listen' ? { Muted: 'true', Coaching: 'false' }
-    : mode === 'whisper' ? { Muted: 'false', Coaching: 'true', CallSidToCoach: a.call_sid }
+    : mode === 'whisper' ? { Muted: 'false', Coaching: 'true', CallSidToCoach: coachSid(a) }
       : { Muted: 'false', Coaching: 'false' };
   try { await twilioPost(env, `Conferences/${a.conf_sid}/Participants/${a.mon_sid}.json`, f); }
   catch (e) {

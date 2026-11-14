@@ -66,13 +66,18 @@ async function callRows(env, from, to, rep) {
 
 // Can this viewer listen, whisper or barge on this call? Always answers, with a plain reason when not, so the buttons never just vanish.
 // Owners and agents can listen, whisper and barge on each other's calls from the list (Nov 2026, V: like Convoso's live monitoring), except on a personal line.
-export function joinState(viewer, call, target, hidden = null) {
+// Nov 2026, V: no matter what, owners included, any line (personal lines and incoming calls too), because it is how the team is trained.
+// The only calls you cannot join are your own, and a call that has not opened yet.
+export function joinState(viewer, call) {
   if (!viewer || !['admin', 'team'].includes(viewer.role)) return { ok: false, why: '' };
-  if (call.by === viewer.id) return { ok: false, why: 'This is your own call.' };
-  if (hidden && call.from_num && hidden.has(call.from_num)) return { ok: false, why: "This call is on someone's personal line, which stays private." };
+  if (call.by === viewer.id || call.taker === viewer.id) return { ok: false, why: 'This is your own call.' };
   if (call.status === 'ringing_you') return { ok: false, why: 'This call is still ringing them.', wait: true };
+  // An answered incoming call: joining moves it into a room first (src/voice.js), so it can always be joined.
+  if (call.status === 'inbound' && call.answered_at) return { ok: true, why: '' };
+  // A "Use my phone" call the lead answered: joining moves it into a room the same way.
+  if (!call.conf_sid && call.status === 'in-progress' && String(call.cust_sid || '').startsWith('CA')) return { ok: true, why: '' };
   if (!call.conf_sid) {
-    if (call.status === 'in-progress') return { ok: false, why: 'This call came in through the phone number, so it is not on a line you can join. Calls placed from the Hub can be joined.' };
+    if (call.status === 'in-progress') return { ok: false, why: 'Starting up. The buttons turn on as soon as the line is open.', wait: true };
     return { ok: false, why: 'Starting up. The buttons turn on as soon as the line is open.', wait: true };
   }
   return { ok: true, why: '' };
@@ -83,23 +88,22 @@ route('GET', '/api/agents', async ({ env, user }) => {
   const t = now();
   const day = dayStart(t);
   const users = await all(env, "SELECT id, name, email, role, status, status_at, last_seen, avatar_at FROM users WHERE role IN ('admin','team') ORDER BY name");
-  const live = await all(env, `SELECT a.id, a.at, a.status, a.answered_at, a.to_num, a.from_num, a.by, a.conf_sid, a.mon_by, a.mon_mode, l.business, l.id AS lead_id
+  const live = await all(env, `SELECT a.id, a.at, a.status, a.answered_at, a.to_num, a.from_num, a.by, a.taker, a.conf_sid, a.cust_sid, a.in_conf, a.mon_by, a.mon_mode, l.business, l.id AS lead_id
     FROM activities a LEFT JOIN leads l ON l.id = a.lead_id
-    WHERE a.type IN ('call','manual_call') AND a.status IN (${LIVE.map(() => '?').join(',')}) AND a.at > ? ORDER BY a.at DESC`, ...LIVE, t - 3 * 3600e3);
+    WHERE a.type IN ('call','manual_call') AND (a.status IN (${LIVE.map(() => '?').join(',')}) OR (a.status = 'inbound' AND a.answered_at IS NOT NULL AND a.ended_at IS NULL)) AND a.at > ? ORDER BY a.at DESC`, ...LIVE, t - 3 * 3600e3);
   const logs = await all(env, 'SELECT user_id, status, start_at, end_at FROM agent_log WHERE start_at < ? AND (end_at IS NULL OR end_at > ?)', t, day);
   const calls = await callRows(env, day, t + 1);
   const stats = callStats(calls, { users });
-  const hidden = await import('./lines.js').then((m) => m.hiddenLines(env, user)).catch(() => new Set());
   const out = users.map((u) => {
     const online = u.last_seen && t - u.last_seen < STALE && u.status && u.status !== 'offline';
-    const call = live.find((c) => c.by === u.id && (c.status !== 'ready' || t - c.at < 120e3));
+    const call = live.find((c) => (c.by === u.id || c.taker === u.id) && (c.status !== 'ready' || t - c.at < 120e3));
     const mine = logs.filter((l) => l.user_id === u.id);
     const st = statusTime(mine, day, t, online ? t : Math.min(t, (u.last_seen || t) + 45e3));
     const s = stats.agents.find((a) => a.key === u.id);
     return {
       id: u.id, name: u.name || u.email, email: u.email, role: u.role, avatar: u.avatar_at || null, online: Boolean(online),
       status: call ? 'on_call' : online ? u.status : 'offline', picked: u.status || 'offline', since: call ? call.answered_at || call.at : u.status_at, lastSeen: u.last_seen,
-      call: call ? { id: call.id, business: call.business, leadId: call.lead_id, number: call.to_num, status: call.status, answeredAt: call.answered_at, at: call.at, join: joinState(user, call, u, hidden), canJoin: joinState(user, call, u, hidden).ok, monitoredBy: call.mon_by, mode: call.mon_mode, mine: call.mon_by === user.id } : null,
+      call: call ? { id: call.id, business: call.business, leadId: call.lead_id, number: call.status === 'inbound' ? call.from_num : call.to_num, inbound: call.status === 'inbound', status: call.status === 'inbound' ? 'in-progress' : call.status, answeredAt: call.answered_at, at: call.at, join: joinState(user, call), canJoin: joinState(user, call).ok, monitoredBy: call.mon_by, mode: call.mon_mode, mine: call.mon_by === user.id } : null,
       today: { login: st.login, per: st.per, dials: s?.dials || 0, connects: s?.connects || 0, booked: s?.booked || 0, talk: s?.talk || 0, avgHandle: s?.avgHandle || 0, avgTalk: s?.avgTalk || 0 },
     };
   });

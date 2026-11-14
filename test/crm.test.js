@@ -242,7 +242,7 @@ test('twilio bridge: signed webhooks only, TwiML dials the lead without recordin
   assert.equal(r.status, 403);
   r = await t.call('POST', `/api/twilio/bridge?a=${aid}`, form, { 'content-type': 'application/x-www-form-urlencoded', 'x-twilio-signature': await twilioSignature('tok', url, params) });
   assert.equal(r.status, 200);
-  assert.match(r.data, /<Number>\+19545550123<\/Number>/);
+  assert.match(r.data, /<Number[^>]*>\+19545550123<\/Number>/);
   assert.match(r.data, /record="do-not-record"/);
   assert.match(r.data, /Bay &amp; Sons Roofing/);
   const doneUrl = `https://hub.test/api/twilio/dial-done?a=${aid}`;
@@ -292,7 +292,7 @@ test('dial out: lists Twilio numbers, validates caller ID, blocks DNC, bridges f
       { 'content-type': 'application/x-www-form-urlencoded', 'x-twilio-signature': await twilioSignature('tok', bridgeUrl, params) });
     assert.equal(r.status, 200);
     assert.match(r.data, /callerId="\+19547374725"/);
-    assert.match(r.data, /<Number>\+19545550188<\/Number>/);
+    assert.match(r.data, /<Number[^>]*>\+19545550188<\/Number>/);
     r = await t.call('GET', '/api/dialer/recent');
     assert.equal(r.data.calls.length, 1);
     // Do Not Call blocks a manual dial too
