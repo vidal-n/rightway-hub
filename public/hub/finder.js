@@ -43,6 +43,8 @@ const filterHtml = () => `<div class="fgrid">
   <label class="field"><span>Website</span><select data-f="website"><option value="any">Any</option><option value="has">Has a website</option><option value="none">No website</option></select></label>
   <label class="field"><span>Phone</span><select data-f="phone"><option value="has">Has a phone</option><option value="any">Any</option></select></label>
   <label class="field"><span>Google profile</span><select data-f="claimed"><option value="any">Any</option><option value="claimed">Claimed</option><option value="unclaimed">Not claimed</option></select></label>
+  <label class="field" title="Google's hours for each business. Service area trades often list no hours, so 'Saturday hours or none listed' keeps them."><span>Saturday</span><select data-f="sat"><option value="any">Any</option><option value="open">Saturday hours listed</option><option value="maybe">Saturday hours or none listed</option></select></label>
+  <label class="field" title="Google marks some businesses closed for now or closed for good."><span>Closed businesses</span><select data-f="open"><option value="operating">Leave out</option><option value="any">Keep</option></select></label>
   <div class="field"><span>Category</span><div data-ms="category"></div><input type="hidden" data-f="category"></div>
   <div class="field"><span>Skip big chains</span><div data-ms="exclude"></div><input type="hidden" data-f="exclude"></div>
 </div>`;

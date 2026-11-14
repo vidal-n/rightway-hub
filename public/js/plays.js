@@ -140,6 +140,28 @@ export const PLAYS = [
     industries: SMALL.slice(0, 4).concat(['roofing contractor', 'plumber']), filters: f({ website: 'any' }), source: 'osm', list: 'nogbp',
     meters: { book: 2, reach: 2, deal: 2, volume: 1 }, refs: ['Apollo.io'],
   },
+  {
+    id: 'ownerdirect', name: 'Owner answers the phone', badge: 'Fewest gatekeepers', goals: ['reach', 'book'],
+    who: 'Owner run home service trades with a real ticket: garage door, pool, screen enclosures, small HVAC, independent plumbing, pressure washing, tree, appliance repair, fencing and tint.',
+    why: 'Census data shows most firms in these trades are one owner or a small crew, so the number on Google is usually the owner or the owner\'s cell. They depend on the map pack and one job covers months of our fee. Offices, dentists and lawyers have front desks; franchises have phone menus.',
+    expect: 'Fewer phone menus and receptionists than office trades. Owners are on jobs, so many calls go to voicemail; call early (8 to 9:30am) and late (4 to 6pm) their time. After adding, run the Twilio phone type check and call mobile numbers first. Guidance, not measured: compare it in Call insights by trade.',
+    open: '"Is this the owner? I will be quick. I looked at who shows up first on Google Maps for garage door repair near you, and you are not in the top 3."',
+    after: ['Add to the Pipeline', 'Fill in missing info: phone type (mobile first)', 'Pipeline: Lead template for the trade, then Load'],
+    industries: ['garage door repair', 'pool service', 'screen enclosure', 'ac repair', 'plumber', 'pressure washing', 'tree service', 'appliance repair', 'fence company', 'window tinting'],
+    filters: f({ minReviews: 5, maxReviews: 150, website: 'any' }), source: 'google', list: 'small',
+    meters: { book: 3, reach: 3, deal: 3, volume: 2 }, refs: ['Scrap.io', 'Outscraper'],
+  },
+  {
+    id: 'saturday', name: 'Saturday call list', badge: 'Open on Saturday', goals: ['reach'],
+    who: 'Mobile and service area trades that work Saturdays: pool service, pressure washing, detailing, tint, bigger lawn crews, handyman and appliance repair. Keeps listings with Saturday hours, and those with no hours listed.',
+    why: 'Owners of these trades often answer their cell on a Saturday morning. Barbers, salons and car washes are open but busy with customers, and offices are closed, so they are left out. No study measures Saturday calling, so treat it as a test.',
+    expect: 'Call 10am to noon their time. Saturday is legal in Florida 8am to 8pm; the Hub blocks Sunday in the 7 states that ban it and holds Rhode Island to 10am to 5pm. Tag the run and compare owner conversations per 100 dials against weekdays.',
+    open: '"I know it is Saturday, so I will be quick. When someone near you searches for pressure washing this weekend, you are not in the top 3 on the map."',
+    after: ['Add to the Pipeline', 'Pipeline call list: Saturday list', 'Call 10am to noon their time'],
+    industries: ['pool service', 'pressure washing', 'auto detailing', 'window tinting', 'landscaping company', 'handyman', 'appliance repair'],
+    filters: f({ minReviews: 5, maxReviews: 150, website: 'any', sat: 'maybe' }), source: 'google', list: 'sat',
+    meters: { book: 2, reach: 3, deal: 2, volume: 2 }, refs: ['Outscraper'],
+  },
 ];
 export const playById = (id) => PLAYS.find((p) => p.id === id);
 

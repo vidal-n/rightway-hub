@@ -12,7 +12,7 @@ import { HttpError, json } from './util.js';
 import { first, all, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
 import { serveRecording, forgetRecording } from './audio.js';
-import { e164, inCallingHours, logActivity, recordOutcome, insertLead, cleanLead } from './crm.js';
+import { e164, inCallingHours, hoursMessage, logActivity, recordOutcome, insertLead, cleanLead } from './crm.js';
 import { resolveDispo } from './dispo.js';
 import { route } from './router.js';
 import { twilioReady, verifiedParams, twiml, xml, pickFrom, manualTarget, ownedNumbers, resetNumberCache } from './calls.js';
@@ -128,7 +128,7 @@ route('POST', '/api/voice/prepare', async ({ env, user, body }) => {
     await guardLead(env, lead); // the Do Not Call list (bad numbers, phone menus, dead leads, registry), src/suppress.js
     const to = e164(lead.phone);
     if (!to) throw new HttpError('This lead has no valid phone number.');
-    if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError(lead.state === 'MD' ? "Maryland allows sales calls 9am to 8pm only. Call later." : "It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
+    if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError(hoursMessage(lead), 409);
     await capCheck(env, lead.id);
     const rule = await (await import('./crm.js')).callBlock(env, lead, user); // callbacks stay with whoever set them, 24 hours after no answer
     if (rule) throw new HttpError(rule.why, 409);

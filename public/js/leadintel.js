@@ -12,6 +12,8 @@ import { refFor, photosFor } from './planref.js';
 // ticket = typical value of one new customer, used only as an editable starting point on the ROI slide.
 const INDUSTRIES = [
   [/roof/i, 'Roofing', 'roofing contractor', 8000],
+  [/screen enclos|rescreen|pool (screen|cage|enclos)|lanai|screen room/i, 'Screen enclosures', 'screen enclosure', 2500],
+  [/\btint/i, 'Window tinting', 'window tinting', 350],
   [/hvac|air cond|\bac\b|heating|cooling/i, 'HVAC', 'ac repair', 650],
   [/plumb/i, 'Plumbing', 'plumber', 450],
   [/electric/i, 'Electrical', 'electrician', 450],
@@ -27,6 +29,7 @@ const INDUSTRIES = [
   [/med ?spa|botox|aesthetic|laser/i, 'Med spa', 'med spa', 600],
   [/chiro/i, 'Chiropractic', 'chiropractor', 900],
   [/physical therap|\bpt\b/i, 'Physical therapy', 'physical therapy', 900],
+  [/detailing|auto detail|car detail/i, 'Auto detailing', 'auto detailing', 200],
   [/auto ?(repair|shop|body)|mechanic|collision|transmission/i, 'Auto repair', 'auto repair shop', 500],
   [/tow/i, 'Towing', 'towing service', 150],
   [/landscap|lawn/i, 'Landscaping', 'landscaping company', 300],

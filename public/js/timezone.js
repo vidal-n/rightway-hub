@@ -187,18 +187,102 @@ export function resolveZone(l = {}) {
   return { tz: null, alt: null, state: code || '', how: '' };
 }
 
-const hourIn = (tz, at) => {
-  try { return Number(dtf('en-US', { timeZone: tz, hour: 'numeric', hourCycle: 'h23' }).format(at)); } catch { return null; }
+// Calling rules by state (Nov 2026, research report "Owner direct lead scraping", from Kixie's 2026 state guide plus Kelley Drye and TCPAWorld on
+// Pennsylvania SB 992; a screening list, not legal advice). The Hub's base window is 8am to 8pm in the lead's time zone (stricter than the federal 9pm).
+// start and end are hours (end is exclusive), sat a Saturday window, sun false = no Sunday calls (a number = Sunday start hour), hol true = no calls on
+// federal holidays, zone = the state's fixed clock (Mississippi uses Central time everywhere). A state not listed uses the base window.
+export const STATE_RULES = {
+  AL: { sun: false, hol: true },
+  CT: { start: 9 },
+  KY: { start: 10 },
+  LA: { sun: false, hol: true },
+  MD: { start: 9 },
+  MI: { start: 9 },
+  MN: { start: 9 },
+  MS: { zone: 'America/Chicago', sun: false },
+  NM: { start: 9 },
+  NV: { start: 9 },
+  PA: { start: 9, end: 19, sun: false, hol: true },
+  RI: { start: 9, end: 18, sat: [10, 17], sun: false, hol: true },
+  SD: { start: 9, sun: false },
+  TX: { start: 9, sun: 12 },
+  UT: { sun: false, hol: true },
 };
-const inside = (h, start = 8) => h != null && h >= start && h < 20;
-// States with a later start than 8am (Maryland allows sales calls 9am to 8pm only). Add more here when a state is checked.
-export const STATE_START = { MD: 9 };
+// Older callers read the start hour from here.
+export const STATE_START = Object.fromEntries(Object.entries(STATE_RULES).filter(([, r]) => r.start).map(([k, r]) => [k, r.start]));
+const BASE = [8, 20];
+const WDAY = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
 
-// 8am to 8pm in the lead's zone (TCPA hours). With a second possible zone, both must be inside. With no zone, the window that is
-// safe from Miami to Seattle: 11am to 8pm Eastern (8am Pacific is 11am Eastern).
+// The window [start, end) in hours for a state on a weekday (1 Monday to 7 Sunday), or null when calls are not allowed that day.
+export function stateWindow(state, day) {
+  const r = STATE_RULES[String(state || '').toUpperCase()] || {};
+  const w = [r.start || BASE[0], r.end || BASE[1]];
+  if (day === 6 && r.sat) return r.sat;
+  if (day === 7 && r.sun === false) return null;
+  if (day === 7 && typeof r.sun === 'number') return [Math.max(r.sun, w[0]), w[1]];
+  return w;
+}
+
+// US federal holidays on a date (month 1 to 12), with the Friday or Monday a fixed date holiday is observed on.
+export function federalHoliday(y, m, d) {
+  const dow = (yy, mm, dd) => new Date(Date.UTC(yy, mm - 1, dd)).getUTCDay(); // 0 Sunday
+  const nth = (mm, wd, n) => { const first = dow(y, mm, 1); return 1 + ((wd - first + 7) % 7) + (n - 1) * 7; };
+  const last = (mm, wd) => { const days = new Date(Date.UTC(y, mm, 0)).getUTCDate(); const l = dow(y, mm, days); return days - ((l - wd + 7) % 7); };
+  const fixed = [[1, 1, "New Year's Day"], [6, 19, 'Juneteenth'], [7, 4, 'Independence Day'], [11, 11, 'Veterans Day'], [12, 25, 'Christmas Day']];
+  for (const [mm, dd, name] of fixed) {
+    if (m === mm && d === dd) return name;
+    const w = dow(y, mm, dd);
+    if (w === 6 && m === mm && d === dd - 1) return `${name} (observed)`;
+    if (w === 0 && m === mm && d === dd + 1) return `${name} (observed)`;
+  }
+  if (m === 12 && d === 31 && dow(y + 1, 1, 1) === 6) return "New Year's Day (observed)";
+  const moving = [[1, 1, 3, 'Martin Luther King Jr. Day'], [2, 1, 3, "Presidents' Day"], [9, 1, 1, 'Labor Day'], [10, 1, 2, 'Columbus Day'], [11, 4, 4, 'Thanksgiving']];
+  for (const [mm, wd, n, name] of moving) if (m === mm && d === nth(mm, wd, n)) return name;
+  if (m === 5 && d === last(5, 1)) return 'Memorial Day';
+  return '';
+}
+
+const partsIn = (tz, at) => {
+  try {
+    const p = dtf('en-US', { timeZone: tz, weekday: 'short', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', hourCycle: 'h23' }).formatToParts(at);
+    const g = (t) => p.find((x) => x.type === t)?.value;
+    return { day: WDAY[g('weekday')] || null, hour: Number(g('hour')) % 24, y: Number(g('year')), m: Number(g('month')), d: Number(g('day')) };
+  } catch { return null; }
+};
+// Why a call is not allowed right now in one zone under a state's rules ('' when it is allowed).
+function blockIn(zone, state, at) {
+  const c = partsIn(zone, at);
+  if (!c || !c.day) return 'unknown time';
+  const r = STATE_RULES[String(state || '').toUpperCase()] || {};
+  if (r.hol) { const h = federalHoliday(c.y, c.m, c.d); if (h) return `no calls on ${h} in this state`; }
+  const w = stateWindow(state, c.day);
+  if (!w) return 'no Sunday calls in this state';
+  if (c.hour < w[0] || c.hour >= w[1]) return `outside ${hourText(w[0])} to ${hourText(w[1])} their time`;
+  return '';
+}
+const hourText = (h) => (h === 12 ? 'noon' : `${h % 12 || 12}${h < 12 ? 'am' : 'pm'}`);
+
+// Calling hours for a lead: 8am to 8pm in its zone (stricter for the states in STATE_RULES). With a second possible zone, both must be inside.
+// With no zone, both the Eastern and the Pacific clock must be inside (from Miami to Seattle).
+export function callBlock(tz, alt, at = Date.now(), state = '') {
+  const r = STATE_RULES[String(state || '').toUpperCase()] || {};
+  const zones = r.zone ? [r.zone] : tz ? [tz, alt].filter(Boolean) : [ZONES.PT, ZONES.ET];
+  for (const z of zones) { const why = blockIn(z, state, at); if (why) return why; }
+  return '';
+}
 export function canCallNow(tz, alt, at = Date.now(), state = '') {
-  const start = STATE_START[String(state || '').toUpperCase()] || 8;
-  if (!tz) return inside(hourIn(ZONES.PT, at), start) && inside(hourIn(ZONES.ET, at), start);
-  if (!inside(hourIn(tz, at), start)) return false;
-  return !alt || inside(hourIn(alt, at), start);
+  return !callBlock(tz, alt, at, state);
+}
+// One line for a state's rule, for the lead panel and errors: "Texas: 9am to 8pm, Sunday from noon".
+export function stateRuleText(state) {
+  const k = String(state || '').toUpperCase();
+  const r = STATE_RULES[k];
+  if (!r) return '8am to 8pm their time, every day';
+  const w = [r.start || 8, r.end || 20];
+  const bits = [`${hourText(w[0])} to ${hourText(w[1])}${r.zone ? ' Central time' : ''}`];
+  if (r.sat) bits.push(`Saturday ${hourText(r.sat[0])} to ${hourText(r.sat[1])}`);
+  if (r.sun === false) bits.push('no Sundays');
+  if (typeof r.sun === 'number') bits.push(`Sunday from ${hourText(r.sun)}`);
+  if (r.hol) bits.push('no federal holidays');
+  return bits.join(', ');
 }

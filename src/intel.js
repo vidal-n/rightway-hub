@@ -194,6 +194,14 @@ export function parseManual(lead) {
   try { return lead?.manual_listing ? JSON.parse(lead.manual_listing) : null; } catch { return null; }
 }
 
+// Google's hours from the listing the research found (Maps results carry them at no extra cost).
+export async function saveListingHours(env, leadId, intel) {
+  const L = intel?.listing;
+  if (!L || (!L.hrs && !L.status)) return;
+  const { saveHours } = await import('./hours.js');
+  await saveHours(env, leadId, L.hrs || '', 'google', L.status || '').catch((e) => console.error('hours', e.message));
+}
+
 // Fields copied from the research onto the lead so the pipeline can filter and sort on them.
 export function leadFieldsFromIntel(lead, intel) {
   const L = intel.listing || {};
@@ -220,6 +228,7 @@ route('PUT', '/api/leads/:id/listing-by-hand', async ({ env, user, params, body 
   if (m.owner_name) set.owner_name = m.owner_name;
   const cols = Object.keys(set);
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), lead.id);
+  if (m.hours) await (await import('./hours.js')).saveHours(env, lead.id, m.hours, 'hand', '', { force: true }).catch(() => {});
   return json({ manual: m });
 });
 
@@ -236,5 +245,6 @@ route('POST', '/api/leads/:id/research', async ({ env, user, params, body }) => 
   const set = leadFieldsFromIntel(lead, intel);
   const cols = Object.keys(set);
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), lead.id);
+  await saveListingHours(env, lead.id, intel);
   return json({ cached: false, intel, score: set.score, grade: set.grade, plan: set.plan });
 });

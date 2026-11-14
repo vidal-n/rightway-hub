@@ -1,4 +1,5 @@
 // Pipeline filters. Pure so the tests can run it in Node.
+import { nicheOf, saturdayOk, SAT_SKIP } from './niches.js';
 
 // Does the business have a Google profile? 'yes' when we hold Google facts for it (Lead finder place id, reviews, rating, a map rank),
 // 'none' when research looked and found nothing, 'unknown' when nobody has checked yet. After the research check, nothing found means no profile found.
@@ -46,6 +47,9 @@ export function filterLeads(leads, p) {
     if (f.gbp && gbpState(l) !== f.gbp) return false;
     if (f.small && !likelyOwner(l)) return false;
     if (f.callable && !l.callable_now) return false;
+    // Business hours (public/js/hours.js via leadlive.js) and owner direct niche templates (public/js/niches.js).
+    if (f.hours && !hoursMatch(l, f.hours)) return false;
+    if (f.niche && !nicheMatch(l, f.niche)) return false;
     // Scrubbed data: phone line type, email, owner name, data score.
     if (f.phoneType && (f.phoneType === 'unknown' ? l.phone_type : l.phone_type !== f.phoneType)) return false;
     const goodEmail = Boolean(l.email) && !['bad', 'no_mail_server'].includes(l.email_status);
@@ -61,3 +65,28 @@ export function filterLeads(leads, p) {
   });
 }
 
+// Hours filter values: open, closed, sat (open Saturday), satok (Saturday call list: Saturday hours, or a Saturday niche with no hours),
+// sun, known, unknown, gone (Google says closed for now or for good).
+export const HOURS_FILTERS = [['open', 'Open right now'], ['closed', 'Closed right now'], ['sat', 'Open on Saturday'], ['satok', 'Good Saturday call'], ['sun', 'Open on Sunday'],
+  ['known', 'Hours known'], ['unknown', 'Hours not known'], ['gone', 'Closed on Google (for now or for good)']];
+export function hoursMatch(l, v) {
+  switch (v) {
+    case 'open': return l.hours_state === 'open';
+    case 'closed': return l.hours_state === 'closed' || l.hours_state === 'gone';
+    case 'sat': return l.open_sat === true;
+    case 'satok': return l.hours_state !== 'gone' && saturdayOk(l);
+    case 'sun': return l.open_sun === true;
+    case 'known': return Boolean(l.hours_known);
+    case 'unknown': return !l.hours_known;
+    case 'gone': return l.hours_state === 'gone';
+    default: return true;
+  }
+}
+// Niche filter: a template id (garage, pool, ...), 'owner' (any owner direct template), 'satniche' (a Saturday template), 'satskip' (call Monday instead).
+export function nicheMatch(l, v) {
+  if (v === 'satskip') return SAT_SKIP.test(`${l.industry || ''} ${l.category || ''} ${l.business || ''}`);
+  const n = nicheOf(l);
+  if (v === 'owner') return Boolean(n);
+  if (v === 'satniche') return Boolean(n && n.day !== 'weekday');
+  return Boolean(n && n.id === v);
+}

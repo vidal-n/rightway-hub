@@ -228,6 +228,10 @@ const SCHEMA = [
   `CREATE TRIGGER IF NOT EXISTS leads_sync_del AFTER DELETE ON leads BEGIN INSERT INTO lead_gone (lead_id, at) VALUES (OLD.id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; DELETE FROM lead_sync WHERE lead_id = OLD.id; END`,
   `CREATE TRIGGER IF NOT EXISTS roll_sync_ins AFTER INSERT ON lead_roll BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
   `CREATE TRIGGER IF NOT EXISTS roll_sync_upd AFTER UPDATE ON lead_roll BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
+  // Business hours per lead (src/hours.js, public/js/hours.js): packed week, where it came from, and Google's closed status. Own table (leads is near 100 columns).
+  `CREATE TABLE IF NOT EXISTS lead_hours (lead_id TEXT PRIMARY KEY, hours TEXT, src TEXT, status TEXT, at INTEGER)`,
+  `CREATE TRIGGER IF NOT EXISTS hours_sync_ins AFTER INSERT ON lead_hours BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
+  `CREATE TRIGGER IF NOT EXISTS hours_sync_upd AFTER UPDATE ON lead_hours BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
 ];
 
 // Columns added after the first release. SQLite has no ADD COLUMN IF NOT EXISTS, so duplicates are ignored.

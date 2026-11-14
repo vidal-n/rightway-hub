@@ -12,6 +12,7 @@ export const PRICES = {
   directory_check: { label: 'Directory check', usd: 0.05, per: 'client', note: 'Up to 25 Google searches.' },
   link_prospects: { label: 'Find link prospects', usd: 0.012, per: 'run', note: '6 Google searches.' },
   reviews_pull: { label: 'Google reviews pull', usd: 0.01, per: 'pull', note: 'Newest 100 reviews. An estimate.' },
+  hours_google: { label: 'Google hours lookup', usd: 0.002, per: 'lead', note: 'One Google Maps search. Website hours from the scrub are free.' },
   phone_lookup: { label: 'Phone type check (Twilio Lookup)', usd: 0.008, per: 'number', note: 'Mobile or landline.' },
   claude_small: { label: 'Claude draft or reply', usd: 0.01, per: 'draft', note: 'Captions, review replies, Ask Claude messages. Cents at most.' },
   claude_page: { label: 'Claude page draft', usd: 0.03, per: 'page', note: 'A full service or city page.' },

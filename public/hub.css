@@ -3130,3 +3130,14 @@ ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
 .aud-ok { margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--mint-strong) 14%, transparent); }
 .aud-warn { margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--bad) 16%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 50%, transparent); }
 .aud-warn-soft { margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, #E8A33D 14%, transparent); }
+
+/* Lead templates and business hours (Nov 2026, research report "Owner direct lead scraping") */
+.tmplrow { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: flex-start; margin: 8px 0 4px; }
+.tmplrow .field.inline { display: flex; align-items: center; gap: 8px; margin: 0; }
+.tmplrow .field.inline span { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.tmplrow select { min-width: 0; max-width: 100%; }
+.tmpl-tip { flex: 1 1 320px; min-width: 0; display: grid; gap: 2px; font-size: 13px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.tmpl-tip b { display: inline-block; min-width: 78px; }
+.lmc-hours .lmh { display: grid; gap: 2px; min-width: 0; }
+.lmc-hours .lmh .badge { vertical-align: middle; justify-self: start; }
+.lmc-hours .lmh .cost-hint, .bulk .cost-hint { margin-left: 5px; }

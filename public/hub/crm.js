@@ -23,7 +23,9 @@ import { arriving, leaving } from './dialwin.js';
 import { testLeads, testIntel } from '/js/testleads.js';
 import { testTextModal, testBookModal, testLeadModal, testSummaryHtml } from './testdial.js';
 import { practiceModal, unlockSpeech } from './practice.js';
-import { filterLeads } from '/js/leadfilter.js';
+import { filterLeads, HOURS_FILTERS } from '/js/leadfilter.js';
+import { openAt, nowText } from '/js/hours.js';
+import { NICHES, nicheOf, nicheById, nicheFilters, weekdayNiches, saturdayNiches } from '/js/niches.js';
 import { quoteFor, callCategory, whoIs, personOf, CALL_CATS } from '/js/leadintel.js';
 import { refLines } from '/js/planref.js';
 import { WEB_TIERS, webTierById, webLines, money as webMoney } from '/js/webprice.js';
@@ -134,6 +136,7 @@ export async function pipelinePage(app, user, openId, screen) {
     // Worked out once so the list can show and sort by them.
     l.reached = reachedOf(l); l.last_by_name = l.last_by ? userNames[l.last_by] || '' : ''; l.cat_label = callCategory(l).label;
     l.objection_label = l.last_objection ? objectionLabel(l.last_objection) : ''; l.list_label = l.held ? `${l.held}'s list` : l.mine ? 'My list' : '';
+    l.niche_name = nicheOf(l)?.name || '';
   }
   if (p.group && OLD_GROUP[p.group]) p.group = OLD_GROUP[p.group];
   if (!modeOf(p.board || 'stage') || modeOf(p.board).id !== (p.board || 'stage')) p.board = 'stage';
@@ -221,6 +224,7 @@ export async function pipelinePage(app, user, openId, screen) {
             return c ? `<button class="tz ${tzSel(p).includes(k) ? 'is-on' : ''}" data-tz="${k}" title="${n}. Tap more than one to call several time zones together." aria-pressed="${tzSel(p).includes(k)}">${tzNow(k) ? '<i class="live"></i>' : ''}${k === '?' ? 'Unknown' : k} <b>${c}</b></button>` : '';
           }).join('')}</div>
           <div class="chips lists" data-sec="lists" aria-label="Call lists"><span class="small muted">Call lists:</span>${CALL_LISTS.map(([k, n]) => `<button class="chip ${p.list === k ? 'on' : ''}" data-list="${k}">${n}</button>`).join('')}</div>
+          ${templateRow(p)}
           <div class="filterbar">
             <input id="fq" value="${esc(f.q || '')}" placeholder="Search name, phone, city, industry, zip, tag" style="flex:1 1 240px">
             <div class="chips gradechips" aria-label="Lead grade"><span class="small muted" title="Grade is the lead score from our research. A is the best lead to call (75 and up), B 60 to 74, C 45 to 59, D under 45. Tap letters to show only those grades.">Grade</span>${GRADES.map((g) => `<button class="chip ${f.grades?.includes(g) ? 'on' : ''}" data-grade="${g}" title="${{ A: 'A: best leads, score 75 and up', B: 'B: score 60 to 74', C: 'C: score 45 to 59', D: 'D: score under 45' }[g]}">${g}</button>`).join('')}</div>
@@ -240,6 +244,8 @@ export async function pipelinePage(app, user, openId, screen) {
           <label class="field"><span>Reviews up to</span><input type="number" min="0" data-f="maxReviews" value="${esc(f.maxReviews ?? '')}"></label>
           <label class="field"><span>Rating up to</span><input type="number" min="1" max="5" step="0.1" data-f="maxRating" value="${esc(f.maxRating ?? '')}"></label>
           <label class="field"><span>Score at least</span><input type="number" min="0" max="100" data-f="minScore" value="${esc(f.minScore ?? '')}"></label>
+          <label class="field"><span>Business hours</span><select data-f="hours"><option value="">Any</option>${HOURS_FILTERS.map(([k, n]) => `<option value="${k}"${f.hours === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+          <label class="field"><span>Niche</span><select data-f="niche"><option value="">Any</option><option value="owner"${f.niche === 'owner' ? ' selected' : ''}>Any owner direct trade</option><option value="satniche"${f.niche === 'satniche' ? ' selected' : ''}>Saturday trades</option><option value="satskip"${f.niche === 'satskip' ? ' selected' : ''}>Skip on Saturday (busy or closed)</option>${NICHES.map((n) => `<option value="${n.id}"${f.niche === n.id ? ' selected' : ''}>${esc(n.name)}</option>`).join('')}</select></label>
           <label class="field"><span>Phone type</span><select data-f="phoneType"><option value="">Any</option>${[['mobile', 'Mobile'], ['landline', 'Landline'], ['voip', 'Internet phone'], ['unknown', 'Not checked']].map(([k, n]) => `<option value="${k}"${f.phoneType === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
           <label class="field"><span>Email</span><select data-f="email"><option value="">Any</option>${[['yes', 'Has a good email'], ['person', 'A person, not info@'], ['no', 'No good email']].map(([k, n]) => `<option value="${k}"${f.email === k ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
           <label class="field"><span>Owner name</span><select data-f="owner"><option value="">Any</option><option value="yes"${f.owner === 'yes' ? ' selected' : ''}>Known</option><option value="no"${f.owner === 'no' ? ' selected' : ''}>Unknown</option></select></label>
@@ -368,6 +374,8 @@ export async function pipelinePage(app, user, openId, screen) {
     ['website', 'Website', 'website', (l) => (l.website ? esc(String(l.website).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')) : '<span class="small muted">none</span>')],
     ['city', 'Area', 'city', (l) => `${esc([l.city, l.state].filter(Boolean).join(', '))}${l.zip ? ` <span class="small">${esc(l.zip)}</span>` : ''}`],
     ['tz_short', 'TZ', 'tz_short', (l) => (l.tz_short ? `<span class="badge ${l.callable_now ? '' : 'gray'}" title="${l.tz_alt_short ? 'On the line between two zones. Call only when both are inside 8am to 8pm.' : ''}">${esc(l.tz_short)}${l.tz_alt_short ? `/${esc(l.tz_alt_short)}` : ''} ${esc(l.local_time)}</span>` : `<span class="small" title="Time zone unknown. Callable 11am to 8pm Eastern only.">?${l.callable_now ? '' : ' wait'}</span>`)],
+    ['hours', 'Business hours', 'hours_state', (l) => hoursCell(l)],
+    ['niche', 'Niche', 'niche_name', (l) => esc(l.niche_name || '')],
     ['industry', 'Industry', 'industry', (l) => esc(l.industry || l.category || '')],
     ['cat', 'Call type', 'cat_label', (l) => esc(l.cat_label || '')],
     ['source', 'Source', 'source', (l) => esc(l.source || '')],
@@ -389,7 +397,7 @@ export async function pipelinePage(app, user, openId, screen) {
     ['held', 'Call list', 'list_label', (l) => (l.list_label ? `<span class="badge${l.held ? ' warn' : ''}">${esc(l.list_label)}</span>` : '')],
     ['created_at', 'Added', '-created_at', (l) => (l.created_at ? esc(new Date(l.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })) : '')],
   ];
-  const LCOL_DEFAULT = ['grade', 'business', 'city', 'tz_short', 'industry', 'reviews', 'last_dispo', 'dials', 'reached', 'data_score', 'stage', 'next'];
+  const LCOL_DEFAULT = ['grade', 'business', 'city', 'tz_short', 'hours', 'industry', 'reviews', 'last_dispo', 'dials', 'reached', 'data_score', 'stage', 'next'];
   const listCols = () => { const want = Array.isArray(p.cols) && p.cols.length ? p.cols : LCOL_DEFAULT; return LCOLS.filter((c) => want.includes(c[0])).sort((a, b) => want.indexOf(a[0]) - want.indexOf(b[0])); };
   const pickColumns = () => {
     let want = listCols().map((c) => c[0]);
@@ -410,12 +418,15 @@ export async function pipelinePage(app, user, openId, screen) {
     el.innerHTML = `
       <div class="row" style="margin-bottom:10px">
         <div class="bulk" id="bulk" ${selected.size ? '' : 'hidden'}><b id="selc">${selected.size} selected</b>
-          <button class="btn btn-ghost btn-sm" data-bulk="research">Research</button><button class="btn btn-ghost btn-sm" data-bulk="scrub">Scrub</button><button class="btn btn-ghost btn-sm" data-bulk="callnow">Call next</button><button class="btn btn-mint btn-sm" data-bulk="makelist" title="Use only the ticked leads as today's call list">Make call list</button>
+          <button class="btn btn-ghost btn-sm" data-bulk="research">Research</button><button class="btn btn-ghost btn-sm" data-bulk="scrub">Scrub</button><button class="btn btn-ghost btn-sm" data-bulk="ghours" title="One Google Maps search a lead for its hours, 10 at a time">Get Google hours<span class="cost-hint" data-cost="hours_google" data-n="${selected.size}"></span></button><button class="btn btn-ghost btn-sm" data-bulk="callnow">Call next</button><button class="btn btn-mint btn-sm" data-bulk="makelist" title="Use only the ticked leads as today's call list">Make call list</button>
           <select id="bstage"><option value="">Move to...</option>${Object.entries(STAGE_LABEL).map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select>
           <button class="btn btn-ghost btn-sm" data-bulk="tag">Tag</button><button class="btn btn-danger btn-sm" data-bulk="delete">Delete</button></div></div>
       <div class="table-wrap"><table class="leads-table"><thead><tr><th><input type="checkbox" id="selall"></th>${COLS.map(([k, n, s]) => `<th class="lc-${k}"><button class="th" data-sort="${s}">${n}${p.sort.replace('-', '') === s.replace('-', '') ? (p.sort.startsWith('-') ? ' ↓' : ' ↑') : ''}</button></th>`).join('')}</tr></thead>
       <tbody>${groups.filter((g) => g.leads.length || !p.group).map((g) => `${p.group ? `<tr class="grp"><td colspan="${COLS.length + 1}">${esc(g.label)} <span class="small">${g.leads.length.toLocaleString()}</span>${loadable(g.key) && g.leads.length ? ` <button type="button" class="col-dial" data-loadcol="${esc(g.key)}">${icon.phone}Load</button>` : ''}</td></tr>` : ''}${g.leads.slice(0, p.group ? per : Math.max(per, 50)).map(row).join('')}${g.leads.length > (p.group ? per : Math.max(per, 50)) ? `<tr class="more"><td colspan="${COLS.length + 1}"><a class="btn btn-ghost btn-sm" href="${p.group ? `#/pipeline/col/${esc(p.group)}/${encodeURIComponent(g.key)}` : '#/pipeline/stage/all'}">Open all ${g.leads.length.toLocaleString()}${p.group ? ` in ${esc(g.label)}` : ' leads'} in a full screen</a></td></tr>` : ''}`).join('') || `<tr><td colspan="${COLS.length + 1}" class="muted">No leads match.</td></tr>`}</tbody></table></div>`;
-    const syncBulk = () => { $('#bulk', el).hidden = !selected.size; $('#selc', el).textContent = `${selected.size} selected`; setupRef?.refresh(); };
+    const syncBulk = () => {
+      $('#bulk', el).hidden = !selected.size; $('#selc', el).textContent = `${selected.size} selected`; setupRef?.refresh();
+      const ch = $('[data-bulk="ghours"] .cost-hint', el); if (ch) { ch.dataset.n = String(selected.size); delete ch.dataset.costed; ch.textContent = ''; }
+    };
     $$('[data-sort]', el).forEach((b) => b.addEventListener('click', () => { const s = b.dataset.sort; const base = s.replace('-', ''); p.sort = p.sort.replace('-', '') === base ? (p.sort.startsWith('-') ? base : `-${base}`) : s; render(); }));
     $$('tbody tr[data-id]', el).forEach((tr) => tr.addEventListener('click', (e) => { if (e.target.classList.contains('sel')) return; leadModal(tr.dataset.id, reload); }));
     $$('.sel', el).forEach((c) => c.addEventListener('change', () => { if (c.checked) selected.add(c.dataset.id); else selected.delete(c.dataset.id); syncBulk(); }));
@@ -428,6 +439,7 @@ export async function pipelinePage(app, user, openId, screen) {
       const a = b.dataset.bulk;
       if (a === 'research') return researchMany(all.filter((l) => selected.has(l.id)), reload);
       if (a === 'scrub') return scrubMany(all.filter((l) => selected.has(l.id)), reload);
+      if (a === 'ghours') return googleHours(all.filter((l) => selected.has(l.id)), reload);
       if (a === 'makelist') {
         // Load the ticked leads as this person's call list (same path as the column Load buttons), then open the dialer.
         const picks = all.filter((l) => selected.has(l.id));
@@ -480,6 +492,18 @@ export async function pipelinePage(app, user, openId, screen) {
     $('#fq', view).addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { p.f.q = e.target.value; render(); const i = $('#fq', view); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); });
     $$('[data-f]', view).forEach((i) => i.addEventListener('change', () => { p.f[i.dataset.f] = i.type === 'checkbox' ? i.checked : i.value; render(); }));
     $('#fclear', view).addEventListener('click', () => { p.list = ''; p.f = {}; p.tz = ''; render(); });
+    // Lead template: a niche from the research report (owner direct trades, weekday or Saturday), applied as filters.
+    $('#ftmpl', view)?.addEventListener('change', (e) => {
+      const v = e.target.value;
+      for (const key of LIST_KEYS) delete p.f[key];
+      p.list = '';
+      if (v) {
+        const [day, id] = v.split(':');
+        const n = nicheById(id);
+        if (n) { Object.assign(p.f, nicheFilters(n)); if (day === 'sat') p.f.hours = 'satok'; p.tmpl = v; p.view = 'list'; p.sort = '-score'; }
+      } else p.tmpl = '';
+      render();
+    });
     $$('[data-list]', view).forEach((b) => b.addEventListener('click', () => {
       const k = b.dataset.list;
       const off = p.list === k;
@@ -650,10 +674,10 @@ export function leadForm(lead, onSaved) {
 }
 
 // Call lists: the scrubbed data turned into who to call first.
-const CALL_LISTS = [['best', 'Best data first'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Email a person'], ['nosite', 'No website'], ['few', 'Under 20 reviews'], ['page2', 'Not on page one'], ['nogbp', 'No Google profile'], ['small', 'Likely owner picks up']];
-const CALL_LIST_F = { best: { minData: 60 }, mobile: { phoneType: 'mobile' }, owner: { owner: 'yes' }, email: { email: 'person' }, nosite: { site: 'no' }, few: { maxReviews: 20 }, page2: { notTop10: true }, nogbp: { gbp: 'none' }, small: { small: true } };
+const CALL_LISTS = [['opennow', 'Open right now'], ['sat', 'Saturday list'], ['ownerdirect', 'Owner direct trades'], ['best', 'Best data first'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Email a person'], ['nosite', 'No website'], ['few', 'Under 20 reviews'], ['page2', 'Not on page one'], ['nogbp', 'No Google profile'], ['small', 'Likely owner picks up']];
+const CALL_LIST_F = { opennow: { hours: 'open' }, sat: { hours: 'satok' }, ownerdirect: { niche: 'owner', small: true }, best: { minData: 60 }, mobile: { phoneType: 'mobile' }, owner: { owner: 'yes' }, email: { email: 'person' }, nosite: { site: 'no' }, few: { maxReviews: 20 }, page2: { notTop10: true }, nogbp: { gbp: 'none' }, small: { small: true } };
 const CALL_LIST_SORT = { few: 'reviews', page2: '-score' };
-const LIST_KEYS = ['minData', 'phoneType', 'owner', 'email', 'site', 'maxReviews', 'notTop10', 'gbp', 'small'];
+const LIST_KEYS = ['minData', 'phoneType', 'owner', 'email', 'site', 'maxReviews', 'notTop10', 'gbp', 'small', 'hours', 'niche', 'minReviews'];
 
 // Scrub: queue the leads on the server, then a progress strip on the Pipeline watches the queue and keeps it moving
 // (two leads per call, two calls at a time). It also finishes on its own in the background if the page is closed.
@@ -839,6 +863,7 @@ function contactStrip(l, scrub) {
     <div class="lmc"><i>Phone</i>${l.phone ? `<a href="${telHref(l.phone)}" data-tel-lead="${esc(l.id)}">${esc(l.phone)}</a>` : '<span class="muted">None</span>'}</div>
     <div class="lmc lmc-mail"><i>Email</i>${l.email ? `<a href="mailto:${esc(l.email)}" id="lmailx" title="Write to them from the Hub">${esc(l.email)}</a>${tag ? ` <span class="badge ${bad ? 'bad' : 'gray'}">${esc(tag)}</span>` : ''}`
       : `<span class="muted">No email on file</span> <button type="button" class="linkbtn small" id="laddmail2">Add it</button>`}${found.length ? `<small class="muted">Also found: ${found.slice(0, 2).map((e) => esc(e)).join(', ')}</small>` : ''}</div>
+    <div class="lmc lmc-hours" id="lhours"><i>Hours</i><span class="muted small">Loading...</span></div>
     ${site ? `<div class="lmc"><i>Website</i><a href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}" target="_blank" rel="noopener">${esc(site)}</a></div>` : ''}
   </div>`;
 }
@@ -944,6 +969,7 @@ export async function leadModal(id, onChange) {
   $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
   // Google: write to them, see what you have already sent, and put a meeting on your own calendar.
   $$('#laddmail, #laddmail2', m.el).forEach((b) => b.addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); }));
+  mountHours($('#lhours', m.el), l, () => { changed = true; });
   $$('#lmailbtn, #lmailx', m.el).forEach((b) => b.addEventListener('click', async (e) => {
     e.preventDefault();
     const gmail = await import('./gstate.js').then((g) => g.hasGoogle('mail'));
@@ -1103,6 +1129,8 @@ export function parseCsv(textIn) {
 }
 
 const MAP = [
+  // Business hours (Outscraper working_hours, Google exports): read on import and saved in lead_hours.
+  ['hours', /^(hours|working[ _]?hours|business[ _]?hours|opening[ _]?hours|hours of operation|open hours|work[ _]?hours)$/i],
   ['zip', /^(zip|zip ?code|postal|postal ?code|postcode)$/i], ['rating', /^(rating|stars|google rating|avg\.? rating|average rating|review rating)$/i],
   ['reviews', /(reviews?( count)?|# ?of reviews|num(ber)? of reviews|ratings? count|review_count|user_ratings_total)$/i], ['category', /^(category|main category|google category|primary category)$/i],
   ['business', /^(business|company|business name|company name|account|organization|organisation|name of business)$/i],
@@ -1908,4 +1936,73 @@ export async function billingTab(el, c) {
       ${(b.invoices || []).map((i) => `<tr><td>${esc(fmt.date(i.created))}</td><td>${esc(i.number || '-')}</td><td>${fmt.money(i.amount_cents / 100)}</td><td><span class="badge ${i.status === 'paid' ? '' : 'warn'}">${esc(i.status)}</span></td><td>${i.url ? `<a href="${esc(i.url)}" target="_blank" rel="noopener">View</a>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No invoices yet.</td></tr>'}
       </tbody></table></div></div>`;
   $('#bportal', el).addEventListener('click', async () => { try { const r = await api(`/api/clients/${c.id}/billing/portal`, { method: 'POST' }); window.open(r.url, '_blank'); } catch (err) { toast(err.message, true); } });
+}
+
+// ---------- business hours and lead templates (Nov 2026, research report "Owner direct lead scraping") ----------
+// Template picker for the Pipeline: weekday owner direct trades and the Saturday set. Shows when to call and what to say for the picked one.
+function templateRow(p) {
+  const f = p.f || {};
+  const cur = p.tmpl && f.niche && p.tmpl.endsWith(`:${f.niche}`) ? p.tmpl : '';
+  const n = cur ? nicheById(cur.split(':')[1]) : null;
+  const sat = cur.startsWith('sat:');
+  return `<div class="tmplrow" data-sec="tmpl"><label class="field inline"><span>Lead template</span><select id="ftmpl"><option value="">None</option>
+    <optgroup label="Weekday: owner answers">${weekdayNiches().map((x) => `<option value="wk:${x.id}"${cur === `wk:${x.id}` ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</optgroup>
+    <optgroup label="Saturday (test, 10am to 5pm their time)">${saturdayNiches().map((x) => `<option value="sat:${x.id}"${cur === `sat:${x.id}` ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</optgroup></select></label>
+    ${n ? `<div class="tmpl-tip"><div><b>Call</b> ${esc(sat ? n.window.replace(/^.*\(Saturday ([^)]*)\).*$/, 'Saturday $1') : n.window)}</div><div><b>Look for</b> ${esc(n.extra)}</div><div><b>Open with</b> ${esc(n.angle)}</div>${sat ? '<div class="small muted">Saturday list: Saturday hours listed, or a Saturday trade with no hours listed. Never Sunday in AL, LA, MS, PA, RI, SD, UT; Texas from noon.</div>' : ''}</div>` : ''}</div>`;
+}
+// List cell: open or closed now in their zone, with the week on hover.
+function hoursCell(l) {
+  if (l.hours_state === 'gone') return '<span class="badge warn" title="Google marks this business closed">Closed on Google</span>';
+  if (!l.hours_known) return '<span class="small muted">not known</span>';
+  const tip = esc(`${l.hours_text}${l.hrs_src ? ` (from ${{ hand: 'the listing, typed', google: 'Google', site: 'their website', import: 'the imported file', osm: 'OpenStreetMap' }[l.hrs_src] || l.hrs_src})` : ''}`);
+  const sat = l.open_sat ? ' <span class="badge gray" title="Open on Saturday">Sat</span>' : '';
+  if (l.hours_state === 'unknown') return `<span class="small" title="${tip}">${esc(l.hours_text.slice(0, 40))}</span>${sat}`;
+  return `<span class="badge ${l.hours_state === 'open' ? '' : 'gray'}" title="${tip}">${esc(l.hours_now || (l.hours_state === 'open' ? 'Open' : 'Closed'))}</span>${sat}`;
+}
+// Paid, on click: Google's hours for the picked leads (one Maps search each), 10 a request, with progress.
+export async function googleHours(leads, onDone) {
+  const ids = leads.map((l) => l.id);
+  if (!ids.length) return toast('Tick some leads first.', true);
+  const usd = (PRICES.hours_google?.usd || 0.002) * ids.length;
+  if (!confirm(`Look up Google's hours for ${ids.length} lead${ids.length === 1 ? '' : 's'}? One Google Maps search each, about ${money(usd)} in total. Leads with hours from Google already are looked up again.`)) return;
+  let ok = 0, miss = 0;
+  const t = toast(`Getting hours: 0 of ${ids.length}`);
+  for (let i = 0; i < ids.length; i += 10) {
+    try {
+      const r = await api('/api/leads/hours/google', { method: 'POST', body: { ids: ids.slice(i, i + 10) } });
+      for (const v of Object.values(r.results || {})) { if (v.ok) ok++; else miss++; }
+    } catch (e) { toast(e.message, true); break; }
+    if (t?.update) t.update(`Getting hours: ${Math.min(i + 10, ids.length)} of ${ids.length}`);
+  }
+  toast(`Hours found for ${ok} lead${ok === 1 ? '' : 's'}.${miss ? ` ${miss} had no hours on Google or were not found.` : ''}`);
+  onDone?.();
+}
+
+// Lead panel: the business hours, open or closed now in their time, today's calling rule for their state, type the hours, or get Google's (paid).
+async function mountHours(box, l, onSaved) {
+  if (!box) return;
+  const draw = (h) => {
+    const open = h.hours && l.timezone ? openAt(h.hours, l.timezone) : null;
+    box.innerHTML = `<i>Hours</i><div class="lmh">
+      ${h.status ? '<span class="badge warn">Google marks this business closed</span>' : ''}
+      ${h.hours ? `<span class="badge ${open ? '' : 'gray'}">${esc(open == null ? 'Hours known' : nowText(h.hours, l.timezone) || (open ? 'Open now' : 'Closed now'))}</span> <span>${esc(h.text)}</span> <small class="muted">from ${esc(h.from)}</small>` : '<span class="muted">Not known yet</span>'}
+      <div class="small muted">Calling rule${h.state ? ` (${esc(h.state)})` : ''}: ${esc(h.rule)}.${h.callNow ? ' OK to call now.' : ` Not now: ${esc(h.why)}.`}</div>
+      <div class="row small" style="gap:6px;margin-top:4px"><button type="button" class="linkbtn" id="lhedit">${h.hours ? 'Edit hours' : 'Type the hours'}</button>
+        <button type="button" class="linkbtn" id="lhgoogle">Get Google hours<span class="cost-hint" data-cost="hours_google" data-n="1"></span></button></div></div>`;
+    $('#lhedit', box).addEventListener('click', async () => {
+      const t = prompt('Business hours, for example: Mon-Fri 8am-5pm, Sat 9am-1pm, Sun closed. Leave empty to clear.', h.text || '');
+      if (t == null) return;
+      try { draw(await api(`/api/leads/${l.id}/hours`, { method: 'PUT', body: { text: t } })); onSaved?.(); toast(t.trim() ? 'Hours saved.' : 'Hours cleared.'); } catch (e) { toast(e.message, true); }
+    });
+    $('#lhgoogle', box).addEventListener('click', async (e) => {
+      busy(e.currentTarget, true);
+      try {
+        const r = await api('/api/leads/hours/google', { method: 'POST', body: { ids: [l.id] } });
+        const v = r.results?.[l.id];
+        if (!v?.ok) toast(v?.why || 'No hours found on Google.', true);
+        draw(await api(`/api/leads/${l.id}/hours`)); onSaved?.();
+      } catch (err) { toast(err.message, true); busy(e.currentTarget, false); }
+    });
+  };
+  try { draw(await api(`/api/leads/${l.id}/hours`)); } catch { box.innerHTML = '<i>Hours</i><span class="muted small">Could not load.</span>'; }
 }

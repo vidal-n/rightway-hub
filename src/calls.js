@@ -4,7 +4,7 @@ import { tagScript } from './scripttest.js';
 import { HttpError, json } from './util.js';
 import { first, all, run, now } from './db.js';
 import { requireStaff } from './auth.js';
-import { e164, inCallingHours, logActivity } from './crm.js';
+import { e164, inCallingHours, hoursMessage, logActivity } from './crm.js';
 import { route } from './router.js';
 import { guardLead, blockedFor, blockedPhone, blockText } from './suppress.js';
 
@@ -89,7 +89,7 @@ route('POST', '/api/dialer/call', async ({ env, user, url, body }) => {
   if (lead.dnc) throw new HttpError('This lead is on Do Not Call.', 409);
   await guardLead(env, lead);
   if (!e164(lead.phone)) throw new HttpError('This lead has no valid phone number.');
-  if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError("It's outside 8am to 8pm in the lead's time zone. Call later.", 409);
+  if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) throw new HttpError(hoursMessage(lead), 409);
   const activityId = await logActivity(env, { lead_id: lead.id, type: 'call', status: 'ringing_you', by: user.id });
   await tagScript(env, activityId, b.script, b.scriptV, b.scriptHow);
   const params = new URLSearchParams({

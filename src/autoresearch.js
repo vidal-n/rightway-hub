@@ -5,7 +5,7 @@ import { json, HttpError } from './util.js';
 import { first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
-import { researchLead, leadFieldsFromIntel } from './intel.js';
+import { researchLead, leadFieldsFromIntel, saveListingHours } from './intel.js';
 import { isFreeMode } from './freedata.js';
 import { cleanDepth, RESEARCH_DEPTHS } from '../public/js/freedata.js';
 import { bgOk } from './spend.js';
@@ -53,6 +53,7 @@ export async function researchTick(env, max = 1) {
       if (why) Object.assign(set, { scrub: why, stage: 'lost', next_action: `Scrubbed: ${why}`, next_action_at: null });
       const cols = Object.keys(set);
       await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), lead.id);
+      await saveListingHours(env, lead.id, intel);
     } catch (e) { console.error('auto research', lead.id, e.message); }
     n++; done++;
   }

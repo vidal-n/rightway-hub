@@ -18,7 +18,8 @@ import { autoChatFor } from './chat.js';
 import { can } from '../public/js/jobs.js';
 import { cleanNewLead, queueScrub } from './scrub.js';
 import { contactFromImport } from '../public/js/names.js';
-import { resolveZone, canCallNow, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
+import { packHours, parseAny } from '../public/js/hours.js';
+import { resolveZone, canCallNow, callBlock as hoursBlock, stateRuleText, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
 import { suppress, suppressMany, suppressedMap, noteHits, noteOutcome, entryFor, blockedKeys, leadBlocked, blockedFor, blockText } from './suppress.js';
 
 // A booking, however it was made: a call that ended in booked or a callback, or an audit booked from the lead, the booking page or the calendar.
@@ -51,6 +52,12 @@ export function localTime(tz, at = Date.now()) {
 // No zone at all means only the window that is safe from Miami to Seattle (11am to 8pm Eastern).
 export function inCallingHours(tz, at = Date.now(), alt = null, state = '') {
   return canCallNow(tz, alt, at, state);
+}
+// Plain reason a lead cannot be called or texted right now, with its state's rule (state rules in public/js/timezone.js STATE_RULES).
+export function hoursMessage(lead, verb = 'Call') {
+  const why = hoursBlock(lead.timezone, lead.tz_alt, Date.now(), lead.state);
+  const st = String(lead.state || '').toUpperCase();
+  return `Not now: ${why || 'outside calling hours'}${lead.timezone ? '' : ' (time zone not known, so the Hub uses the hours safe from Miami to Seattle)'}. ${st ? `${st} rule: ${stateRuleText(st)}.` : ''} ${verb} later.`.replace(/\s+/g, ' ').trim();
 }
 // Where a lead is, from whatever fields it has. Returns the columns to save: timezone, tz_alt, tz_how (and state when it was empty).
 export function zoneFields(l) {
@@ -278,7 +285,7 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
   const cols = `${LIST_COLS}, lead_roll.r_dials AS dials, lead_roll.r_last_dispo AS last_dispo, lead_roll.r_connects AS connects, lead_roll.r_owner AS owner_talks,
     lead_roll.r_vm AS voicemails, lead_roll.r_noans AS no_answers, lead_roll.r_talk AS talk, lead_roll.r_last_by AS last_by, lead_roll.r_obj AS last_objection,
     lead_roll.r_convs AS convs, lead_roll.r_menu AS menus, lead_roll.r_staff AS staff_talks, lead_roll.r_fast_hangs AS fast_hangs,
-    leads.reach_score, leads.engage_score, leads.qual_n`;
+    leads.reach_score, leads.engage_score, leads.qual_n, lead_hours.hours AS hrs, lead_hours.src AS hrs_src, lead_hours.status AS biz_status`;
   const where = []; const vals = [];
   if (stage) { where.push('leads.stage = ?'); vals.push(stage); }
   let rows; let next = null;
@@ -291,7 +298,7 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
     const ov = fields.map(() => like);
     if (qd.length >= 4 && qd.length === q.replace(/[\s()+-]/g, '').length) { ors.push('leads.phone_digits LIKE ?'); ov.push(`%${qd}%`); }
     where.push(`(${ors.join(' OR ')})`); vals.push(...ov);
-    rows = await all(env, `SELECT ${cols} FROM leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id WHERE ${where.join(' AND ')} ORDER BY leads.updated_at DESC LIMIT ?`, ...vals, Math.min(lim || 200, 500));
+    rows = await all(env, `SELECT ${cols} FROM leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id LEFT JOIN lead_hours ON lead_hours.lead_id = leads.id WHERE ${where.join(' AND ')} ORDER BY leads.updated_at DESC LIMIT ?`, ...vals, Math.min(lim || 200, 500));
   } else {
     if (after) { where.push('leads.id > ?'); vals.push(after); }
     // since: only leads (or their call roll up) that changed after that moment, from the lead_sync stamps (src/db.js triggers).
@@ -299,7 +306,7 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
     const from = since ? 'lead_sync JOIN leads ON leads.id = lead_sync.lead_id' : 'leads';
     if (since) { where.push('lead_sync.at > ?'); vals.push(since); }
     const size = lim > 0 ? Math.min(lim, LEAD_PAGE) : LEAD_PAGE;
-    rows = await all(env, `SELECT ${cols} FROM ${from} LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY leads.id LIMIT ?`, ...vals, size + 1);
+    rows = await all(env, `SELECT ${cols} FROM ${from} LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id LEFT JOIN lead_hours ON lead_hours.lead_id = leads.id ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY leads.id LIMIT ?`, ...vals, size + 1);
     next = rows.length > size ? rows[size - 1].id : null;
     if (next) rows = rows.slice(0, size);
     if (lim > 0) next = null;
@@ -354,6 +361,7 @@ export async function importLeads(env, user, rows, { source, tags, merge = true 
   const out = new Array(rows.length);
   const skipped = { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0, suppressed: 0 };
   const hitKeys = [];
+  const hoursRows = [];
   const reason = { p: 'phone', d: 'website', n: 'name', m: 'name' };
   const tagText = text(tags, 200);
   for (const [n, r] of rows.entries()) {
@@ -369,6 +377,9 @@ export async function importLeads(env, user, rows, { source, tags, merge = true 
     if (tagText) d.tags = [d.tags, tagText].filter(Boolean).join(', ');
     const l = { ...cleanNewLead(d), id: newId('ld_'), stage: 'new', created_at: now(), updated_at: now(), owner_id: user.id };
     Object.assign(l, rescore(l));
+    // Hours from the Lead finder (Google or OpenStreetMap) or a CSV hours column (Outscraper working_hours): kept in lead_hours.
+    const hr = r.hrs || (r.hours || r.working_hours ? packHours(parseAny(String(r.hours || r.working_hours))) : '');
+    if (hr || r.biz_status) hoursRows.push({ id: l.id, hours: hr, src: r.hrs_src || 'import', status: r.biz_status || '' });
     for (const k of ks) keys.set(k, l);
     const cols = Object.keys(l);
     items.push([`INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...cols.map((k) => l[k])]);
@@ -390,6 +401,7 @@ export async function importLeads(env, user, rows, { source, tags, merge = true 
     if (lead.scrub) bad.push(lead);
   }
   for (let i = 0; i < items.length; i += 100) await batch(env, items.slice(i, i + 100));
+  if (hoursRows.length) await (await import('./hours.js')).saveHoursMany(env, hoursRows).catch((e) => console.error('import hours', e.message));
   // Bad numbers the free scrub caught go on the Do Not Call list too (the lead stays in the database, never dialed, never scraped twice).
   if (bad.length) await suppressMany(env, bad, 'bad_number', { by: user?.id || null, note: 'Scrubbed on import', source: 'scrub' }).catch((e) => console.error('suppress scrub', e.message));
   if (hitKeys.length) await noteHits(env, hitKeys);
@@ -718,7 +730,7 @@ route('GET', '/api/leads/:id/call-check', async ({ env, user, params }) => {
   if (lead.dnc || lead.stage === 'dnc') return json({ ok: false, reason: 'This lead is on Do Not Call. Do not call them.' });
   const row = await blockedFor(env, lead);
   if (row) return json({ ok: false, reason: blockText(row) });
-  if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) return json({ ok: false, reason: "It's outside calling hours in the lead's time zone. Call later." });
+  if (!inCallingHours(lead.timezone, Date.now(), lead.tz_alt, lead.state)) return json({ ok: false, reason: hoursMessage(lead) });
   const rule = await callBlock(env, lead, user);
   if (rule) return json({ ok: false, reason: rule.why });
   return json({ ok: true });

@@ -5,6 +5,7 @@
 //       https://docs.dataforseo.com/v3/serp/google/maps/live/advanced/
 import { HttpError } from './util.js';
 import { logCost } from './costs.js';
+import { packHours, fromDataForSeo, statusFromDataForSeo } from '../public/js/hours.js';
 
 const BASE = 'https://api.dataforseo.com/v3/serp/google';
 const MAPS = `${BASE}/maps/live/advanced`;
@@ -70,6 +71,8 @@ export function slim(i) {
     claimed: typeof i.is_claimed === 'boolean' ? i.is_claimed : null,
     photos: num(i.total_photos),
     hours: Boolean(i.work_hours && i.work_hours.timetable && Object.keys(i.work_hours.timetable).length),
+    hrs: packHours(fromDataForSeo(i.work_hours)),
+    status: statusFromDataForSeo(i.work_hours),
   };
 }
 
@@ -96,6 +99,8 @@ export function fat(i) {
     claimed: typeof i.is_claimed === 'boolean' ? i.is_claimed : null,
     photos: num(i.total_photos),
     hours: Boolean(i.work_hours && i.work_hours.timetable && Object.keys(i.work_hours.timetable).length),
+    hrs: packHours(fromDataForSeo(i.work_hours)),
+    status: statusFromDataForSeo(i.work_hours),
   };
 }
 

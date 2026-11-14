@@ -1,6 +1,7 @@
 // Lead finder maths. Pure (no browser or server calls) so the Worker, the Hub page and Node tests share it.
 // A search is keywords x areas. Each area is a grid of map views around a centre, because one Google Maps search only ever
 // returns about 100 businesses. Running the same keyword over a grid and removing repeats is how a whole city gets covered.
+import { packHours, parseAny, unpackHours } from './hours.js';
 import { gridPoints } from './grid.js';
 
 export const COST_PER_REQUEST = 0.002; // DataForSEO Maps live: one search of up to 100 results
@@ -94,6 +95,8 @@ export function cleanFilters(f = {}) {
     minReviews: numOrNull(f.minReviews), maxReviews: numOrNull(f.maxReviews), minRating: numOrNull(f.minRating), maxRating: numOrNull(f.maxRating),
     website: pick(f.website, ['any', 'has', 'none'], 'any'), phone: pick(f.phone, ['any', 'has'], 'has'), claimed: pick(f.claimed, ['any', 'claimed', 'unclaimed'], 'any'),
     category: String(f.category || '').slice(0, 200), exclude: String(f.exclude || '').slice(0, 400),
+    // Saturday: 'open' keeps only listings with Saturday hours; 'maybe' also keeps listings with no hours (service area trades often list none).
+    sat: pick(f.sat, ['any', 'open', 'maybe'], 'any'), open: pick(f.open, ['any', 'operating'], 'operating'),
   };
 }
 // Does this business pass the filters? Pure, so the page and the server agree.
@@ -116,6 +119,12 @@ export function passes(r, filters) {
   }
   const name = String(r.title || '').toLowerCase();
   if (list(f.exclude).some((w) => name.includes(w))) return false;
+  // Google says closed for good or for now: never worth a call.
+  if (f.open === 'operating' && r.status) return false;
+  if (f.sat !== 'any') {
+    const w = r.hrs ? unpackHours(r.hrs) : r.hours_text ? parseAny(r.hours_text) : null;
+    if (w) { if (!(w[6] && w[6].length)) return false; } else if (f.sat === 'open') return false;
+  }
   return true;
 }
 
@@ -125,6 +134,8 @@ export function leadRow(r, { industry } = {}) {
     business: r.title, phone: r.phone, website: r.website, address: r.address, city: r.city, state: r.state, zip: r.zip,
     category: r.category, industry: industry || r.kw || r.category, rating: r.rating, reviews: r.reviews, lat: r.lat, lng: r.lng,
     place_id: r.place_id, cid: r.cid, source: 'Lead finder', email: r.email || '',
+    // Business hours: Google's timetable (packed), or OpenStreetMap's opening_hours text. Saved in lead_hours by importLeads.
+    hrs: r.hrs || packHours(parseAny(r.hours_text || '')), hrs_src: r.hrs ? 'google' : r.hours_text ? (r.source === 'osm' ? 'osm' : 'google') : '', biz_status: r.status || '',
   };
 }
 

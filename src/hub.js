@@ -618,6 +618,7 @@ route('DELETE', '/api/scans/:id', async ({ env, user, params }) => {
 
 // Feature modules register their routes on import.
 import './crm.js';
+import './hours.js';
 import './billing.js';
 import './stripesetup.js';
 import './autoscan.js';

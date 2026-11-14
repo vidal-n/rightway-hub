@@ -2,6 +2,8 @@
 // Twilio Lookup when an owner turns it on, about $0.008 a number), read the website's home, contact and about pages for emails, social pages
 // and the owner's name, check the email domain takes mail (DNS over HTTPS, free), then score how complete the data is. Runs on its own for
 // new imports (a few per cron run, plus open pipeline pages nudging it along) and on demand for one lead or a selection.
+import { hoursFromPage, hoursText } from '../public/js/hours.js';
+import { saveHours } from './hours.js';
 import { HttpError, json } from './util.js';
 import { all, first, run, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
@@ -78,10 +80,16 @@ export async function scrubLead(env, lead, opts = {}) {
     if (home.ok) {
       c = extractContacts(home.html, home.url);
       try { profile = extractProfile(home.html); } catch { profile = null; }
+      // Business hours (free): schema.org data, else the text near the word "hours". Home page first, then the contact pages.
+      let hrs = hoursFromPage(home.html);
       for (const link of contactLinks(home.html, home.url).slice(0, 2)) {
         const pg = await fetchPage(link, fetchImpl);
-        if (pg.ok) { c = mergeContacts(c, extractContacts(pg.html, pg.url)); try { profile = mergeProfiles(profile, extractProfile(pg.html)); } catch { /* keep what we have */ } }
+        if (pg.ok) {
+          c = mergeContacts(c, extractContacts(pg.html, pg.url)); try { profile = mergeProfiles(profile, extractProfile(pg.html)); } catch { /* keep what we have */ }
+          if (!hrs.week) hrs = hoursFromPage(pg.html);
+        }
       }
+      if (hrs.week) { report.hours = { text: hoursText(hrs.week), how: hrs.how }; await saveHours(env, lead.id, hrs.week, 'site').catch(() => {}); }
     }
   }
   // 4. Emails: theirs and the site's, checked, best first.
