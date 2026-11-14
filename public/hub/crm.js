@@ -428,7 +428,17 @@ export async function pipelinePage(app, user, openId, screen) {
       const a = b.dataset.bulk;
       if (a === 'research') return researchMany(all.filter((l) => selected.has(l.id)), reload);
       if (a === 'scrub') return scrubMany(all.filter((l) => selected.has(l.id)), reload);
-      if (a === 'makelist') { (p.call ||= {}).mine = true; savePipe(p); setupRef?.refresh(); setupRef?.focus(); return; }
+      if (a === 'makelist') {
+        // Load the ticked leads as this person's call list (same path as the column Load buttons), then open the dialer.
+        const picks = all.filter((l) => selected.has(l.id));
+        const free = picks.filter((l) => l.phone && !l.held && !l.dnc && !['dnc', 'won'].includes(l.stage));
+        if (!picks.length) return toast('Tick the leads you want on the call list first.', true);
+        if (!free.length) return toast('None of the ticked leads can be called (no phone, already on someone\'s list, won or Do not call).', true);
+        if (!scriptReady()) { (p.call ||= {}).mine = true; savePipe(p); setupRef?.refresh(); setupRef?.focus(); return toast('Pick the script for today first. It is the last box in Set up the call list.', true); }
+        if (claims.mine.total && !confirm(`Replace the ${claims.mine.total} leads on your list with these ${free.length}? Your old list closes out and those leads go back to the pool.`)) return;
+        loadList(free.map((l) => l.id), `${free.length} hand picked leads`, { skipped: picks.length - free.length });
+        return;
+      }
       if (a === 'tag') { const t = prompt('Tag to add'); if (t) bulk('tag', t); return; }
       if (a === 'delete' && !confirm(`Delete ${selected.size} leads and their history?`)) return;
       bulk(a);
