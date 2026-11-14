@@ -3126,3 +3126,7 @@ ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
 .hub .main .pv th, .hub .main .pv td { overflow-wrap: normal; word-break: normal; hyphens: none; }
 .hub .main .pv thead th { min-width: 84px; }
 .pivot .bb-sel span, .boardbar .bb-sel span { white-space: nowrap; }
+/* Phone audio: which mic is really in use (Nov 2026) */
+.aud-ok { margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--mint-strong) 14%, transparent); }
+.aud-warn { margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--bad) 16%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 50%, transparent); }
+.aud-warn-soft { margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, #E8A33D 14%, transparent); }

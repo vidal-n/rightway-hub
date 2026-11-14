@@ -57,6 +57,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // One AudioContext for the page. It is made inside the tap that starts a call (iPhone only allows that) and reused afterwards.
 function getCtx() {
+  appleSession();
   const Ctx = window.AudioContext || window.webkitAudioContext;
   if (!Ctx) return null;
   if (!sharedCtx || sharedCtx.state === 'closed') {
@@ -65,7 +66,25 @@ function getCtx() {
   }
   return sharedCtx;
 }
-export function warmAudio() { try { getCtx()?.resume?.().catch(() => {}); } catch { /* ignore */ } }
+export function warmAudio() { appleSession(); try { getCtx()?.resume?.().catch(() => {}); } catch { /* ignore */ } }
+
+// iPad and iPhone (Nov 2026, V: the Yealink headset showed as picked but the iPad's own mic and speaker carried the call).
+// Safari puts a page's audio in "playback" mode unless told otherwise, and in that mode a Bluetooth headset is only a speaker (or not
+// used at all) and the mic falls back to the iPad's. WebKit's Audio Session API (Safari 16.4 and later) lets a page ask for a phone call
+// session: 'play-and-record' keeps the headset's microphone AND earpiece together, the way the Phone app does. Set before any sound or mic.
+export function appleSession() {
+  try { if (isApple() && navigator.audioSession && navigator.audioSession.type !== 'play-and-record') navigator.audioSession.type = 'play-and-record'; } catch { /* older Safari */ }
+}
+// On iPad and iPhone the Hub's own cleanup (an audio graph between the mic and the call) is never used on a call: every extra audio graph
+// made iPadOS move the route back to the built in mic and speaker. The browser's own cleanup still runs, and Control Center's Voice Isolation
+// is the strong option there. Keypad tones still use it for a moment when the keypad opens.
+const callPlan = (cfg) => { const p = plan(cfg); return isApple() ? { ...p, processor: false } : p; };
+// The microphone really in use right now (its name), from the last stream the Hub opened. The panel compares it with what is connected.
+let inUse = '';
+const noteTrack = (stream) => { try { const t = stream?.getAudioTracks?.()[0]; if (t?.label) inUse = t.label; } catch { /* ignore */ } };
+export const micInUse = () => inUse;
+const BUILT_IN_RX = /iPad|iPhone|Built-?in|MacBook|Internal|Microphone Array|Realtek/i;
+const BUILT_IN = { test: (label) => BUILT_IN_RX.test(String(label || '').replace(/^Default\s*-\s*/i, '').replace(/^Communications\s*-\s*/i, '')) };
 
 const DTMF = { 1: [697, 1209], 2: [697, 1336], 3: [697, 1477], 4: [770, 1209], 5: [770, 1336], 6: [770, 1477], 7: [852, 1209], 8: [852, 1336], 9: [852, 1477], '*': [941, 1209], 0: [941, 1336], '#': [941, 1477] };
 class RwProcessor {
@@ -202,14 +221,14 @@ async function syncProcessor(a, p) {
 export async function prepareTones(device) {
   const a = device?.audio; if (!a) return;
   tonesOn = true;
-  await syncProcessor(a, plan(loadAudio()));
+  await syncProcessor(a, callPlan(loadAudio()));
 }
 // Send one key. true = played into the call audio.
 export function sendTone(digit) { return Boolean(proc && procOn && proc.tone(String(digit))); }
 // A settings change in the middle of a call.
 export async function applyLive(device) {
   const a = device?.audio; if (!a) return;
-  await syncProcessor(a, plan(loadAudio()));
+  await syncProcessor(a, callPlan(loadAudio()));
 }
 
 // ---------- the microphone ----------
@@ -220,8 +239,9 @@ export async function applyLive(device) {
 export const isApple = () => { try { return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); } catch { return false; } };
 // Open the mic with the saved device; if that exact device is gone, say so and fall back to the default one.
 export async function openMic(cfg) {
-  if (isApple()) cfg = { ...cfg, mic: '' };   // never pin a device on iPad: the system route stays in charge
-  const gum = (c) => navigator.mediaDevices.getUserMedia({ audio: c });
+  appleSession();
+  // A mic the person picked is used everywhere, iPad included (with the call session set above the route no longer flips back).
+  const gum = async (c) => { const st = await navigator.mediaDevices.getUserMedia({ audio: c }); noteTrack(st); return st; };
   try { return { stream: await gum(constraintsFor(cfg)), fellBack: false }; }
   catch (e) {
     if (cfg.mic && /Overconstrained|NotFound/i.test(e?.name || '')) return { stream: await gum(constraintsAnyMic(cfg)), fellBack: true };
@@ -239,7 +259,7 @@ export async function prepareAudio(device) {
   const a = device?.audio;
   if (!a) return cfg;
   try { a.setAudioConstraints(constraintsFor({ ...cfg, mic: '' })); } catch { /* older SDK */ }
-  const p = plan(cfg);
+  const p = callPlan(cfg);
   await syncProcessor(a, p);
   for (const x of active) x.update(cfg);
   // Speaker (not on iPhone or iPad: Safari there plays through whatever Control Center or the Bluetooth device chose).
@@ -249,7 +269,7 @@ export async function prepareAudio(device) {
     }
   } catch { /* keep the default speaker */ }
   // Microphone: use the saved one when it is still connected, otherwise the default. Not on iPhone or iPad (see isApple).
-  const want = isApple() ? '' : (cfg.mic || (p.processor ? 'default' : ''));
+  const want = isApple() ? (cfg.mic || '') : (cfg.mic || (p.processor ? 'default' : ''));
   if (want) {
     try {
       const list = [...(a.availableInputDevices?.values?.() || [])].map((d) => ({ id: d.deviceId }));
@@ -268,7 +288,7 @@ export async function prepareAudio(device) {
 let usedInput = false;
 // After a call: let go of the mic so the browser's recording dot goes away.
 export async function releaseAudio(device) {
-  if (tonesOn) { tonesOn = false; try { if (!plan(loadAudio()).processor && procOn && proc) { await device?.audio?.removeProcessor(proc); procOn = false; } } catch { /* ignore */ } }
+  if (tonesOn) { tonesOn = false; try { if (!callPlan(loadAudio()).processor && procOn && proc) { await device?.audio?.removeProcessor(proc); procOn = false; } } catch { /* ignore */ } }
   if (!usedInput) return;
   usedInput = false;
   try { await device?.audio?.unsetInputDevice(); } catch { /* ignore */ }
@@ -279,6 +299,7 @@ export async function releaseAudio(device) {
 // It has to start inside the tap (Start power dial), before any await. Returns true when the mic is open.
 let held = null;
 export function holdMic() {
+  appleSession();
   if (held && held.getTracks().some((t) => t.readyState === 'live')) return Promise.resolve(true);
   if (!navigator.mediaDevices?.getUserMedia) return Promise.resolve(false);
   const mine = openMic(loadAudio()).then((m) => {
@@ -398,8 +419,8 @@ export function audioPanel({ device = null } = {}) {
     const tips = advice({ ios, micLabel, outLabel });
     $('#audbody', el).innerHTML = `
       <section class="aud-sec"><h3>Microphone</h3>
-        ${isApple() ? '<p class="small muted" style="margin:0 0 6px">On iPad and iPhone the system picks the mic and speaker (Control Center, your headset). The Hub no longer switches them, so it cannot flip back to the built in ones in the middle of a call.</p>' : ''}
-        <select id="amic" aria-label="Microphone"${isApple() ? ' disabled' : ''}><option value="">Default${ins[0]?.label ? ` (${esc(ins.find((d) => d.deviceId === 'default')?.label?.replace(/^Default - /, '') || ins[0].label)})` : ''}</option>
+        <div id="ainuse"></div>
+        <select id="amic" aria-label="Microphone"><option value="">Default${ins[0]?.label ? ` (${esc(ins.find((d) => d.deviceId === 'default')?.label?.replace(/^Default - /, '') || ins[0].label)})` : ''}</option>
           ${ins.filter((d) => d.deviceId !== 'default').map((d, i) => `<option value="${esc(d.deviceId)}"${d.deviceId === cfg.mic ? ' selected' : ''}>${esc(deviceLabel(d, i))}</option>`).join('')}</select>
         <div class="aud-meters">
           <div><span class="small muted">Your mic</span><div class="aud-meter" aria-hidden="true"><i id="ameterin"></i></div></div>
@@ -410,6 +431,7 @@ export function audioPanel({ device = null } = {}) {
         <label class="aud-row"><span>Mic volume <b id="agv">${cfg.gain}%</b></span><input type="range" id="again" min="20" max="300" step="5" value="${cfg.gain}"></label>
       </section>
       <section class="aud-sec"><h3>Background noise</h3>
+        ${isApple() ? '<p class="small aud-warn-soft">On iPad and iPhone, calls use the browser\'s own noise cleanup only. The Hub\'s extra cleanup and mic volume are switched off on calls, because they made iPadOS drop your headset. For strong cleanup: Control Center, Mic Mode, Voice Isolation.</p>' : ''}
         <div class="seg aud-seg" id="anoise">${Object.entries(NOISE).map(([k, v]) => `<button type="button" data-n="${k}" class="${k === cfg.noise ? 'is-on' : ''}">${esc(v.label)}</button>`).join('')}</div>
         <p class="small muted" id="anote">${esc(NOISE[cfg.noise].note)}</p>
         <label class="aud-row"><span>Cleanup strength <b id="aaiv">${aiShown ? aiShown + '%' : 'Off'}</b></span><input type="range" id="aai" min="0" max="100" step="5" value="${aiShown}"></label>
@@ -450,15 +472,35 @@ export function audioPanel({ device = null } = {}) {
       </section>
       <div class="row" style="justify-content:space-between;margin-top:6px"><button type="button" class="linkbtn" id="areset">Reset to default</button><span class="small muted">Saved on this device</span></div>`;
     wire(cfg);
+    truth(ins);
     if (cfg.mode === 'phone') api('/api/me').then((m) => { const i = $('#aphone', el); if (i && m.user?.phone) i.value = m.user.phone; }).catch(() => {});
   };
 
   const set = (patch) => { const n = saveAudio(patch); if (isLive(device)) applyLive(device).catch(() => {}); return n; };
+  // Pick a mic: saved for this device, used on the live call and by power dial's open mic straight away, then checked.
+  const useMic = async (id) => {
+    set({ mic: id, level: 0, lock: false });
+    appleSession();
+    if (device?.audio && isLive(device)) { try { await device.audio.setInputDevice(id || 'default'); } catch { toast('Could not use that microphone.', true); } }
+    if (micHeld()) await reopenHeld();
+    paint();
+  };
+  // Say plainly which mic is really carrying the audio, and warn when a headset is connected but the device's own mic is in use.
+  const truth = (ins) => {
+    const box = $('#ainuse', el); if (!box) return;
+    const now = micInUse();
+    const ext = ins.filter((d) => d.label && !BUILT_IN.test(d.label) && d.deviceId !== 'default');
+    const wrong = now && BUILT_IN.test(now) && ext.length;
+    box.innerHTML = now ? `<p class="small ${wrong ? 'aud-warn' : 'aud-ok'}"><b>In use right now:</b> ${esc(now)}${wrong ? `<br>Your ${esc(ext[0].label)} is connected, but ${isApple() ? 'the iPad is' : 'the computer is'} using its own microphone.` : ''}</p>
+      ${wrong ? `<div class="row" style="gap:8px;margin:0 0 8px;flex-wrap:wrap"><button type="button" class="btn btn-mint btn-sm" id="ausehead">Use ${esc(ext[0].label)}</button></div>${isApple() ? '<p class="small muted" style="margin:0 0 8px">If it stays on the iPad mic: turn the headset off and on, open Control Center, press the audio card and pick the headset, then come back and press Test my mic.</p>' : ''}` : ''}`
+      : '<p class="small muted">Press Test my mic to see which microphone is really in use.</p>';
+    $('#ausehead', box)?.addEventListener('click', () => useMic(ext[0].deviceId));
+  };
   const hint = (t) => { const h = $('#atesthint', el); if (h) h.textContent = t; };
   const wire = (cfg0) => {
     const root = $('#audbody', el);
     const refresh = () => { const c = loadAudio(); const pl = plan(c); const g = pl.gate; $('#agate', root).value = g; $('#agtv', root).textContent = g || 'Off'; const ai = Math.round(pl.ai * 100); $('#aai', root).value = ai; $('#aaiv', root).textContent = ai ? `${ai}%` : 'Off'; };
-    $('#amic', root).addEventListener('change', async (e) => { set({ mic: e.target.value, level: 0, lock: false }); if (!isApple() && device?.audio && e.target.value) { try { await device.audio.setInputDevice(e.target.value); } catch { toast('Could not use that microphone.', true); } } paint(); });
+    $('#amic', root).addEventListener('change', async (e) => { await useMic(e.target.value); });
     $('#aout', root)?.addEventListener('change', async (e) => { set({ out: e.target.value }); try { if (device?.audio?.isOutputSelectionSupported) { await device.audio.speakerDevices.set(e.target.value ? [e.target.value] : []); await device.audio.ringtoneDevices.set(e.target.value ? [e.target.value] : []); } } catch { toast('Could not switch the speaker.', true); } });
     $('#again', root).addEventListener('input', (e) => { $('#agv', root).textContent = `${e.target.value}%`; set({ gain: Number(e.target.value) }); });
     $('#agate', root).addEventListener('input', (e) => { const v = Number(e.target.value); $('#agtv', root).textContent = v || 'Off'; set({ gate: v }); });
@@ -516,6 +558,21 @@ export function audioPanel({ device = null } = {}) {
       return;
     }
     let raw, pr;
+    if (isApple()) {
+      // No extra audio graph on iPad and iPhone: a plain level meter on the same mic (the held one when power dial is running).
+      try {
+        const own = !held;
+        raw = held || (await openMic(loadAudio())).stream; noteTrack(raw);
+        const ctx = getCtx(); const an = ctx.createAnalyser(); an.fftSize = 1024; const src = ctx.createMediaStreamSource(raw); src.connect(an);
+        const buf = new Float32Array(an.fftSize);
+        const tid = setInterval(() => { an.getFloatTimeDomainData(buf); let sum = 0; for (const v of buf) sum += v * v; const lv = Math.sqrt(sum / buf.length); draw({ inp: lv, out: lv }, true); }, 60);
+        const d = $('#adeng', el); if (d) d.textContent = 'Browser cleanup only on iPad and iPhone (keeps your headset connected).';
+        const ins = (await navigator.mediaDevices.enumerateDevices().catch(() => [])).filter((x) => x.kind === 'audioinput');
+        truth(ins);
+        stopMeter = () => { clearInterval(tid); try { src.disconnect(); } catch { /* ignore */ } if (own) raw.getTracks().forEach((x) => x.stop()); bIn.style.width = '0'; bOut.style.width = '0'; };
+      } catch (e) { hint(micProblem(e)); }
+      return;
+    }
     try {
       const m = await openMic(loadAudio()); raw = m.stream;
       if (m.fellBack) { hint('Your saved microphone is not connected, so the default one is being used.'); set({ mic: '' }); }
@@ -539,7 +596,9 @@ export function audioPanel({ device = null } = {}) {
     try {
       const m = await openMic(loadAudio()); raw = m.stream;
       warmAudio();
-      pr = new RwProcessor(); clean = await pr.createProcessedStream(raw);
+      noteTrack(raw); navigator.mediaDevices.enumerateDevices().then((l) => truth(l.filter((x) => x.kind === 'audioinput'))).catch(() => {});
+      if (isApple()) clean = raw; // iPad and iPhone: no extra audio graph, the call does not use one either
+      else { pr = new RwProcessor(); clean = await pr.createProcessedStream(raw); }
       const both = clean !== raw;
       const mk = (s) => { const rec = new MediaRecorder(s); const chunks = []; rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); }; return { rec, chunks }; };
       const A = mk(clean), B = both ? mk(raw) : null;
@@ -606,3 +665,24 @@ export const setDeviceGetter = (fn) => { getDev = fn; };
 document.addEventListener('click', (e) => { if (e.target.closest?.('[data-audio]')) audioPanel({ device: getDev() }); });
 // Any element with data-testmic opens the quick mic test (Phone tab bar).
 document.addEventListener('click', (e) => { if (e.target.closest?.('[data-testmic]')) import('./micquick.js').then((m) => m.testMic()); });
+
+// Re-open the held mic (power dial) on a newly picked device, so the change takes effect without stopping.
+export async function reopenHeld() {
+  if (!held) return false;
+  try { held.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
+  held = null;
+  return holdMic();
+}
+if (isApple()) appleSession();
+
+// Once a call is live: if a headset is connected but the call is on the device's own mic, say so right away with the fix,
+// instead of the rep finding out from the lead. Reads the call's own mic (Twilio's input stream) or the power dial mic.
+export async function checkRoute(device) {
+  try {
+    const st = device?.audio?.inputStream || held;
+    noteTrack(st);
+    const now = micInUse(); if (!now || !BUILT_IN.test(now)) return;
+    const ext = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.label && !BUILT_IN.test(d.label) && d.deviceId !== 'default');
+    if (ext.length) toast(`This call is on the ${isApple() ? 'iPad' : 'built in'} mic, not your ${ext[0].label}. Open Mic and noise to switch${isApple() ? ', or pick the headset in Control Center' : ''}.`, true);
+  } catch { /* nothing to check */ }
+}

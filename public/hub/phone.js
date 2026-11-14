@@ -3,7 +3,7 @@
 import { api, esc, toast, makeDraggable, isPhone } from './core.js';
 import { arriving, leaving, morphFrom } from './dialwin.js';
 import { dispoPanel } from './dispo.js';
-import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter, warmAudio, prepareTones, sendTone, heldLevel } from './audioset.js';
+import { prepareAudio, releaseAudio, watchDevices, awakeDuringCall, callMode, audioPanel, setDeviceGetter, warmAudio, prepareTones, sendTone, heldLevel, checkRoute } from './audioset.js';
 
 const SDK = '/vendor/twilio-voice-2.18.5.min.js';
 const P = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -233,6 +233,7 @@ function track(call, view, { onEnd, act } = {}) {
     answered = true; started = Date.now(); ringback(false);
     import('./sound.js').then((m) => m.play('connect')).catch(() => {}); // a short blip so the rep knows a person picked up
     set({ state: 'live', label: '0:00' });
+    setTimeout(() => checkRoute(st.device), 1500); // headset connected but the call on the built in mic: say so now
     clearInterval(tick);
     tick = setInterval(() => { const el = bar?.querySelector('.cb-status'); if (el && view.state === 'live') { view.label = clock(Math.round((Date.now() - started) / 1000)); el.textContent = view.label; } }, 1000);
   };
