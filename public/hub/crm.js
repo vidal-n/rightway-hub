@@ -146,7 +146,7 @@ export async function pipelinePage(app, user, openId, screen) {
     view.dataset.hide = Object.entries(lay).filter(([, v]) => !v).map(([k]) => k).join(' ');
     view.innerHTML = `
       <div class="page-head"><div><p class="eyebrow">CRM</p><h1>Pipeline</h1></div>
-        <div class="row"><div class="dlayout"><button type="button" class="dl-btn" id="playbtn" aria-expanded="${playOpen}" aria-haspopup="true">Customize layout</button>
+        <div class="row"><button type="button" class="btn btn-mint" id="gosetup">Set up the call list</button><div class="dlayout"><button type="button" class="dl-btn" id="playbtn" aria-expanded="${playOpen}" aria-haspopup="true">Customize layout</button>
           <div class="dlayout-body" id="playbody" role="group" aria-label="Customize layout"${playOpen ? '' : ' hidden'}>
             <p class="small muted" style="margin:0">Show or hide parts of this page. Saved for you on this computer.</p>
             ${PIPE_LAYOUT.map(([k, n]) => `<label><input type="checkbox" data-play="${k}"${lay[k] ? ' checked' : ''}> ${n}</label>`).join('')}
@@ -291,6 +291,7 @@ export async function pipelinePage(app, user, openId, screen) {
     $('#playbtn', view)?.addEventListener('click', (e) => { e.stopPropagation(); playOpen = !playOpen; pbody.hidden = !playOpen; e.currentTarget.setAttribute('aria-expanded', String(playOpen)); });
     $$('[data-play]', view).forEach((c) => c.addEventListener('change', () => { lay[c.dataset.play] = c.checked; applyPlay(); }));
     $('#playreset', view)?.addEventListener('click', () => { Object.keys(lay).forEach((k) => { lay[k] = true; }); $$('[data-play]', view).forEach((c) => { c.checked = true; }); applyPlay(); });
+    $('#gosetup', view)?.addEventListener('click', () => setupRef?.focus());
     setupRef = mountCallSetup($('#csetup', view), { rows: filterLeads(all, p), p, selected, stageLabel: STAGE_LABEL, save: () => savePipe(p) });
     $('#addl', view).addEventListener('click', () => leadForm(null, reload));
     $('#imp', view).addEventListener('click', () => importModal(reload));
