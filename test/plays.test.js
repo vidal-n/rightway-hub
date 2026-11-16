@@ -59,3 +59,37 @@ test('my plays are cleaned and south florida comes first', () => {
   assert.equal(m.name, 'Roofers'); assert.equal(m.source, 'google'); assert.equal(m.size, 5); assert.equal(m.mine, true);
   assert.deepEqual(southFloridaAreas(2), ['Miami, FL', 'Fort Lauderdale, FL']);
 });
+
+test('plays can run in any time zone or all states', async () => {
+  const { SCOPES, areasFor, PER_STATE } = await import('../public/js/plays.js');
+  const { CITIES } = await import('../public/js/cities.js');
+  const { allZoneStates, zoneStates } = await import('../public/js/timezone.js');
+  assert.deepEqual(SCOPES.map((s) => s.id), ['home', 'ET', 'CT', 'MT', 'AZ', 'PT', 'AK', 'HI', 'ALL']);
+  const p = PLAYS.find((x) => x.id === 'storm');
+  // Home keeps working exactly as before.
+  assert.equal(planFor(p, 'standard').places, 5);
+  assert.deepEqual(planFor(p, 'standard', { scope: 'home' }).areas, southFloridaAreas(5));
+  // A zone is each of its states' biggest cities, a few per state by budget.
+  for (const z of ['ET', 'CT', 'MT', 'AZ', 'PT', 'AK', 'HI']) {
+    for (const b of BUDGETS) {
+      const pl = planFor(p, b.id, { scope: z });
+      assert.equal(pl.places, zoneStates(z).reduce((t, st) => t + Math.min(PER_STATE[b.id], (CITIES[st] || []).length), 0), `${z} ${b.id}`);
+      for (const a of pl.areas) assert.ok(zoneStates(z).includes(a.split(', ').pop()), `${a} is not in ${z}`);
+    }
+  }
+  const all = planFor(p, 'lean', { scope: 'ALL' });
+  assert.equal(all.places, allZoneStates().reduce((t, st) => t + Math.min(1, (CITIES[st] || []).length), 0));
+  assert.ok(all.cost > 0 && all.requests > 0);
+  assert.ok(areasFor('MT', 'lean').includes('Denver, CO'));
+  assert.ok(areasFor('HI', 'lean').includes('Honolulu, HI'));
+  // Every budget still fits one search per area.
+  for (const pl of PLAYS) for (const b of BUDGETS) assert.ok(planFor(pl, b.id, { scope: 'ALL' }).requests / planFor(pl, b.id, { scope: 'ALL' }).places <= (pl.source === 'osm' ? MAX_OSM_REQUESTS : MAX_REQUESTS));
+});
+
+test('the new plays are there and the new niche templates match their trades', async () => {
+  for (const id of ['storm', 'recurring', 'projects', 'shops']) assert.ok(PLAYS.some((p) => p.id === id), id);
+  const { nicheOf } = await import('../public/js/niches.js');
+  const cases = { 'roofing contractor': 'roof', electrician: 'electric', 'house painter': 'paint', 'junk removal': 'junk', 'carpet cleaning': 'carpet', 'pest control': 'pest', 'concrete contractor': 'concrete', 'paver installation': 'concrete', 'paver sealing': 'pressure', 'epoxy flooring': 'floor', 'kitchen remodeling': 'remodel', 'impact windows': 'windows', 'septic service': 'septic', 'tree service': 'tree' };
+  for (const [industry, id] of Object.entries(cases)) assert.equal(nicheOf({ industry })?.id, id, industry);
+  assert.equal(nicheOf({ business: 'Main Street Plumbing' })?.id, 'plumb');
+});

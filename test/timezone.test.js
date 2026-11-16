@@ -158,3 +158,15 @@ test('zoneStates lists the Mountain time states for the Lead finder shortcut', a
   assert.deepEqual(zoneStates('nope'), []);
   for (const c of zoneStates('MT')) assert.ok(CITIES[c].length >= 10, `${c} has cities to tick`);
 });
+
+test('every zone has states, all states are covered once, and the Pipeline and Lead finder lists match', async () => {
+  const { zoneStates, allZoneStates, ZONE_ORDER, ZONE_NAMES, STATE_LIST } = await import('../public/js/timezone.js');
+  assert.deepEqual(ZONE_ORDER, ['ET', 'CT', 'MT', 'AZ', 'PT', 'AK', 'HI']);
+  for (const z of ZONE_ORDER) { assert.ok(zoneStates(z).length >= 1, z); assert.ok(ZONE_NAMES[z], z); }
+  const all = allZoneStates();
+  assert.equal(all.length, STATE_LIST.length);
+  assert.equal(new Set(all).size, all.length);
+  assert.deepEqual(zoneStates('PT'), ['CA', 'NV', 'OR', 'WA']);
+  assert.deepEqual(zoneStates('AK'), ['AK']);
+  assert.deepEqual(zoneStates('HI'), ['HI']);
+});

@@ -31,6 +31,11 @@ const MAIN = {
 };
 // States whose main zone is `zone` (ET, CT, MT, AZ, PT), for the Lead finder's time zone shortcuts. Split states appear under their main zone only.
 export const zoneStates = (zone) => [...(MAIN[zone] || [])].sort();
+// Every zone in the order the Lead finder, the plays and the Pipeline show them (east to west, then Alaska and Hawaii).
+export const ZONE_ORDER = ['ET', 'CT', 'MT', 'AZ', 'PT', 'AK', 'HI'];
+export const ZONE_NAMES = { ET: 'Eastern', CT: 'Central', MT: 'Mountain', AZ: 'Arizona', PT: 'Pacific', AK: 'Alaska', HI: 'Hawaii' };
+// All 50 states and DC, each once, grouped by zone.
+export const allZoneStates = () => ZONE_ORDER.flatMap((z) => zoneStates(z));
 const MAIN_OF = {};
 for (const [z, list] of Object.entries(MAIN)) for (const s of list) MAIN_OF[s] = z;
 

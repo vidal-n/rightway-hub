@@ -10,7 +10,7 @@ import { CITIES, DEFAULT_TOP, chunkAreas } from '/js/cities.js';
 import { STATES, NEW_FILING_STATES } from '/js/registries.js';
 import { TARGET_INDUSTRIES } from '/js/leadintel.js';
 import { directoryLinks } from '/js/freedata.js';
-import { zoneStates } from '/js/timezone.js';
+import { zoneStates, allZoneStates, ZONE_ORDER, ZONE_NAMES } from '/js/timezone.js';
 import { mountPlays } from './plays.js';
 import { planFor, readFilters as readFilterGuide, readIndustries, southFloridaAreas, SOUTH_FLORIDA, weakness, gapLabel } from '/js/plays.js';
 const MINE_KEY = 'rw-finder-industries';
@@ -102,7 +102,13 @@ async function homePage(view) {
       <label class="field" style="margin-top:10px"><span>Other keyword (optional)</span><input id="fextra" placeholder="e.g. pool cleaning"></label>
 
       ${STEP(2, 'Where', 'Pick states, then the cities in them. Each state brings its biggest cities, already ticked.')}
-      <div class="guide" id="g2">Home turf first: calls to Miami and Fort Lauderdale are local and meetings are easy. Start with three cities, then widen when a play books audits. <button type="button" class="btn btn-ghost btn-sm" id="fsfl">Use South Florida (12 cities)</button> <button type="button" class="btn btn-ghost btn-sm" id="fmt">Use Mountain time (${zoneStates('MT').length} states)</button></div>
+      <div class="guide" id="g2">Home turf first: calls to Miami and Fort Lauderdale are local and meetings are easy. Start with three cities, then widen when a play books audits. <button type="button" class="btn btn-ghost btn-sm" id="fsfl">Use South Florida (12 cities)</button></div>
+      <div class="zonebar" id="fzones" role="group" aria-label="Add a whole time zone">
+        <span class="small muted">Add a whole time zone (tap again to remove it):</span>
+        ${ZONE_ORDER.map((z) => `<button type="button" class="btn btn-sm btn-ghost" data-zone="${z}" aria-pressed="false" title="${esc(zoneStates(z).map(stateNameOf).join(', '))}. A state with two zones sits under the zone most of it is in.">${ZONE_NAMES[z]} <small>${zoneStates(z).length}</small></button>`).join('')}
+        <button type="button" class="btn btn-sm btn-ghost" data-zone="ALL" aria-pressed="false" title="Every state and DC. Cities per state drops to the top 3 to keep the cost down.">All states <small>${allZoneStates().length}</small></button>
+        <button type="button" class="btn btn-sm btn-ghost" data-zone="NONE" title="Untick every state">Clear</button>
+      </div>
       <div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div id="fstatebox" style="flex:1 1 260px;min-width:0"></div>
         <label class="field" style="flex:0 0 160px"><span>Cities per state ${COST_IC('Each city is searched for every industry, so more cities cost more')}</span><select id="ftop">${[3, 5, 10, 20, 50].map((n) => `<option value="${n}"${n === DEFAULT_TOP ? ' selected' : ''}>${n === 50 ? 'All' : `Top ${n}`}</option>`).join('')}</select></label>
@@ -148,8 +154,25 @@ async function homePage(view) {
     const added = now.filter((c) => !prevStates.includes(c));
     prevStates = now;
     cities.setOptions(citiesOf(now), topCities(added, topN()));
-    est();
+    drawZones(); est();
   } });
+  // Time zone buttons (Nov 2026, V: every time zone, not only Mountain): each one adds or removes that zone's states with their biggest
+  // cities. A button is lit when all of its states are ticked. All states drops cities per state to 3 so the cost stays sensible.
+  function drawZones() {
+    const have = new Set(prevStates);
+    $$('#fzones [data-zone]', view).forEach((b) => {
+      const z = b.dataset.zone;
+      const list = z === 'ALL' ? allZoneStates() : zoneStates(z);
+      const on = z !== 'NONE' && list.length > 0 && list.every((c) => have.has(c));
+      b.classList.toggle('btn-mint', on); b.classList.toggle('btn-ghost', !on); b.setAttribute('aria-pressed', String(on));
+    });
+  }
+  function setStates(codes) {
+    const added = codes.filter((c) => !prevStates.includes(c));
+    prevStates = codes; stateSel.set(codes);
+    cities.setOptions(citiesOf(codes), topCities(added, topN()));
+    drawZones(); est();
+  }
   const cities = multiSelect($('#fcitybox', view), { options: citiesOf(prevStates), selected: topCities(prevStates, topN()), label: 'Choose cities', onChange: () => est() });
   $('#ftop', view).addEventListener('change', () => { cities.set(topCities(stateSel.get(), topN())); est(); });
 
@@ -256,24 +279,27 @@ async function homePage(view) {
   });
 
   $('#fnew', view).addEventListener('change', (e) => { if (e.target.matches('[data-f]')) drawGuides(); });
-  // Mountain time (Nov 2026, V: scrape mountain time leads): ticks CO, ID, MT, NM, UT and WY with their biggest cities. Arizona is its own zone
-  // (no daylight saving), so pick it from the states list when you want it. Modeled on the time zone filters in Apollo.io and Scrap.io.
-  $('#fmt', view).addEventListener('click', () => {
-    const mt = zoneStates('MT');
-    prevStates = mt; stateSel.set(mt);
-    cities.setOptions(citiesOf(mt), topCities(mt, topN()));
-    est();
+  // Modeled on the time zone filters in Apollo.io and Scrap.io. Arizona is its own zone (no daylight saving).
+  $('#fzones', view).addEventListener('click', (e) => {
+    const b = e.target.closest('[data-zone]'); if (!b) return;
+    const z = b.dataset.zone;
+    if (z === 'NONE') { setStates([]); return; }
+    const list = z === 'ALL' ? allZoneStates() : zoneStates(z);
+    if (b.getAttribute('aria-pressed') === 'true') { setStates(prevStates.filter((c) => !list.includes(c))); return; }
+    if (z === 'ALL' && topN() > 3) { $('#ftop', view).value = '3'; toast('All states: cities per state set to the top 3 to keep the cost down. Change it under Cities per state.'); }
+    setStates([...new Set([...prevStates, ...list])]);
   });
   $('#fsfl', view).addEventListener('click', () => {
     prevStates = ['FL']; stateSel.set(['FL']);
     const sfl = southFloridaAreas(SOUTH_FLORIDA.length);
     const have = citiesOf(['FL']);
     cities.set([]); cities.setOptions([...have, ...sfl.filter((c) => !have.some((o) => o.value === c)).map((c) => ({ value: c, label: c }))], sfl);
-    est();
+    drawZones(); est();
   });
+  drawZones();
 
   // A play fills the whole form (trades, places, source, coverage, filters, tag, spend limit). Nothing is spent until Start search.
-  const applyPlay = (play, budgetId, thenStart) => {
+  const applyPlay = (play, budgetId, thenStart, scope = 'home') => {
     source = play.source === 'osm' || d.free ? 'osm' : 'google';
     custom = null;
     let areas;
@@ -281,15 +307,16 @@ async function homePage(view) {
       size = covers().some((c) => c.size === play.size) ? play.size : (source === 'osm' ? 3 : 5);
       areas = play.areas;
     } else {
-      const pl = planFor(play, budgetId);
+      const pl = planFor(play, budgetId, { scope });
       size = pl.size;
-      areas = southFloridaAreas(pl.places);
+      areas = pl.areas;
     }
     const codes = [...new Set(areas.map((a) => String(a).split(',').pop().trim().toUpperCase()).filter((c) => STATES.some((x) => x[0] === c)))];
     const stateCodes = codes.length ? codes : ['FL'];
     prevStates = stateCodes; stateSel.set(stateCodes);
     const have = citiesOf(stateCodes);
     cities.set([]); cities.setOptions([...have, ...areas.filter((c) => !have.some((o) => o.value === c)).map((c) => ({ value: c, label: c }))], areas);
+    drawZones();
     ind.set(play.industries); $('#fextra', view).value = ''; $('#fzip', view).value = '';
     setFilters($('#fnew', view), play.filters);
     $('#ftag', view).value = `${play.name}, ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
@@ -297,7 +324,7 @@ async function homePage(view) {
     drawCov(); est();
     // A spend limit just above this run's estimate, so a typo in the form cannot cost much more than the play said.
     const cost = plan().jobs.reduce((t, j) => t + estimate({ areas: j.areas.length, size, keywords: j.keywords.length, source, views: null }).cost, 0);
-    const lim = [1, 5, 10, 25, 50].find((x) => x >= cost * 1.3) || 0;
+    const lim = [1, 5, 10, 25, 50, 100, 250, 500].find((x) => x >= cost * 1.3) || 0;
     $('#fcap', view).value = String(lim); est();
     $('#fnew', view).scrollIntoView({ behavior: 'smooth', block: 'start' });
     toast(`${play.name}: form filled. Change anything, then Start search.`);

@@ -10,6 +10,8 @@
 //  - Apollo.io saved searches: save a search once, run it again with one click (My plays).
 // Meters and "expect" lines are guidance from how these businesses behave, NOT measured statistics. Tag every run and compare tags in the Pipeline.
 import { estimate } from './finder.js';
+import { zoneStates, allZoneStates, ZONE_ORDER, ZONE_NAMES } from './timezone.js';
+import { CITIES } from './cities.js';
 
 export const TOOLS = [
   { name: 'Scrap.io', url: 'https://scrap.io', what: 'claimed or unclaimed, rating, reviews and website filters across a whole market' },
@@ -162,20 +164,82 @@ export const PLAYS = [
     filters: f({ minReviews: 5, maxReviews: 150, website: 'any', sat: 'maybe' }), source: 'google', list: 'sat',
     meters: { book: 2, reach: 3, deal: 2, volume: 2 }, refs: ['Outscraper'],
   },
+  // Four more plays (Nov 2026, V: more plays), built with the lead template builder steps: trade, who answers, ability to pay, filters, call window, opener.
+  // Measured facts only (BrightLocal 2026, Census nonemployer shares, Google's Local Services Ads trade list); everything else is opinion to test in Call insights.
+  {
+    id: 'storm', name: 'Storm season trades', badge: 'Own the map first', goals: ['book'],
+    who: 'Roofing, tree service, screen enclosure, window installation and fencing companies with a real review count.',
+    why: 'Work in these trades jumps after a storm, and the people searching call the first few businesses on the map. The time to climb is before the rush. Roofing, tree work and fencing are on Google\'s Local Services Ads list, so some of your competitors may already pay for the spot above the map.',
+    expect: 'Medium volume. Owners are on roofs and in trees, so call 8 to 9:30am and 4 to 6pm their time and expect voicemail. Storm chasers with out of state numbers drop out with the "Likely owner picks up" list. Hurricane season in Florida runs June 1 to November 30; other regions have their own season, so use the Where buttons. Guidance, not measured.',
+    open: '"Storm season is when the phone rings for these trades, and the ones at the top of the map get those calls. I checked, and you are not in the top 3 near you yet. Can I show you where you sit?"',
+    after: ['Add to the Pipeline', 'Fill in missing info: phone type (mobile first)', 'Pipeline: Lead template for roofing, tree or screen enclosures, then Load'],
+    industries: ['roofing contractor', 'tree service', 'screen enclosure', 'window installation', 'fence company'],
+    filters: f({ minReviews: 10, maxReviews: 150, minRating: 3.8 }), source: 'google', list: 'small',
+    meters: { book: 3, reach: 2, deal: 3, volume: 2 }, refs: ['Scrap.io', 'Outscraper'],
+  },
+  {
+    id: 'recurring', name: 'Route and repeat customers', badge: 'Best lifetime value', goals: ['book', 'reach'],
+    who: 'Pool routes, pest control, lawn and landscaping crews, carpet and house cleaning and pressure washing, with 10 to 100 reviews.',
+    why: 'Each new customer pays again every month or every season, so one extra customer is worth far more than the first job. That makes our fee easy to explain. Census data lists most carpet cleaners and landscapers as one person firms, so the owner is usually who answers.',
+    expect: 'High volume and good reach, but many are small shops with small budgets. The 10 to 100 review band and a website or a work truck photo are signs of a business that can pay. Call after the morning route, 11:30am to 1pm, or 4 to 6pm. Guidance, not measured.',
+    open: '"How many new customers a month would fill your route? When someone near you searches for this, you are not in the top 3 on the map. Want to see who is?"',
+    after: ['Add to the Pipeline', 'Call list: Likely owner picks up', 'Pipeline: Lead template for pool, pest or carpet, then Load'],
+    industries: ['pool service', 'pest control', 'carpet cleaning', 'landscaping company', 'cleaning service', 'pressure washing'],
+    filters: f({ minReviews: 10, maxReviews: 100, minRating: 4 }), source: 'google', list: 'small',
+    meters: { book: 2, reach: 3, deal: 2, volume: 3 }, refs: ['Scrap.io', 'Apify Local SEO Lead Finder'],
+  },
+  {
+    id: 'projects', name: 'Project trades', badge: 'Big checks', goals: ['book'],
+    who: 'Remodelers, flooring, concrete and paving, windows and doors, fencing, painting and septic crews.',
+    why: 'A single project is a big check, so one extra job can cover many months of our fee, and people compare two or three companies from the map before they call. Fencing and flooring are on Google\'s Local Services Ads list.',
+    expect: 'Medium volume. Owners are on site, so many calls reach voicemail, and bigger firms have an office manager. Use "Likely owner picks up" and ask for the owner by name once the scrub has it. Sales cycles are longer than for emergency trades. Guidance, not measured.',
+    open: '"When someone near you searches for this kind of project, who do they see first? I checked and you are not in the top 3 on the map. Can I show you where you sit?"',
+    after: ['Add to the Pipeline', 'Fill in missing info: owner name', 'Call list: Likely owner picks up'],
+    industries: ['remodeling contractor', 'flooring', 'concrete contractor', 'window installation', 'fence company', 'painter', 'septic service'],
+    filters: f({ minReviews: 8, maxReviews: 120, minRating: 4 }), source: 'google', list: 'small',
+    meters: { book: 2, reach: 2, deal: 3, volume: 2 }, refs: ['Scrap.io', 'Outscraper'],
+  },
+  {
+    id: 'shops', name: 'Shop owners, mid day', badge: 'Map is the storefront', goals: ['reach', 'book'],
+    who: 'Independent auto repair, window tint, detailing and appliance repair shops.',
+    why: 'The shop on the map is their storefront, so the map decides who walks in. BrightLocal 2026 found 47% of people will not use a business with fewer than 20 reviews and 68% only use one rated 4 stars or higher, which gives a clear opener from their own numbers.',
+    expect: 'The owner is often in the bay or at the counter. Try 1 to 3pm for auto repair and 10 to 11:30am for tint and detailing. A service writer may screen the call, so ask for the owner by name once the scrub has it. Guidance, not measured.',
+    open: '"68% of people only call a shop rated 4 stars or higher, and 47% skip one with fewer than 20 reviews. You have [rating] stars and [reviews] reviews. Want to see how to move that?"',
+    after: ['Add to the Pipeline', 'Research (Lite) the ones you will call', 'Pipeline: Lead template for auto repair or window tinting, then Load'],
+    industries: ['auto repair shop', 'window tinting', 'auto detailing', 'appliance repair'],
+    filters: f({ minReviews: 5, maxReviews: 150 }), source: 'google', list: 'few',
+    meters: { book: 2, reach: 2, deal: 2, volume: 2 }, refs: ['Scrap.io'],
+  },
 ];
 export const playById = (id) => PLAYS.find((p) => p.id === id);
 
 // How many cities a budget level searches, and what it costs for a play.
-export function planFor(play, budgetId, { states = 1 } = {}) {
+export function planFor(play, budgetId, { states = 1, scope = 'home' } = {}) {
   const b = BUDGETS.find((x) => x.id === budgetId) || BUDGETS[0];
   const osm = play.source === 'osm';
   const size = osm ? { 3: 1, 5: 3, 7: 3 }[b.size] : b.size;
-  const places = b.places * Math.max(1, states);
+  const areas = areasFor(scope, b.id);
+  const places = scope === 'home' ? b.places * Math.max(1, states) : areas.length;
   const e = estimate({ areas: places, size, keywords: play.industries.length, source: play.source });
-  return { budget: b, size, places, requests: e.requests, cost: e.cost, free: osm };
+  return { budget: b, size, places, areas: scope === 'home' ? southFloridaAreas(places) : areas, requests: e.requests, cost: e.cost, free: osm, scope };
 }
 // Cities for a budget level: South Florida first, then each state's own biggest cities.
 export const southFloridaAreas = (n) => SOUTH_FLORIDA.slice(0, n).map((c) => `${c}, FL`);
+
+// Where a play can run (Nov 2026, V: all time zones, not only Florida and Mountain). Home is South Florida. A time zone or all states
+// searches each state's biggest cities, a few per state so the bill stays sensible: Lean 1, Standard 2, Deep 3 cities a state.
+export const SCOPES = [
+  { id: 'home', label: 'South Florida (home)' },
+  ...ZONE_ORDER.map((z) => ({ id: z, label: ZONE_NAMES[z], zone: z })),
+  { id: 'ALL', label: 'All states' },
+];
+export const PER_STATE = { lean: 1, standard: 2, deep: 3 };
+export function areasFor(scope, budgetId) {
+  if (scope === 'home' || !scope) return southFloridaAreas((BUDGETS.find((x) => x.id === budgetId) || BUDGETS[0]).places);
+  const per = PER_STATE[budgetId] || 1;
+  const states = scope === 'ALL' ? allZoneStates() : zoneStates(scope);
+  return states.flatMap((st) => (CITIES[st] || []).slice(0, per).map((c) => `${c}, ${st}`));
+}
 
 // ---------- weakness: how much a profile needs help (higher = better prospect) ----------
 // Follows the idea of weakest first ranking: missing website, unclaimed, few reviews, a weak rating, few photos and no hours are gaps we can fix.

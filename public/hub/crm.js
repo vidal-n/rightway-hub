@@ -221,7 +221,10 @@ export async function pipelinePage(app, user, openId, screen) {
         <section class="fstep wide" data-sec="pick"><header><span class="fn">3</span><div><h3>Choose who to call</h3><p>${rows.length} leads match. Narrow it by time zone, list or grade.</p></div></header>
           <div class="tz-tabs" data-sec="tz"><button class="tz ${!p.tz ? 'is-on' : ''}" data-tz="">All <b>${all.length}</b></button>${TZS.map(([k, n]) => {
             const c = tzCount(k);
-            return c ? `<button class="tz ${tzSel(p).includes(k) ? 'is-on' : ''}" data-tz="${k}" title="${n}. Tap more than one to call several time zones together." aria-pressed="${tzSel(p).includes(k)}">${tzNow(k) ? '<i class="live"></i>' : ''}${k === '?' ? 'Unknown' : k} <b>${c}</b></button>` : '';
+            // Every real zone always shows, even with no leads yet (Nov 2026, V: Mountain was missing because nothing was scraped there). Unknown only when some leads have no zone.
+            if (!c && k === '?') return '';
+            const tip = c ? `${n}. Tap more than one to call several time zones together.` : `${n}: no leads here yet. The Lead finder has a button for this time zone.`;
+            return `<button class="tz ${tzSel(p).includes(k) ? 'is-on' : ''}${c ? '' : ' is-empty'}" data-tz="${k}" title="${tip}" aria-pressed="${tzSel(p).includes(k)}">${tzNow(k) ? '<i class="live"></i>' : ''}${k === '?' ? 'Unknown' : k} <b>${c}</b></button>`;
           }).join('')}</div>
           <div class="chips lists" data-sec="lists" aria-label="Call lists"><span class="small muted">Call lists:</span>${CALL_LISTS.map(([k, n]) => `<button class="chip ${p.list === k ? 'on' : ''}" data-list="${k}">${n}</button>`).join('')}</div>
           ${templateRow(p)}
