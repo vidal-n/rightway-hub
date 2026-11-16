@@ -9,7 +9,8 @@ test('Game Plan script: own group, filled with rep, company and business', () =>
   const call = s.steps.find((x) => x.id === 'g_call').lines.join(' ');
   assert.match(call, /Hi Joe\? It's Sam with Rightway Growth\./);
   assert.match(call, /Joe Plumbing/);
-  assert.match(call, /website audit/);
+  assert.match(call, /free Google Game Plan/);
+  assert.doesNotMatch(call, /website audit/i);
   assert.doesNotMatch(call, /Josh|Wavepoint/i);
   assert.equal(scriptSteps('plan').length, 3);
   assert.ok(PRINT_VARS.company && PRINT_VARS.rep);

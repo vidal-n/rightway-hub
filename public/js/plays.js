@@ -58,7 +58,7 @@ export const PLAYS = [
     why: 'No website is the strongest "needs help" signal in agency prospecting guides, and it still shows they have customers (reviews). Easy to explain, easy to prove: search their name and show what is missing.',
     expect: 'Medium volume, usually smaller shops where the owner answers. Deal size is smaller at first. Website is sold as its own service after results, so open with the Google profile and a free look at the website gap.',
     open: '"I looked you up on Google and noticed you have great reviews but no website. When people search for you, where do they go?"',
-    after: ['Add to the Pipeline', 'Call list: No website', 'Use the Game Plan script (website audit)'],
+    after: ['Add to the Pipeline', 'Call list: No website', 'Use the Game Plan script'],
     industries: HIGH.slice(0, 8), filters: f({ minReviews: 10, minRating: 3.8, website: 'none' }), source: 'google', list: 'nosite',
     meters: { book: 3, reach: 3, deal: 2, volume: 2 }, refs: ['Scrap.io', 'Apify Local SEO Lead Finder', 'Prospeo guide to Google Maps lead scrapers'],
   },

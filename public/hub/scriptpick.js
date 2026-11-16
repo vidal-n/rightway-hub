@@ -11,7 +11,7 @@ const ABOUT = {
   analysis: 'Offer the free competitor analysis, then book the walk through.',
   question: 'Open with a question about their business, get them talking, label it, then ask for time.',
   cold: 'Pattern interrupt, the free tailored plan, then book on the call.',
-  plan: 'For leads who asked for the Game Plan or a website audit.',
+  plan: 'For leads who asked for the Game Plan.',
 };
 export const scriptName = (k) => SCRIPT_GROUPS.find((g) => g[0] === k)?.[1] || k || 'No script';
 

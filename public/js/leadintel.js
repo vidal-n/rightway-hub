@@ -488,7 +488,7 @@ export const SCRIPT_GROUPS = [
   ['analysis', 'Competitor analysis', ['a_call', 'a_set', 'a_disc', 'a_reb', 'a_ml']],
   ['question', 'Question opener', ['q_open', 'q_state', 'q_listen', 'q_sum', 'q_ask', 'q_lock', 'q_reb']],
   ['cold', 'Cold call', ['k_open', 'k_site', 'k_why', 'k_ml', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
-  ['plan', 'Game Plan (website audit)', ['g_call', 'g_ask', 'g_set']],
+  ['plan', 'Game Plan', ['g_call', 'g_ask', 'g_set']],
   ['audit10', '10 Minute Business Profile Audit', ['b_open', 'b_pitch']],
   ['clarity', 'Clarity audit', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
 ];
@@ -516,17 +516,15 @@ export const SCRIPT_KEYS = [
 ];
 
 export const DEFAULT_SCRIPT = {
-  // Game Plan call (also run as a website audit): the lead asked for it, so this is a short call or text that books the walk through.
+  // Game Plan call: the lead asked for it, so this is a short call or text that books the walk through.
   g_call: [
     "Hi {first_or_owner}? It's {rep} with {company}.",
     "As requested, we have your **free Google Game Plan** finished for {business}.",
-    "Or: As requested, we have your **free website audit** finished for {business}.",
     "I/we have two spots left for tomorrow to take care of any questions about the report.",
     "12pm or 4pm. Which works better for you?",
   ].join('\n'),
   g_ask: [
     "IF THEY ASK WHAT IS THIS ABOUT: It's your **free Google Game Plan**. It shows where you rank on Google and why.",
-    "Or: It's your **free website audit**. It shows where you rank on Google and why.",
     "And we also threw in a **competitor analysis**, so you know what to tweak with no guessing.",
     "Both are yours to keep!",
     "12pm or 4pm?",
