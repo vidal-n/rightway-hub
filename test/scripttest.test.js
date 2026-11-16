@@ -154,7 +154,7 @@ test('price is never named on a cold call, and no pet puns', () => {
 test('cold calling and the meeting audit are two categories, and clarity stays out of cold calling', async () => {
   const { COLD_GROUPS, MEETING_GROUPS, groupKind } = await import('../public/js/leadintel.js');
   const { readFileSync } = await import('node:fs');
-  assert.deepEqual(COLD_GROUPS, ['analysis', 'question', 'cold', 'plan']);
+  assert.deepEqual(COLD_GROUPS, ['analysis', 'question', 'cold', 'plan', 'audit10']);
   assert.deepEqual(MEETING_GROUPS, ['clarity']);
   assert.equal(groupKind('clarity'), 'meeting');
   assert.equal(groupKind('question'), 'cold');

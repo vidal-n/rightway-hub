@@ -98,3 +98,20 @@ test('doc layout: bold, notes, brackets and lowercase parentheses', () => {
   assert.match(docHtml('clarity'), /Screen: /);
   assert.doesNotMatch(docHtml('clarity'), /\[\[/);
 });
+
+test('10 Minute Google Business Profile Audit cold call is V\'s text word for word', () => {
+  assert.ok(SCRIPT_GROUPS.find((g) => g[0] === 'audit10'));
+  const s = buildScript({ business: 'Joe Plumbing', contact_name: 'Joe Smith' }, null, { rep: 'Sam', voice: 'I' });
+  const steps = s.steps.filter((x) => x.group === 'audit10');
+  assert.deepEqual(steps.map((x) => x.id), ['b_open', 'b_pitch']);
+  assert.ok(steps.every((x) => x.kind === 'cold'));
+  const lines = steps.flatMap((x) => x.lines.map(unbold));
+  assert.equal(lines.length, 9);
+  assert.equal(lines[0], 'You: Hi, is this [Business Owner’s Name]?');
+  assert.equal(lines[1], 'You: Hi, [Name]. My name is [Your Name], and I’m a Business Analyst with RightWay Growth. How are you doing today?');
+  assert.match(lines[3], /^I’d like to schedule a quick 10-minute business audit over Google meet\./);
+  assert.match(lines[6], /^I’ll share my screen during the Zoom session /);
+  assert.equal(lines[8], 'How does that sound?');
+  assert.doesNotMatch(lines.join(' '), /clarity|[–—]/i);
+  assert.match(docHtml('audit10'), /10 MINUTE GOOGLE BUSINESS PROFILE AUDIT/);
+});

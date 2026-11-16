@@ -489,12 +489,13 @@ export const SCRIPT_GROUPS = [
   ['question', 'Question opener', ['q_open', 'q_state', 'q_listen', 'q_sum', 'q_ask', 'q_lock', 'q_reb']],
   ['cold', 'Cold call', ['k_open', 'k_site', 'k_hook', 'k_why', 'k_ml', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
   ['plan', 'Game Plan (website audit)', ['g_call', 'g_ask', 'g_set']],
+  ['audit10', '10 Minute Business Profile Audit', ['b_open', 'b_pitch']],
   ['clarity', 'Clarity audit', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
 ];
 // Two categories (Nov 2026, V: the clarity audit does not belong anywhere in a cold calling setting). Cold call scripts are for the dialer,
 // the call window and call prep. The meeting script (the Google clarity audit, the screen share that ends in a work order) is for the
 // closer once a meeting is booked: lead page, presenter notes, Training under Meeting scripts. `kind` on every group, step and objection.
-export const COLD_GROUPS = ['analysis', 'question', 'cold', 'plan'];
+export const COLD_GROUPS = ['analysis', 'question', 'cold', 'plan', 'audit10'];
 export const MEETING_GROUPS = ['clarity'];
 export const groupKind = (key) => (MEETING_GROUPS.includes(key) ? 'meeting' : 'cold');
 export const objectionKind = (q) => (/^Cold: /.test(q) ? 'cold' : 'meeting');
@@ -506,6 +507,7 @@ export const SCRIPT_KEYS = [
   ['c_listings', 'Inconsistencies'], ['c_story', 'Why we are having this conversation'], ['c_program', 'What to expect'], ['c_process', 'Your app and your part'],
   ['c_trial', 'Trial close'], ['c_price', 'Price: the drop close'], ['c_close', 'Close'], ['c_post', 'Work order and payment'],
   ['g_call', 'The call'], ['g_ask', 'If they ask what it is'], ['g_set', 'Once they give you a time'],
+  ['b_open', 'Open'], ['b_pitch', 'The pitch'],
   ['a_call', 'The call'], ['a_set', 'Once they give you a time'], ['a_disc', 'Discovery after booking (Optional)'], ['a_reb', 'Rebuttals'],
   ['a_ml', 'Mirror and label first'],
   ['q_open', 'The opener'], ['q_state', 'Their current state'], ['q_listen', 'Mirror and label what they say'], ['q_sum', 'Sum it up'], ['q_ask', 'Ask for time'], ['q_lock', 'Lock it in'], ['q_reb', 'Rebuttals (mirror, label, ask)'],
@@ -534,6 +536,21 @@ export const DEFAULT_SCRIPT = {
     "We recommend having a computer or tablet handy, so we can share our screen and walk you through the Game Plan in real time.",
     "Please make sure to keep your appointment, because we have limited availability.",
     "(Book it in the Hub first, so the confirmation email goes out.)",
+  ].join('\n'),
+  // 10 Minute Google Business Profile Audit cold call (Nov 2026), V's own script, word for word (curly quotes, "Google meet" and "Zoom session" included).
+  // The [Business Owner’s Name], [Name] and [Your Name] brackets are his blanks and stay literal.
+  b_open: [
+    "You: Hi, is this [Business Owner’s Name]?",
+    "You: Hi, [Name]. My name is [Your Name], and I’m a Business Analyst with RightWay Growth. How are you doing today?",
+  ].join('\n'),
+  b_pitch: [
+    "Great! The reason for my call is that we specialize in Google Business Profile optimization, helping businesses improve their online visibility and position themselves to attract more potential customers through Google Search and Google Maps.",
+    "I’d like to schedule a quick 10-minute business audit over Google meet. During that time, we’ll review your current Google Business Profile together, confirm that all your business information is accurate, and evaluate how your business is currently appearing online.",
+    "We’ll also look for areas where your online presence may be lacking, including your business information, services, categories, service areas, and overall visibility.",
+    "From there, we can identify opportunities for improvement and discuss how we may be able to help optimize your listing, address any issues, and strengthen your business’s online visibility.",
+    "I’ll share my screen during the Zoom session so you can actually see what we’re reviewing and understand where there may be opportunities for improvement.",
+    "The audit only takes about 10 minutes, and the goal is to give you a clear picture of where your business currently stands online and what we can potentially do to improve it.",
+    "How does that sound?",
   ].join('\n'),
   // Competitor analysis cold call, V's own script from his doc, word for word (typos and all). Only ** marks (bold) were added from the doc's bold type.
   a_call: [

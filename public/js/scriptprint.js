@@ -76,7 +76,7 @@ const noteText = (t) => boldHtml(brackets(e(t)));
 const spoken = (t) => boldHtml(docCues(brackets(e(t))));
 export const DOC_TITLES = {
   question: ['COLD CALL SCRIPT:', 'QUESTION OPENER'], cold: ['COLD CALL SCRIPT'], analysis: ['COLD CALL SCRIPT:', 'COMPETITOR ANALYSIS'],
-  plan: ['GAME PLAN SCRIPT:', 'WEBSITE AUDIT'], clarity: ['GOOGLE CLARITY AUDIT SCRIPT'],
+  plan: ['GAME PLAN SCRIPT:', 'WEBSITE AUDIT'], audit10: ['COLD CALL SCRIPT:', '10 MINUTE GOOGLE BUSINESS PROFILE AUDIT'], clarity: ['GOOGLE CLARITY AUDIT SCRIPT'],
 };
 export function docLine(l) {
   if (l.kind === 'screen') return `<p class="d-cue">Screen: ${noteText(l.text)}</p>`;

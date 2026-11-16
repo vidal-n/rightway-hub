@@ -5,7 +5,7 @@
 // because at a small team's volume they almost never reach a clear answer.
 
 // Scripts a rep can dial with. The Clarity audit is the meeting itself, not a cold call script.
-export const DIAL_SCRIPTS = ['analysis', 'question', 'cold', 'plan'];
+export const DIAL_SCRIPTS = ['analysis', 'question', 'cold', 'plan', 'audit10'];
 
 // Before a winner is named: each script needs this many owner conversations, and the test needs to run this many days
 // (two weeks covers both slow and busy days). 200 conversations per script can spot 10% vs 20% booked (alpha 0.05, power 0.8).

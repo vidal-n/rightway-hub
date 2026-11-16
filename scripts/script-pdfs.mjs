@@ -16,9 +16,9 @@ const logo = `data:image/svg+xml;base64,${readFileSync(join(ROOT, 'public', 'bra
 
 const FILES = {
   cold: 'RightWay-Growth-Cold-Call-Script', analysis: 'RightWay-Growth-Competitor-Analysis-Script',
-  plan: 'RightWay-Growth-Game-Plan-Script', clarity: 'RightWay-Growth-Google-Clarity-Audit-Script', question: 'RightWay-Growth-Question-Opener-Script',
+  plan: 'RightWay-Growth-Game-Plan-Script', clarity: 'RightWay-Growth-Google-Clarity-Audit-Script', question: 'RightWay-Growth-Question-Opener-Script', audit10: 'RightWay-Growth-10-Minute-Audit-Script',
 };
-const NAMES = { question: 'Question opener script', cold: 'Cold call script', analysis: 'Competitor analysis script', plan: 'Game Plan script', clarity: 'Google clarity audit script' };
+const NAMES = { question: 'Question opener script', cold: 'Cold call script', analysis: 'Competitor analysis script', plan: 'Game Plan script', clarity: 'Google clarity audit script', audit10: '10 Minute Google Business Profile Audit script' };
 
 const CSS = `
 @page { size: Letter; margin: 1in; }
