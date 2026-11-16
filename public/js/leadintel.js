@@ -86,6 +86,18 @@ export function industryInfo(industry = '', category = '') {
   return { label: industry || category || 'Local business', keyword: kw || null, ticket: 500, tier: 'unknown' };
 }
 
+// The trade to show and script for a lead. Leads from the Lead finder saved the SEARCH keyword as `industry`, so a landscaper found
+// while searching "fence company" read as a fence company. Google's category wins when it names a different known trade.
+export function tradeOf(l = {}) {
+  const cat = String(l.category || '').trim();
+  const ind = String(l.industry || '').trim();
+  if (cat) {
+    const c = industryInfo('', cat);
+    if (c.tier !== 'unknown' && (!ind || industryInfo(ind, '').label !== c.label)) return cat;
+  }
+  return ind;
+}
+
 // The search phrase we check rankings for.
 export function keywordFor(lead = {}, intel = null) {
   if (intel?.keyword) return intel.keyword;

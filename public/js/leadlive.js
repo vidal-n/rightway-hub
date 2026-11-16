@@ -2,6 +2,7 @@
 // never come from the server or they go stale). Pure; the same rules as decorate() in src/crm.js.
 import { ZONE_SHORT, canCallNow, STATE_RULES } from './timezone.js';
 import { dtf } from './fmtcache.js';
+import { tradeOf } from './leadintel.js';
 import { unpackHours, openAt, nowText, hoursText } from './hours.js';
 
 export function localTime(tz, at = Date.now()) {
@@ -12,6 +13,7 @@ let memoMin = -1; const memo = new Map();
 const once = (key, at, fn) => { const m = Math.floor(at / 60e3); if (m !== memoMin) { memoMin = m; memo.clear(); } if (!memo.has(key)) memo.set(key, fn()); return memo.get(key); };
 export function liveLead(l, at = Date.now()) {
   const tz = l.timezone || null;
+  l.industry = tradeOf(l) || l.industry; // never the search keyword when Google says otherwise
   l.scrubbed = Boolean(l.scrubbed_at);
   l.researched = Boolean(l.intel_at);
   l.tz_short = ZONE_SHORT[tz] || null;

@@ -8,7 +8,7 @@ import { tierOf as scopeTier } from '../public/js/scope.js';
 import { tierOf as callTier, cleanIds } from '../public/js/campaign.js';
 import { route } from './router.js';
 import { callRule, factsFrom } from '../public/js/callrules.js';
-import { scoreLead, dupKeys, callCategory, personOf } from '../public/js/leadintel.js';
+import { scoreLead, dupKeys, callCategory, personOf, tradeOf } from '../public/js/leadintel.js';
 import { resolveDispo } from './dispo.js';
 import { notifyLater } from './notify.js';
 import { dialGoalOf } from './avail.js';
@@ -253,7 +253,7 @@ function seeAppt(l, user) {
 function decorate(l) {
   const tz = l.timezone || null;
   const { intel, scrub_data, ...rest } = l;
-  return { ...rest, scrubbed: Boolean(l.scrubbed_at), researched: Boolean(l.intel_at), tz_short: TZ_SHORT[tz] || null, tz_alt_short: TZ_SHORT[l.tz_alt] || null, local_time: tz ? localTime(tz) : '', callable_now: !l.dnc && inCallingHours(tz, Date.now(), l.tz_alt, l.state), tz_known: Boolean(tz) };
+  return { ...rest, industry: tradeOf(l) || l.industry, scrubbed: Boolean(l.scrubbed_at), researched: Boolean(l.intel_at), tz_short: TZ_SHORT[tz] || null, tz_alt_short: TZ_SHORT[l.tz_alt] || null, local_time: tz ? localTime(tz) : '', callable_now: !l.dnc && inCallingHours(tz, Date.now(), l.tz_alt, l.state), tz_known: Boolean(tz) };
 }
 const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, website, city, state, zip, timezone, tz_alt, tz_how, industry, category, tags, source, stage, plan,
   next_action_at, next_action, owner_id, attempts, last_call_at, dnc, sms_consent, client_id, score, grade, rating, reviews, map_rank, problems,

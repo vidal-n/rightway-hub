@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { industryInfo, buildScript } from '../public/js/leadintel.js';
+import { industryInfo, buildScript, tradeOf } from '../public/js/leadintel.js';
 import { leadRow, industryFor } from '../public/js/finder.js';
 import { discoveryFor } from '../public/js/discovery.js';
 
@@ -47,4 +47,15 @@ test('dialer scripts are locked to the picked script', () => {
   assert.match(prep, /g\.key === only/);
   assert.match(crm, /lock: true/);
   assert.match(prep, /__prepSeq/);
+});
+
+test('the trade shown is Google\'s category, never the search keyword', async () => {
+  assert.equal(tradeOf({ industry: 'fence company', category: 'Landscaper' }), 'Landscaper');
+  assert.equal(tradeOf({ industry: 'Roofing', category: 'Roofing contractor' }), 'Roofing');
+  assert.equal(tradeOf({ industry: 'fence company', category: 'Business' }), 'fence company');
+  assert.equal(tradeOf({ industry: '', category: 'General contractor' }), 'General contractor');
+  const { liveLead } = await import('../public/js/leadlive.js');
+  const l = { business: 'Top Green', industry: 'fence company', category: 'Landscaper', timezone: 'America/Denver' };
+  liveLead(l);
+  assert.equal(l.industry, 'Landscaper');
 });
