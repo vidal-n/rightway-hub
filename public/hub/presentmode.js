@@ -90,7 +90,7 @@ export async function presentView(app, user, kind, id, tabKey) {
     else if (k === 'scan') {
       // If the scan page is slow or comes back blank, say so and offer it in its own tab instead of leaving a white screen.
       const url = `/scan.html?lead=${encodeURIComponent(leadId)}`;
-      body.innerHTML = `<div class="pm-wait" id="pmwait"><b>Loading the live scan</b><span>If it stays blank, open it in its own tab.</span><a class="btn btn-primary btn-sm" href="${url}" target="rw-scan" rel="noopener">Open the live scan in its own tab</a></div><iframe class="pm-frame pm-over" src="${url}" title="Live scan"></iframe>`;
+      body.innerHTML = `<div class="pm-wait" id="pmwait"><b>Loading the live scan</b><span>If it stays blank, open it in its own tab.</span><a class="btn btn-primary btn-sm" href="${url}" target="rw-scan" rel="noopener">Open the live scan in its own tab</a></div><iframe class="pm-frame pm-over" src="${url}&embed=1" title="Live scan"></iframe>`;
       const fr = body.querySelector('iframe');
       // Show the page once it has real content; a blank or error page keeps the fallback and button visible.
       let tries = 0;

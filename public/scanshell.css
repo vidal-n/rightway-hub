@@ -82,3 +82,8 @@ body { background-color: var(--bg); background-image: none; }
 }
 @media (max-width: 760px) { .sx-cost { margin-left: 6px; } }
 @media (prefers-reduced-motion: reduce) { .sx-rail, .sx-tile, .sx-wstabs a::after { transition: none; } }
+
+/* Embedded in Present mode (V: Live scan took the presenter out of the clean view): the scan alone, no Hub frame. The presenter's own view
+   (notes window, present.html?presenter=1) is a separate page and is not touched. */
+html.is-embed .sx { grid-template-columns: minmax(0, 1fr); }
+html.is-embed .sx-rail, html.is-embed .sx-cmd, html.is-embed .sx-wsbar, html.is-embed .foot { display: none !important; }
