@@ -709,19 +709,28 @@ function card(l) {
 }
 
 // ---------- lead form ----------
-const LF = [['business', 'Business name', true], ['contact_name', 'Contact name'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website'],
-  ['city', 'City'], ['state', 'State (2 letters)'], ['industry', 'Industry'], ['source', 'Source']];
+// Edit lead (Nov 2026, V: fix wrong information on a lead; modeled on the record edit panels in Close.com and Apollo.io). Every field a rep can find
+// wrong: names, phone, email, website and the place. Saving a new phone or email clears the old line type and email checks, a place change
+// re-works the time zone, and a number another lead already has asks first.
+const LF = [['business', 'Business name', true], ['contact_name', 'Contact name'], ['owner_name', 'Owner name'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website'],
+  ['address', 'Street address'], ['city', 'City'], ['state', 'State (2 letters)'], ['zip', 'ZIP'], ['industry', 'Industry'], ['source', 'Source'], ['reviews', 'Google reviews'], ['rating', 'Google rating']];
 
 export function leadForm(lead, onSaved) {
   const m = modal(`<div class="card-head"><h2>${lead ? 'Edit lead' : 'Add a lead'}</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
-    <form id="lform" class="form-grid">${LF.map(([k, label, req]) => `<label class="field"><span>${label}</span><input name="${k}" value="${esc(lead?.[k] || '')}"${req ? ' required' : ''}></label>`).join('')}
+    ${lead ? '<p class="small muted" style="margin:0 0 10px">Fix anything that is wrong. A new phone or email clears the old line type and email check. A new city, state or ZIP re-works their time zone.</p>' : ''}
+    <form id="lform" class="form-grid">${LF.filter(([k]) => lead || !['owner_name', 'reviews', 'rating', 'address', 'zip'].includes(k)).map(([k, label, req]) => `<label class="field"><span>${label}</span><input name="${k}" value="${esc(lead?.[k] ?? '')}"${req ? ' required' : ''}${k === 'reviews' ? ' inputmode="numeric"' : k === 'rating' ? ' inputmode="decimal"' : k === 'phone' ? ' inputmode="tel"' : ''}></label>`).join('')}
       <label class="field span-all"><span>Notes</span><textarea name="notes">${esc(lead?.notes || '')}</textarea></label>
-      <div class="span-all row end"><button class="btn btn-primary" type="submit">${lead ? 'Save' : 'Add lead'}</button></div></form>`);
+      <div class="span-all row end"><button class="btn btn-ghost" type="button" data-close>Cancel</button><button class="btn btn-primary" type="submit">${lead ? 'Save' : 'Add lead'}</button></div></form>`);
   $('#lform', m.el).addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = Object.fromEntries(new FormData(e.target).entries());
+    const go = async (extra = {}) => (lead ? api(`/api/leads/${lead.id}`, { method: 'PATCH', body: { ...body, ...extra } }) : api('/api/leads', { method: 'POST', body }));
     try {
-      const r = lead ? await api(`/api/leads/${lead.id}`, { method: 'PATCH', body }) : await api('/api/leads', { method: 'POST', body });
+      let r;
+      try { r = await go(); } catch (err) {
+        if (err.status === 409 && err.data?.duplicate && confirm(`${err.data.duplicate.business} already has that number. Save it on this lead too?`)) r = await go({ force: true });
+        else throw err;
+      }
       toast('Saved'); m.close(); onSaved?.(r.lead);
     } catch (err) { toast(err.message, true); }
   });
@@ -1061,7 +1070,7 @@ export async function leadModal(id, onChange) {
   })));
   if (l.email) import('./gstate.js').then((g) => g.hasGoogle('mail')).then((gm) => import(gm ? './mail.js' : './hubmail.js')).then((x) => x.mailWith($('#lmail', m.el), l.email, { name: l.contact_name || l.business })).catch(() => {});
   $('#lpack', m.el)?.addEventListener('click', async (e) => { busy(e.currentTarget, true, 'Making'); try { const r = await api(`/api/leads/${l.id}/pack`, { method: 'POST', body: {} }); copy(r.link, 'Analysis link copied'); } catch (err) { toast(err.message, true); } busy(e.currentTarget, false); });
-  $('#ledit', m.el).addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); });
+  $('#ledit', m.el).addEventListener('click', () => { m.close(); leadForm(l, () => { onChange?.(); leadModal(l.id, onChange); }); });
   $('#lsuppress', m.el)?.addEventListener('click', () => import('./suppress.js').then((x) => x.addModal({ leadId: l.id, business: l.business, phone: l.phone }, () => { m.close(); onChange?.(); })));
   $$('[data-out]', m.el).forEach((b) => b.addEventListener('click', async () => {
     const outcome = b.dataset.out;
@@ -1620,6 +1629,7 @@ export async function dialerPage(app, user) {
               ${l.website ? `<a class="btn btn-ghost btn-sm" target="_blank" rel="noopener" href="${esc(/^https?:/.test(l.website) ? l.website : `https://${l.website}`)}">Website</a>` : ''}
               <button class="btn btn-ghost btn-sm" id="dtext">Text</button>
               <button class="btn btn-ghost btn-sm" id="dopen">Full details</button>
+              ${testMode ? '' : '<button class="btn btn-ghost btn-sm" id="dedit" title="Something wrong? Fix the name, number, email or place.">Edit</button>'}
             </div>
           </div>
           <div class="card dial-after">
@@ -1690,6 +1700,7 @@ export async function dialerPage(app, user) {
     prefetch(q.queue[idx + 1]);
     $('#dskip', view).addEventListener('click', () => { if (busyPhase()) return toast('Finish this call and save the result first.', true); idx++; render(); });
     $('#dlog', view)?.addEventListener('click', () => { if (busyPhase()) return toast('The result opens in the call window when the call ends.', true); const w = whoIs(l); dispositionModal({ lead: testMode ? null : l, title: l.business, person: w.known ? w.name : '', business: l.business, facts: callInfo(l).filter((x) => ['Phone', 'Email', 'Their time'].includes(x.k)), sub: 'Pick how it went. It moves the lead to the right next step.', answered: true, onSave: (r) => logOutcome(l, r.dispo, { note: r.note, when: r.callbackAt, detail: r.detail }) }); });
+    $('#dedit', view)?.addEventListener('click', () => leadForm(l, (nl) => { if (nl) Object.assign(l, nl); if (!busyPhase()) render(); }));
     $('#dopen', view).addEventListener('click', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {})));
     $('#dtext', view).addEventListener('click', () => (testMode ? testText(l) : textModal(l, { rep: REP })));
     const bookedId = (DISP.find((d) => d.acts === 'booked') || { id: 'booked' }).id;
@@ -1707,7 +1718,7 @@ export async function dialerPage(app, user) {
       try {
         showCallScript({ lead: l, intel: intelCache.get(l.id) || null, rep: REP, voice: VOICE });
         await placeCall({ test: testMode, script: testMode ? null : scriptTag(l), outcome: l.test_outcome, onLive: () => { if (testMode) practiceModal({ persona: l.persona, lead: l, onScore: (n) => testScore.set(l.id, n), onFinish: () => { if (phoneState().onCall) hangUp(); } }); }, leadId: l.id, from: callerVal(), name: l.business, who: whoIs(l), cat: callCategory(l), info: callInfo(l),
-          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : [['Script', () => setScriptOn(!scriptOn())]]), ['Redial', () => redialNow(l)], ['Text them', () => (testMode ? testText(l) : textModal(l, { rep: REP }))], ['Book appointment', () => (testMode ? testBook(l) : bookModal(l, () => afterBooking(l, bookedId))), 'primary'], ['Full details', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {}))]] },
+          tools: { chips: callbackChips(l), strip: power ? powerStrip() : null, actions: [...(power && phoneNarrow() ? [['Script', () => document.body.classList.toggle('pdx-script')]] : [['Script', () => setScriptOn(!scriptOn())]]), ['Redial', () => redialNow(l)], ['Text them', () => (testMode ? testText(l) : textModal(l, { rep: REP }))], ['Book appointment', () => (testMode ? testBook(l) : bookModal(l, () => afterBooking(l, bookedId))), 'primary'], ['Full details', () => (testMode ? testLeadModal(l, testHist.get(l.id) || []) : leadModal(l.id, () => {}))], ...(testMode ? [] : [['Edit', () => leadForm(l, (nl) => { if (nl) Object.assign(l, nl); })]])] },
           onEnd: ({ answered }) => {
             if (testMode && !power) dropMic();   // a single test call lets go of the mic when it ends
             if (redialLead === l.id) { redialLead = null; phase = 'idle'; glitchLog(l); redialPlace(); return; }

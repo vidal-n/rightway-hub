@@ -9,7 +9,7 @@ export function esc(v) {
 }
 
 export class ApiError extends Error {
-  constructor(message, status) { super(message); this.status = status; }
+  constructor(message, status, data) { super(message); this.status = status; this.data = data; }
 }
 
 // Client view: when set, every request is made as that client sees it (read only on the server).
@@ -33,7 +33,7 @@ async function apiCall(path, { method = 'GET', body, form } = {}) {
   else if (body !== undefined) { headers['content-type'] = 'application/json'; payload = JSON.stringify(body); }
   const res = await fetch(path, { method, headers, body: payload, credentials: 'same-origin' });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.error || `Something went wrong (HTTP ${res.status}).`, res.status);
+  if (!res.ok) throw new ApiError(data.error || `Something went wrong (HTTP ${res.status}).`, res.status, data);
   return data;
 }
 

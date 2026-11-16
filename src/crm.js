@@ -20,7 +20,7 @@ import { cleanNewLead, queueScrub } from './scrub.js';
 import { contactFromImport } from '../public/js/names.js';
 import { packHours, parseAny } from '../public/js/hours.js';
 import { resolveZone, canCallNow, callBlock as hoursBlock, stateRuleText, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
-import { suppress, suppressMany, suppressedMap, noteHits, noteOutcome, entryFor, blockedKeys, leadBlocked, blockedFor, blockText } from './suppress.js';
+import { suppress, suppressMany, suppressedMap, noteHits, noteOutcome, entryFor, blockedKeys, leadBlocked, blockedFor, blockedPhone, blockText } from './suppress.js';
 
 // A booking, however it was made: a call that ended in booked or a callback, or an audit booked from the lead, the booking page or the calendar.
 // Moved audits do not count again. Used by the dialer strip, the dashboard and the analytics.
@@ -550,10 +550,29 @@ route('GET', '/api/leads/:id', async ({ env, user, params }) => {
 route('PATCH', '/api/leads/:id', async ({ env, user, params, body }) => {
   requireStaff(user);
   const l = await leadOr404(env, params.id);
-  const set = cleanLead(await body(), true);
+  const b = await body();
+  const set = cleanLead(b, true);
+  if ('owner_name' in b) set.owner_name = text(b.owner_name, 120);
+  // Fixing wrong information (Nov 2026, modeled on the edit record panel in Close.com and Apollo.io): check what changed before saving.
+  if ('business' in set && !set.business) throw new HttpError('Business name is required.');
+  if ('phone' in set && set.phone && String(set.phone_digits || '').length < 10) throw new HttpError('Type a full 10 digit phone number.');
+  if ('email' in set && set.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(set.email)) throw new HttpError('That email does not look right.');
+  const phoneChanged = 'phone' in set && (set.phone_digits || null) !== (l.phone_digits || null);
+  if (phoneChanged && set.phone_digits) {
+    const row = await blockedPhone(env, set.phone);
+    if (row) throw new HttpError(blockText(row, 'call'), 409);
+    const dup = await first(env, 'SELECT id, business FROM leads WHERE phone_digits = ? AND id != ? LIMIT 1', set.phone_digits, l.id);
+    if (dup && !b.force) return json({ error: `${dup.business} already has that number.`, duplicate: { id: dup.id, business: dup.business } }, 409);
+  }
+  // A new number or email makes the old line type and email checks wrong, so they are cleared for the next scrub.
+  if (phoneChanged) Object.assign(set, { phone_type: null, phone_carrier: null, scrub_lookup: null });
+  if ('email' in set && (set.email || null) !== (l.email || null)) set.email_status = null;
   set.updated_at = now();
   Object.assign(set, rescore({ ...l, ...set }));
+  const shown = { business: 'business', contact_name: 'contact', owner_name: 'owner', phone: 'phone', email: 'email', website: 'website', address: 'address', city: 'city', state: 'state', zip: 'zip', industry: 'industry' };
+  const diffs = Object.entries(shown).filter(([k]) => k in set && (set[k] ?? null) !== (l[k] ?? null)).map(([k, n]) => `${n}: ${l[k] || 'empty'} to ${set[k] || 'empty'}`);
   await updateLead(env, l.id, set);
+  if (diffs.length) await logActivity(env, { lead_id: l.id, type: 'note', body: `Edited ${diffs.join('; ')}`, by: user.id });
   if (set.dnc && !l.dnc) await suppress(env, { ...l, ...set }, 'dnc', { by: user.id, source: 'manual' });
   if (set.stage && set.stage !== l.stage) await logActivity(env, { lead_id: l.id, type: 'stage', body: `Moved to ${set.stage.replace('_', ' ')}`, by: user.id });
   if (set.stage && set.stage !== l.stage) await wf(env, 'stage_changed', { leadId: l.id, stage: set.stage });
