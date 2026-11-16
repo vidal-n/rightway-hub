@@ -83,12 +83,21 @@ export async function login(env, { email, password }) {
   const fails = await first(env, 'SELECT COUNT(*) AS n FROM login_fails WHERE email = ? AND at > ?', e, since);
   if ((fails?.n || 0) >= 10) throw new HttpError('Too many attempts. Wait 15 minutes and try again.', 429);
   const u = await first(env, 'SELECT * FROM users WHERE email = ?', e);
-  const ok = u && u.pass_hash && safeEqual((await hashPassword(String(password || ''), u.pass_salt)).hash, u.pass_hash);
+  // An invited person who never set a password used to get "Wrong email or password", which sent them in circles.
+  if (u && !u.pass_hash) throw new HttpError(inviteWaitingText(u), 403);
+  const ok =u && u.pass_hash && safeEqual((await hashPassword(String(password || ''), u.pass_salt)).hash, u.pass_hash);
   if (!ok) {
     await run(env, 'INSERT INTO login_fails (email, at) VALUES (?, ?)', e, now());
     throw new HttpError('Wrong email or password.', 401);
   }
   return u;
+}
+
+export function inviteWaitingText(u) {
+  const live = u.invite_hash && (u.invite_expires || 0) > now();
+  return live
+    ? 'Your login is not set up yet. Open the invite link you were sent and choose a password there, then log in here.'
+    : 'Your login is not set up yet and the invite link has expired. Ask an owner for a new invite link (Settings, Agents).';
 }
 
 export async function userCount(env) {

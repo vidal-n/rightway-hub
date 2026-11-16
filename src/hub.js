@@ -227,7 +227,14 @@ route('GET', '/api/team', async ({ env, user }) => { requireStaff(user); return 
 route('POST', '/api/team/invite', async ({ env, user, url, body }) => {
   requireAdmin(user);
   const b = await body();
-  const id = await createUser(env, { email: b.email, name: b.name, role: b.role === 'admin' ? 'admin' : 'team', job: b.job });
+  const role = b.role === 'admin' ? 'admin' : 'team';
+  // Inviting an address that is still waiting for its first password sends a fresh link instead of a dead end.
+  const waiting = await first(env, "SELECT id, role FROM users WHERE email = ? AND pass_hash IS NULL AND role IN ('admin','team')", cleanEmail(b.email));
+  if (waiting) {
+    await run(env, 'UPDATE users SET name = ?, role = ?, job = ? WHERE id = ?', String(b.name || '').slice(0, 120) || null, role, role === 'team' ? (JOB_CAPS[b.job] ? b.job : 'setter') : null, waiting.id);
+    return json({ inviteUrl: `${url.origin}/#/invite/${await issueInvite(env, waiting.id)}`, renewed: true });
+  }
+  const id = await createUser(env, { email: b.email, name: b.name, role, job: b.job });
   return json({ inviteUrl: `${url.origin}/#/invite/${await issueInvite(env, id)}` });
 });
 

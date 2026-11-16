@@ -185,6 +185,44 @@ test('team invites: only admins invite staff; staff session unlocks the scan too
   assert.equal(anon.status, 401);
 });
 
+test('an invited teammate who has not set a password is told so, and an owner can send a fresh link', async () => {
+  const env = makeEnv();
+  const owner = await setupOwner(env);
+  let r = await owner.call('POST', '/api/team/invite', { email: ' Kiron@RightwayGrowth.com ', name: 'Kiron', role: 'team', job: 'closer' });
+  const first = r.data.inviteUrl.split('/invite/')[1];
+  const k = client(env);
+  // Before the invite is used: a clear reason, not "Wrong email or password".
+  r = await k.call('POST', '/api/auth/login', { email: 'kiron@rightwaygrowth.com', password: 'anything at all' });
+  assert.equal(r.status, 403);
+  assert.match(r.data.error, /not set up yet.*invite link/i);
+  assert.doesNotMatch(r.data.error, /wrong email/i);
+  // Inviting the same address again sends a new link instead of "already has a login".
+  r = await owner.call('POST', '/api/team/invite', { email: 'kiron@rightwaygrowth.com', name: 'Kiron N', role: 'team', job: 'closer' });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.renewed, true);
+  const second = r.data.inviteUrl.split('/invite/')[1];
+  assert.notEqual(first, second);
+  r = await k.call('POST', '/api/auth/invite/accept', { token: first, password: 'kiron password 1' });
+  assert.equal(r.status, 410);
+  r = await k.call('POST', '/api/auth/invite/accept', { token: second, password: 'kiron password 1' });
+  assert.equal(r.status, 200);
+  const again = client(env);
+  r = await again.call('POST', '/api/auth/login', { email: 'KIRON@rightwaygrowth.com', password: 'kiron password 1' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.role, 'team');
+  // An active login cannot be re invited, and a wrong password is still the plain message.
+  r = await owner.call('POST', '/api/team/invite', { email: 'kiron@rightwaygrowth.com', name: 'Kiron', role: 'team' });
+  assert.equal(r.status, 409);
+  r = await client(env).call('POST', '/api/auth/login', { email: 'kiron@rightwaygrowth.com', password: 'nope nope nope' });
+  assert.equal(r.status, 401);
+  // An expired invite says so.
+  r = await owner.call('POST', '/api/team/invite', { email: 'new@rightwaygrowth.com', name: 'New', role: 'team' });
+  await env.DB.prepare('UPDATE users SET invite_expires = 1 WHERE email = ?').bind('new@rightwaygrowth.com').run();
+  r = await client(env).call('POST', '/api/auth/login', { email: 'new@rightwaygrowth.com', password: 'whatever whatever' });
+  assert.equal(r.status, 403);
+  assert.match(r.data.error, /expired/i);
+});
+
 test('hub reports a clear message when the database is not connected', async () => {
   resetSchemaCache();
   const res = await worker.fetch(new Request('https://hub.test/api/auth/state'), {});
