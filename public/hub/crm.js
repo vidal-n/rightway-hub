@@ -89,8 +89,6 @@ const OLD_GROUP = { tz_short: 'tz', state: 'state', city: 'city', industry: 'ind
 const PER_CHOICES = [10, 25, 50, 100];
 // How many leads a Load takes from a column (V: do not claim the whole column). 0 means all of them. The best scored leads come first.
 // Modeled on the list size cap in Close.com Smart View dialing and the batch size in Outreach and Orum dial lists.
-const TAKE_CHOICES = [0, 10, 25, 50, 75, 100, 150, 200, 300, 500, 1000];
-const takeSelect = (take) => `<label class="bb-sel" title="Load takes this many leads, best scored first. The rest stay in the pool for anyone else."><span>Leads to take</span><select id="btake" aria-label="Leads to take when loading">${TAKE_CHOICES.map((n) => `<option value="${n}"${(Number(take) || 0) === n ? ' selected' : ''}>${n ? n : 'All'}</option>`).join('')}</select></label>`;
 // One "Columns by" / "Group by" menu with every field we collect, grouped (public/js/boardcols.js).
 const modeOptions = (sel, none = '') => `${none ? `<option value=""${!sel ? ' selected' : ''}>${esc(none)}</option>` : ''}${modeGroups().map(([g, ms]) => `<optgroup label="${esc(g)}">${ms.map((m) => `<option value="${m.id}"${sel === m.id ? ' selected' : ''}>${esc(m.label)}</option>`).join('')}</optgroup>`).join('')}`;
 const PIPE_KEY = 'rw-pipe-v2';
@@ -162,9 +160,46 @@ export async function pipelinePage(app, user, openId, screen) {
 
   // The Pipeline's current filters as a dialer filter. A stage narrows it to one column.
   const dialFilter = (stage = '') => ({ tz: tzSel(p).filter((z) => z !== '?').join(','), grade: (p.f.grades || []).join(','), state: p.f.state || '', industry: p.f.industry || '', tag: p.f.tag || '', city: p.f.city || '', data: p.f.phoneType === 'mobile' ? 'mobile' : p.f.owner === 'yes' ? 'owner' : p.f.email ? 'email' : '', stage });
-  // The leads a Load really takes: everything, or the best N by score when a number is picked.
-  const takeFrom = (pool) => { const n = Number(p.take) || 0; return n && pool.length > n ? sortLeads(pool, '-score').slice(0, n) : pool; };
-  const takeNote = (taken, pool) => (taken.length < pool.length ? `best ${taken.length} of ${pool.length.toLocaleString()}: ` : '');
+  // The leads a Load really takes: best scored first, `take` of them (blank = all) starting at lead number `from`.
+  const takeFrom = (pool, take = Number(p.take) || 0, from = Math.max(1, Number(p.from) || 1)) => {
+    const sorted = sortLeads(pool, '-score');
+    const start = Math.min(from - 1, Math.max(0, sorted.length - 1));
+    return take ? sorted.slice(start, start + take) : sorted.slice(start);
+  };
+  const takeNote = (taken, pool, from = 1) => (taken.length < pool.length ? `best #${from} to #${from + taken.length - 1} of ${pool.length.toLocaleString()}: ` : '');
+  // Every Load asks first: how many leads to take, and from which lead number (best scored first), so nobody takes a whole column.
+  const askTake = (pool, label) => new Promise((resolve) => {
+    const total = pool.length;
+    let done = false;
+    const m = modal(`<div class="card-head"><h2>Load ${esc(label)}</h2><button class="btn btn-ghost btn-sm" data-close>Cancel</button></div>
+      <p class="small muted" style="margin:0 0 12px">${total.toLocaleString()} lead${total === 1 ? '' : 's'} can go on your list, best scored first. Take only what you will call today. The rest stay free for everyone else.</p>
+      <div class="row" style="gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <label class="field" style="margin:0;max-width:150px"><span>How many to take</span><input id="tk-n" type="number" inputmode="numeric" min="1" max="${total}" placeholder="All ${total.toLocaleString()}" value="${Number(p.take) > 0 ? Number(p.take) : ''}"></label>
+        <label class="field" style="margin:0;max-width:150px"><span>Starting at lead #</span><input id="tk-from" type="number" inputmode="numeric" min="1" max="${total}" value="${Math.min(Math.max(1, Number(p.from) || 1), total)}"></label>
+      </div>
+      <div class="row" style="gap:6px;margin:10px 0;flex-wrap:wrap">${[25, 50, 100, 200, 500].filter((n) => n < total).map((n) => `<button type="button" class="chip" data-tk="${n}">${n}</button>`).join('')}<button type="button" class="chip" data-tk="0">All</button></div>
+      <p class="small" id="tk-note" style="margin:0 0 12px"></p>
+      <div class="row" style="gap:8px"><button class="btn btn-mint" id="tk-go">${icon.phone}Load</button><button class="btn btn-ghost" data-close>Cancel</button></div>`, { onClose: () => { if (!done) resolve(null); } });
+    const nEl = $('#tk-n', m.el), fEl = $('#tk-from', m.el), note = $('#tk-note', m.el), go = $('#tk-go', m.el);
+    const read = () => { const n = Math.max(0, Math.floor(Number(nEl.value) || 0)); const f = Math.min(total, Math.max(1, Math.floor(Number(fEl.value) || 1))); return { n, f, taken: takeFrom(pool, n, f) }; };
+    const draw = () => {
+      const { n, f, taken } = read();
+      go.disabled = !taken.length;
+      go.innerHTML = `${icon.phone}Load ${taken.length.toLocaleString()} lead${taken.length === 1 ? '' : 's'}`;
+      note.textContent = taken.length ? `Loads lead #${f} to #${f + taken.length - 1} of ${total.toLocaleString()}. ${(total - taken.length).toLocaleString()} stay free.${n && f - 1 + n > total ? ` (Only ${taken.length} left from #${f}.)` : ''}` : 'Nothing there. Lower the starting number.';
+    };
+    $$('[data-tk]', m.el).forEach((b) => b.addEventListener('click', () => { nEl.value = Number(b.dataset.tk) || ''; draw(); }));
+    nEl.addEventListener('input', draw); fEl.addEventListener('input', draw);
+    [nEl, fEl].forEach((el) => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go.click(); } }));
+    go.addEventListener('click', () => {
+      const { n, f, taken } = read();
+      if (!taken.length) return;
+      p.take = n; p.from = f; savePipe(p);
+      done = true; m.close();
+      resolve({ taken, note: takeNote(taken, pool, f) });
+    });
+    draw(); nEl.focus();
+  });
   // "Load" on a column: that column's leads (minus anyone held on another list) become this person's call list.
   view.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-loadcol]'); if (!b) return;
@@ -174,10 +209,11 @@ export async function pipelinePage(app, user, openId, screen) {
     if (!col) return;
     const pool = col.leads.filter((l) => l.phone && !l.held);
     if (!pool.length) return toast(col.leads.length ? 'Every lead in that column is already on another list.' : 'Nothing in that column to call.', true);
-    const taken = takeFrom(pool);
+    const pick = await askTake(pool, col.label); if (!pick) return;
+    const { taken, note } = pick;
     if (claims.mine.total && !confirm(`Replace the ${claims.mine.total} leads on your list with these ${taken.length}? Your old list closes out and those leads go back to the pool.`)) return;
     busy(b, true);
-    const ok = await loadList(taken.map((l) => l.id), `${takeNote(taken, pool)}${col.label}${p.tz ? ` (${p.tz})` : ''}`.slice(0, 150), { skipped: col.leads.length - pool.length });
+    const ok = await loadList(taken.map((l) => l.id), `${note}${col.label}${p.tz ? ` (${p.tz})` : ''}`.slice(0, 150), { skipped: col.leads.length - pool.length });
     if (!ok) { busy(b, false); setupRef?.focus(); }
   });
   const closeOut = async (userId) => {
@@ -284,7 +320,6 @@ export async function pipelinePage(app, user, openId, screen) {
           ? `<label class="bb-sel"><span>Columns by</span><select id="bmode" aria-label="Columns by">${modeOptions(p.board || 'stage')}</select></label>`
           : `<label class="bb-sel"><span>Group by</span><select id="grp" aria-label="Group by">${modeOptions(p.group || '', 'No grouping')}</select></label><button type="button" class="btn btn-ghost btn-sm" id="lcols">Columns (${listCols().length})</button>`}
         <label class="bb-sel"><span>Show</span><select id="bshow" aria-label="Show">${SHOW.map(([k, n]) => `<option value="${k}"${(p.show || 'all') === k ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
-        ${takeSelect(p.take)}
         ${p.view === 'board' ? `<label class="bb-sel"><span>Cards a column</span><select id="bper" aria-label="Cards a column">${PER_CHOICES.map((n) => `<option${(p.per || 10) === n ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
           <label class="row small bb-chk" title="Leads nobody has called yet get their own first column. Turn off to see them inside the other columns."><input type="checkbox" id="bsplit"${(p.split ?? Boolean(modeOf(p.board || 'stage').sales)) ? ' checked' : ''}> Not contacted yet first</label>` : ''}
         <span class="spacer"></span><span class="small muted" id="bcount">${shown(rows).length.toLocaleString()} of ${all.length.toLocaleString()} leads in view</span><button type="button" class="linkbtn small" id="reloadall" title="Download every lead again instead of only what changed">Reload all</button>
@@ -323,16 +358,17 @@ export async function pipelinePage(app, user, openId, screen) {
       const free = leads.filter((l) => l.phone && !l.held && !l.dnc && !['dnc', 'won'].includes(l.stage));
       const m = modal(`<div class="card-head"><h2>${esc(label)}</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
         <p class="small muted" style="margin:0 0 10px">${leads.length.toLocaleString()} leads. ${free.length.toLocaleString()} can go on a call list${leads.length - free.length ? ` (the rest are on someone's list, won, Do not call or have no phone)` : ''}.</p>
-        <div class="row" style="gap:8px;margin-bottom:10px"><button class="btn btn-mint" id="pvload"${free.length ? '' : ' disabled'}>${icon.phone}Load ${takeFrom(free).length.toLocaleString()} as my call list</button>${takeSelect(p.take)}</div>
+        <div class="row" style="gap:8px;margin-bottom:10px"><button class="btn btn-mint" id="pvload"${free.length ? '' : ' disabled'}>${icon.phone}Load ${free.length.toLocaleString()} as my call list</button></div>
         <div class="fs-grid pv-list">${sortLeads(leads, '-score').slice(0, 30).map(card).join('')}</div>${leads.length > 30 ? `<p class="small muted">Showing the best 30 of ${leads.length.toLocaleString()}.</p>` : ''}`);
       $$('.lead-card', m.el).forEach((c) => c.addEventListener('click', () => { m.close(); leadModal(c.dataset.id, reload); }));
-      $('#btake', m.el)?.addEventListener('change', (ev) => { p.take = Number(ev.target.value) || 0; savePipe(p); const pb = $('#pvload', m.el); if (pb) pb.innerHTML = `${icon.phone}Load ${takeFrom(free).length.toLocaleString()} as my call list`; });
       $('#pvload', m.el)?.addEventListener('click', async (e) => {
-        const taken = takeFrom(free);
+        const btn = e.currentTarget;
+        const pick = await askTake(free, label); if (!pick) return;
+        const { taken, note } = pick;
         if (claims.mine.total && !confirm(`Replace the ${claims.mine.total} leads on your list with these ${taken.length}? Your old list closes out and those leads go back to the pool.`)) return;
-        busy(e.currentTarget, true);
-        const ok = await loadList(taken.map((l) => l.id), `${takeNote(taken, free)}${label}`.slice(0, 150));
-        if (!ok) { busy(e.currentTarget, false); m.close(); setupRef?.focus(); }
+        busy(btn, true);
+        const ok = await loadList(taken.map((l) => l.id), `${note}${label}`.slice(0, 150));
+        if (!ok) { busy(btn, false); m.close(); setupRef?.focus(); }
       });
     }));
   };
@@ -344,13 +380,16 @@ export async function pipelinePage(app, user, openId, screen) {
     const syncPicked = () => {
       const b = $('#loadpicked', view); if (!b) return;
       const seen = new Map(); cols.filter((c) => picked.has(c.key)).forEach((c) => c.leads.forEach((l) => { if (l.phone && !l.held) seen.set(l.id, l); }));
-      const pool = [...seen.values()], taken = takeFrom(pool);
-      b.hidden = !picked.size; b.textContent = `Load ${picked.size} picked column${picked.size === 1 ? '' : 's'} (${taken.length.toLocaleString()} leads${taken.length < pool.length ? ` of ${pool.length.toLocaleString()}` : ''})`;
+      const pool = [...seen.values()];
+      b.hidden = !picked.size; b.textContent = `Load ${picked.size} picked column${picked.size === 1 ? '' : 's'} (${pool.length.toLocaleString()} leads)`;
       b.onclick = async () => {
-        if (!taken.length) return toast('Nothing in those columns to call.', true);
+        if (!pool.length) return toast('Nothing in those columns to call.', true);
+        const names = cols.filter((c) => picked.has(c.key)).map((c) => c.label).join(' + ');
+        const pick = await askTake(pool, names); if (!pick) return;
+        const { taken, note } = pick;
         if (claims.mine.total && !confirm(`Replace the ${claims.mine.total} leads on your list with these ${taken.length}? Your old list closes out and those leads go back to the pool.`)) return;
         busy(b, true);
-        const ok = await loadList(taken.map((l) => l.id), `${takeNote(taken, pool)}${cols.filter((c) => picked.has(c.key)).map((c) => c.label).join(' + ')}`.slice(0, 150));
+        const ok = await loadList(taken.map((l) => l.id), `${note}${names}`.slice(0, 150));
         if (!ok) { busy(b, false); setupRef?.focus(); }
       };
     };
@@ -495,7 +534,6 @@ export async function pipelinePage(app, user, openId, screen) {
     $('#bmode', view)?.addEventListener('change', (e) => { p.board = e.target.value; p.split = null; picked.clear(); render(); });
     $('#grp', view)?.addEventListener('change', (e) => { p.group = e.target.value; render(); });
     $('#bshow', view)?.addEventListener('change', (e) => { p.show = e.target.value; picked.clear(); render(); });
-    $('#btake', view)?.addEventListener('change', (e) => { p.take = Number(e.target.value) || 0; render(); });
     $('#bper', view)?.addEventListener('change', (e) => { p.per = Number(e.target.value) || 10; render(); });
     $('#bsplit', view)?.addEventListener('change', (e) => { p.split = e.target.checked; picked.clear(); render(); });
     $('#lcols', view)?.addEventListener('click', pickColumns);
@@ -584,9 +622,8 @@ export async function pipelinePage(app, user, openId, screen) {
       $$('#fsl .lead-card', view).forEach((c) => c.addEventListener('click', () => leadModal(c.dataset.id, () => pipelinePage(app, user, null, screen))));
       $('#fsmore', view)?.addEventListener('click', () => { shown += 50; draw(); });
     };
-    view.innerHTML = `<div class="fullscreen-list"><div class="page-head"><div><a class="btn btn-ghost btn-sm" href="#/pipeline">&lsaquo; Back to the pipeline</a><h1 style="margin-top:10px">${esc(title)}</h1><p class="small muted" id="fscount"></p></div>${colKey && loadable(colKey) ? `<span class="row" style="gap:10px;align-items:flex-end">${takeSelect(p.take)}<button type="button" class="btn btn-mint" data-loadcol="${esc(colKey)}">${icon.phone}Load this column as my list</button></span>` : ''}</div>
+    view.innerHTML = `<div class="fullscreen-list"><div class="page-head"><div><a class="btn btn-ghost btn-sm" href="#/pipeline">&lsaquo; Back to the pipeline</a><h1 style="margin-top:10px">${esc(title)}</h1><p class="small muted" id="fscount"></p></div>${colKey && loadable(colKey) ? `<span class="row" style="gap:10px;align-items:flex-end"><button type="button" class="btn btn-mint" data-loadcol="${esc(colKey)}">${icon.phone}Load this column as my list</button></span>` : ''}</div>
       <label class="field"><input id="fsq" placeholder="Search this list" autocomplete="off"></label><div class="fs-grid" id="fsl"></div></div>`;
-    $('#btake', view)?.addEventListener('change', (e) => { p.take = Number(e.target.value) || 0; savePipe(p); });
     $('#fsq', view).addEventListener('input', (e) => { q = e.target.value; shown = 50; draw(); });
     draw();
   };
