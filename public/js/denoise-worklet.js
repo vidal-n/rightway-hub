@@ -218,4 +218,19 @@
     }
   }
   registerProcessor('rw-voice', RwVoice);
+
+  // Raw capture for Auto set up (public/hub/autofit.js): hands the page the mic samples untouched, 1024 at a time.
+  class RwCap extends AudioWorkletProcessor {
+    constructor() { super(); this.buf = new Float32Array(1024); this.n = 0; }
+    process(inputs) {
+      const inp = inputs[0] && inputs[0][0];
+      if (!inp) return true;
+      for (let i = 0; i < inp.length; i++) {
+        this.buf[this.n++] = inp[i];
+        if (this.n === this.buf.length) { this.port.postMessage(this.buf.slice()); this.n = 0; }
+      }
+      return true;
+    }
+  }
+  registerProcessor('rw-cap', RwCap);
 })();

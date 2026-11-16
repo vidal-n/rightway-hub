@@ -9,7 +9,7 @@ const SRC = fs.readFileSync(new URL('../public/js/denoise-worklet.js', import.me
 function load(sampleRate) {
   let Cls = null; const posted = [];
   class AudioWorkletProcessor { constructor() { this.port = { onmessage: null, postMessage: (m) => posted.push(m) }; } }
-  const ctx = { AudioWorkletProcessor, sampleRate, registerProcessor: (name, c) => { assert.equal(name, 'rw-voice'); Cls = c; }, Math, Float32Array, Float64Array, Uint32Array, Object };
+  const ctx = { AudioWorkletProcessor, sampleRate, registerProcessor: (name, c) => { assert.ok(name === 'rw-voice' || name === 'rw-cap'); if (name === 'rw-voice') Cls = c; }, Math, Float32Array, Float64Array, Uint32Array, Object };
   vm.runInNewContext(SRC, ctx);
   const node = new Cls();
   return { node, posted };

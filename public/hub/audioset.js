@@ -432,6 +432,27 @@ export function peakWatch(an) {
   return { sample() { an.getFloatTimeDomainData(buf); for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i]); if (v > max) max = v; } return max; }, get max() { return max; } };
 }
 
+// Raw mic capture for Auto set up: the worklet file's `rw-cap` processor hands over the samples untouched (a muted gain keeps the graph pulled).
+// mark() says how many samples have arrived, slice(a, b) returns that stretch, so the page can cut the recording into its quiet and voice parts.
+export async function captureStart(stream) {
+  warmAudio();
+  const ctx = getCtx(); if (!ctx || !ctx.audioWorklet) throw new Error('This browser has no audio engine for the set up.');
+  await ctx.resume().catch(() => {});
+  if (!withModule.has(ctx)) { await ctx.audioWorklet.addModule(WORKLET_URL); withModule.add(ctx); }
+  const src = ctx.createMediaStreamSource(stream);
+  const cap = new AudioWorkletNode(ctx, 'rw-cap', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1], channelCount: 1, channelCountMode: 'explicit' });
+  const chunks = []; let total = 0;
+  cap.port.onmessage = (e) => { chunks.push(e.data); total += e.data.length; };
+  const mute = ctx.createGain(); mute.gain.value = 0;
+  src.connect(cap); cap.connect(mute); mute.connect(ctx.destination);
+  return {
+    sr: ctx.sampleRate,
+    mark: () => total,
+    slice(a, b) { const out = new Float32Array(Math.max(0, Math.min(b, total) - a)); let pos = 0; for (const c of chunks) { const end = pos + c.length; if (end > a && pos < b) { const from = Math.max(a, pos) - pos, to = Math.min(b, end) - pos; out.set(c.subarray(from, to), Math.max(a, pos) - a); } pos = end; if (pos >= b) break; } return out; },
+    stop() { try { src.disconnect(); cap.disconnect(); mute.disconnect(); cap.port.onmessage = null; } catch { /* ignore */ } },
+  };
+}
+
 // ---------- the panel ----------
 const isLive = (device) => Boolean(device?.calls?.length || device?.activeCall);
 const ENGINE_NOTE = { ai: 'Running: the Hub\'s voice cleanup is on the audio thread.', basic: 'Backup filter: the voice engine could not run here, so a simple filter is used. Your voice still goes through.', none: 'Off: nothing extra is added to your mic.', failed: 'Off: the browser would not start the audio engine, so your plain mic is used. Your voice still goes through.' };
@@ -472,6 +493,7 @@ export function audioPanel({ device = null } = {}) {
       </section>
       <section class="aud-sec"><h3>Background noise</h3>
         ${isApple() ? '<p class="small aud-warn-soft">On iPad and iPhone, calls use the browser\'s own noise cleanup only. The Hub\'s extra cleanup and mic volume are switched off on calls, because they made iPadOS drop your headset. For strong cleanup: Control Center, Mic Mode, Voice Isolation.</p>' : ''}
+        <div class="aud-fit" id="afit"></div>
         <div class="seg aud-seg" id="anoise">${Object.entries(NOISE).map(([k, v]) => `<button type="button" data-n="${k}" class="${k === cfg.noise ? 'is-on' : ''}">${esc(v.label)}</button>`).join('')}</div>
         <p class="small muted" id="anote">${esc(NOISE[cfg.noise].note)}</p>
         <p class="small ${cl.level === 'ok' ? 'aud-ok' : 'aud-warn'}" id="aclean">${esc(cl.text)}</p>
@@ -546,6 +568,7 @@ export function audioPanel({ device = null } = {}) {
   };
   const wire = (cfg0) => {
     const root = $('#audbody', el);
+    import('./autofit.js').then((m) => m.mountAutoFit($('#afit', root), { live: isLive(device), repaint: paint })).catch(() => {});
     const refresh = () => { const c = loadAudio(); const pl = plan(c, audioEnv()); const g = pl.gate; $('#agate', root).value = g; $('#agtv', root).textContent = g || 'Off'; const ai = Math.round(pl.ai * 100); $('#aai', root).value = ai; $('#aaiv', root).textContent = ai ? `${ai}%` : 'Off'; paintClean(null); };
     $('#amic', root).addEventListener('change', async (e) => { await useMic(e.target.value); });
     $('#aout', root)?.addEventListener('change', async (e) => { set({ out: e.target.value }); try { if (device?.audio?.isOutputSelectionSupported) { await device.audio.speakerDevices.set(e.target.value ? [e.target.value] : []); await device.audio.ringtoneDevices.set(e.target.value ? [e.target.value] : []); } } catch { toast('Could not switch the speaker.', true); } });
