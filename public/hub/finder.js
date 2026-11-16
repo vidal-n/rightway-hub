@@ -21,6 +21,7 @@ const num = (n) => Number(n || 0).toLocaleString('en-US');
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
 const STATUS = { queued: ['Waiting', 'gray'], running: ['Searching', ''], done: ['Done', ''], failed: ['Needs attention', 'bad'], stopped: ['Paused', 'warn'], ended: ['Stopped', 'gray'] };
 const active = (j) => j.status === 'queued' || j.status === 'running';
+const working = (j) => active(j) || j.naming; // owner names are still being looked up
 // Stop ends a search for good (what was found stays). It shows while a search is running, waiting, paused or still adding to the Pipeline.
 const stoppable = (j) => active(j) || j.status === 'stopped' || j.adding;
 const resumable = (j) => !active(j) && j.status !== 'ended' && j.done < j.total;
@@ -132,6 +133,8 @@ async function homePage(view) {
           <label class="field" style="flex:0 0 200px"><span>Stop if it would cost more than</span><select id="fcap">${[[0, 'No limit'], [1, '$1'], [5, '$5'], [10, '$10'], [25, '$25'], [50, '$50']].map(([v, l]) => `<option value="${v}"${v === 10 ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
           <label class="field" style="flex:1 1 220px"><span>Tag for the leads</span><input id="ftag" placeholder="e.g. Miami roofers Nov"></label>
         </div>
+        <label class="row small" style="gap:8px;margin-top:12px"><input type="checkbox" id="fnames" checked> Names only: after the search, look up each owner's name (their website, then Florida Sunbiz) and only add businesses where a real name is found</label>
+        <p class="small muted" style="margin:2px 0 0 26px">Google Maps has no owner names, so this reads each website first. It is free but slow, about 5 businesses a minute while this page is open or in the background. Businesses with no name stay in Results marked "No owner name". Nothing is deleted.</p>
         <label class="row small" style="gap:8px;margin-top:12px"><input type="checkbox" id="fauto"> Add everything that matches the filters to the Pipeline when the search finishes</label>
         <details class="fold" style="margin-top:12px"><summary><span>Filters</span></summary><div class="fold-body"><p class="small muted" style="margin-top:0">Used by auto add, and as the starting point when you look at the results. You can change them there.</p>${filterHtml()}</div></details>
       </div></details>
@@ -345,7 +348,7 @@ async function homePage(view) {
       // Each job is its own search, run in turn, so no single search goes over the cap.
       const started = [];
       for (const job of pl.jobs) {
-        const r = await api('/api/finder/jobs', { method: 'POST', body: { source, keywords: job.keywords.join('\n'), areas: job.areas.join('\n'), size, views: custom || undefined, radius: $('#frad', view).value || 'auto', tag: $('#ftag', view).value, autoAdd: $('#fauto', view).checked, filters: readFilters($('#fnew', view)) } });
+        const r = await api('/api/finder/jobs', { method: 'POST', body: { source, keywords: job.keywords.join('\n'), areas: job.areas.join('\n'), size, views: custom || undefined, radius: $('#frad', view).value || 'auto', tag: $('#ftag', view).value, autoAdd: $('#fauto', view).checked, namesOnly: $('#fnames', view).checked, filters: readFilters($('#fnew', view)) } });
         started.push(r.job.id);
       }
       toast(started.length > 1 ? `${started.length} searches started` : 'Search started');
@@ -402,7 +405,7 @@ async function homePage(view) {
     return `<div class="card fj" data-id="${esc(j.id)}"><div class="card-head"><div><h3 style="margin:0"><a href="#/finder/${esc(j.id)}">${esc(j.name)}</a></h3>
         <p class="small muted" style="margin:2px 0 0">${esc(j.keywords.join(', '))} · ${esc(j.areas.map((a) => a.label).join(' · '))} · ${ago(j.createdAt)}</p></div><span class="badge ${tone}">${label}</span></div>
       <div class="progress"><span style="width:${j.pct}%"></span></div>
-      <div class="row small" style="gap:16px;margin-top:8px"><span><b>${num(j.found)}</b> found</span><span><b>${num(j.added)}</b> in the Pipeline</span><span>${num(j.done)} of ${num(j.total)} searches</span><span>${j.source === 'osm' ? 'Free (OpenStreetMap)' : money(j.cost)}</span></div>
+      <div class="row small" style="gap:16px;margin-top:8px"><span><b>${num(j.found)}</b> found</span><span><b>${num(j.added)}</b> in the Pipeline</span><span>${num(j.done)} of ${num(j.total)} searches</span><span>${j.source === 'osm' ? 'Free (OpenStreetMap)' : money(j.cost)}</span>${j.namesOnly ? `<span><b>${num(j.named)}</b> with an owner name${j.nameMiss ? `, ${num(j.nameMiss)} without` : ''}${j.naming ? ' · looking up names' : ''}</span>` : ''}</div>
       ${j.error ? `<p class="err-text small" style="margin:8px 0 0">${esc(j.error)}</p>` : ''}
       <div class="row" style="margin-top:10px"><a class="btn btn-primary btn-sm" href="#/finder/${esc(j.id)}">Open</a>
         ${active(j) ? '<button class="btn btn-ghost btn-sm" data-act="stop" title="Pause now, resume later">Pause</button>' : resumable(j) ? '<button class="btn btn-ghost btn-sm" data-act="resume">Resume</button>' : ''}
@@ -444,7 +447,7 @@ async function homePage(view) {
   let busyTick = false;
   const timer = setInterval(async () => {
     if (!document.body.contains(view)) { clearInterval(timer); return; }
-    if (busyTick || !jobs.some(active)) return;
+    if (busyTick || !jobs.some(working)) return;
     busyTick = true;
     try { const r = await api('/api/finder/tick', { method: 'POST' }); const by = new Map(r.jobs.map((j) => [j.id, j])); jobs = jobs.map((j) => by.get(j.id) || j); paint(); } catch { /* try again */ }
     busyTick = false;
@@ -491,16 +494,17 @@ async function jobPage(view, id) {
   mountFilters(view);
   setFilters(view, f);
 
-  const ST = { new: ['New', ''], added: ['Added', ''], inhub: ['In the Hub', 'gray'], dnc: ['Do not call', 'bad'], blocked: ['On the do not call list', 'bad'], nophone: ['No phone', 'gray'] };
+  const ST = { new: ['New', ''], added: ['Added', ''], inhub: ['In the Hub', 'gray'], dnc: ['Do not call', 'bad'], blocked: ['On the do not call list', 'bad'], nophone: ['No phone', 'gray'], naming: ['Finding the owner name', 'gray'], noname: ['No owner name', 'gray'], unchecked: ['Not checked (filters)', 'gray'] };
   const visible = () => rows.filter((r) => passes(r, f) && (!q || [r.title, r.city, r.phone, r.category, r.website].some((v) => String(v || '').toLowerCase().includes(q)))).sort(SORTS[sort][1]);
   const addable = (list) => list.filter((r) => r.st === 'new');
 
   const drawTop = () => {
     const [label, tone] = STATUS[job.status] || [job.status, 'gray'];
     $('#jt', view).innerHTML = `${esc(job.name)} <span class="badge ${tone}" style="vertical-align:middle;font-size:12px">${label}</span>`;
-    $('#jact', view).innerHTML = `${active(job) ? '<button class="btn btn-ghost" data-a="stop" title="Pause now, resume later">Pause</button>' : resumable(job) ? '<button class="btn btn-ghost" data-a="resume">Resume</button>' : ''}${stoppable(job) ? `<button class="btn btn-ghost" data-a="end" title="${job.adding ? 'Stop adding to the Pipeline' : 'End this search for good. Everything found so far stays here.'}">${job.adding ? 'Stop adding' : 'Stop'}</button>` : ''}<button class="btn btn-ghost" data-a="refresh">Refresh</button>`;
+    $('#jact', view).innerHTML = `${active(job) ? '<button class="btn btn-ghost" data-a="stop" title="Pause now, resume later">Pause</button>' : resumable(job) ? '<button class="btn btn-ghost" data-a="resume">Resume</button>' : ''}${stoppable(job) ? `<button class="btn btn-ghost" data-a="end" title="${job.adding ? 'Stop adding to the Pipeline' : 'End this search for good. Everything found so far stays here.'}">${job.adding ? 'Stop adding' : 'Stop'}</button>` : ''}<button class="btn btn-ghost" data-a="refresh">Refresh</button>${job.status === 'done' && !job.naming ? (!job.namesOnly ? `<button class="btn btn-ghost" data-a="names" title="Read each business's website and Florida Sunbiz for the owner's name. Free, about 5 a minute.">Find owner names</button>` : job.nameMiss ? '<button class="btn btn-ghost" data-a="names" title="Try the businesses with no owner name again">Try missing names again</button>' : '') : ''}`;
     $('#jprog', view).innerHTML = active(job) || job.status === 'failed' || job.status === 'stopped' || job.status === 'ended' ? `<div class="card" style="margin-bottom:14px"><div class="progress"><span style="width:${job.pct}%"></span></div>
       <p class="small" style="margin:8px 0 0">${num(job.done)} of ${num(job.total)} searches${job.source === 'osm' ? '' : ` · ${money(job.cost)} so far`}${job.errors ? ` · ${num(job.errors)} failed` : ''}${active(job) ? '. Keep this page open to finish faster. It also runs on its own in the background.' : ''}</p>${job.error ? `<p class="err-text small" style="margin:6px 0 0">${esc(job.error)}</p>` : ''}</div>` : (job.error ? `<p class="err-text">${esc(job.error)}</p>` : '');
+    if (job.naming) $('#jprog', view).innerHTML = `<div class="card" style="margin-bottom:14px"><p class="small" style="margin:0"><b>Looking up owner names.</b> ${num(job.named)} found so far, ${num(job.nameMiss)} without a name. Only businesses with a name are added. Keep this page open to go faster, it also runs on its own.</p></div>`;
   };
   const drawStats = () => {
     const now = visible();
@@ -561,6 +565,7 @@ async function jobPage(view, id) {
         if (!confirm(job.adding ? 'Stop adding these to the Pipeline? What was already added stays.' : `Stop this search for good? The ${num(job.found)} businesses found so far stay here, and nothing more is searched or bought.`)) return;
         job = (await api(`/api/finder/jobs/${id}/end`, { method: 'POST' })).job; drawTop(); drawBar(); toast('Stopped. What was found stays here.');
       }
+      else if (a === 'names') { job = (await api(`/api/finder/jobs/${id}/names`, { method: 'POST' })).job; drawTop(); drawBar(); await loadResults(); draw(); toast('Looking up owner names. Keep this page open to go faster, it also runs on its own.'); }
       else if (a === 'stop' || a === 'resume') { job = (await api(`/api/finder/jobs/${id}/${a}`, { method: 'POST' })).job; drawTop(); drawBar(); }
       else if (a === 'csv') {
         const list = visible();
@@ -600,13 +605,14 @@ async function jobPage(view, id) {
   let ticking = false, lastRows = 0;
   const timer = setInterval(async () => {
     if (!document.body.contains(view)) { clearInterval(timer); return; }
-    if (ticking || !active(job)) return;
+    if (ticking || !working(job)) return;
     ticking = true;
     try {
       const t = await api('/api/finder/tick', { method: 'POST' });
       const mine = t.jobs.find((j) => j.id === id);
       if (mine) { job = mine; drawTop(); }
-      if (!active(job)) { await loadResults(); draw(); }
+      if (!working(job)) { await loadResults(); draw(); }
+      else if (job.naming && !active(job)) { await loadResults(); draw(); }
       else if (job.found <= 1500 && job.found - lastRows >= 60) { lastRows = job.found; await loadResults(); draw(); }
       else if (job.found > rows.length) { total = job.found; drawStats(); $('#jnote', view).textContent = `${num(job.found - rows.length)} more found since this list loaded. Press Refresh to see them, or wait: the list reloads when the search finishes.`; }
     } catch { /* try again */ }

@@ -261,3 +261,66 @@ test('finder with DataForSEO: real shape, cost counted, empty balance stops the 
   const spend = await all(t.env, "SELECT kind, n FROM cost_daily WHERE vendor = 'leads'");
   assert.ok(spend.some((s) => s.kind === 'lead finder (maps)' && s.n >= 9), 'finder spend shows up under Lead data in the budget');
 });
+
+// Names only (V: "we only want leads with names"): the owner is looked up before anything is added, and a business with no name is never added or deleted.
+test('finder names only: lookup after the search, only named businesses are added, misses stay and can be retried', async () => {
+  const t = setup({ FINDER_NAME_STEP: '50' });
+  await owner(t);
+  let r = await t.call('POST', '/api/finder/jobs', { keywords: 'roofer', areas: 'Miami, FL', size: 3, namesOnly: true, autoAdd: true });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.job.namesOnly, true);
+  const id = r.data.job.id;
+  const done = await finish(t, id);
+  assert.equal(done.status, 'done');
+  assert.equal(done.adding, false, 'auto add waits for the names');
+  assert.equal(done.naming, true);
+  let list = (await t.call('GET', `/api/finder/jobs/${id}/results`)).data.results;
+  assert.ok(list.every((x) => x.st === 'naming'), 'nothing is addable before a name is found');
+  r = await t.call('POST', `/api/finder/jobs/${id}/add`, { keys: list.slice(0, 5).map((x) => x.key) });
+  assert.equal(r.data.imported, 0, 'a business with no name cannot be added by hand either');
+  // Every other business with a website says who the owner is; the rest of the sites do not.
+  const withSite = list.filter((x) => x.website);
+  assert.ok(withSite.length >= 4);
+  const named = new Set(withSite.filter((_, i) => i % 2 === 0).map((x) => new URL(x.website).host));
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = new URL(String(url));
+    const body = named.has(u.host) ? '<html><body><h1>Roofing</h1><p>Founded by Michael Rodriguez, owner</p></body></html>' : '<html><body><h1>Roofing</h1><p>Call us today</p></body></html>';
+    const res = new Response(body, { status: 200, headers: { 'content-type': 'text/html' } });
+    Object.defineProperty(res, 'url', { value: String(url) });
+    return res;
+  };
+  try {
+    let job;
+    for (let i = 0; i < 40; i++) { job = (await t.call('POST', '/api/finder/tick')).data.jobs.find((j) => j.id === id); if (job && !job.naming) break; }
+    assert.equal(job.naming, false, 'naming finishes');
+    assert.equal(job.named, withSite.filter((x) => named.has(new URL(x.website).host)).length, 'every business on a site that names the owner is named');
+    assert.ok(job.nameMiss >= 1);
+    list = (await t.call('GET', `/api/finder/jobs/${id}/results`)).data.results;
+    assert.equal(list.filter((x) => x.st === 'noname').length, job.nameMiss);
+    assert.ok(list.filter((x) => x.st === 'noname').every((x) => !x.owner));
+    // Auto add runs after the names: only the named ones are in the Pipeline, with the owner saved.
+    for (let i = 0; i < 6; i++) await t.call('POST', '/api/finder/tick');
+    const leads = (await t.call('GET', '/api/leads')).data.leads;
+    assert.ok(leads.length >= 1 && leads.length <= job.named, 'only named businesses were added (repeats of one website merge)');
+    assert.ok(leads.every((l) => l.owner_name === 'Michael Rodriguez'), 'the owner name is saved on the lead');
+    assert.ok(leads.every((l) => !l.website || named.has(new URL(l.website).host)), 'no business from a site without a name got in');
+    // A miss is kept (state noname), and "try again" puts it back in line.
+    const kept = (await t.call('GET', `/api/finder/jobs/${id}/results`)).data.results.filter((x) => x.st === 'noname');
+    assert.equal(kept.length, job.nameMiss);
+    r = await t.call('POST', `/api/finder/jobs/${id}/names`);
+    assert.equal(r.data.job.naming, true);
+    assert.equal(r.data.job.nameMiss, 0);
+  } finally { globalThis.fetch = real; }
+});
+
+test('finder names only: a job without it adds everything as before', async () => {
+  const t = setup();
+  await owner(t);
+  const r = await t.call('POST', '/api/finder/jobs', { keywords: 'roofer', areas: 'Miami, FL', size: 3, autoAdd: true });
+  assert.equal(r.data.job.namesOnly, false);
+  const done = await finish(t, r.data.job.id);
+  assert.equal(done.naming, false);
+  const leads = (await t.call('GET', '/api/leads')).data.leads;
+  assert.ok(leads.length > 0);
+});

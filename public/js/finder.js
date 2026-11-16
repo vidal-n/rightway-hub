@@ -143,6 +143,7 @@ export function leadRow(r, { industry } = {}) {
     business: r.title, phone: r.phone, website: r.website, address: r.address, city: r.city, state: r.state, zip: r.zip,
     category: r.category, industry: industry || industryFor(r), rating: r.rating, reviews: r.reviews, lat: r.lat, lng: r.lng,
     place_id: r.place_id, cid: r.cid, source: 'Lead finder', email: r.email || '',
+    ...(r.owner ? { owner_name: r.owner, contact_name: r.owner } : {}),
     // Business hours: Google's timetable (packed), or OpenStreetMap's opening_hours text. Saved in lead_hours by importLeads.
     hrs: r.hrs || packHours(parseAny(r.hours_text || '')), hrs_src: r.hrs ? 'google' : r.hours_text ? (r.source === 'osm' ? 'osm' : 'google') : '', biz_status: r.status || '',
   };

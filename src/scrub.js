@@ -154,6 +154,38 @@ export async function scrubLead(env, lead, opts = {}) {
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), lead.id);
   return { ...report, data_score: ds.score, data_grade: ds.grade, missing: ds.missing, saved: set };
 }
+// Owner name only (Lead finder "Names only", modeled on the required field rules of Close.com Smart Views and Apollo.io saved searches): the website's
+// own word first (home page, then up to two contact or about pages, stopping at the first real name), then Florida's Sunbiz officers. Free, no lead row
+// needed. Every candidate has to pass isPersonName, so a title can never come back as a name. A first.last email is NOT enough here (it may be staff).
+export async function ownerNameFor(env, rec, { fetchImpl = fetch } = {}) {
+  const person = (n) => { const v = cleanPerson(n); return v && isPersonName(v) ? v : ''; };
+  let why = rec.website ? '' : 'No website.';
+  if (rec.website) {
+    const home = await fetchPage(rec.website, fetchImpl);
+    if (!home.ok) why = home.error || 'The website did not open.';
+    else {
+      let c = extractContacts(home.html, home.url);
+      if (!person(c.owner)) {
+        for (const link of contactLinks(home.html, home.url).slice(0, 2)) {
+          const pg = await fetchPage(link, fetchImpl);
+          if (pg.ok) { c = mergeContacts(c, extractContacts(pg.html, pg.url)); if (person(c.owner)) break; }
+        }
+      }
+      const n = person(c.owner);
+      if (n) return { owner: n, via: 'website' };
+      why = 'The website does not name the owner.';
+    }
+  }
+  // Sunbiz lists officers for Florida companies (a blank state counts as Florida, the home market).
+  if (/^(fl|florida)?$/i.test(String(rec.state || '').trim()) && (await leadMode(env)).sunbiz) {
+    const reg = await registryLookup({ business: rec.title, city: rec.city, state: rec.state, zip: rec.zip, phone: rec.phone }, fetchImpl).catch(() => null);
+    const n = reg?.code === 'FL' && reg.found ? person(reg.owner) : '';
+    if (n) return { owner: n, via: 'state registry' };
+    why = `${why ? `${why} ` : ''}${reg?.found ? 'Sunbiz lists no officer name.' : reg?.error ? 'Sunbiz did not answer.' : 'Not found on Sunbiz.'}`;
+  }
+  return { owner: '', why: why.trim() || 'No owner name found.' };
+}
+
 const safeJson = (s) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
 
 // Background: a few queued leads per run.

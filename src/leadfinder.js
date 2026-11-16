@@ -14,6 +14,7 @@ import { osmSearch, isFreeMode } from './freedata.js';
 import { importLeads, existingKeys, existingKeysCached } from './crm.js';
 import { dupKeys } from '../public/js/leadintel.js';
 import { notify } from './notify.js';
+import { ownerNameFor } from './scrub.js';
 import {
   parseKeywords, parseAreas, MAX_KEYWORDS, MAX_AREAS, MAX_REQUESTS, MAX_OSM_REQUESTS, MAX_VIEWS, OSM_SIZES, SIZES, customSize, estimate, taskList, keyOf, cleanFilters, passes, leadRow, radiusFromBox,
 } from '../public/js/finder.js';
@@ -25,6 +26,7 @@ const PARALLEL = 6;
 // Every request works on a small slice, so a big search never runs past the Worker's time limit (Cloudflare answers 503 then).
 const PAGE = 400;        // results per page when the list is opened
 const ADD_MAX = 90;      // businesses per Add request
+const NAME_STEP = 5;     // owner names looked up per run (each one reads up to 3 pages plus Sunbiz; the Worker allows about 50 outside requests)
 const AUTO_STEP = 300;   // rows looked at per run while auto add works through a finished search
 const parse = (s, d) => { try { return s ? JSON.parse(s) : d; } catch { return d; } };
 const text = (v, max) => String(v ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -36,7 +38,8 @@ export function jobView(j) {
   return {
     id: j.id, name: j.name, keywords: parse(j.keywords, []), areas: areas.map((a) => ({ label: a.label, radius: a.radius, size: a.size, views: a.views ?? null, lat: a.lat, lng: a.lng })),
     status: j.status, total: j.total, done: j.done, errors: j.errors, found: j.found, added: j.added, cost: Math.round((j.cost || 0) * 1000) / 1000, error: j.error || null,
-    source: j.source === 'osm' ? 'osm' : 'google', demo: Boolean(j.demo), autoAdd: Boolean(j.auto_add), adding: j.auto_add === 1 && j.status === 'done', tag: j.tag || '', filters: cleanFilters(parse(j.filters, {})), createdAt: j.created_at, finishedAt: j.finished_at || null,
+    source: j.source === 'osm' ? 'osm' : 'google', demo: Boolean(j.demo), autoAdd: Boolean(j.auto_add), adding: j.auto_add === 1 && j.status === 'done' && j.name_state !== 1,
+    namesOnly: (j.name_state || 0) > 0, naming: j.name_state === 1 && j.status === 'done', named: j.named || 0, nameMiss: j.name_miss || 0, tag: j.tag || '', filters: cleanFilters(parse(j.filters, {})), createdAt: j.created_at, finishedAt: j.finished_at || null,
     pct: j.total ? Math.min(100, Math.round((j.done / j.total) * 100)) : 0,
   };
 }
@@ -119,9 +122,9 @@ route('POST', '/api/finder/jobs', async ({ env, user, body }) => {
   const name = text(b.name, 80) || `${keywords[0]} in ${areas[0].label}${areas.length > 1 ? ` and ${areas.length - 1} more` : ''}`;
   const id = newId('fj_');
   const total = taskList(areas, keywords).length;
-  await run(env, `INSERT INTO finder_jobs (id, name, keywords, areas, filters, auto_add, tag, status, total, demo, created_by, created_at, updated_at, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)`, id, name, JSON.stringify(keywords), JSON.stringify(areas), JSON.stringify(cleanFilters(b.filters)), b.autoAdd ? 1 : 0,
-  text(b.tag, 60) || name.slice(0, 60), total, source === 'google' && isDemo(env) ? 1 : 0, user.id, now(), now(), source);
+  await run(env, `INSERT INTO finder_jobs (id, name, keywords, areas, filters, auto_add, tag, status, total, demo, created_by, created_at, updated_at, source, name_state)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?)`, id, name, JSON.stringify(keywords), JSON.stringify(areas), JSON.stringify(cleanFilters(b.filters)), b.autoAdd ? 1 : 0,
+  text(b.tag, 60) || name.slice(0, 60), total, source === 'google' && isDemo(env) ? 1 : 0, user.id, now(), now(), source, b.namesOnly ? 1 : 0);
   return json({ job: jobView(await first(env, 'SELECT * FROM finder_jobs WHERE id = ?', id)) });
 });
 
@@ -199,6 +202,7 @@ route('GET', '/api/finder/jobs/:id/results', async ({ env, user, params, url }) 
     const rec = parse(r.data, {});
     let st = r.state, leadId = r.lead_id || null;
     if (st === 'new') { const hit = dupKeys(dupShape(rec)).find((k) => keys.has(k)); if (hit) { const k = keys.get(hit); st = k?.dnc ? 'dnc' : k?.supp ? 'blocked' : 'inhub'; leadId = k?.id || null; } }
+    if (st === 'new' && job.name_state && !rec.owner) st = job.name_state === 1 ? 'naming' : 'unchecked'; // names only: not added until an owner name is found
     return { key: r.rkey, ...rec, st, lead_id: leadId };
   });
   // What the background scrub found for the ones already in the Hub: emails, owner, phone type, socials.
@@ -209,8 +213,9 @@ route('GET', '/api/finder/jobs/:id/results', async ({ env, user, params, url }) 
     for (const l of await all(env, `SELECT id, email, email_status, owner_name, phone_type, data_score, socials, stage FROM leads WHERE id IN (${part.map(() => '?').join(',')})`, ...part)) byId.set(l.id, l);
   }
   for (const r of results) {
+    if (r.owner) r.owner_name = r.owner;
     const l = byId.get(r.lead_id);
-    if (l) Object.assign(r, { email: l.email || '', email_status: l.email_status || '', owner_name: l.owner_name || '', phone_type: l.phone_type || '', data_score: l.data_score ?? null, socials: parse(l.socials, null), lead_stage: l.stage });
+    if (l) Object.assign(r, { email: l.email || '', email_status: l.email_status || '', owner_name: l.owner_name || r.owner || '', phone_type: l.phone_type || '', data_score: l.data_score ?? null, socials: parse(l.socials, null), lead_stage: l.stage });
   }
   const next = more ? rows[rows.length - 1].rkey : null;
   return json({ job: jobView(job), results, total, next, capped: false });
@@ -241,12 +246,13 @@ route('POST', '/api/finder/jobs/:id/add', async ({ env, user, params, body }) =>
     const keys = [...new Set(b.keys.map(String))];
     if (keys.length > ADD_MAX) throw new HttpError(`Send up to ${ADD_MAX} at a time.`);
     rows = keys.length ? await all(env, `SELECT rkey, data FROM finder_results WHERE job_id = ? AND state = 'new' AND rkey IN (${keys.map(() => '?').join(',')})`, job.id, ...keys) : [];
+    if (job.name_state) rows = rows.filter((r) => parse(r.data, {}).owner); // names only: never a business without an owner name
     if (!rows.length) return json({ imported: 0, skipped: 0, skippedBy: {}, scrubbed: 0, results: {}, job: jobView(job) });
   } else {
     const f = cleanFilters(b.filters ?? parse(job.filters, {}));
     const page = await all(env, 'SELECT rkey, data, state FROM finder_results WHERE job_id = ? AND rkey > ? ORDER BY rkey LIMIT ?', job.id, String(b.after || ''), AUTO_STEP + 1);
     if (page.length > AUTO_STEP) { page.pop(); next = page[page.length - 1].rkey; }
-    rows = page.filter((r) => r.state === 'new' && passes(parse(r.data, {}), f));
+    rows = page.filter((r) => r.state === 'new' && passes(parse(r.data, {}), f) && (!job.name_state || parse(r.data, {}).owner));
     if (!rows.length && !next) throw new HttpError('Nothing to add. These are already in the Hub, or none match the filters.');
   }
   const out = { imported: 0, skipped: 0, scrubbed: 0, skippedBy: { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0, suppressed: 0 }, results: {} };
@@ -267,7 +273,7 @@ async function autoAddStep(env, job) {
   const page = await all(env, 'SELECT rkey, data, state FROM finder_results WHERE job_id = ? AND rkey > ? ORDER BY rkey LIMIT ?', job.id, job.auto_cursor || '', AUTO_STEP + 1);
   const last = page.length <= AUTO_STEP;
   if (!last) page.pop();
-  const want = page.filter((r) => r.state === 'new' && passes(parse(r.data, {}), f));
+  const want = page.filter((r) => r.state === 'new' && passes(parse(r.data, {}), f) && (!job.name_state || parse(r.data, {}).owner));
   let added = 0;
   const keys = want.length ? await existingKeys(env) : null; // once per step, shared by every chunk of 25
   for (let i = 0; i < want.length; i += 25) added += (await addToPipeline(env, job, want.slice(i, i + 25), job.created_by, { keys })).imported;
@@ -275,7 +281,7 @@ async function autoAddStep(env, job) {
   return { added, last };
 }
 async function autoAddTick(env, at) {
-  const job = await first(env, "SELECT * FROM finder_jobs WHERE status = 'done' AND auto_add = 1 AND (locked_until IS NULL OR locked_until < ?) ORDER BY finished_at LIMIT 1", at);
+  const job = await first(env, "SELECT * FROM finder_jobs WHERE status = 'done' AND auto_add = 1 AND COALESCE(name_state, 0) <> 1 AND (locked_until IS NULL OR locked_until < ?) ORDER BY finished_at LIMIT 1", at);
   if (!job) return;
   const claim = await run(env, 'UPDATE finder_jobs SET locked_until = ? WHERE id = ? AND (locked_until IS NULL OR locked_until < ?)', at + LOCK_MS, job.id, at);
   if ((claim?.meta?.changes ?? 1) < 1) return;
@@ -288,10 +294,70 @@ async function autoAddTick(env, at) {
   } finally { await run(env, 'UPDATE finder_jobs SET locked_until = NULL WHERE id = ?', job.id); }
 }
 
+// ---------- owner names ("Names only") ----------
+// After a search finishes, each business that passes the filters gets its owner looked up (website, then Sunbiz) NAME_STEP at a time.
+// A found name is saved on the result (`owner`), a miss becomes state 'noname' (kept, retryable, never added, never deleted). Auto add waits for this.
+export async function nameStep(env, job, { fetchImpl = fetch, step = Number(env.FINDER_NAME_STEP) || NAME_STEP } = {}) {
+  const f = cleanFilters(parse(job.filters, {}));
+  let cursor = job.name_cursor || '';
+  const todo = [];
+  let end = true;
+  const page = await all(env, "SELECT rkey, data FROM finder_results WHERE job_id = ? AND state = 'new' AND rkey > ? ORDER BY rkey LIMIT 200", job.id, cursor);
+  for (const r of page) {
+    const rec = parse(r.data, {});
+    cursor = r.rkey;
+    if (rec.owner || !passes(rec, f)) continue;
+    todo.push({ rkey: r.rkey, rec });
+    if (todo.length >= step) { end = false; break; }
+  }
+  if (end && page.length === 200) end = false; // more rows may wait after this page
+  const out = await Promise.all(todo.map(async (t) => {
+    try { return await ownerNameFor(env, t.rec, { fetchImpl }); } catch (e) { return { owner: '', why: 'The lookup failed. Try again later.' }; }
+  }));
+  const ops = [];
+  let hit = 0, miss = 0;
+  out.forEach((o, i) => {
+    const { rkey, rec } = todo[i];
+    if (o.owner) { hit++; ops.push(['UPDATE finder_results SET data = ? WHERE job_id = ? AND rkey = ?', JSON.stringify({ ...rec, owner: o.owner, owner_via: o.via }), job.id, rkey]); }
+    else { miss++; ops.push(["UPDATE finder_results SET state = 'noname', data = ? WHERE job_id = ? AND rkey = ?", JSON.stringify({ ...rec, name_why: o.why || '' }), job.id, rkey]); }
+  });
+  if (ops.length) await batch(env, ops);
+  await run(env, 'UPDATE finder_jobs SET name_cursor = ?, name_state = ?, named = COALESCE(named, 0) + ?, name_miss = COALESCE(name_miss, 0) + ?, updated_at = ? WHERE id = ?', cursor, end ? 2 : 1, hit, miss, now(), job.id);
+  return { looked: todo.length, hit, miss, last: end };
+}
+async function nameTick(env, at) {
+  const job = await first(env, "SELECT * FROM finder_jobs WHERE status = 'done' AND name_state = 1 AND (locked_until IS NULL OR locked_until < ?) ORDER BY finished_at LIMIT 1", at);
+  if (!job) return 0;
+  const claim = await run(env, 'UPDATE finder_jobs SET locked_until = ? WHERE id = ? AND (locked_until IS NULL OR locked_until < ?)', at + LOCK_MS, job.id, at);
+  if ((claim?.meta?.changes ?? 1) < 1) return 0;
+  try {
+    const r = await nameStep(env, job);
+    if (r.last) {
+      const done = await jobOr404(env, job.id);
+      await notify(env, { to: job.created_by ? [job.created_by] : 'admins', kind: 'lead', title: `Owner names found: ${(done.named || 0).toLocaleString('en-US')} of ${((done.named || 0) + (done.name_miss || 0)).toLocaleString('en-US')} businesses`, body: `${job.name}${job.auto_add === 1 ? '. Adding the named ones to the Pipeline now.' : '. Review them and add the ones you want.'}`, url: `/#/finder/${job.id}`, slack: false }).catch(() => {});
+    }
+    return r.looked;
+  } finally { await run(env, 'UPDATE finder_jobs SET locked_until = NULL WHERE id = ?', job.id); }
+}
+
+// Start (or start over) the owner name lookup on a finished search. Misses from an earlier try go back in line.
+route('POST', '/api/finder/jobs/:id/names', async ({ env, user, params }) => {
+  requireAdmin(user);
+  const job = await jobOr404(env, params.id);
+  if (job.status !== 'done') throw new HttpError('Wait until the search has finished, then look up the names.');
+  await run(env, "UPDATE finder_results SET state = 'new' WHERE job_id = ? AND state = 'noname'", job.id);
+  await run(env, "UPDATE finder_jobs SET name_state = 1, name_cursor = '', name_miss = 0, named = (SELECT COUNT(*) FROM finder_results WHERE job_id = ? AND data LIKE '%\"owner\":%'), updated_at = ? WHERE id = ?", job.id, now(), job.id);
+  return json({ job: jobView(await jobOr404(env, job.id)) });
+});
+
 // Work on the oldest waiting search for up to `budget` map views. Returns how many were run (the cron uses it to share the outside request budget).
 export async function finderTick(env, budget = PER_TICK, { fetchImpl, at = now() } = {}) {
   const job = await first(env, "SELECT * FROM finder_jobs WHERE status IN ('queued', 'running') AND (locked_until IS NULL OR locked_until < ?) ORDER BY created_at LIMIT 1", at);
-  if (!job) { await autoAddTick(env, at).catch((e) => console.error('finder auto add', e)); return 0; }
+  if (!job) {
+    const looked = await nameTick(env, at).catch((e) => { console.error('finder names', e); return 0; });
+    await autoAddTick(env, at).catch((e) => console.error('finder auto add', e));
+    return looked * 4; // each lookup is up to 4 outside requests
+  }
   const claim = await run(env, "UPDATE finder_jobs SET locked_until = ?, status = 'running' WHERE id = ? AND (locked_until IS NULL OR locked_until < ?)", at + LOCK_MS, job.id, at);
   if ((claim?.meta?.changes ?? 1) < 1) return 0;
   const osm = job.source === 'osm';
@@ -328,8 +394,8 @@ export async function finderTick(env, budget = PER_TICK, { fetchImpl, at = now()
     i, errors, found, cost, status, error || null, now(), finished || fatal ? now() : null, job.id);
   if (status === 'done') {
     // The first step of auto add runs now; a big search carries on in the next runs.
-    const step = job.auto_add === 1 ? await autoAddStep(env, { ...job, auto_cursor: '' }).catch((e) => { console.error('finder auto add', e); return { added: 0, last: true }; }) : null;
-    const tail = step ? `. ${step.added.toLocaleString('en-US')} added to the Pipeline${step.last ? '.' : ' so far, the rest are being added now.'}` : '. Review them and add the ones you want.';
+    const step = job.auto_add === 1 && !job.name_state ? await autoAddStep(env, { ...job, auto_cursor: '' }).catch((e) => { console.error('finder auto add', e); return { added: 0, last: true }; }) : null;
+    const tail = job.name_state ? '. Looking up owner names now, only businesses with a name get added.' : step ? `. ${step.added.toLocaleString('en-US')} added to the Pipeline${step.last ? '.' : ' so far, the rest are being added now.'}` : '. Review them and add the ones you want.';
     await notify(env, { to: job.created_by ? [job.created_by] : 'admins', kind: 'lead', title: `Lead search finished: ${found.toLocaleString('en-US')} businesses`, body: `${job.name}${tail}`, url: `/#/finder/${job.id}`, slack: false }).catch(() => {});
   }
   return used;

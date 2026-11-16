@@ -17,7 +17,7 @@ import { dtf } from '../public/js/fmtcache.js';
 import { autoChatFor } from './chat.js';
 import { can } from '../public/js/jobs.js';
 import { cleanNewLead, queueScrub } from './scrub.js';
-import { contactFromImport } from '../public/js/names.js';
+import { contactFromImport, isPersonName } from '../public/js/names.js';
 import { packHours, parseAny } from '../public/js/hours.js';
 import { resolveZone, canCallNow, callBlock as hoursBlock, stateRuleText, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
 import { suppress, suppressMany, suppressedMap, noteHits, noteOutcome, entryFor, blockedKeys, leadBlocked, blockedFor, blockedPhone, blockText } from './suppress.js';
@@ -380,6 +380,8 @@ export async function importLeads(env, user, rows, { source, tags, merge = true,
     try { d = cleanLead({ ...r, source: r.source || source || 'import' }); } catch { skipped.invalid++; out[n] = { skipped: 'invalid' }; continue; }
     // CSV name columns often hold a job title or a business label (Outscraper): keep a contact only when it reads as a person.
     if ('contact_name' in d) d.contact_name = contactFromImport(d.contact_name, d.business) || null;
+    // The Lead finder's "Names only" mode looks the owner up before adding: a real person name found there is saved as the owner (and the contact) now.
+    if (r.owner_name && isPersonName(r.owner_name)) { d.owner_name = text(r.owner_name, 120); if (!d.contact_name) d.contact_name = d.owner_name; }
     if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) d.email = null;
     if (!d.phone_digits && !d.email) { skipped.invalid++; out[n] = { skipped: 'invalid' }; continue; }
     const ks = dupKeys(d);
