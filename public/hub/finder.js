@@ -19,8 +19,11 @@ const mineSave = (v) => { try { localStorage.setItem(MINE_KEY, JSON.stringify(v)
 
 const num = (n) => Number(n || 0).toLocaleString('en-US');
 const money = (n) => `$${Number(n || 0).toFixed(2)}`;
-const STATUS = { queued: ['Waiting', 'gray'], running: ['Searching', ''], done: ['Done', ''], failed: ['Needs attention', 'bad'], stopped: ['Paused', 'warn'] };
+const STATUS = { queued: ['Waiting', 'gray'], running: ['Searching', ''], done: ['Done', ''], failed: ['Needs attention', 'bad'], stopped: ['Paused', 'warn'], ended: ['Stopped', 'gray'] };
 const active = (j) => j.status === 'queued' || j.status === 'running';
+// Stop ends a search for good (what was found stays). It shows while a search is running, waiting, paused or still adding to the Pipeline.
+const stoppable = (j) => active(j) || j.status === 'stopped' || j.adding;
+const resumable = (j) => !active(j) && j.status !== 'ended' && j.done < j.total;
 const ago = (t) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
 
 // The filter boxes, used when starting a search and when looking through the results.
@@ -139,7 +142,7 @@ async function homePage(view) {
       <p class="err-text small" id="ferr" hidden></p>
     </div>
     ${d.spendPaused ? `<p class="bad-text" style="margin:18px 0 0"><b>Google Maps searches are paused for today.</b> Spending reached the $${esc(String(d.spendPaused.cap))} daily limit. Raise it in Settings, Spending and background jobs, or wait until tomorrow. OpenStreetMap searches are not affected.</p>` : ''}
-    <h3 style="margin:22px 0 10px">Searches</h3><div id="fjobs"></div>
+    <div class="row" style="margin:22px 0 10px;justify-content:space-between;gap:10px"><h3 style="margin:0">Searches</h3><button type="button" class="btn btn-ghost btn-sm" id="fstopall" hidden title="End every search that is waiting, running or paused, and stop adding to the Pipeline on its own. Results already found stay.">Stop all searches</button></div><div id="fjobs"></div>
 `;
   mountFilters($('#fnew', view));
   setFilters($('#fnew', view), {});
@@ -402,10 +405,12 @@ async function homePage(view) {
       <div class="row small" style="gap:16px;margin-top:8px"><span><b>${num(j.found)}</b> found</span><span><b>${num(j.added)}</b> in the Pipeline</span><span>${num(j.done)} of ${num(j.total)} searches</span><span>${j.source === 'osm' ? 'Free (OpenStreetMap)' : money(j.cost)}</span></div>
       ${j.error ? `<p class="err-text small" style="margin:8px 0 0">${esc(j.error)}</p>` : ''}
       <div class="row" style="margin-top:10px"><a class="btn btn-primary btn-sm" href="#/finder/${esc(j.id)}">Open</a>
-        ${active(j) ? '<button class="btn btn-ghost btn-sm" data-act="stop">Pause</button>' : j.done < j.total ? '<button class="btn btn-ghost btn-sm" data-act="resume">Resume</button>' : ''}
+        ${active(j) ? '<button class="btn btn-ghost btn-sm" data-act="stop" title="Pause now, resume later">Pause</button>' : resumable(j) ? '<button class="btn btn-ghost btn-sm" data-act="resume">Resume</button>' : ''}
+        ${stoppable(j) ? `<button class="btn btn-ghost btn-sm" data-act="end" title="${j.adding ? 'Stop adding to the Pipeline. What was already added stays.' : 'End this search for good. Everything found so far stays in Results.'}">${j.adding ? 'Stop adding' : 'Stop'}</button>` : ''}
         <button class="btn btn-ghost btn-sm" data-act="del">Delete</button></div></div>`;
   };
   const paint = () => {
+    const sa = $('#fstopall', view); if (sa) { const n = jobs.filter(stoppable).length; sa.hidden = !n; sa.textContent = n > 1 ? `Stop all ${n} searches` : 'Stop the search'; }
     $('#fjobs', view).innerHTML = jobs.length ? `<div class="fj-grid">${jobs.map(card).join('')}</div>` : '<p class="muted">No searches yet. Your first one will show up here.</p>';
   };
   paint();
@@ -416,9 +421,25 @@ async function homePage(view) {
       if (b.dataset.act === 'del') {
         if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Sure? Click again'; return; }
         await api(`/api/finder/jobs/${id}`, { method: 'DELETE' }); jobs = jobs.filter((j) => j.id !== id);
+      } else if (b.dataset.act === 'end') {
+        const j = jobs.find((x) => x.id === id);
+        if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = 'Sure? Click again'; setTimeout(() => { if (document.body.contains(b)) { delete b.dataset.sure; b.textContent = j?.adding ? 'Stop adding' : 'Stop'; } }, 4000); return; }
+        const r = await api(`/api/finder/jobs/${id}/end`, { method: 'POST' }); jobs = jobs.map((x) => (x.id === id ? r.job : x));
+        toast(`Stopped. ${num(r.job.found)} businesses found so far stay in Results.`);
       } else { const r = await api(`/api/finder/jobs/${id}/${b.dataset.act}`, { method: 'POST' }); jobs = jobs.map((j) => (j.id === id ? r.job : j)); }
       paint();
     } catch (x) { toast(x.message, true); }
+  });
+  $('#fstopall', view).addEventListener('click', async (e) => {
+    const b = e.currentTarget, n = jobs.filter(stoppable).length;
+    if (!confirm(`Stop ${n === 1 ? 'the search' : `all ${n} searches`}? Anything already found stays in Results, and nothing more is searched, bought or added to the Pipeline. You can start new searches any time.`)) return;
+    busy(b, true);
+    try {
+      const r = await api('/api/finder/stop-all', { method: 'POST' });
+      const fresh = await api('/api/finder'); jobs = fresh.jobs; paint();
+      toast(r.stopped || r.addingStopped ? `Stopped ${r.stopped} search${r.stopped === 1 ? '' : 'es'}${r.addingStopped ? ` and ${r.addingStopped} automatic add${r.addingStopped === 1 ? '' : 's'}` : ''}.` : 'Nothing was running.');
+    } catch (x) { toast(x.message, true); }
+    busy(b, false);
   });
   let busyTick = false;
   const timer = setInterval(async () => {
@@ -477,8 +498,8 @@ async function jobPage(view, id) {
   const drawTop = () => {
     const [label, tone] = STATUS[job.status] || [job.status, 'gray'];
     $('#jt', view).innerHTML = `${esc(job.name)} <span class="badge ${tone}" style="vertical-align:middle;font-size:12px">${label}</span>`;
-    $('#jact', view).innerHTML = `${active(job) ? '<button class="btn btn-ghost" data-a="stop">Pause</button>' : job.done < job.total ? '<button class="btn btn-ghost" data-a="resume">Resume</button>' : ''}<button class="btn btn-ghost" data-a="refresh">Refresh</button>`;
-    $('#jprog', view).innerHTML = active(job) || job.status === 'failed' || job.status === 'stopped' ? `<div class="card" style="margin-bottom:14px"><div class="progress"><span style="width:${job.pct}%"></span></div>
+    $('#jact', view).innerHTML = `${active(job) ? '<button class="btn btn-ghost" data-a="stop" title="Pause now, resume later">Pause</button>' : resumable(job) ? '<button class="btn btn-ghost" data-a="resume">Resume</button>' : ''}${stoppable(job) ? `<button class="btn btn-ghost" data-a="end" title="${job.adding ? 'Stop adding to the Pipeline' : 'End this search for good. Everything found so far stays here.'}">${job.adding ? 'Stop adding' : 'Stop'}</button>` : ''}<button class="btn btn-ghost" data-a="refresh">Refresh</button>`;
+    $('#jprog', view).innerHTML = active(job) || job.status === 'failed' || job.status === 'stopped' || job.status === 'ended' ? `<div class="card" style="margin-bottom:14px"><div class="progress"><span style="width:${job.pct}%"></span></div>
       <p class="small" style="margin:8px 0 0">${num(job.done)} of ${num(job.total)} searches${job.source === 'osm' ? '' : ` · ${money(job.cost)} so far`}${job.errors ? ` · ${num(job.errors)} failed` : ''}${active(job) ? '. Keep this page open to finish faster. It also runs on its own in the background.' : ''}</p>${job.error ? `<p class="err-text small" style="margin:6px 0 0">${esc(job.error)}</p>` : ''}</div>` : (job.error ? `<p class="err-text">${esc(job.error)}</p>` : '');
   };
   const drawStats = () => {
@@ -536,6 +557,10 @@ async function jobPage(view, id) {
     try {
       if (a === 'clear') { picked.clear(); drawRows(); drawBar(); }
       else if (a === 'refresh') { busy(b, true, 'Loading'); await loadResults((n, t) => busy(b, true, `Loading ${num(n)} of ${num(t)}`)); draw(); }
+      else if (a === 'end') {
+        if (!confirm(job.adding ? 'Stop adding these to the Pipeline? What was already added stays.' : `Stop this search for good? The ${num(job.found)} businesses found so far stay here, and nothing more is searched or bought.`)) return;
+        job = (await api(`/api/finder/jobs/${id}/end`, { method: 'POST' })).job; drawTop(); drawBar(); toast('Stopped. What was found stays here.');
+      }
       else if (a === 'stop' || a === 'resume') { job = (await api(`/api/finder/jobs/${id}/${a}`, { method: 'POST' })).job; drawTop(); drawBar(); }
       else if (a === 'csv') {
         const list = visible();

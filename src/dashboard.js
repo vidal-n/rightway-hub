@@ -25,7 +25,8 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
     first(env, `SELECT SUM(type = 'call' AND COALESCE(outcome, '') != 'glitch') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
       FROM activities WHERE type IN ('call','meeting') AND at >= ?`, week),
     all(env, 'SELECT stage, COUNT(*) AS n FROM leads GROUP BY stage'),
-    all(env, `SELECT timezone, tz_alt, grade FROM leads WHERE dnc = 0 AND stage IN (${OPEN.map(() => '?').join(',')})`, ...OPEN),
+    // Counted in SQL by zone, state and grade (a few hundred groups) instead of reading every open lead into the Worker.
+    all(env, `SELECT timezone, tz_alt, state, grade, COUNT(*) AS n FROM leads WHERE dnc = 0 AND stage IN (${OPEN.map(() => '?').join(',')}) GROUP BY timezone, tz_alt, state, grade`, ...OPEN),
     all(env, `SELECT id, business, contact_name, next_action, next_action_at, stage, grade FROM leads WHERE dnc = 0 AND next_action_at IS NOT NULL AND next_action_at < ?
       AND stage IN ('callback','follow_up','no_show','audit_requested') ORDER BY next_action_at LIMIT 8`, end),
     all(env, `SELECT id, business, contact_name, meet_at, meet_link FROM leads WHERE meet_at IS NOT NULL AND meet_at > ?${appt.sql} ORDER BY meet_at LIMIT 6`, t - 3600e3, ...appt.args),
@@ -43,7 +44,12 @@ route('GET', '/api/dashboard', async ({ env, user, url }) => {
   return json({
     me: { dials: mine?.dials || 0, talks: mine?.talks || 0, booked: mine?.booked || 0, goal: await dialGoalOf(env, user.id) },
     week: { dials: team?.dials || 0, talks: team?.talks || 0, booked: team?.booked || 0 },
-    pipeline: { byStage, open: leads.length, callableNow: leads.filter((l) => inCallingHours(l.timezone, Date.now(), l.tz_alt, l.state)).length, aLeads: leads.filter((l) => l.grade === 'A').length },
+    pipeline: {
+      byStage,
+      open: leads.reduce((a, g) => a + g.n, 0),
+      callableNow: leads.reduce((a, g) => a + (inCallingHours(g.timezone, t, g.tz_alt, g.state) ? g.n : 0), 0),
+      aLeads: leads.reduce((a, g) => a + (g.grade === 'A' ? g.n : 0), 0),
+    },
     due, meetings,
     clients: { active: real.length, mrr: user.role === 'admin' ? mrr : null, sample: clients.find((c) => c.sample)?.id || null },
     work: { tasksDone: tasks?.done || 0, tasksTotal: tasks?.total || 0, postsWaiting: posts?.n || 0 },

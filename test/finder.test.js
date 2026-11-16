@@ -149,6 +149,47 @@ test('finder: search, grid coverage, filters, add to the pipeline, no repeats, c
   assert.ok(res2.some((x) => x.st === 'new'));
 });
 
+test('finder: Stop ends a search for good, Stop all ends every search and automatic add, results stay', async () => {
+  const t = setup();
+  await owner(t);
+  const mk = async (kw, area, extra = {}) => (await t.call('POST', '/api/finder/jobs', { keywords: kw, areas: area, size: 7, ...extra })).data.job.id;
+  const a = await mk('plumber', 'Hialeah, FL'), b = await mk('electrician', 'Doral, FL'), c = await mk('roofing contractor', 'Miami, FL');
+  // A few ticks so one search has real results, then stop it for good.
+  await t.call('POST', '/api/finder/tick');
+  const before = (await t.call('GET', `/api/finder/jobs/${a}`)).data.job;
+  let r = await t.call('POST', `/api/finder/jobs/${a}/end`);
+  assert.equal(r.data.job.status, 'ended');
+  assert.equal(r.data.job.found, before.found, 'what was found stays');
+  assert.equal((await t.call('POST', `/api/finder/jobs/${a}/resume`)).data.job.status, 'ended', 'a stopped search does not resume');
+  assert.equal((await t.call('POST', `/api/finder/jobs/${a}/stop`)).data.job.status, 'ended', 'pause does not undo a stop');
+  // Pause one, then Stop all: waiting, running and paused all end.
+  await t.call('POST', `/api/finder/jobs/${b}/stop`);
+  r = await t.call('POST', '/api/finder/stop-all');
+  assert.equal(r.status, 200);
+  assert.equal(r.data.stopped, 2, 'the paused one and the waiting one');
+  const list = (await t.call('GET', '/api/finder')).data.jobs;
+  for (const id of [a, b, c]) assert.equal(list.find((j) => j.id === id).status, 'ended');
+  assert.equal((await t.call('POST', '/api/finder/tick')).data.used, 0, 'nothing is searched after Stop all');
+  // A finished search that is still adding to the Pipeline stops adding.
+  const d = await mk('hvac contractor', 'Hialeah, FL', { autoAdd: true, filters: { minReviews: 50 } });
+  const done = await finish(t, d);
+  assert.equal(done.status, 'done');
+  await all(t.env, "UPDATE finder_jobs SET auto_add = 1 WHERE id = ?", d).catch(() => {});
+  await t.env.DB.prepare('UPDATE finder_jobs SET auto_add = 1 WHERE id = ?').bind(d).run();
+  assert.equal((await t.call('GET', `/api/finder/jobs/${d}`)).data.job.adding, true);
+  r = await t.call('POST', `/api/finder/jobs/${d}/end`);
+  assert.equal(r.data.job.adding, false);
+  assert.equal(r.data.job.status, 'done', 'a finished search keeps its Done status');
+  // Results of an ended search can still be read.
+  assert.equal((await t.call('GET', `/api/finder/jobs/${a}/results`)).status, 200);
+  // Agents cannot stop searches.
+  const inv = await t.call('POST', '/api/team/invite', { email: 'rep2@x.com', name: 'Rep', role: 'team', job: 'closer' });
+  t.logout();
+  await t.call('POST', '/api/auth/invite/accept', { token: inv.data.inviteUrl.split('/#/invite/')[1], password: 'another long password' });
+  assert.equal((await t.call('POST', '/api/finder/stop-all')).status, 403);
+  assert.equal((await t.call('POST', `/api/finder/jobs/${a}/end`)).status, 403);
+});
+
 test('finder: automatic add, stop and resume, delete, and agents are kept out', async () => {
   const t = setup();
   await owner(t);

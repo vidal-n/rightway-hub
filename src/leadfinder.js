@@ -11,7 +11,7 @@ import { route } from './router.js';
 import { mapsSearch } from './dataforseo.js';
 import { mockFinder } from './mock.js';
 import { osmSearch, isFreeMode } from './freedata.js';
-import { importLeads, existingKeys } from './crm.js';
+import { importLeads, existingKeys, existingKeysCached } from './crm.js';
 import { dupKeys } from '../public/js/leadintel.js';
 import { notify } from './notify.js';
 import {
@@ -24,7 +24,7 @@ export const PER_TICK = 12; // searches per tick (Workers allow about 50 outside
 const PARALLEL = 6;
 // Every request works on a small slice, so a big search never runs past the Worker's time limit (Cloudflare answers 503 then).
 const PAGE = 400;        // results per page when the list is opened
-const ADD_MAX = 100;     // businesses per Add request
+const ADD_MAX = 90;      // businesses per Add request
 const AUTO_STEP = 300;   // rows looked at per run while auto add works through a finished search
 const parse = (s, d) => { try { return s ? JSON.parse(s) : d; } catch { return d; } };
 const text = (v, max) => String(v ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -36,7 +36,7 @@ export function jobView(j) {
   return {
     id: j.id, name: j.name, keywords: parse(j.keywords, []), areas: areas.map((a) => ({ label: a.label, radius: a.radius, size: a.size, views: a.views ?? null, lat: a.lat, lng: a.lng })),
     status: j.status, total: j.total, done: j.done, errors: j.errors, found: j.found, added: j.added, cost: Math.round((j.cost || 0) * 1000) / 1000, error: j.error || null,
-    source: j.source === 'osm' ? 'osm' : 'google', demo: Boolean(j.demo), autoAdd: Boolean(j.auto_add), tag: j.tag || '', filters: cleanFilters(parse(j.filters, {})), createdAt: j.created_at, finishedAt: j.finished_at || null,
+    source: j.source === 'osm' ? 'osm' : 'google', demo: Boolean(j.demo), autoAdd: Boolean(j.auto_add), adding: j.auto_add === 1 && j.status === 'done', tag: j.tag || '', filters: cleanFilters(parse(j.filters, {})), createdAt: j.created_at, finishedAt: j.finished_at || null,
     pct: j.total ? Math.min(100, Math.round((j.done / j.total) * 100)) : 0,
   };
 }
@@ -143,6 +143,30 @@ route('POST', '/api/finder/jobs/:id/stop', async ({ env, user, params }) => {
   return json({ job: jobView(await jobOr404(env, params.id)) });
 });
 
+// Stop for good (V: a Stop button). The search ends where it is, everything found so far stays in Results, and nothing more is bought or added
+// on its own. Pause above is the one you can resume. Modeled on the Stop button of Outscraper tasks and Apify runs.
+export async function endJobs(env, where, ...args) {
+  const at = now();
+  await run(env, `UPDATE finder_jobs SET status = 'ended', locked_until = NULL, auto_add = CASE WHEN auto_add = 1 THEN 0 ELSE auto_add END, finished_at = ?, updated_at = ? WHERE ${where}`, at, at, ...args);
+}
+route('POST', '/api/finder/jobs/:id/end', async ({ env, user, params }) => {
+  requireAdmin(user);
+  await jobOr404(env, params.id);
+  await endJobs(env, "id = ? AND status IN ('queued', 'running', 'stopped', 'failed')", params.id);
+  // Also stop adding results to the Pipeline on its own for a finished search that is still being added.
+  await run(env, "UPDATE finder_jobs SET auto_add = 0 WHERE id = ? AND auto_add = 1", params.id);
+  return json({ job: jobView(await jobOr404(env, params.id)) });
+});
+// Stop every search that is waiting, running or paused, and every automatic add still going.
+route('POST', '/api/finder/stop-all', async ({ env, user }) => {
+  requireAdmin(user);
+  const live = await first(env, "SELECT COUNT(*) AS n FROM finder_jobs WHERE status IN ('queued', 'running', 'stopped')");
+  const adding = await first(env, "SELECT COUNT(*) AS n FROM finder_jobs WHERE status = 'done' AND auto_add = 1");
+  await endJobs(env, "status IN ('queued', 'running', 'stopped')");
+  await run(env, "UPDATE finder_jobs SET auto_add = 0 WHERE auto_add = 1");
+  return json({ ok: true, stopped: live?.n || 0, addingStopped: adding?.n || 0 });
+});
+
 route('POST', '/api/finder/jobs/:id/resume', async ({ env, user, params }) => {
   requireAdmin(user);
   const j = await jobOr404(env, params.id);
@@ -170,7 +194,7 @@ route('GET', '/api/finder/jobs/:id/results', async ({ env, user, params, url }) 
   const more = rows.length > limit;
   if (more) rows.pop();
   const total = after ? job.found : (await first(env, 'SELECT COUNT(*) AS n FROM finder_results WHERE job_id = ?', job.id))?.n || 0;
-  const keys = rows.some((r) => r.state === 'new') ? await existingKeys(env) : new Map();
+  const keys = rows.some((r) => r.state === 'new') ? await existingKeysCached(env) : new Map();
   const results = rows.map((r) => {
     const rec = parse(r.data, {});
     let st = r.state, leadId = r.lead_id || null;
@@ -193,9 +217,9 @@ route('GET', '/api/finder/jobs/:id/results', async ({ env, user, params, url }) 
 });
 
 // Put businesses into the Pipeline. Either the keys the person ticked, or everything that passes the filters.
-export async function addToPipeline(env, job, rows, by, { tag } = {}) {
+export async function addToPipeline(env, job, rows, by, { tag, keys } = {}) {
   const recs = rows.map((r) => ({ key: r.rkey, rec: parse(r.data, {}) }));
-  const out = await importLeads(env, { id: by }, recs.map(({ rec }) => leadRow(rec)), { source: 'Lead finder', tags: tag || job.tag || job.name, merge: false });
+  const out = await importLeads(env, { id: by }, recs.map(({ rec }) => leadRow(rec)), { source: 'Lead finder', tags: tag || job.tag || job.name, merge: false, keys });
   const ops = out.rows.map((o, i) => (o.id
     ? ["UPDATE finder_results SET state = 'added', lead_id = ? WHERE job_id = ? AND rkey = ?", o.id, job.id, recs[i].key]
     : ['UPDATE finder_results SET state = ?, lead_id = ? WHERE job_id = ? AND rkey = ?', o.skipped === 'dnc' ? 'dnc' : o.skipped === 'suppressed' ? 'blocked' : o.skipped === 'invalid' ? 'nophone' : 'inhub', o.lead_id || null, job.id, recs[i].key]));
@@ -226,8 +250,9 @@ route('POST', '/api/finder/jobs/:id/add', async ({ env, user, params, body }) =>
     if (!rows.length && !next) throw new HttpError('Nothing to add. These are already in the Hub, or none match the filters.');
   }
   const out = { imported: 0, skipped: 0, scrubbed: 0, skippedBy: { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0, suppressed: 0 }, results: {} };
+  const keys = rows.length ? await existingKeys(env) : null; // once for the whole request, not once per 25
   for (let i = 0; i < rows.length; i += 25) {
-    const r = await addToPipeline(env, job, rows.slice(i, i + 25), user.id, { tag: text(b.tag, 60) });
+    const r = await addToPipeline(env, job, rows.slice(i, i + 25), user.id, { tag: text(b.tag, 60), keys });
     out.imported += r.imported; out.skipped += r.skipped; out.scrubbed += r.scrubbed;
     for (const k of Object.keys(out.skippedBy)) out.skippedBy[k] += r.skippedBy[k] || 0;
     Object.assign(out.results, r.byKey);
@@ -244,7 +269,8 @@ async function autoAddStep(env, job) {
   if (!last) page.pop();
   const want = page.filter((r) => r.state === 'new' && passes(parse(r.data, {}), f));
   let added = 0;
-  for (let i = 0; i < want.length; i += 25) added += (await addToPipeline(env, job, want.slice(i, i + 25), job.created_by)).imported;
+  const keys = want.length ? await existingKeys(env) : null; // once per step, shared by every chunk of 25
+  for (let i = 0; i < want.length; i += 25) added += (await addToPipeline(env, job, want.slice(i, i + 25), job.created_by, { keys })).imported;
   await run(env, 'UPDATE finder_jobs SET auto_cursor = ?, auto_add = ? WHERE id = ?', page.length ? page[page.length - 1].rkey : job.auto_cursor || '', last ? 2 : 1, job.id);
   return { added, last };
 }
@@ -293,7 +319,10 @@ export async function finderTick(env, budget = PER_TICK, { fetchImpl, at = now()
   const found = (await first(env, 'SELECT COUNT(*) AS n FROM finder_results WHERE job_id = ?', job.id))?.n || 0;
   const finished = i >= tasks.length;
   const allFailed = finished && found === 0 && job.errors + errors > 0;
-  const status = fatal || allFailed ? 'failed' : finished ? 'done' : 'running';
+  // A person may have paused or stopped this search while the run was working: keep the progress, never undo the stop.
+  const now0 = await first(env, 'SELECT status FROM finder_jobs WHERE id = ?', job.id);
+  const held = now0 && (now0.status === 'stopped' || now0.status === 'ended') ? now0.status : null;
+  const status = held || (fatal || allFailed ? 'failed' : finished ? 'done' : 'running');
   const error = fatal || (allFailed ? (osm ? 'Every search failed. OpenStreetMap\'s free servers may be busy. Try Resume in a few minutes.' : 'Every search failed. Check the DataForSEO balance and login, then resume.') : job.error);
   await run(env, 'UPDATE finder_jobs SET done = ?, errors = errors + ?, found = ?, cost = cost + ?, status = ?, error = ?, locked_until = NULL, updated_at = ?, finished_at = ? WHERE id = ?',
     i, errors, found, cost, status, error || null, now(), finished || fatal ? now() : null, job.id);

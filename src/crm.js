@@ -339,6 +339,15 @@ route('POST', '/api/leads', async ({ env, user, body }) => {
 });
 
 // Existing dedupe keys: phone, website domain, and name plus city or zip.
+// A key map built a moment ago, for screens that only SHOW which results are already in the Hub (never for deciding what to add).
+// Building it reads and keys every lead, so a page that loads results 400 at a time must not do it once per page.
+let keysCache = null;
+export async function existingKeysCached(env, ttl = 15e3) {
+  if (keysCache && keysCache.env === env.DB && now() - keysCache.at < ttl) return keysCache.keys;
+  const keys = await existingKeys(env);
+  keysCache = { env: env.DB, at: now(), keys };
+  return keys;
+}
 export async function existingKeys(env) {
   const rows = await all(env, 'SELECT id, business, phone_digits, website, city, zip, dnc FROM leads');
   const keys = new Map();
@@ -355,8 +364,10 @@ async function findDuplicate(env, data) {
 
 // The one import path: the CSV import and the lead finder both come through here, so they dedupe, scrub and queue the same way.
 // Returns the counts plus `rows`, one entry per input row: { id } for a new lead or { skipped, lead_id } for one that was not added.
-export async function importLeads(env, user, rows, { source, tags, merge = true } = {}) {
-  const keys = await existingKeys(env);
+// `keys` (optional): a key map the caller loaded once for several calls in a row (the map is updated as leads are added),
+// so a request that imports in small chunks reads and keys every lead once instead of once per chunk.
+export async function importLeads(env, user, rows, { source, tags, merge = true, keys: preloaded } = {}) {
+  const keys = preloaded || await existingKeys(env);
   const items = [];
   const out = new Array(rows.length);
   const skipped = { phone: 0, website: 0, name: 0, invalid: 0, dnc: 0, suppressed: 0 };
@@ -401,6 +412,7 @@ export async function importLeads(env, user, rows, { source, tags, merge = true 
     if (lead.scrub) bad.push(lead);
   }
   for (let i = 0; i < items.length; i += 100) await batch(env, items.slice(i, i + 100));
+  if (items.length) keysCache = null; // the shown "already in the Hub" marks must see these at once
   if (hoursRows.length) await (await import('./hours.js')).saveHoursMany(env, hoursRows).catch((e) => console.error('import hours', e.message));
   // Bad numbers the free scrub caught go on the Do Not Call list too (the lead stays in the database, never dialed, never scraped twice).
   if (bad.length) await suppressMany(env, bad, 'bad_number', { by: user?.id || null, note: 'Scrubbed on import', source: 'scrub' }).catch((e) => console.error('suppress scrub', e.message));

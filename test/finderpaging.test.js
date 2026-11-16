@@ -66,9 +66,9 @@ test('finder results come a page at a time and add answers row by row', async ()
   assert.equal(r.status, 200);
   assert.equal(r.data.imported, 0);
   // Too many at once is refused with a plain message.
-  r = await t.call('POST', '/api/finder/jobs/fj_big/add', { keys: seen.slice(0, 101) });
+  r = await t.call('POST', '/api/finder/jobs/fj_big/add', { keys: seen.slice(0, 91) });
   assert.equal(r.status, 400);
-  assert.match(r.data.error, /up to 100/);
+  assert.match(r.data.error, /up to 90/);
   // Adding by filters looks at a slice and says where to carry on.
   r = await t.call('POST', '/api/finder/jobs/fj_big/add', { filters: {} });
   assert.equal(r.status, 200);
@@ -103,4 +103,26 @@ test('only the oldest active search shows as searching, the rest wait their turn
   const jobs = (await t.call('GET', '/api/finder')).data.jobs;
   assert.equal(jobs.find((j) => j.id === 'fj_a').status, 'running');
   assert.equal(jobs.find((j) => j.id === 'fj_b').status, 'queued');
+});
+
+// A scrape that crashed the Hub: every chunk of 25 re-read and re-keyed every lead in the Hub. One read per request now.
+test('finder adds read every lead once per request, not once per chunk of 25', async () => {
+  const t = setup();
+  await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  await bigJob(t, { n: 140, id: 'fj_scan' });
+  const real = t.env.DB.prepare.bind(t.env.DB);
+  let scans = 0;
+  t.env.DB.prepare = (sql) => { if (/FROM leads$/.test(String(sql).trim()) && /phone_digits, website, city, zip, dnc/.test(sql)) scans++; return real(sql); };
+  // 90 picked rows = four chunks of 25 inside one request.
+  const keys = Array.from({ length: 90 }, (_, i) => `k${String(i).padStart(5, '0')}`);
+  let r = await t.call('POST', '/api/finder/jobs/fj_scan/add', { keys });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.imported, 90, '90 is allowed in one request');
+  assert.equal(scans, 1, 'one read of the lead table for the whole request');
+  // The step that auto add runs after a search finishes: up to 300 rows, same rule.
+  await t.env.DB.prepare("UPDATE finder_jobs SET auto_add = 1, auto_cursor = '' WHERE id = 'fj_scan'").run();
+  scans = 0;
+  await finderTick(t.env, 12);
+  assert.equal(scans, 1, 'one read per auto add step');
+  assert.equal((await all(t.env, 'SELECT COUNT(*) AS n FROM leads'))[0].n, 140);
 });
