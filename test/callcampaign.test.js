@@ -20,6 +20,7 @@ test('the saved campaign is what the dialer runs: any stage but won and do not c
     return { status: res.status, data: await res.json().catch(() => ({})) };
   };
   let r = await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  await call('PUT', '/api/scrub/settings', { ownerOnly: false }); // these fixtures have no owner names
   assert.equal(r.status, 200);
   r = await call('POST', '/api/leads/import', { rows: ['Alpha', 'Bravo', 'Charlie', 'Delta'].map((n, i) => ({ business: `${n} Roofing`, phone: `305-555-01${20 + i}`, state: 'FL', city: 'Miami', industry: 'roofing' })) });
   assert.equal(r.data.imported, 4);
@@ -81,6 +82,7 @@ test('a Do Not Call business stays out of every list, copies with another phone 
     return { status: res.status, data: await res.json().catch(() => ({})) };
   };
   let r = await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  await call('PUT', '/api/scrub/settings', { ownerOnly: false }); // these fixtures have no owner names
   assert.equal(r.status, 200);
   r = await call('POST', '/api/leads/import', { rows: [
     { business: 'Alpha Roofing', phone: '305-555-0101', state: 'FL', city: 'Miami', industry: 'roofing' },
@@ -131,6 +133,7 @@ test('a lead flagged Do Not Call before the list existed is put on it, and its c
     return { status: res.status, data: await res.json().catch(() => ({})) };
   };
   await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  await call('PUT', '/api/scrub/settings', { ownerOnly: false }); // these fixtures have no owner names
   await env.DB.prepare("INSERT INTO leads (id, business, phone, phone_digits, state, city, stage, dnc, created_at, updated_at) VALUES ('old-dnc', 'Delta Roofing', '305-555-0150', '3055550150', 'FL', 'Miami', 'dnc', 1, 1, 1), ('copy-delta', 'Delta Roofing', '305-555-0151', '3055550151', 'FL', 'Miami', 'new', 0, 1, 1)").run();
   const r = await call('GET', '/api/leads/copy-delta/call-check');
   assert.equal(r.data.ok, false);

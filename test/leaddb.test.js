@@ -122,6 +122,7 @@ function setup() {
 test('lead database end to end: results with detail roll up, search, insights, qualification, dial cap', async () => {
   const t = setup();
   await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'Vidal Newton', password: 'correct horse battery' });
+  await t.call('PUT', '/api/scrub/settings', { ownerOnly: false }); // these fixtures have no owner names
   const imp = await t.call('POST', '/api/leads/import', { rows: [
     { business: 'Sparkle Plumbing', phone: '(305) 555-0188', city: 'Miami', state: 'FL', industry: 'Plumber' },
     { business: 'Harbor Roofing', phone: '(954) 555-0101', city: 'Hollywood', state: 'FL', industry: 'Roofer' },

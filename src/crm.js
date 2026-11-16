@@ -1,6 +1,6 @@
 // CRM: leads, pipeline stages, call outcomes with the playbook follow-up cadence, call queue, website form, convert to client.
 import { HttpError, json } from './util.js';
-import { all, first, run, batch, newId, now } from './db.js';
+import { all, first, run, batch, newId, now, getSettings } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
 import { PLANS, tasksForMonth, monthKey } from './plans.js';
 import { scopeFromLead } from './scopeof.js';
@@ -813,7 +813,8 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   // Callbacks belong to the teammate who set them, and a lead that did not answer waits 24 hours (src/callrules.js), whatever list it is on.
   const touched = open.filter((l) => l.stage === 'callback' || (l.attempts || 0) > 0 || l.last_call_at);
   const facts = touched.length ? await callFacts(env, touched.map((l) => l.id)) : new Map();
-  const decorated = open.filter((l) => !callRule(l, facts.get(l.id), user, t)).map(decorate); // once per lead: tiers and the queue share it
+  const ownerOnly = (await getSettings(env)).owner_only !== '0'; // Owner name required (Settings via Pipeline, step 2): no real first name, no dial
+  const decorated = open.filter((l) => !callRule(l, facts.get(l.id), user, t)).map(decorate).filter((l) => !ownerOnly || personOf(l)); // once per lead: tiers and the queue share it
   const ready = decorated
     .map((l) => seeAppt(l, user))
     .filter((l) => (!f.tz || f.tz.split(',').includes(l.tz_short)) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())

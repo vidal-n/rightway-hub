@@ -1,5 +1,6 @@
 // Pipeline filters. Pure so the tests can run it in Node.
 import { nicheOf, saturdayOk, SAT_SKIP } from './niches.js';
+import { personOf } from './leadintel.js';
 
 // Does the business have a Google profile? 'yes' when we hold Google facts for it (Lead finder place id, reviews, rating, a map rank),
 // 'none' when research looked and found nothing, 'unknown' when nobody has checked yet. After the research check, nothing found means no profile found.
@@ -56,8 +57,9 @@ export function filterLeads(leads, p) {
     if (f.email === 'yes' && !goodEmail) return false;
     if (f.email === 'person' && (!goodEmail || l.email_status === 'role')) return false;
     if (f.email === 'no' && goodEmail) return false;
-    if (f.owner === 'yes' && !(l.owner_name || l.contact_name)) return false;
-    if (f.owner === 'no' && (l.owner_name || l.contact_name)) return false;
+    // A real person's name only: a job title, a business name or "Owner" in the name fields does not count (personOf).
+    if (f.owner === 'yes' && !personOf(l)) return false;
+    if (f.owner === 'no' && personOf(l)) return false;
     if (f.scrubbed === 'yes' && !l.scrubbed_at) return false;
     if (f.scrubbed === 'no' && l.scrubbed_at) return false;
     if (f.minData && (l.data_score || 0) < Number(f.minData)) return false;

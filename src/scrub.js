@@ -11,6 +11,8 @@ import { route } from './router.js';
 import { extractProfile, mergeProfiles } from '../public/js/freedata.js';
 import { registryLookup, leadMode } from './freedata.js';
 import { titleLike } from '../public/js/names.js';
+import { personOf } from '../public/js/leadintel.js';
+import { suppressMany } from './suppress.js';
 import { nameMatches, findPhones, pageText } from '../public/js/phonefind.js';
 import { isPersonName, cleanPerson, nameFromEmail, firstFromEmail, cleanName, phoneInfo, emailInfo, pickEmail, emailStatus, extractContacts, mergeContacts, contactLinks, dataScore } from '../public/js/scrub.js';
 
@@ -19,7 +21,7 @@ const OPEN = ['new', 'attempting', 'callback', 'follow_up', 'not_now', 'audit_re
 
 export async function scrubSettings(env) {
   const s = await getSettings(env);
-  return { auto: s.scrub_auto !== '0', lookup: s.scrub_lookup === '1', twilio: Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN) };
+  return { auto: s.scrub_auto !== '0', ownerOnly: s.owner_only !== '0', ownerDrop: s.owner_drop === '1', lookup: s.scrub_lookup === '1', twilio: Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN) };
 }
 
 async function fetchPage(url, fetchImpl) {
@@ -139,6 +141,15 @@ export async function scrubLead(env, lead, opts = {}) {
   // Bad and toll free numbers leave the call queue with the reason, only if nobody has worked the lead yet.
   if (ph.problem && ['new', 'attempting'].includes(lead.stage) && !lead.scrub) Object.assign(set, { scrub: ph.problem, stage: 'lost', next_action: `Scrubbed: ${ph.problem}`, next_action_at: null });
   set.updated_at = now();
+  // "Owner name required" + "Remove leads with no owner name": a brand new lead nobody has touched, still without a real person's name after the scrub, is removed
+  // and kept on the list of known businesses so it is never scraped again. Leads with calls, a client, a booking or Do Not Call are never removed.
+  if (opts.dropNoOwner !== false && lead.stage === 'new' && !lead.attempts && !lead.last_call_at && !lead.client_id && !lead.dnc && !lead.meet_at && !personOf({ ...lead, ...set })
+      && (await getSettings(env)).owner_drop === '1') {
+    await suppressMany(env, [lead], 'deleted', { by: null, source: 'no owner name' });
+    await run(env, 'DELETE FROM activities WHERE lead_id = ?', lead.id);
+    await run(env, 'DELETE FROM leads WHERE id = ?', lead.id);
+    return { ...report, removed: 'no owner name', data_score: ds.score, data_grade: ds.grade, missing: ds.missing, saved: {} };
+  }
   const cols = Object.keys(set);
   await run(env, `UPDATE leads SET ${cols.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`, ...cols.map((k) => set[k]), lead.id);
   return { ...report, data_score: ds.score, data_grade: ds.grade, missing: ds.missing, saved: set };
@@ -283,5 +294,7 @@ route('PUT', '/api/scrub/settings', async ({ env, user, body }) => {
   const b = await body();
   if ('auto' in b) await setSetting(env, 'scrub_auto', b.auto ? '1' : '0');
   if ('lookup' in b) await setSetting(env, 'scrub_lookup', b.lookup ? '1' : '0');
+  if ('ownerOnly' in b) await setSetting(env, 'owner_only', b.ownerOnly ? '1' : '0');
+  if ('ownerDrop' in b) await setSetting(env, 'owner_drop', b.ownerDrop ? '1' : '0');
   return json(await scrubSettings(env));
 });

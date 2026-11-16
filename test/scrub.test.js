@@ -78,7 +78,7 @@ test('extractContacts finds emails, social pages, phones and the owner; contactL
 });
 
 test('dataScore and the pipeline data filters', () => {
-  const full = { phone_digits: '3055550101', phone_type: 'mobile', owner_name: 'Jane', email: 'jane@x.com', email_status: 'valid', website: 'x.com', cid: '1', reviews: 3, city: 'Miami', state: 'FL', socials: '{"facebook":"x"}' };
+  const full = { phone_digits: '3055550101', phone_type: 'mobile', owner_name: 'Jane Doe', email: 'jane@x.com', email_status: 'valid', website: 'x.com', cid: '1', reviews: 3, city: 'Miami', state: 'FL', socials: '{"facebook":"x"}' };
   assert.equal(dataScore(full).score, 100);
   const thin = dataScore({ phone_digits: '3055550101' });
   assert.ok(thin.score < 40 && thin.grade === 'D' && thin.missing.includes('Owner name'));
@@ -154,4 +154,26 @@ test('find-phones: takes a number from the business own site, rejects a site tha
     assert.equal(r.data.results[2].found, false);
     assert.match(r.data.results[2].reason, /No phone number/);
   } finally { site.done(); }
+});
+
+test('remove new leads with no owner name after the scrub: only untouched ones, and never scraped again', async () => {
+  const t = setup();
+  await owner(t);
+  await t.call('PUT', '/api/scrub/settings', { ownerDrop: true });
+  const f = stubFetch((u) => (u.includes('nameless.com') || u.includes('called.com')) ? html('<h1>Plumbing</h1><p>Call us today</p>', u) : null);
+  try {
+    const imp = await t.call('POST', '/api/leads/import', { rows: [
+      { business: 'Nameless Plumbing', phone: '305-555-0191', state: 'FL', city: 'Miami', website: 'nameless.com' },
+      { business: 'Called Plumbing', phone: '305-555-0192', state: 'FL', city: 'Miami', website: 'called.com' },
+    ] });
+    assert.equal(imp.data.imported, 2);
+    const rows = (await t.call('GET', '/api/leads')).data.leads;
+    const called = rows.find((l) => l.business === 'Called Plumbing');
+    await t.env.DB.prepare('UPDATE leads SET attempts = 1 WHERE id = ?').bind(called.id).run();
+    for (const l of rows) await t.call('POST', `/api/leads/${l.id}/scrub`);
+    const left = (await t.call('GET', '/api/leads')).data.leads.map((l) => l.business);
+    assert.deepEqual(left, ['Called Plumbing']);
+    const again = await t.call('POST', '/api/leads/import', { rows: [{ business: 'Nameless Plumbing', phone: '305-555-0191', state: 'FL', city: 'Miami' }] });
+    assert.equal(again.data.imported, 0);
+  } finally { f.done(); }
 });

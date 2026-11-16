@@ -7,7 +7,7 @@ import { CALL_CATS } from '/js/leadintel.js';
 import { DIAL_SCRIPTS } from '/js/scripttest.js';
 import { loadScriptTest, currentTest, pickedScript, setPicked, scriptName } from './scriptpick.js';
 
-const DATA = [['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Owner name known'], ['email', 'Has an email']];
+const DATA = [['', 'Any'], ['mobile', 'Mobile numbers'], ['owner', 'Has owner name'], ['email', 'Has an email']];
 
 // Is a script chosen for today? A split test that reps cannot opt out of counts as chosen.
 export function scriptReady() {

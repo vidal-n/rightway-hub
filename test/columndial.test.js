@@ -19,6 +19,7 @@ test('dialer queue can be narrowed to one Pipeline column', async () => {
     return { status: res.status, data: await res.json().catch(() => ({})) };
   };
   let r = await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
+  await call('PUT', '/api/scrub/settings', { ownerOnly: false }); // these fixtures have no owner names
   assert.equal(r.status, 200);
   r = await call('POST', '/api/leads/import', { rows: [
     { business: 'Alpha Roofing', phone: '305-555-0121', state: 'FL', city: 'Miami', industry: 'roofing' },

@@ -65,3 +65,32 @@ test('owners rename a teammate; agents cannot; blank names refused', async () =>
   assert.equal((await call('PUT', `/api/users/${id}/name`, { name: '   ' })).status, 400);
   assert.equal((await call('PUT', '/api/users/nope/name', { name: 'X' })).status, 404);
 });
+
+test('owner name required: the dialer skips leads with no real person name, the switch turns it off, the scrub can remove untouched ones', async () => {
+  resetSchemaCache();
+  const env = { DB: d1(), MEDIA: r2(), ACCESS_KEY: 'owner-key-123' };
+  let cookie = '';
+  const call = async (method, path, body) => {
+    const h = { 'x-rw': '1' }; if (cookie) h.cookie = cookie;
+    let payload; if (body !== undefined) { h['content-type'] = 'application/json'; payload = JSON.stringify(body); }
+    const res = await worker.fetch(new Request(`https://hub.test${path}`, { method, headers: h, body: payload }), env);
+    const set = res.headers.get('set-cookie'); if (set) cookie = set.split(';')[0];
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  };
+  await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'Vidal Newton', password: 'correct horse battery' });
+  await call('POST', '/api/leads/import', { rows: [
+    { business: 'Named Plumbing', phone: '305-555-0101', state: 'FL', city: 'Miami', industry: 'plumbing', contact_name: 'Mike Rivera' },
+    { business: 'Nameless Plumbing', phone: '305-555-0102', state: 'FL', city: 'Miami', industry: 'plumbing' },
+  ] });
+  const real = Date.now;
+  const at = new Date(real()); at.setUTCHours(16, 0, 0, 0); // 11am or noon Eastern, inside calling hours
+  Date.now = () => at.getTime();
+  try {
+    const names = async () => (await call('GET', '/api/dialer/queue')).data.queue.map((l) => l.business).sort();
+    assert.equal((await call('GET', '/api/scrub/status')).data.ownerOnly, true);
+    assert.deepEqual(await names(), ['Named Plumbing']);
+    await call('PUT', '/api/scrub/settings', { ownerOnly: false });
+    assert.deepEqual(await names(), ['Named Plumbing', 'Nameless Plumbing']);
+  } finally { Date.now = real; }
+  assert.equal((await call('PUT', '/api/scrub/settings', { ownerDrop: true })).data.ownerDrop, true);
+});

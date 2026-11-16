@@ -20,6 +20,7 @@ test('list claims: held leads stay off other lists, calls and queues until the h
     return { status: res.status, data: await res.json().catch(() => ({})), set };
   };
   assert.equal((await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' })).status, 200);
+  await call('PUT', '/api/scrub/settings', { ownerOnly: false }); // these fixtures have no owner names
   const owner = cookie;
   const inv = await call('POST', '/api/team/invite', { email: 'kiron@rightwaygrowth.com', name: 'Kiron', role: 'team' });
   const acc = await call('POST', '/api/auth/invite/accept', { token: inv.data.inviteUrl.split('/#/invite/')[1], password: 'another long password' }, '');
