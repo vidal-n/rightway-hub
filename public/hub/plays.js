@@ -1,7 +1,7 @@
 // Lead plays card for the Lead finder: ready-made searches (who you get, why they convert, what to expect, three budgets) that fill the form below.
 // Modeled on the saved-search and filter-first flow of Scrap.io and Apollo.io; see the notes at the top of /js/plays.js. Nothing here spends money: it only fills the form.
 import { $, $$, esc, toast } from './core.js';
-import { PLAYS, BUDGETS, TOOLS, SCOPES, PER_STATE, planFor, cleanMine } from '/js/plays.js';
+import { PLAYS, BUDGETS, TOOLS, SCOPES, PER_STATE, planFor, cleanMine, scopeList } from '/js/plays.js';
 
 const KEY = 'rw-finder-plays';
 const readMine = () => { try { return (JSON.parse(localStorage.getItem(KEY) || '[]') || []).map(cleanMine); } catch { return []; } };
@@ -13,7 +13,7 @@ const METERS = [['book', 'Booking odds'], ['reach', 'Easy to reach'], ['deal', '
 
 // opts: { apply(play, budgetId, start), snapshot() -> {name, industries, filters, source, size, areas}, freeMode }
 export function mountPlays(host, opts) {
-  let goal = 'all', pick = null, budget = 'standard', where = 'home';
+  let goal = 'all', pick = null, budget = 'standard', where = ['home'];
   let mine = readMine();
   const all = () => [...PLAYS, ...mine];
   const cheapest = (p) => planFor(p, 'lean').cost;
@@ -29,12 +29,12 @@ export function mountPlays(host, opts) {
   };
 
   const guide = (p) => {
-    const regional = where !== 'home';
-    const bud = p.mine ? '' : `<div class="pg-budget"><span class="small muted">Where</span><div class="seg" id="pgw" style="flex-wrap:wrap">${SCOPES.map((s) => `<button type="button" data-where="${s.id}" class="${s.id === where ? 'is-on' : ''}">${esc(s.label)}</button>`).join('')}</div>
+    const picks = scopeList(where); const regional = picks.some((x) => x !== 'home');
+    const bud = p.mine ? '' : `<div class="pg-budget"><span class="small muted">Where (tick as many as you want)</span><div class="seg" id="pgw" style="flex-wrap:wrap">${SCOPES.map((s) => `<button type="button" data-where="${s.id}" aria-pressed="${picks.includes(s.id)}" class="${picks.includes(s.id) ? 'is-on' : ''}">${esc(s.label)}</button>`).join('')}</div>
       <span class="small muted" style="display:block;margin-top:8px">Budget</span><div class="seg" id="pgb">${BUDGETS.map((b) => {
-      const pl = planFor(p, b.id, { scope: where });
+      const pl = planFor(p, b.id, { scope: picks });
       return `<button type="button" data-b="${b.id}" class="${b.id === budget ? 'is-on' : ''}" title="${esc(b.what)}">${esc(b.label)} <small>${pl.free ? 'free' : money(pl.cost)}</small></button>`;
-    }).join('')}</div><p class="small muted" style="margin:6px 0 0" id="pgbx">${regional ? `Takes the biggest ${PER_STATE[budget]} ${PER_STATE[budget] === 1 ? 'city' : 'cities'} in every state of the zone, with a ${BUDGETS.find((b) => b.id === budget).size} x ${BUDGETS.find((b) => b.id === budget).size} grid.` : esc(BUDGETS.find((b) => b.id === budget).what)} ${(() => { const pl = planFor(p, budget, { scope: where }); return `${p.industries.length} trades × ${pl.places} cities × ${pl.size * pl.size} map views = ${pl.requests.toLocaleString('en-US')} searches.`; })()}</p></div>`;
+    }).join('')}</div><p class="small muted" style="margin:6px 0 0" id="pgbx">${regional ? `Takes the biggest ${PER_STATE[budget]} ${PER_STATE[budget] === 1 ? 'city' : 'cities'} in every state of ${picks.length > 1 ? 'the picked places' : 'the zone'}, with a ${BUDGETS.find((b) => b.id === budget).size} x ${BUDGETS.find((b) => b.id === budget).size} grid.` : esc(BUDGETS.find((b) => b.id === budget).what)} ${(() => { const pl = planFor(p, budget, { scope: picks }); return `${p.industries.length} trades × ${pl.places} cities × ${pl.size * pl.size} map views = ${pl.requests.toLocaleString('en-US')} searches.`; })()}</p></div>`;
     const lines = (t, v) => (v ? `<div class="pg-sec"><h4>${t}</h4><p>${esc(v)}</p></div>` : '');
     return `<div class="pg">
       <div class="pg-head"><h3 style="margin:0">${esc(p.name)}</h3>${p.mine ? '<button type="button" class="btn btn-ghost btn-sm" data-del>Delete my play</button>' : ''}</div>
@@ -70,7 +70,14 @@ export function mountPlays(host, opts) {
     const g = e.target.closest('[data-goal]'); if (g) { goal = g.dataset.goal; draw(); return; }
     const c = e.target.closest('[data-play]'); if (c && !c.disabled) { pick = pick === c.dataset.play ? null : c.dataset.play; draw(); if (pick) $('.pg', host)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
     const b = e.target.closest('[data-b]'); if (b) { budget = b.dataset.b; draw(); return; }
-    const w = e.target.closest('[data-where]'); if (w) { where = w.dataset.where; draw(); return; }
+    const w = e.target.closest('[data-where]');
+    if (w) {
+      // Any mix of places. All states already holds every zone, so it stands alone; unticking the last one goes back to home.
+      const id = w.dataset.where, cur = scopeList(where);
+      if (id === 'ALL') where = cur.includes('ALL') ? ['home'] : ['ALL'];
+      else { const next = cur.filter((x) => x !== 'ALL'); where = next.includes(id) ? next.filter((x) => x !== id) : [...next, id]; if (!where.length) where = ['home']; }
+      draw(); return;
+    }
     const p = all().find((x) => x.id === pick);
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (act === 'fill' || act === 'start') { if (p) opts.apply(p, budget, act === 'start', where); return; }

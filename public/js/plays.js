@@ -218,10 +218,12 @@ export function planFor(play, budgetId, { states = 1, scope = 'home' } = {}) {
   const b = BUDGETS.find((x) => x.id === budgetId) || BUDGETS[0];
   const osm = play.source === 'osm';
   const size = osm ? { 3: 1, 5: 3, 7: 3 }[b.size] : b.size;
-  const areas = areasFor(scope, b.id);
-  const places = scope === 'home' ? b.places * Math.max(1, states) : areas.length;
+  const picks = scopeList(scope);
+  const homeOnly = picks.length === 1 && picks[0] === 'home';
+  const areas = homeOnly ? southFloridaAreas(b.places * Math.max(1, states)) : areasFor(picks, b.id);
+  const places = areas.length;
   const e = estimate({ areas: places, size, keywords: play.industries.length, source: play.source });
-  return { budget: b, size, places, areas: scope === 'home' ? southFloridaAreas(places) : areas, requests: e.requests, cost: e.cost, free: osm, scope };
+  return { budget: b, size, places, areas, requests: e.requests, cost: e.cost, free: osm, scope: picks.length === 1 ? picks[0] : picks };
 }
 // Cities for a budget level: South Florida first, then each state's own biggest cities.
 export const southFloridaAreas = (n) => SOUTH_FLORIDA.slice(0, n).map((c) => `${c}, FL`);
@@ -234,11 +236,21 @@ export const SCOPES = [
   { id: 'ALL', label: 'All states' },
 ];
 export const PER_STATE = { lean: 1, standard: 2, deep: 3 };
+// A scope is one id or a list of ids (V: pick any mix of zones). All states already holds every zone; an empty pick means home.
+export function scopeList(scope) {
+  const ids = [...new Set([].concat(scope == null || scope === '' ? 'home' : scope).filter((x) => SCOPES.some((s) => s.id === x)))];
+  if (!ids.length) return ['home'];
+  return ids.includes('ALL') ? ['ALL'] : ids;
+}
 export function areasFor(scope, budgetId) {
-  if (scope === 'home' || !scope) return southFloridaAreas((BUDGETS.find((x) => x.id === budgetId) || BUDGETS[0]).places);
   const per = PER_STATE[budgetId] || 1;
-  const states = scope === 'ALL' ? allZoneStates() : zoneStates(scope);
-  return states.flatMap((st) => (CITIES[st] || []).slice(0, per).map((c) => `${c}, ${st}`));
+  const out = [];
+  for (const sc of scopeList(scope)) {
+    if (sc === 'home') { out.push(...southFloridaAreas((BUDGETS.find((x) => x.id === budgetId) || BUDGETS[0]).places)); continue; }
+    const states = sc === 'ALL' ? allZoneStates() : zoneStates(sc);
+    for (const st of states) out.push(...(CITIES[st] || []).slice(0, per).map((c) => `${c}, ${st}`));
+  }
+  return [...new Set(out)];
 }
 
 // ---------- weakness: how much a profile needs help (higher = better prospect) ----------
