@@ -3,7 +3,7 @@
 // Settings follow the person: they are saved on the server and loaded when the Hub opens (syncAudio), with a copy in this browser.
 // The mic and speaker are this computer's own, so they stay local. Applied right before every call, so nothing holds the mic open between calls.
 import { $, $$, esc, api, toast, modal } from './core.js';
-import { NOISE, normalize, personalPart, mergeDevice, plan, constraintsFor, constraintsAnyMic, gateThreshold, gateStep, pickInput, deviceLabel, permissionHelp, meterPct, isIOS, advice, toneWav, learnLevel, cleanupLine } from '/js/audiocfg.js';
+import { NOISE, normalize, personalPart, mergeDevice, plan, constraintsFor, constraintsAnyMic, gateThreshold, gateStep, pickInput, deviceLabel, permissionHelp, meterPct, isIOS, advice, toneWav, learnLevel, cleanupLine, REC_START, REC_STOP, clipVerdict } from '/js/audiocfg.js';
 
 const KEY = 'rw-audio';
 const listeners = new Set();
@@ -412,6 +412,26 @@ export async function micPermission() {
   try { const r = await navigator.permissions.query({ name: 'microphone' }); return r.state; } catch { return 'unknown'; }
 }
 
+// Record sounds for the mic tests (Nov 2026, V: Kiron's test clipped the first words and nobody knew when it started). Plays on the chosen
+// speaker, resolves when the sound has finished. start is played BEFORE the recording begins, so the beep never ends up on the recording.
+export async function recordBeep(kind = 'start') {
+  const st = kind === 'stop' ? REC_STOP : REC_START;
+  try {
+    const a = new Audio(URL.createObjectURL(new Blob([toneWav(22050, st.notes, st.volume)], { type: 'audio/wav' })));
+    const out = loadAudio().out;
+    try { if (out && a.setSinkId) await a.setSinkId(out); } catch { /* default speaker */ }
+    const done = new Promise((r) => { a.onended = r; setTimeout(r, 900); });
+    await a.play();
+    await done;
+    URL.revokeObjectURL(a.src);
+  } catch { /* a blocked beep must never block the test */ }
+}
+// Loudest sample seen on an analyser, kept over time (the level bars show RMS, which hides clipping).
+export function peakWatch(an) {
+  const buf = new Float32Array(an.fftSize); let max = 0;
+  return { sample() { an.getFloatTimeDomainData(buf); for (let i = 0; i < buf.length; i++) { const v = Math.abs(buf[i]); if (v > max) max = v; } return max; }, get max() { return max; } };
+}
+
 // ---------- the panel ----------
 const isLive = (device) => Boolean(device?.calls?.length || device?.activeCall);
 const ENGINE_NOTE = { ai: 'Running: the Hub\'s voice cleanup is on the audio thread.', basic: 'Backup filter: the voice engine could not run here, so a simple filter is used. Your voice still goes through.', none: 'Off: nothing extra is added to your mic.', failed: 'Off: the browser would not start the audio engine, so your plain mic is used. Your voice still goes through.' };
@@ -623,7 +643,7 @@ export function audioPanel({ device = null } = {}) {
     stopMeter(); stopMeter = () => {};
     const btn = $('#atest', root), play = $('#aplay', root), playRaw = $('#aplayraw', root);
     btn.disabled = true; play.hidden = true; playRaw.hidden = true;
-    let raw, pr, clean;
+    let raw, pr, clean, clipNote = null;
     try {
       const m = await openMic(loadAudio()); raw = m.stream;
       warmAudio();
@@ -633,16 +653,23 @@ export function audioPanel({ device = null } = {}) {
       const both = clean !== raw;
       const mk = (s) => { const rec = new MediaRecorder(s); const chunks = []; rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); }; return { rec, chunks }; };
       const A = mk(clean), B = both ? mk(raw) : null;
-      hint('Recording... say a sentence, then stay quiet for a second.');
+      hint('Get ready. Start talking when you hear the beep.');
+      await recordBeep('start'); await wait(150);
+      const watch = pr?.nodes ? [peakWatch(pr.nodes.anIn), peakWatch(pr.nodes.anOut)] : [];
+      const pt = setInterval(() => watch.forEach((w) => w.sample()), 25);
+      hint('Recording now. Say a sentence, then stay quiet for a second. It ends with a lower beep.');
       A.rec.start(); B?.rec.start();
       await wait(4000);
+      clearInterval(pt);
       await Promise.all([A, B].filter(Boolean).map((x) => new Promise((r) => { x.rec.onstop = r; x.rec.stop(); })));
+      recordBeep('stop');
+      clipNote = watch.length ? clipVerdict(Math.max(watch[0].max, watch[1].max)) : null;
       urls.forEach((u) => URL.revokeObjectURL(u)); urls = [];
       const url = (x) => { const u = URL.createObjectURL(new Blob(x.chunks, { type: x.rec.mimeType || 'audio/mp4' })); urls.push(u); return u; };
       const playUrl = (u) => async () => { const a = new Audio(u); const out = loadAudio().out; try { if (out && a.setSinkId) await a.setSinkId(out); } catch { /* default speaker */ } a.play().catch(() => toast('Tap again to play.')); };
       play.hidden = false; play.onclick = playUrl(url(A));
       if (B) { playRaw.hidden = false; playRaw.onclick = playUrl(url(B)); }
-      hint(B ? 'Play both and compare. The first is what the other person hears.' : 'Play it back to hear what the other person hears.');
+      hint(`${B ? 'Play both and compare. The first is what the other person hears.' : 'Play it back to hear what the other person hears.'}${clipNote && clipNote.level !== 'ok' ? ' ' + clipNote.text : ''}`);
     } catch (e) { hint(micProblem(e)); }
     raw?.getTracks().forEach((t) => t.stop()); await pr?.destroyProcessedStream(clean);
     btn.disabled = false; startMeter();

@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { DEFAULTS, NOISE, normalize, personalPart, mergeDevice, plan, constraintsFor, cleanupLine, gateThreshold, gateStep, pickInput, permissionHelp, deviceLabel, lockThreshold, learnLevel, meterPct, isIOS, looksBluetooth, advice, toneWav, constraintsAnyMic } from '../public/js/audiocfg.js';
+import { DEFAULTS, NOISE, normalize, personalPart, mergeDevice, plan, constraintsFor, cleanupLine, clipVerdict, REC_START, REC_STOP, gateThreshold, gateStep, pickInput, permissionHelp, deviceLabel, lockThreshold, learnLevel, meterPct, isIOS, looksBluetooth, advice, toneWav, constraintsAnyMic } from '../public/js/audiocfg.js';
 import assert from 'node:assert/strict';
 
 test('audio settings stay inside safe limits', () => {
@@ -179,4 +179,21 @@ test('cleanupLine says what is really cleaning the mic', () => {
   assert.match(cleanupLine({ noise: 'light' }, {}, { ns: false }).text, /ignored/);
   assert.equal(cleanupLine({ noise: 'light' }, { nsSupported: false }).level, 'ok');
   assert.match(cleanupLine({ noise: 'light' }, { nsSupported: false }).text, /Hub's voice cleanup/);
+});
+
+test('clipVerdict flags a recording that hit the ceiling', () => {
+  assert.equal(clipVerdict(1).level, 'clip');
+  assert.equal(clipVerdict(0.97).level, 'clip');
+  assert.equal(clipVerdict(0.9).level, 'hot');
+  assert.equal(clipVerdict(0.5).level, 'ok');
+  assert.equal(clipVerdict(0.05).level, 'quiet');
+  assert.equal(clipVerdict(0.01).level, 'silent');
+  assert.match(clipVerdict(1).text, /Lower Mic volume/);
+});
+
+test('record sounds are two note chimes of different shapes', () => {
+  assert.ok(REC_START.notes[1][0] > REC_START.notes[0][0], 'start rises');
+  assert.ok(REC_STOP.notes[1][0] < REC_STOP.notes[0][0], 'stop falls');
+  const w = toneWav(22050, REC_START.notes, REC_START.volume);
+  assert.ok(w.byteLength > 44 && w.byteLength < 44 + 22050 * 2 * 0.5, 'short enough to finish before the recording starts');
 });

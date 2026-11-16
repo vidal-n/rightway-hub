@@ -192,3 +192,16 @@ export function mergeDevice(personal, local) {
   const p = personal && typeof personal === 'object' ? personal : {};
   return normalize({ ...p, mic: local?.mic, out: local?.out });
 }
+
+// Record sounds for the mic tests: a rising pair before the recording starts, a falling pair when it stops.
+export const REC_START = { notes: [[880, 0.11], [1175, 0.13]], volume: 0.3 };
+export const REC_STOP = { notes: [[1175, 0.09], [784, 0.14]], volume: 0.3 };
+// Peak of a recorded test (0 to 1, the loudest sample): 0.97 and up means the waveform hit the ceiling and sounds crunchy (clipping).
+export function clipVerdict(peak) {
+  const p = Number(peak) || 0;
+  if (p >= 0.97) return { level: 'clip', text: 'Too loud: the sound hit the ceiling and is clipping. Lower Mic volume, move the mic a little farther from your mouth, or turn Auto level off.' };
+  if (p >= 0.85) return { level: 'hot', text: 'Loud, close to clipping. Lower Mic volume a little if it sounds crunchy.' };
+  if (p < 0.03) return { level: 'silent', text: 'It heard almost nothing. Check the mic is not muted, move it closer, or pick another mic.' };
+  if (p < 0.12) return { level: 'quiet', text: 'It works, but it is quiet. Speak closer or raise Mic volume.' };
+  return { level: 'ok', text: 'Level is good.' };
+}
