@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { DEFAULTS, NOISE, normalize, personalPart, mergeDevice, plan, constraintsFor, gateThreshold, gateStep, pickInput, permissionHelp, deviceLabel, lockThreshold, learnLevel, meterPct, isIOS, looksBluetooth, advice, toneWav, constraintsAnyMic } from '../public/js/audiocfg.js';
+import { DEFAULTS, NOISE, normalize, personalPart, mergeDevice, plan, constraintsFor, cleanupLine, gateThreshold, gateStep, pickInput, permissionHelp, deviceLabel, lockThreshold, learnLevel, meterPct, isIOS, looksBluetooth, advice, toneWav, constraintsAnyMic } from '../public/js/audiocfg.js';
 import assert from 'node:assert/strict';
 
 test('audio settings stay inside safe limits', () => {
@@ -70,10 +70,12 @@ test('cleanup levels map to the voice engine', () => {
   assert.equal(normalize({ ai: 'x' }).ai, -1);
 });
 
-test('headset mode skips the browser cleanup unless told otherwise', () => {
+test('headset mode skips the browser cleanup only when the Hub cleanup runs in its place', () => {
   assert.equal(plan({ noise: 'standard', headset: true }).ns, false);
   assert.equal(plan({ noise: 'standard', headset: true, ns: 'on' }).ns, true);
-  assert.equal(constraintsFor({ headset: true }).noiseSuppression, false);
+  assert.equal(plan({ noise: 'light', headset: true }).ns, true, 'Light with the headset box ticked used to clean nothing at all');
+  assert.equal(constraintsFor({ headset: true }).noiseSuppression, true);
+  assert.equal(constraintsFor({ noise: 'strong', headset: true }).noiseSuppression, false);
 });
 
 test('voice lock needs a learned level and turns auto level off', () => {
@@ -155,4 +157,26 @@ test('mic settings follow the person, but each computer keeps its own mic and sp
   // the server copy is cleaned on the way in
   assert.equal(personalPart({ gain: 9999, noise: 'junk', mic: 'x' }).gain, 300);
   assert.equal(personalPart({ noise: 'junk' }).noise, 'light');
+});
+
+test('a browser with no cleanup of its own runs Light as Standard (Kiron, MacBook Air, Bluetooth headset)', () => {
+  const none = { nsSupported: false };
+  assert.equal(plan({ noise: 'light' }, none).processor, true);
+  assert.equal(plan({ noise: 'light' }, none).ai, 0.5);
+  assert.equal(plan({ noise: 'light' }, none).hp, 90);
+  assert.equal(plan({ noise: 'light' }, { nsSupported: true }).processor, false, 'a browser that cleans keeps plain Light');
+  assert.equal(plan({ noise: 'off' }, none).processor, false, 'Off stays off');
+  assert.equal(plan({ noise: 'strong' }, none).ai, 0.85);
+  assert.equal(constraintsFor({ noise: 'light' }, none).noiseSuppression, false, 'do not ask for what the browser cannot do');
+});
+
+test('cleanupLine says what is really cleaning the mic', () => {
+  assert.equal(cleanupLine({ noise: 'light' }).level, 'ok');
+  assert.match(cleanupLine({ noise: 'light' }).text, /browser's own cleanup only/);
+  assert.equal(cleanupLine({ noise: 'standard' }).level, 'ok');
+  assert.equal(cleanupLine({ noise: 'off' }).level, 'warn');
+  assert.equal(cleanupLine({ noise: 'light' }, {}, { ns: false }).level, 'warn', 'a browser that ignored the request is not trusted');
+  assert.match(cleanupLine({ noise: 'light' }, {}, { ns: false }).text, /ignored/);
+  assert.equal(cleanupLine({ noise: 'light' }, { nsSupported: false }).level, 'ok');
+  assert.match(cleanupLine({ noise: 'light' }, { nsSupported: false }).text, /Hub's voice cleanup/);
 });

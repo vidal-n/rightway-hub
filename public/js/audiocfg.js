@@ -39,13 +39,18 @@ export function normalize(raw = {}) {
 }
 
 // What the phone should actually do for these settings.
-export function plan(cfg) {
+// env.nsSupported === false: the browser has no noise suppression of its own (Safari on a Mac, some others). Then Light would clean nothing,
+// so it runs as Standard (the Hub's own cleanup) instead. Nov 2026, Kiron: MacBook Air and a Bluetooth headset, "no noise cancelling at all".
+export function plan(cfg, env = {}) {
   const c = normalize(cfg);
-  const p = NOISE[c.noise];
+  const p = NOISE[c.noise === 'light' && env.nsSupported === false ? 'standard' : c.noise];
   const gate = c.gate === -1 ? p.gate : c.gate;
   const ai = (c.ai === -1 ? p.ai : c.ai) / 100;
   let ns = c.ns === 'on' ? true : c.ns === 'off' ? false : p.ns;
-  if (c.headset && c.ns === 'auto') ns = false;        // a noise cancelling headset already cleans the mic; doing it twice makes it watery
+  // A noise cancelling headset already cleans the mic, so the browser's cleanup steps aside, but only when the Hub's own cleanup is
+  // running in its place. With nothing else running (Light or Off) the box used to leave the mic completely uncleaned.
+  if (c.headset && c.ns === 'auto' && ai > 0) ns = false;
+  if (env.nsSupported === false) ns = false;
   const lockOn = c.lock && c.level > 0;
   const lockThr = lockOn ? lockThreshold(c.level, c.strict) : 0;
   const hp = p.hp;
@@ -70,8 +75,8 @@ export function learnLevel(frames) {
 }
 
 // getUserMedia constraints (the browser's own cleanup). deviceId is added only when a mic was picked.
-export function constraintsFor(cfg) {
-  const p = plan(cfg);
+export function constraintsFor(cfg, env = {}) {
+  const p = plan(cfg, env);
   const c = normalize(cfg);
   const a = { noiseSuppression: p.ns, echoCancellation: p.echo, autoGainControl: p.auto };
   if (c.mic) a.deviceId = { exact: c.mic };
@@ -111,7 +116,19 @@ export function permissionHelp(ua = '') {
 }
 
 // Constraints without the chosen device, for when the exact device is gone (unplugged, or Bluetooth reconnected under a new id).
-export const constraintsAnyMic = (cfg) => constraintsFor({ ...normalize(cfg), mic: '' });
+export const constraintsAnyMic = (cfg, env = {}) => constraintsFor({ ...normalize(cfg), mic: '' }, env);
+
+// One plain line for the panel: what is really cleaning the mic right now. `seen` is what the browser reported for the open mic track
+// ({ns: true|false|undefined}), so a browser that ignored the request is called out instead of trusted.
+export function cleanupLine(cfg, env = {}, seen = null) {
+  const p = plan(cfg, env);
+  const browser = seen && seen.ns !== undefined ? seen.ns === true : p.ns;
+  const hub = p.ai > 0 || p.hp > 0 || p.gate > 0 || p.lock > 0;
+  if (browser && hub) return { level: 'ok', text: "Cleaning your mic: the browser's cleanup and the Hub's voice cleanup." };
+  if (hub) return { level: 'ok', text: "Cleaning your mic: the Hub's voice cleanup" + (env.nsSupported === false ? " (this browser has none of its own, so the Hub's runs even on Light)." : '.') };
+  if (browser) return { level: 'ok', text: "Cleaning your mic: the browser's own cleanup only. Pick Standard or Strong for more." };
+  return { level: 'warn', text: seen && seen.ns === false && p.ns ? "Nothing is cleaning your mic: this browser ignored the cleanup request. Pick Standard or Strong so the Hub does it." : 'Nothing is cleaning your mic. Pick Light, Standard or Strong above.' };
+}
 
 // Level (RMS 0 to 1) -> bar width 0 to 100 on a decibel scale, so quiet rooms and loud voices both show.
 export function meterPct(rms) {

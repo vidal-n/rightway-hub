@@ -3,7 +3,7 @@
 // Settings follow the person: they are saved on the server and loaded when the Hub opens (syncAudio), with a copy in this browser.
 // The mic and speaker are this computer's own, so they stay local. Applied right before every call, so nothing holds the mic open between calls.
 import { $, $$, esc, api, toast, modal } from './core.js';
-import { NOISE, normalize, personalPart, mergeDevice, plan, constraintsFor, constraintsAnyMic, gateThreshold, gateStep, pickInput, deviceLabel, permissionHelp, meterPct, isIOS, advice, toneWav, learnLevel } from '/js/audiocfg.js';
+import { NOISE, normalize, personalPart, mergeDevice, plan, constraintsFor, constraintsAnyMic, gateThreshold, gateStep, pickInput, deviceLabel, permissionHelp, meterPct, isIOS, advice, toneWav, learnLevel, cleanupLine } from '/js/audiocfg.js';
 
 const KEY = 'rw-audio';
 const listeners = new Set();
@@ -78,11 +78,30 @@ export function appleSession() {
 // On iPad and iPhone the Hub's own cleanup (an audio graph between the mic and the call) is never used on a call: every extra audio graph
 // made iPadOS move the route back to the built in mic and speaker. The browser's own cleanup still runs, and Control Center's Voice Isolation
 // is the strong option there. Keypad tones still use it for a moment when the keypad opens.
-const callPlan = (cfg) => { const p = plan(cfg); return isApple() ? { ...p, processor: false } : p; };
+const callPlan = (cfg) => { const p = plan(cfg, audioEnv()); return isApple() ? { ...p, processor: false } : p; };
 // The microphone really in use right now (its name), from the last stream the Hub opened. The panel compares it with what is connected.
 let inUse = '';
 const noteTrack = (stream) => { try { const t = stream?.getAudioTracks?.()[0]; if (t?.label) inUse = t.label; } catch { /* ignore */ } };
 export const micInUse = () => inUse;
+// Does this browser clean the mic on its own? false when it has no such setting, or when an open mic reported it off after we asked for it on
+// (remembered on this computer). Then Light runs the Hub's own cleanup instead of nothing.
+const NS_KEY = 'rw-ns-ignored';
+export const audioEnv = () => {
+  if (isApple()) return { nsSupported: true };   // no Hub engine on calls there, so the browser's cleanup is all there is
+  try {
+    if (localStorage.getItem(NS_KEY) === '1') return { nsSupported: false };
+    const sc = navigator.mediaDevices?.getSupportedConstraints?.();
+    if (sc && sc.noiseSuppression === false) return { nsSupported: false };
+  } catch { /* unknown: assume the browser does it */ }
+  return { nsSupported: true };
+};
+const seenNs = (stream, asked) => {
+  try {
+    const v = stream?.getAudioTracks?.()[0]?.getSettings?.().noiseSuppression;
+    if (asked && v === false) localStorage.setItem(NS_KEY, '1');
+    else if (asked && v === true) localStorage.removeItem(NS_KEY);
+  } catch { /* ignore */ }
+};
 const BUILT_IN_RX = /iPad|iPhone|Built-?in|MacBook|Internal|Microphone Array|Realtek/i;
 const BUILT_IN = { test: (label) => BUILT_IN_RX.test(String(label || '').replace(/^Default\s*-\s*/i, '').replace(/^Communications\s*-\s*/i, '')) };
 
@@ -93,7 +112,7 @@ class RwProcessor {
   update(cfg) {
     this.cfg = normalize(cfg);
     const n = this.nodes; if (!n) return;
-    const p = plan(this.cfg);
+    const p = plan(this.cfg, audioEnv());
     if (n.voice) { try { n.voice.port.postMessage({ ai: p.ai, hp: p.hp, gateThr: gateThreshold(p.gate), gain: p.gain, lock: p.lock }); } catch { /* ignore */ } }
     if (n.hp) { n.hp.frequency.value = p.hp || 10; n.gain.gain.setTargetAtTime(p.gain, this.ctx.currentTime, 0.02); }
   }
@@ -155,7 +174,7 @@ class RwProcessor {
     let state = { open: true, quiet: 0 }, last = performance.now();
     n.gateTimer = setInterval(() => {
       const t = performance.now(), dt = t - last; last = t;
-      const pl = plan(this.cfg);
+      const pl = plan(this.cfg, audioEnv());
       const thr = pl.lock || gateThreshold(pl.gate);
       if (!thr) { gate.gain.value = 1; this.gateOpen = true; return; }
       state = gateStep(state, this.levels().inp, thr, dt);
@@ -241,10 +260,10 @@ export const isApple = () => { try { return /iPad|iPhone|iPod/.test(navigator.us
 export async function openMic(cfg) {
   appleSession();
   // A mic the person picked is used everywhere, iPad included (with the call session set above the route no longer flips back).
-  const gum = async (c) => { const st = await navigator.mediaDevices.getUserMedia({ audio: c }); noteTrack(st); return st; };
-  try { return { stream: await gum(constraintsFor(cfg)), fellBack: false }; }
+  const gum = async (c) => { const st = await navigator.mediaDevices.getUserMedia({ audio: c }); noteTrack(st); seenNs(st, c.noiseSuppression === true); return st; };
+  try { return { stream: await gum(constraintsFor(cfg, audioEnv())), fellBack: false }; }
   catch (e) {
-    if (cfg.mic && /Overconstrained|NotFound/i.test(e?.name || '')) return { stream: await gum(constraintsAnyMic(cfg)), fellBack: true };
+    if (cfg.mic && /Overconstrained|NotFound/i.test(e?.name || '')) return { stream: await gum(constraintsAnyMic(cfg, audioEnv())), fellBack: true };
     throw e;
   }
 }
@@ -258,7 +277,7 @@ export async function prepareAudio(device) {
   const cfg = loadAudio();
   const a = device?.audio;
   if (!a) return cfg;
-  try { a.setAudioConstraints(constraintsFor({ ...cfg, mic: '' })); } catch { /* older SDK */ }
+  try { a.setAudioConstraints(constraintsFor({ ...cfg, mic: '' }, audioEnv())); } catch { /* older SDK */ }
   const p = callPlan(cfg);
   await syncProcessor(a, p);
   for (const x of active) x.update(cfg);
@@ -411,9 +430,10 @@ export function audioPanel({ device = null } = {}) {
     const perm = await micPermission();
     const canOut = Boolean(device?.audio?.isOutputSelectionSupported ?? ('setSinkId' in HTMLMediaElement.prototype));
     const live = isLive(device);
-    const p = plan(cfg);
+    const p = plan(cfg, audioEnv());
     const gateShown = cfg.gate === -1 ? p.gate : cfg.gate;
     const aiShown = Math.round(p.ai * 100);
+    const cl = cleanupLine(cfg, audioEnv());
     const micLabel = (ins.find((d) => d.deviceId === (cfg.mic || 'default')) || ins[0] || {}).label || '';
     const outLabel = (outs.find((d) => d.deviceId === (cfg.out || 'default')) || outs[0] || {}).label || '';
     const tips = advice({ ios, micLabel, outLabel });
@@ -434,6 +454,7 @@ export function audioPanel({ device = null } = {}) {
         ${isApple() ? '<p class="small aud-warn-soft">On iPad and iPhone, calls use the browser\'s own noise cleanup only. The Hub\'s extra cleanup and mic volume are switched off on calls, because they made iPadOS drop your headset. For strong cleanup: Control Center, Mic Mode, Voice Isolation.</p>' : ''}
         <div class="seg aud-seg" id="anoise">${Object.entries(NOISE).map(([k, v]) => `<button type="button" data-n="${k}" class="${k === cfg.noise ? 'is-on' : ''}">${esc(v.label)}</button>`).join('')}</div>
         <p class="small muted" id="anote">${esc(NOISE[cfg.noise].note)}</p>
+        <p class="small ${cl.level === 'ok' ? 'aud-ok' : 'aud-warn'}" id="aclean">${esc(cl.text)}</p>
         <label class="aud-row"><span>Cleanup strength <b id="aaiv">${aiShown ? aiShown + '%' : 'Off'}</b></span><input type="range" id="aai" min="0" max="100" step="5" value="${aiShown}"></label>
         <p class="small muted">Learns steady noise like fans, air conditioning, hum and hiss, and turns it down while you talk. Higher cuts more but can make a voice sound thin.</p>
         <label class="aud-row"><span>Cut quiet sound between words <b id="agtv">${gateShown ? gateShown : 'Off'}</b></span><input type="range" id="agate" min="0" max="10" step="1" value="${gateShown}"></label>
@@ -445,7 +466,7 @@ export function audioPanel({ device = null } = {}) {
           <p class="small muted">Raise it if background still gets through. Lower it if your quiet words get cut.</p>
         </div>
         <div class="aud-checks">
-          <label class="row small" style="gap:8px"><input type="checkbox" id="aheadset"${cfg.headset ? ' checked' : ''}> I use a noise cancelling headset or boom mic <span class="muted">(skips the browser's own cleanup so it is not done twice)</span></label>
+          <label class="row small" style="gap:8px"><input type="checkbox" id="aheadset"${cfg.headset ? ' checked' : ''}> I use a noise cancelling headset or boom mic <span class="muted">(when the Hub's own cleanup is on, the browser's steps aside so it is not done twice. Light and Off are not changed)</span></label>
           <label class="row small" style="gap:8px"><input type="checkbox" id="aecho"${cfg.echo ? ' checked' : ''}> Echo cancellation <span class="muted">(turn off with a headset that has its own)</span></label>
           <label class="row small" style="gap:8px"><input type="checkbox" id="aauto"${p.auto ? ' checked' : ''}${cfg.lock && cfg.level ? ' disabled' : ''}> Auto level my voice ${cfg.lock && cfg.level ? '<span class="muted">(off while My voice only is on)</span>' : ''}</label>
         </div>
@@ -497,9 +518,15 @@ export function audioPanel({ device = null } = {}) {
     $('#ausehead', box)?.addEventListener('click', () => useMic(ext[0].deviceId));
   };
   const hint = (t) => { const h = $('#atesthint', el); if (h) h.textContent = t; };
+  // The plain "what is cleaning my mic" line under the noise buttons. `info` is what the open mic reported (or null before a test).
+  const paintClean = (info) => {
+    const n = $('#aclean', el); if (!n) return;
+    const cl = cleanupLine(loadAudio(), audioEnv(), info ? { ns: info.ns } : null);
+    n.className = `small ${cl.level === 'ok' ? 'aud-ok' : 'aud-warn'}`; n.textContent = cl.text;
+  };
   const wire = (cfg0) => {
     const root = $('#audbody', el);
-    const refresh = () => { const c = loadAudio(); const pl = plan(c); const g = pl.gate; $('#agate', root).value = g; $('#agtv', root).textContent = g || 'Off'; const ai = Math.round(pl.ai * 100); $('#aai', root).value = ai; $('#aaiv', root).textContent = ai ? `${ai}%` : 'Off'; };
+    const refresh = () => { const c = loadAudio(); const pl = plan(c, audioEnv()); const g = pl.gate; $('#agate', root).value = g; $('#agtv', root).textContent = g || 'Off'; const ai = Math.round(pl.ai * 100); $('#aai', root).value = ai; $('#aaiv', root).textContent = ai ? `${ai}%` : 'Off'; paintClean(null); };
     $('#amic', root).addEventListener('change', async (e) => { await useMic(e.target.value); });
     $('#aout', root)?.addEventListener('change', async (e) => { set({ out: e.target.value }); try { if (device?.audio?.isOutputSelectionSupported) { await device.audio.speakerDevices.set(e.target.value ? [e.target.value] : []); await device.audio.ringtoneDevices.set(e.target.value ? [e.target.value] : []); } } catch { toast('Could not switch the speaker.', true); } });
     $('#again', root).addEventListener('input', (e) => { $('#agv', root).textContent = `${e.target.value}%`; set({ gain: Number(e.target.value) }); });
@@ -546,7 +573,11 @@ export function audioPanel({ device = null } = {}) {
       if (info?.label) rows.push(['Microphone', info.label]);
       if (info?.ctxRate) rows.push(['Sample rate', `${info.ctxRate} Hz${info.micRate && info.micRate !== info.ctxRate ? ` (mic ${info.micRate} Hz)` : ''}`]);
       if (info) rows.push(['Browser cleanup', `noise cut ${info.ns ? 'on' : 'off'}, echo cancel ${info.echo ? 'on' : 'off'}, auto level ${info.agc ? 'on' : 'off'}`]);
-      d.innerHTML = `${esc(ENGINE_NOTE[engine] || ENGINE_NOTE.none)}${info?.why ? `<br><span class="muted">${esc(info.why)}</span>` : ''}`;
+      const pp = plan(loadAudio(), audioEnv());
+      const idle = !(pp.ai > 0 || pp.hp > 0 || pp.gate > 0 || pp.lock > 0);
+      const note = idle && (engine === 'ai' || engine === 'basic') ? 'The Hub\'s voice cleanup is not doing anything at this level (Light uses the browser\'s own cleanup only). Pick Standard or Strong to use it.' : (ENGINE_NOTE[engine] || ENGINE_NOTE.none);
+      paintClean(info);
+      d.innerHTML = `${esc(note)}${info?.why ? `<br><span class="muted">${esc(info.why)}</span>` : ''}`;
       const dl = $('#adiag', el);
       dl.querySelectorAll('.extra').forEach((x) => x.remove());
       rows.forEach(([k, v]) => dl.insertAdjacentHTML('beforeend', `<dt class="extra">${esc(k)}</dt><dd class="extra">${esc(v)}</dd>`));
