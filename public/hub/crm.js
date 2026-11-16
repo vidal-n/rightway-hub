@@ -1373,6 +1373,7 @@ export async function dialerPage(app, user) {
   try { flt = JSON.parse(localStorage.getItem(DIAL_KEY) || '{}'); } catch { flt = {}; }
   // The script is chosen on the Pipeline (Call setup). The dialer only shows it.
   // Switching scripts mid list (Nov 2026): sets the pick for the next call, redraws call prep for the lead on screen, and every call keeps the stamp it was placed with.
+  const needScript = async () => { await loadScriptTest(); if (scriptReady()) return true; toast('Pick the script for today in the Pipeline first.', true); setTimeout(() => { location.hash = '#/pipeline'; }, 900); return false; };
   function bindScript() {
     $('#dscript', view)?.addEventListener('change', (e) => {
       const k = e.target.value; if (!k) return;

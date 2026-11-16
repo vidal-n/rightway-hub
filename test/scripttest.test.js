@@ -175,3 +175,11 @@ test('cold calling and the meeting audit are two categories, and clarity stays o
   const cut = prep.slice(prep.indexOf('export async function prepPanel'), prep.indexOf('export function scriptFold'));
   assert.doesNotMatch(cut, /clarity/i, 'call prep holds cold scripts only');
 });
+
+test('dialer defines the helpers its Start and Call buttons use', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../public/hub/crm.js', import.meta.url), 'utf8');
+  // Nov 2026: the script switch change dropped needScript and Start power dial threw "Can't find variable".
+  if (/needScript\(/.test(src)) assert.match(src, /const needScript = async/);
+  assert.match(src, /import \{[^}]*\bscriptReady\b[^}]*\} from '\.\/callsetup\.js'/);
+});
