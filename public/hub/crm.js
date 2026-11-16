@@ -1373,7 +1373,16 @@ export async function dialerPage(app, user) {
   try { flt = JSON.parse(localStorage.getItem(DIAL_KEY) || '{}'); } catch { flt = {}; }
   // The script is chosen on the Pipeline (Call setup). The dialer only shows it.
   // Switching scripts mid list (Nov 2026): sets the pick for the next call, redraws call prep for the lead on screen, and every call keeps the stamp it was placed with.
-  const needScript = async () => { await loadScriptTest(); if (scriptReady()) return true; toast('Pick the script for today in the Pipeline first.', true); setTimeout(() => { location.hash = '#/pipeline'; }, 900); return false; };
+  // No script picked for today: point at the Script box on this page (it is right here with a list loaded) instead of bouncing to the Pipeline,
+  // which made Start power dial look like it never loaded, most of all from the Resume strip that starts the dialer by itself.
+  const needScript = async () => {
+    warmAudio(); // iPad and iPhone only start audio inside the tap, so wake it before any await
+    await loadScriptTest(); if (scriptReady()) return true;
+    const sel = $('#dscript', view);
+    if (sel) { toast('Pick today\'s script in the Script box, then tap Start power dial again.', true); try { sel.scrollIntoView({ block: 'center', behavior: 'smooth' }); sel.focus({ preventScroll: true }); } catch { /* ignore */ } sel.classList.add('need-pick'); setTimeout(() => sel.classList.remove('need-pick'), 3500); }
+    else { toast('Pick the script for today in the Pipeline first.', true); setTimeout(() => { location.hash = '#/pipeline'; }, 900); }
+    return false;
+  };
   function bindScript() {
     $('#dscript', view)?.addEventListener('change', (e) => {
       const k = e.target.value; if (!k) return;

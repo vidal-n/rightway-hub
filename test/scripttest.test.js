@@ -183,3 +183,12 @@ test('dialer defines the helpers its Start and Call buttons use', async () => {
   if (/needScript\(/.test(src)) assert.match(src, /const needScript = async/);
   assert.match(src, /import \{[^}]*\bscriptReady\b[^}]*\} from '\.\/callsetup\.js'/);
 });
+
+test('Start power dial with no script picked points at the Script box and never bounces away', async () => {
+  const { readFileSync } = await import('node:fs');
+  const crm = readFileSync(new URL('../public/hub/crm.js', import.meta.url), 'utf8');
+  const fn = crm.slice(crm.indexOf('const needScript = async'), crm.indexOf('function bindScript'));
+  assert.match(fn, /#dscript/);
+  assert.match(fn, /warmAudio\(\)/);
+  assert.match(fn, /need-pick/);
+});
