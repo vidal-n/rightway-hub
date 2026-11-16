@@ -76,3 +76,20 @@ export function scriptLabel() {
   const ok = Boolean(pickedScript()) || (test.on && !test.allowPick);
   return `<a class="btn ${ok ? 'btn-ghost' : 'btn-primary'} btn-sm sp-chip" id="dscript" href="#/pipeline" title="The script is chosen on the Pipeline, in Set up the call list.">Script: ${esc(scriptText())}</a>`;
 }
+
+// The script switcher in the dialer header (Nov 2026, V: change the script while a list is loaded, every call still tracked under the script it was placed with).
+// Modeled on the script selector next to the dial pad in Orum and Nooks. Changing it only sets the pick for the NEXT call: a call already placed keeps the
+// script, version and "how" it was stamped with (`scriptTag` runs when the call is prepared and `tagScript` never overwrites), so the Script tests numbers
+// stay clean. With an owner's split test that reps may not leave (`allowPick` off), the switcher is locked to the test.
+export function scriptSelect() {
+  const t = test;
+  const today = pickedScript(), last = pickedScript({ anyDay: true });
+  const forced = t.on && !t.allowPick;
+  const cur = forced ? 'test' : today || '';
+  const opts = [
+    !cur ? `<option value="">${last && last !== 'test' ? `Choose (last: ${esc(scriptName(last))})` : 'Choose a script'}</option>` : '',
+    t.on ? `<option value="test"${cur === 'test' ? ' selected' : ''}>Split test: ${t.variants.map((k) => esc(scriptName(k))).join(' vs ')}</option>` : '',
+    ...(forced ? [] : DIAL_SCRIPTS.map((k) => `<option value="${k}"${cur === k ? ' selected' : ''}>${esc(scriptName(k))}${cur === k && t.on ? ' (own pick)' : ''}</option>`)),
+  ].join('');
+  return `<label class="row small sp-sel" id="dscriptbox" style="gap:6px" title="${forced ? 'Your owner is running a split test. Scripts are assigned for you.' : 'Switch scripts any time. The next call is tracked under the one you pick. Calls already placed keep theirs.'}">Script <select id="dscript" style="width:auto;min-height:32px;padding:4px 8px"${forced ? ' disabled' : ''}>${opts}</select></label>`;
+}

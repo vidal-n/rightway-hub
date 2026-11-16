@@ -11,7 +11,7 @@ import { loadDispos, keyed, dispositionModal, isoWhen } from './dispo.js';
 import { saveDial } from './resume.js';
 import { mountLayout } from './widgets.js';
 import { showCallScript, setScriptOn, scriptOn } from './scriptpane.js';
-import { scriptLabel, scriptText, scriptTag, loadScriptTest } from './scriptpick.js';
+import { scriptLabel, scriptSelect, scriptName, scriptText, scriptTag, loadScriptTest, setPicked, pickedScript } from './scriptpick.js';
 import { mountCallSetup, scriptReady, loadList } from './callsetup.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
@@ -1372,8 +1372,21 @@ export async function dialerPage(app, user) {
   let flt = {};
   try { flt = JSON.parse(localStorage.getItem(DIAL_KEY) || '{}'); } catch { flt = {}; }
   // The script is chosen on the Pipeline (Call setup). The dialer only shows it.
-  function paintChip() { const b = $('#dscript', view); if (b) b.outerHTML = scriptLabel(); }
-  const needScript = async () => { await loadScriptTest(); if (scriptReady()) return true; toast('Pick the script for today in the Pipeline first.', true); setTimeout(() => { location.hash = '#/pipeline'; }, 900); return false; };
+  // Switching scripts mid list (Nov 2026): sets the pick for the next call, redraws call prep for the lead on screen, and every call keeps the stamp it was placed with.
+  function bindScript() {
+    $('#dscript', view)?.addEventListener('change', (e) => {
+      const k = e.target.value; if (!k) return;
+      setPicked(k);
+      paintChip();
+      if (!busyPhase()) showPrep();   // a live call keeps its script; the next one uses the new pick
+      toast(busyPhase() ? `This call stays under its script. The next call uses ${k === 'test' ? 'the split test' : scriptName(k)}.` : `Script: ${k === 'test' ? 'split test' : scriptName(k)}. Calls from here are tracked under it.`);
+    });
+  }
+  function paintChip() {
+    const b = $('#dscriptbox', view); if (b) b.outerHTML = scriptSelect();
+    const t = $('#dsetup-script', view); if (t) t.textContent = scriptText();
+    bindScript();
+  }
   loadScriptTest().then(paintChip);
   // Researching the next leads as you dial costs money, so it starts off (Nov 2026). The old saved choice is ignored once.
   let auto = false;
@@ -1586,12 +1599,12 @@ export async function dialerPage(app, user) {
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
           ${testMode ? '' : `<label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label>`}<a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
-          ${testMode ? '' : scriptLabel()}
+          ${testMode ? '' : scriptSelect()}
           <button class="btn btn-ghost btn-sm" id="pdtest" title="Try power dialing with pretend leads and a pretend call. Nothing is dialed or saved.">${testMode ? 'Exit test' : 'Test power dial'}</button>
           ${dialOn() ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
       ${testMode ? '<div class="card test-banner"><b>Test mode.</b> Seven pretend leads run the whole dialer, from Start power dial to the result popup and the next lead. Nothing is dialed, texted, booked or saved, and it costs nothing. <a href="#/training/warmup">Warm up in Training</a>. <button type="button" class="btn btn-ghost btn-sm" id="pdtestx">Exit test</button></div>' : ''}
       ${dialTabs('queue', user)}
-      <div class="dsetup card" data-sec="setup"><div><b>Today's list</b><span>${esc(listText)}</span></div><div><b>Script</b><span>${esc(scriptText())}</span></div><div class="dsetup-go"><a class="btn btn-ghost btn-sm" href="#/pipeline">Change in Pipeline</a>${q.campaign ? '<button class="linkbtn" id="dclear" title="Close out the campaign and free these leads for the rest of the team">Close out this campaign</button>' : ''}</div></div>
+      <div class="dsetup card" data-sec="setup"><div><b>Today's list</b><span>${esc(listText)}</span></div><div><b>Script</b><span id="dsetup-script">${esc(scriptText())}</span></div><div class="dsetup-go"><a class="btn btn-ghost btn-sm" href="#/pipeline">Change the list in Pipeline</a>${q.campaign ? '<button class="linkbtn" id="dclear" title="Close out the campaign and free these leads for the rest of the team">Close out this campaign</button>' : ''}</div></div>
       <div id="rsx" class="small muted" style="margin:0 0 6px"></div>
       <div class="dstrip" aria-label="Today"><span class="dgoal"><b>${q.stats.dials}</b> dials <i>of ${user.role === 'admin' ? `<button type="button" class="goal-btn" id="dgoal" title="Click to change your daily dial goal">${q.stats.goal || 60}</button>` : `<span class="goal-fixed" title="Your owner sets your daily dial goal">${q.stats.goal || 60}</span>`}</i><em class="dgbar" aria-hidden="true"><u style="width:${Math.min(100, Math.round((100 * q.stats.dials) / (q.stats.goal || 60)))}%"></u></em>${q.stats.dials >= (q.stats.goal || 60) ? '<b class="gdone">Goal hit</b>' : ''}</span><span><b>${q.stats.talks}</b> owner talks</span><span><b>${q.stats.booked}</b> booked</span><span><b>${q.stats.dials ? Math.round((q.stats.talks / q.stats.dials) * 100) : 0}%</b> contact rate</span>
         <div class="dlayout"><button type="button" class="dl-btn" id="dlaybtn" aria-expanded="${layOpen}" aria-haspopup="true">Customize layout</button>
@@ -1693,6 +1706,7 @@ export async function dialerPage(app, user) {
     $('#pdtestx', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
     $('#tsagain', view)?.addEventListener('click', () => startTest());
     $('#tsexit', view)?.addEventListener('click', () => { powerStop(); dialerPage(app, user); });
+    bindScript();
     $('#pdgo', view)?.addEventListener('click', async () => { if (!testMode && !power && !(await needScript())) return; warmAudio(); if (testMode) unlockSpeech(); if (!power) holdMic(); if (!testMode) startPhone().catch(() => {}); power = !power; setPdx(); if (power) { trayRemove('powerdial'); pdStart = pdStart || Date.now(); if (!testMode) saveDial({ start: true, running: true, filter: flt, label: filterText, calls: pdCalls }); window.dispatchEvent(new Event('rw-power')); powerStep(); } else powerStop(); $('#pdgo', view).textContent = power ? 'Power dialing...' : 'Start power dial'; });
     if (!l) return;
     showPrep();
