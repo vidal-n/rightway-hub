@@ -45,19 +45,37 @@ export function closeScript() {
   pane?.remove(); pane = null;
 }
 
+// The call window is made a moment after the Call tap (the call is prepared first), so wait for it instead of giving up: the
+// script used to stay hidden on every call after the first because the window did not exist yet when we looked.
+const waitForBar = async (token) => {
+  for (let i = 0; i < 75; i++) {
+    if (token !== shown) return false;
+    const bar = document.querySelector('.callbar');
+    if (bar && bar.dataset.state !== 'wrap' && bar.dataset.state !== 'ended') return true;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return false;
+};
+let shown = 0; // newest request wins: a slow earlier call can never paint its lead's script over the current lead's
+
 // Show the script for this lead. `intel` is the research if there is any, `rep` and `voice` are the same as call prep uses.
+// It follows the saved on or off choice: open stays open for every call until the person hides it.
 export async function showCallScript(opts) {
   cur = opts;
+  const token = ++shown;
   closeScript();
   if (!scriptOn() || isPhone() || window.innerWidth < 720) return;
   const { lead, intel, rep = '', voice = 'I' } = opts;
   const custom = await scriptSettings();
-  if (!document.querySelector('.callbar') || pane) return;
+  if (token !== shown || !(await waitForBar(token))) return;
+  closeScript();
   const s = buildScript(lead, intel || null, { rep, voice }, custom);
   // Cold call scripts only: the meeting script is never shown beside a call.
   const picked = scriptKeyFor(lead);
   const startGroup = COLD_GROUPS.includes(picked) ? picked : 'analysis';
-  const cold = s.steps.map((st, i) => [st, i]).filter(([st]) => st.kind === 'cold');
+  // Only the script picked for the campaign (or assigned by the split test) can be read here; with no pick every cold script shows.
+  const only = COLD_GROUPS.includes(picked) ? picked : null;
+  const cold = s.steps.map((st, i) => [st, i]).filter(([st]) => st.kind === 'cold' && (!only || st.group === only));
   const firstStep = Math.max(0, s.steps.findIndex((x) => x.group === startGroup));
   const el = document.createElement('aside');
   el.className = 'callscript';
@@ -66,7 +84,7 @@ export async function showCallScript(opts) {
     <div class="cs-head"><b>Script</b><span class="cs-who">${esc(lead.business || '')}</span>
       <label class="small cs-notes"><input type="checkbox" id="csn"> Coaching notes</label>
       <button type="button" class="cs-x" aria-label="Hide the script" title="Hide the script. Turn it back on with the Script button or in Customize layout.">×</button></div>
-    <div class="seg cs-groups" role="tablist">${s.groups.filter((g) => g.kind === 'cold').map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${esc(g.key)}">${esc(g.name)}</button>`).join('')}</div>
+    <div class="seg cs-groups" role="tablist"${only ? ' hidden' : ''}>${s.groups.filter((g) => g.kind === 'cold' && (!only || g.key === only)).map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${esc(g.key)}">${esc(g.name)}</button>`).join('')}</div>
     <div class="seg cs-tabs" role="tablist">${cold.map(([st, i]) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${esc(st.group)}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
     <div class="cs-body script-body hide-notes">${cold.map(([st, i]) => {
       const sib = s.steps.map((x, j) => [x, j]).filter(([x]) => x.group === st.group), at = sib.findIndex(([, j]) => j === i);

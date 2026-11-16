@@ -71,7 +71,7 @@ test('finder maths: lists, cost, grid tasks, zoom, filters, lead rows, csv', () 
   assert.equal(cleanFilters({ website: 'bogus', minReviews: 'x' }).website, 'any');
   const row = leadRow({ ...r, kw: 'roofer', city: 'Miami', state: 'Florida', zip: '33101', place_id: 'p1', cid: 'c1', lat: 25.7, lng: -80.2 });
   assert.equal(row.business, 'Sunrise Roofing');
-  assert.equal(row.industry, 'roofer');
+  assert.equal(row.industry, 'Roofing contractor'); // Google's category wins over the search keyword
   assert.equal(row.source, 'Lead finder');
   const csv = csvText([{ ...r, title: 'Say "hi", Roofing', kw: 'roofer', area: 'Miami, FL' }]).split('\r\n');
   assert.match(csv[0], /^name,category,other_categories,phone,website,email/);

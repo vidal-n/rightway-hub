@@ -60,8 +60,11 @@ export function wireFolds(root) {
   $$('[data-folds]', root).forEach((b) => b.addEventListener('click', () => $$('details.fold', root).forEach((d) => { d.open = b.dataset.folds === 'open'; })));
 }
 
-export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onResearched, compact = false } = {}) {
+// lock: show only the script picked for the campaign (the dialer). Without a pick every cold script stays available.
+export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onResearched, compact = false, lock = false } = {}) {
+  const seq = (el.__prepSeq = (el.__prepSeq || 0) + 1);
   const custom = await scriptSettings();
+  if (el.__prepSeq !== seq) return; // a newer lead was drawn here while the settings loaded: never paint the old lead over it
   const probs = findProblems(intel, lead);
   const sc = scoreLead(lead, intel);
   const rec = recommendPlan(lead, intel);
@@ -73,6 +76,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
   // Cold call prep only ever holds cold call scripts. The meeting script has its own panel: meetingPanel below.
   const picked = scriptKeyFor(lead);
   const startGroup = COLD_GROUPS.includes(picked) ? picked : 'analysis';
+  const only = lock && COLD_GROUPS.includes(picked) ? picked : null;
   const firstStep = Math.max(0, s.steps.findIndex((x) => x.group === startGroup));
   el.innerHTML = `
     <div class="prep">
@@ -90,7 +94,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
       </div>
       ${!intel ? `<div class="caption" style="margin:12px 0">Not researched yet. Research finds their Google profile, checks where they rank around their address, reads their website, and tests mobile speed. About 4 cents.</div>` : intel.demo ? '<p class="badge warn" style="margin:10px 0 0">Demo data: DataForSEO is not connected</p>' : ''}
       <div class="fold-bar"><button type="button" class="linkbtn" data-folds="open">Open all</button><button type="button" class="linkbtn" data-folds="close">Close all</button></div>
-      ${scriptFold('script', 'Script', s, 'cold', startGroup, firstStep)}
+      ${scriptFold('script', 'Script', s, 'cold', startGroup, firstStep, true, only)}
       ${intel ? fold('snapshot', 'Their numbers', `<div class="prep-grid">
         <div>${snapshot(lead, intel)}</div>
         ${intel.grid ? `<div class="prep-map">${miniGrid(intel.grid)}<div class="small" style="text-align:center">Rank around them</div></div>` : ''}
@@ -113,7 +117,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
       toast(`Research done${r.intel?.cost ? ` ($${r.intel.cost.toFixed(3)})` : ''}`);
       const next = { ...lead, score: r.score ?? lead.score, grade: r.grade ?? lead.grade, plan: lead.plan || r.plan };
       onResearched?.(next, r.intel);
-      prepPanel(el, next, r.intel, { rep, voice, onResearched, compact });
+      prepPanel(el, next, r.intel, { rep, voice, onResearched, compact, lock });
     } catch (err) { toast(err.message, true); busy(e.target, false); }
   });
   $('[data-act="book"]', el).addEventListener('click', async () => { if (lead.test) { const { testBookModal } = await import('./testdial.js'); return testBookModal(lead); } bookModal(lead); });
@@ -135,9 +139,9 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
 
 // The script block for one category: kind 'cold' (the dialer, call window, call prep) or 'meeting' (the booked screen share).
 // Step numbers stay the ones from buildScript, so Back and Next and the tabs work the same in both.
-export function scriptFold(key, title, s, kind, startGroup, firstStep, open = true) {
-  const groups = s.groups.filter((g) => g.kind === kind);
-  const steps = s.steps.map((st, i) => [st, i]).filter(([st]) => st.kind === kind);
+export function scriptFold(key, title, s, kind, startGroup, firstStep, open = true, only = null) {
+  const groups = s.groups.filter((g) => g.kind === kind && (!only || g.key === only));
+  const steps = s.steps.map((st, i) => [st, i]).filter(([st]) => st.kind === kind && (!only || st.group === only));
   return fold(key, title, `<div class="seg script-groups" role="tablist"${groups.length < 2 ? ' hidden' : ''}>${groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${esc(g.key)}">${esc(g.name)}</button>`).join('')}</div>
       <label class="row small script-notes-sw" style="gap:8px;margin:8px 0 0"><input type="checkbox" id="scnotes"> Show coaching notes</label>
       <div class="seg script-tabs" role="tablist">${steps.map(([st, i]) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${esc(st.group)}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>

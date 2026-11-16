@@ -67,7 +67,7 @@ test('problems, score, plan, and script come from the research', () => {
   const strong = { ...INTEL, rank: 1, grid: { ...INTEL.grid, top3: 9 }, listing: { ...INTEL.listing, reviews: 400, rating: 4.9, claimed: true, hours: true, photos: 80 }, competitors: [{ title: 'X', reviews: 100 }], speed: { score: 90 }, website: { ok: true, https: true, titleHasCity: true, titleHasService: true, schema: true, tel: true } };
   assert.ok(scoreLead(lead, strong).score < sc.score, 'a business already winning scores lower');
   assert.equal(recommendPlan(lead, INTEL).plan, 'authority');
-  assert.equal(recommendPlan({ ...lead, industry: 'Salon' }, { ...INTEL, competitors: [{ title: 'Y', reviews: 30 }], listing: { ...INTEL.listing, claimed: true, rating: 4.6 }, grid: { ...INTEL.grid, top3: 6 }, rank: 2, speed: null, website: null }).plan, 'starter');
+  assert.equal(recommendPlan({ ...lead, industry: 'Salon' }, { ...INTEL, competitors: [{ title: 'Y', reviews: 30 }], listing: { ...INTEL.listing, category: 'Hair salon', claimed: true, rating: 4.6 }, grid: { ...INTEL.grid, top3: 6 }, rank: 2, speed: null, website: null }).plan, 'starter');
   const s = buildScript(lead, INTEL, { rep: 'Vidal' });
   const spokenAll = (sc, g = 'cold') => sc.steps.filter((x) => x.group === g).flatMap((x) => x.lines).filter((l) => !/^\(/.test(l)).join(' ');
   const step = (sc, id) => (sc.steps.find((x) => x.id === id)?.lines || []).join('\n');

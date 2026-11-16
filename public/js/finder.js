@@ -3,6 +3,7 @@
 // returns about 100 businesses. Running the same keyword over a grid and removing repeats is how a whole city gets covered.
 import { packHours, parseAny, unpackHours } from './hours.js';
 import { gridPoints } from './grid.js';
+import { industryInfo } from './leadintel.js';
 
 export const COST_PER_REQUEST = 0.002; // DataForSEO Maps live: one search of up to 100 results
 export const MAX_REQUESTS = 2000; // most searches one job may run (about $4)
@@ -128,11 +129,19 @@ export function passes(r, filters) {
   return true;
 }
 
+// What trade a found business is. Google's own category first (it says what the business really is), the search keyword only
+// when the category tells us nothing: a general contractor that turned up for "landscaping" is not a landscaper.
+export function industryFor(r) {
+  const cat = String(r.category || '').trim();
+  if (cat && industryInfo('', cat).tier !== 'unknown') return cat;
+  return r.kw || cat;
+}
+
 // A found business as a lead the Pipeline import understands.
 export function leadRow(r, { industry } = {}) {
   return {
     business: r.title, phone: r.phone, website: r.website, address: r.address, city: r.city, state: r.state, zip: r.zip,
-    category: r.category, industry: industry || r.kw || r.category, rating: r.rating, reviews: r.reviews, lat: r.lat, lng: r.lng,
+    category: r.category, industry: industry || industryFor(r), rating: r.rating, reviews: r.reviews, lat: r.lat, lng: r.lng,
     place_id: r.place_id, cid: r.cid, source: 'Lead finder', email: r.email || '',
     // Business hours: Google's timetable (packed), or OpenStreetMap's opening_hours text. Saved in lead_hours by importLeads.
     hrs: r.hrs || packHours(parseAny(r.hours_text || '')), hrs_src: r.hrs ? 'google' : r.hours_text ? (r.source === 'osm' ? 'osm' : 'google') : '', biz_status: r.status || '',

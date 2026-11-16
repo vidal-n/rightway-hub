@@ -1018,7 +1018,7 @@ export async function leadModal(id, onChange) {
     </div>`;
   const done = () => { m.close(); onChange?.(); };
   wireFolds(m.el);
-  prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, voice: VOICE, onResearched: () => { changed = true; } });
+  prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, voice: VOICE, lock: /^#\/(phone|dialer)/.test(location.hash), onResearched: () => { changed = true; } });
   if ($('#lmeet', m.el)) meetingPanel($('#lmeet', m.el), l, data.intel, { rep: REP, voice: VOICE });
   $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
   // Google: write to them, see what you have already sent, and put a meeting on your own calendar.
@@ -1549,7 +1549,7 @@ export async function dialerPage(app, user) {
     if (!intelCache.has(l.id)) { el.innerHTML = `<div class="skeleton"></div><p class="small">${auto ? 'Researching this lead: Google profile, map ranks, website, speed...' : 'Loading...'}</p>`; return; }
     const g = $('#dgrade', view);
     if (g) g.innerHTML = gradeBadge(l.grade, l.score);
-    prepPanel(el, l, intelCache.get(l.id), { rep: REP, voice: VOICE, onResearched: (next, intel) => { Object.assign(l, next); intelCache.set(l.id, intel); const gg = $('#dgrade', view); if (gg) gg.innerHTML = gradeBadge(l.grade, l.score); } });
+    prepPanel(el, l, intelCache.get(l.id), { rep: REP, voice: VOICE, lock: true, onResearched: (next, intel) => { Object.assign(l, next); intelCache.set(l.id, intel); const gg = $('#dgrade', view); if (gg) gg.innerHTML = gradeBadge(l.grade, l.score); } });
   };
   const upcoming = (cal.meetings || []).filter((m) => m.meet_at > Date.now() - 3600e3).slice(0, 4);
   // Low prepaid balance on Twilio or DataForSEO: say so before calls or research start failing.

@@ -73,8 +73,10 @@ export function top10Of(g) {
 
 // The industries the Hub knows how to score and pitch, for the Lead finder's picker: label, search keyword, typical ticket size and tier.
 export const TARGET_INDUSTRIES = INDUSTRIES.map(([, label, keyword, ticket]) => ({ label, keyword, ticket, tier: ticket >= 3000 ? 'high' : ticket >= 400 ? 'mid' : 'low' }));
+// Google's category for the business wins over `industry`, which the Lead finder fills with the SEARCH keyword (a general contractor
+// found while searching "landscaping" must read as a general contractor). `industry` is only the fallback.
 export function industryInfo(industry = '', category = '') {
-  for (const text of [industry, category]) {
+  for (const text of [category, industry]) {
     if (!text) continue;
     for (const [re, label, keyword, ticket] of INDUSTRIES) {
       if (re.test(text)) return { label, keyword, ticket, tier: ticket >= 3000 ? 'high' : ticket >= 400 ? 'mid' : 'low' };
@@ -973,7 +975,7 @@ export function scriptVars(lead = {}, intel = null, ctx = {}) {
   const lc = L?.counts || {};
   const lbad = (lc.mismatch || 0) + (lc.missing || 0);
   const worst = (L?.results || []).find((r) => r.status === 'mismatch') || (L?.results || []).find((r) => r.status === 'missing');
-  const D = discoveryFor(lead.industry, intel?.listing?.category || lead.category, info.label);
+  const D = discoveryFor(intel?.listing?.category || lead.category, info.label, lead.industry);
   const realGaps = probs.length > 0 || lbad > 0;
   return {
     industry_q: D.q, industry_f1: D.f1, industry_f2: D.f2, cust_word: D.word,
