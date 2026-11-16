@@ -11,6 +11,7 @@ export async function fillInPanel(leads, { scrubMany, onDone, owner }) {
   const st = await api('/api/scrub/status').catch(() => ({}));
   const items = fillItems(leads, { cleanName, twilio: Boolean(st.twilio), owner });
   const ticked = new Set(items.filter((i) => i.leads.length && !i.off && i.free).map((i) => i.id));
+  const nr = owner ? await api('/api/scrub/name-report').catch(() => null) : null;
   const m = modal('<div id="fi"></div>', { onClose: () => {} });
   const draw = () => {
     const plan = fillPlan(items, ticked);
@@ -21,7 +22,7 @@ export async function fillInPanel(leads, { scrubMany, onDone, owner }) {
         <input type="checkbox" data-it="${i.id}" ${ticked.has(i.id) ? 'checked' : ''} ${!i.leads.length || i.off ? 'disabled' : ''} style="margin-top:4px">
         <div style="flex:1;min-width:0"><div><strong>${esc(i.title)}</strong> <span class="badge ${i.free ? '' : 'gray'}">${i.free ? 'Free' : `${money(i.usd)} each`}</span></div>
           <div class="small">${i.leads.length ? `<strong>${i.leads.length}</strong> missing it` : 'None missing'}${i.off ? ` · ${esc(i.off)}` : ''}</div>
-          <div class="small muted">${esc(i.where)}</div></div></li>`).join('')}</ul>
+          <div class="small muted">${esc(i.where)}</div>${i.id === 'owner' && nr && nr.n ? nameWhy(nr) : ''}</div></li>`).join('')}</ul>
       <p class="small muted">Owner, email, social pages and names are found in one pass, so each website is read once.</p>
       <div class="card" style="margin:10px 0;padding:12px"><strong>This run:</strong>
         ${plan.tz ? '<div class="small">Set time zones for every lead missing one (free).</div>' : ''}
@@ -52,4 +53,13 @@ async function fixZones() {
     }
     toast(unknown ? `${fixed} time zones set. ${unknown} have no state, ZIP or address, so they stay in the 11am to 8pm Eastern window.` : `${fixed} time zones set.`);
   } catch (e) { toast(e.message, true); }
+}
+
+// Why scrubbed leads still have no owner name, from what each scrub saved (GET /api/scrub/name-report, owners).
+function nameWhy(r) {
+  const n = (x) => Number(x) || 0;
+  const rows = [[n(r.no_site), 'have no website, so only the Florida registry can name them'], [n(r.site_failed), 'have a website the scrub could not open (blocked, down or too slow). Scrubbing again may work'],
+    [n(r.site_no_name), 'had a website that loaded but names nobody on it'], [n(r.registry_error), 'got an error from the Florida registry (Sunbiz)'], [n(r.registry_none), 'were not found on Sunbiz'],
+    [n(r.registry_no_officer), 'were found on Sunbiz but list no officer we can use (a registered agent is never used as the owner)']].filter(([c]) => c);
+  return `<div class="small" style="margin-top:6px"><strong>${n(r.n)}</strong> scrubbed leads still have no owner name. The reasons overlap:<ul style="margin:4px 0 0 16px">${rows.map(([c, t]) => `<li><b>${c}</b> ${esc(t)}</li>`).join('')}</ul></div>`;
 }

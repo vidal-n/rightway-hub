@@ -177,3 +177,22 @@ test('remove new leads with no owner name after the scrub: only untouched ones, 
     assert.equal(again.data.imported, 0);
   } finally { f.done(); }
 });
+
+test('name report says why scrubbed leads still have no owner name', async () => {
+  const t = setup();
+  await owner(t);
+  const f = stubFetch((u) => u.includes('quiet.com') ? html('<h1>Plumbing</h1><p>Call us</p>', u) : u.includes('down.com') ? new Response('no', { status: 403 }) : null);
+  try {
+    await t.call('POST', '/api/leads/import', { rows: [
+      { business: 'Quiet Plumbing', phone: '305-555-0181', state: 'FL', city: 'Miami', website: 'quiet.com' },
+      { business: 'Down Plumbing', phone: '305-555-0182', state: 'FL', city: 'Miami', website: 'down.com' },
+      { business: 'Nosite Plumbing', phone: '305-555-0183', state: 'FL', city: 'Miami' },
+    ] });
+    for (const l of (await t.call('GET', '/api/leads')).data.leads) await t.call('POST', `/api/leads/${l.id}/scrub`);
+    const r = (await t.call('GET', '/api/scrub/name-report')).data;
+    assert.equal(r.n, 3);
+    assert.equal(r.no_site, 1);
+    assert.equal(r.site_failed, 1);
+    assert.equal(r.site_no_name, 1);
+  } finally { f.done(); }
+});

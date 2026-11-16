@@ -289,6 +289,22 @@ route('GET', '/api/scrub/status', async ({ env, user }) => {
   requireStaff(user);
   return json({ ...(await scrubSettings(env)), ...(await scrubStatus(env)) });
 });
+// Why scrubbed leads still have no owner name: counted from what each scrub saved (site read or not, registry answer), so V can see
+// whether the website read failed, the site simply has no name, or Sunbiz answered nothing. Owners only, one query, no outside calls.
+route('GET', '/api/scrub/name-report', async ({ env, user }) => {
+  requireAdmin(user);
+  const r = await first(env, `SELECT COUNT(*) AS n,
+      SUM(CASE WHEN website IS NULL OR website = '' THEN 1 ELSE 0 END) AS no_site,
+      SUM(CASE WHEN website != '' AND COALESCE(json_extract(scrub_data, '$.site.ok'), 0) != 1 THEN 1 ELSE 0 END) AS site_failed,
+      SUM(CASE WHEN website != '' AND json_extract(scrub_data, '$.site.ok') = 1 THEN 1 ELSE 0 END) AS site_no_name,
+      SUM(CASE WHEN json_extract(scrub_data, '$.registry.error') IS NOT NULL THEN 1 ELSE 0 END) AS registry_error,
+      SUM(CASE WHEN json_extract(scrub_data, '$.registry.found') = 0 AND json_extract(scrub_data, '$.registry.error') IS NULL THEN 1 ELSE 0 END) AS registry_none,
+      SUM(CASE WHEN json_extract(scrub_data, '$.registry.found') = 1 THEN 1 ELSE 0 END) AS registry_no_officer,
+      SUM(CASE WHEN scrub_data IS NULL OR json_extract(scrub_data, '$.registry') IS NULL THEN 1 ELSE 0 END) AS registry_not_run
+    FROM leads WHERE scrubbed_at IS NOT NULL AND (owner_name IS NULL OR owner_name = '') AND stage NOT IN ('won','lost','dnc') AND dnc = 0`);
+  const s = await getSettings(env);
+  return json({ ...r, sunbizOn: (await leadMode(env)).sunbiz });
+});
 route('PUT', '/api/scrub/settings', async ({ env, user, body }) => {
   requireAdmin(user);
   const b = await body();

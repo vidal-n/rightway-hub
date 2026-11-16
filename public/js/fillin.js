@@ -1,5 +1,6 @@
 // Pure logic for the Pipeline "Fill in missing info" panel (shared by the page and tests).
 import { PRICES } from './pricing.js';
+import { personOf } from './leadintel.js';
 
 const OPEN = (l) => !['won', 'lost', 'dnc'].includes(l.stage) && !l.dnc;
 const isFL = (l) => !l.state || /^(fl|florida)$/i.test(String(l.state).trim());
@@ -16,7 +17,8 @@ export function fillItems(leads, { cleanName, twilio, owner }) {
       miss: (l) => Boolean(l.business) && !l.business_raw && cleanName(l.business, { city: l.city, state: l.state }).changed },
     { id: 'owner', title: 'Owner name', free: true, group: 'site',
       where: 'Their website contact and about pages, and the Florida business registry (Sunbiz). Other states get a search link only.',
-      miss: (l) => !l.owner_name && !checked(l) && (site(l) || isFL(l)) },
+      // A real person's name is what counts. A lead the scrub already read still shows here when it has no name (the site may not have loaded, or Sunbiz may have been down), so it can be read again.
+      miss: (l) => !personOf(l) && (site(l) || isFL(l)) },
     { id: 'email', title: 'Email address', free: true, group: 'site',
       where: 'Their website home, contact and about pages (mailto links and text). Then checks the email domain takes mail.',
       miss: (l) => !l.email && !checked(l) && site(l) },

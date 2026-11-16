@@ -6,9 +6,9 @@ import { cleanName } from '../public/js/scrub.js';
 const L = (o) => ({ id: o.id, stage: 'new', business: 'Joe Plumbing', state: 'FL', tz_known: true, ...o });
 const leads = [
   L({ id: 1, website: 'a.com', phone: '1', has_socials: 0 }),
-  L({ id: 2, website: '', phone: '2', owner_name: 'Al', email: 'x@y.com', has_socials: 1, phone_type: 'mobile' }),
+  L({ id: 2, website: '', phone: '2', owner_name: 'Mike Rivera', email: 'x@y.com', has_socials: 1, phone_type: 'mobile' }),
   L({ id: 3, stage: 'dnc', website: 'c.com', phone: '3' }),
-  L({ id: 4, website: 'd.com', phone: '4', tz_known: false, owner_name: 'B', email: 'e@d.com', has_socials: 1, phone_type: 'landline', business: 'ACME HVAC | Miami FL LLC' }),
+  L({ id: 4, website: 'd.com', phone: '4', tz_known: false, owner_name: 'Bob Jones', email: 'e@d.com', has_socials: 1, phone_type: 'landline', business: 'ACME HVAC | Miami FL LLC' }),
 ];
 const items = (o = {}) => fillItems(leads, { cleanName, twilio: true, owner: true, ...o });
 const by = (its, id) => its.find((i) => i.id === id);
@@ -37,7 +37,7 @@ test('plan joins ticked website items once and prices phone checks', () => {
   assert.equal(fillPlan(it, new Set(['owner'])).usd, 0);
 });
 
-test('a scrubbed lead is not counted again for what the scrub already checked', () => {
+test('a scrubbed lead is not counted again for email, socials or phone, but an owner name that is still missing can be read again', () => {
   const leads = [
     { id: 'a', stage: 'new', website: 'https://a.test', phone: '3055550100', owner_name: null, email: null, has_socials: 0, phone_type: null, scrubbed_at: 1700000000000, scrub_lookup: 0 },
     { id: 'b', stage: 'new', website: 'https://b.test', phone: '3055550101', owner_name: null, email: null, has_socials: 0, phone_type: null, scrubbed_at: null, scrub_lookup: 0 },
@@ -45,7 +45,7 @@ test('a scrubbed lead is not counted again for what the scrub already checked', 
   ];
   const items = fillItems(leads, { cleanName, twilio: true, owner: false });
   const ids = (id) => items.find((i) => i.id === id).leads.map((l) => l.id);
-  assert.deepEqual(ids('owner'), ['b']);
+  assert.deepEqual(ids('owner'), ['a', 'b', 'c']); // owner: a scrubbed lead with no real person name can be read again (the site may have failed)
   assert.deepEqual(ids('email'), ['b']);
   assert.deepEqual(ids('social'), ['b']);
   assert.deepEqual(ids('phone'), ['b', 'c']);
