@@ -30,7 +30,7 @@ body { margin: 0; color: #000; font: 400 14pt/1.15 Arial, 'Liberation Sans', Hel
 p { margin: 0 0 1.15em; orphans: 2; widows: 2; }
 b { font-weight: 700; }
 .d-q { break-after: avoid; }
-.d-cue { font-style: italic; text-decoration: underline; }
+.d-cue { font-style: italic; text-decoration: underline; font-weight: 700; }
 `;
 const page = (body, title) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title><style>${CSS}</style></head><body>${body}</body></html>`;
 

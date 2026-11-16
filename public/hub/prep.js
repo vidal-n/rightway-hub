@@ -3,12 +3,11 @@ import { catalogHtml, mlLead } from './mlview.js';
 import { scriptKeyFor } from './scriptpick.js';
 import { $, $$, esc, api, toast, busy, modal, fmt } from './core.js';
 import { parseListings, listingsLine, listingsTable } from '/js/listings.js';
-import { rich } from '/js/scriptprint.js';
+import { rich, paperPage } from '/js/scriptprint.js';
 import { canRunCalls, can } from '/js/jobs.js';
 import { fromInputs, inputsIn, bothTimes, whenIn, ZONE_CHOICES, validZone } from '/js/apptime.js';
 import { buildScript, COLD_GROUPS, findProblems, scoreLead, recommendPlan, industryInfo, rankText, top10Of, quoteFor, scopeOfQuote, personOf } from '/js/leadintel.js';
 import { effort, hoursOf } from '/js/scope.js';
-import { onSwipe, slideIn } from './swipe.js';
 
 let customCache = null;
 export async function scriptSettings() {
@@ -44,14 +43,6 @@ function snapshot(lead, intel) {
 }
 
 // Renders the full prep panel into el. Returns nothing; wires its own buttons.
-// "Or:" lines are alternatives, "(" lines are coaching notes, everything else is what you say.
-export function scriptLine(l) {
-  if (/^\(SCREEN:/.test(l)) return `<p class="say-screen"><b>Screen</b> ${esc(l.replace(/^\(SCREEN:\s*/, '').replace(/\)$/, ''))}</p>`;
-  if (/^\(.*\)$/.test(l)) return `<p class="say-note"><b class="do-tag">Do</b>${esc(l.slice(1, -1))}</p>`;
-  if (/^Or:/i.test(l)) return `<p class="say-alt"><span class="badge gray">Or</span> ${rich(esc(l.replace(/^Or:\s*/i, '')))}</p>`;
-  return `<p class="say-line">${rich(esc(l))}</p>`;
-}
-
 // Collapsible section. Open or closed is remembered per section on this device, so the page opens the way the rep left it.
 const foldOpen = (key, dflt) => { try { const v = localStorage.getItem(`rw-fold-${key}`); return v === null ? dflt : v === '1'; } catch { return dflt; } };
 export const fold = (key, title, body, dflt = true, count = null) => `<details class="fold" data-fold="${esc(key)}"${foldOpen(key, dflt) ? ' open' : ''}><summary><span>${esc(title)}</span>${count != null ? `<b class="fold-n">${count}</b>` : ''}</summary><div class="fold-body">${body}</div></details>`;
@@ -138,45 +129,27 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
 }
 
 // The script block for one category: kind 'cold' (the dialer, call window, call prep) or 'meeting' (the booked screen share).
-// Step numbers stay the ones from buildScript, so Back and Next and the tabs work the same in both.
+// Reads like the paper copy: one page per script, every step on it in order, so there is nothing to flip (Nov 2026, V). Groups stay as tabs
+// only when more than one script shows. The unused `firstStep` is kept so callers do not change.
 export function scriptFold(key, title, s, kind, startGroup, firstStep, open = true, only = null) {
   const groups = s.groups.filter((g) => g.kind === kind && (!only || g.key === only));
-  const steps = s.steps.map((st, i) => [st, i]).filter(([st]) => st.kind === kind && (!only || st.group === only));
+  const steps = s.steps.filter((st) => st.kind === kind && (!only || st.group === only));
   return fold(key, title, `<div class="seg script-groups" role="tablist"${groups.length < 2 ? ' hidden' : ''}>${groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${esc(g.key)}">${esc(g.name)}</button>`).join('')}</div>
-      <label class="row small script-notes-sw" style="gap:8px;margin:8px 0 0"><input type="checkbox" id="scnotes"> Show coaching notes</label>
-      <div class="seg script-tabs" role="tablist">${steps.map(([st, i]) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${esc(st.group)}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
-      <p class="swipe-hint small muted">Swipe left for the next step, right to go back.</p>
-      <div class="script-body hide-notes">${steps.map(([st, i]) => {
-        const sib = steps.filter(([x]) => x.group === st.group), at = sib.findIndex(([, j]) => j === i);
-        const back = sib[at - 1], next = sib[at + 1];
-        return `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}<div class="script-nav">${back ? `<button type="button" class="btn btn-ghost btn-sm" data-go="${back[1]}">Back</button>` : '<span></span>'}<span class="script-pos small muted">${at + 1} of ${sib.length}</span>${next ? `<button type="button" class="btn btn-primary btn-sm" data-go="${next[1]}">Next: ${esc(next[0].title)}</button>` : '<span></span>'}</div></div>`;
-      }).join('')}</div>`, open);
+      <label class="row small script-notes-sw" style="gap:8px;margin:8px 0 0"><input type="checkbox" id="scnotes"> Show prompts for the rep</label>
+      <div class="script-body script-read doc paper">${groups.map((g) => `<div class="script-page" data-page="${esc(g.key)}"${g.key === startGroup || groups.length < 2 ? '' : ' hidden'}>${paperPage(steps.filter((st) => st.group === g.key))}</div>`).join('')}</div>`, open);
 }
 
-// Group tabs, step tabs, coaching notes, Back and Next and swipe for a script block inside el.
+// Group tabs and the prompts switch for a script block inside el. The prompts (what to do, screen cues, "Or:" lines) show by default.
 function wireScript(el) {
   $$('[data-group]', el).forEach((b) => b.addEventListener('click', () => {
     $$('[data-group]', el).forEach((x) => x.classList.toggle('is-on', x === b));
-    const tabs = $$('[data-step]', el);
-    tabs.forEach((t) => { t.hidden = t.dataset.g !== b.dataset.group; });
-    tabs.find((t) => !t.hidden)?.click();
+    $$('[data-page]', el).forEach((x) => { x.hidden = x.dataset.page !== b.dataset.group; });
   }));
   const notes = $('#scnotes', el);
-  try { notes.checked = localStorage.getItem('rw-script-notes') === '1'; } catch { /* ignore */ }
+  if (!notes) return;
+  try { notes.checked = localStorage.getItem('rw-script-notes') !== '0'; } catch { notes.checked = true; }
   const paintNotes = () => { $('.script-body', el).classList.toggle('hide-notes', !notes.checked); try { localStorage.setItem('rw-script-notes', notes.checked ? '1' : '0'); } catch { /* ignore */ } };
   notes.addEventListener('change', paintNotes); paintNotes();
-  $$('[data-go]', el).forEach((b) => b.addEventListener('click', () => { $(`[data-step="${b.dataset.go}"]`, el)?.click(); $('.script-tabs', el)?.scrollIntoView({ block: 'nearest' }); }));
-  $$('[data-step]', el).forEach((b) => b.addEventListener('click', () => {
-    $$('[data-step]', el).forEach((x) => x.classList.toggle('is-on', x === b));
-    $$('[data-body]', el).forEach((x) => { x.hidden = x.dataset.body !== b.dataset.step; });
-  }));
-  // Swipe the script: left is the next step, right is back (touch and pen).
-  const sb = $('.script-body', el);
-  if (sb) onSwipe(sb, (dir) => {
-    const cur = $('.script-step:not([hidden])', sb);
-    const btn = cur && $(dir === 'next' ? '[data-go].btn-primary' : '[data-go].btn-ghost', cur);
-    if (btn) { btn.click(); slideIn($('.script-step:not([hidden])', sb), dir); }
-  });
 }
 
 function wireMeetNow(el, lead) {

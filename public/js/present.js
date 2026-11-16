@@ -119,9 +119,8 @@ function slides() {
     `${say('c_scan')}\n\n${g.deep ? `This is the deep scan from the Scan tool tab (${deep.length} keyword${deep.length === 1 ? '' : 's'}). Click a keyword above the grid to switch.` : 'This is the quick research grid. For the full picture press "Run the full scan": it opens the Scan tool in its own tab. Run it during discovery, press Save to lead, and this slide updates by itself.'}\n\nLet the scan play. Narrate it:\n"I stood in ${g.points} spots around ${lead.business}, up to ${g.radiusMiles} miles out, and searched ${gkw} on Google the way a customer does. Watch who comes up at each spot."\n\nWhen it finishes: "First page in ${top10Of(g)} of ${g.points}. Every red and orange square is a customer who called someone else."\n\nThen ask and wait: "What do you think that's costing you?"`);
   } else {
     add('grid', 'The scan', `<p class="kicker">The scan</p><h2>Where ${esc(lead.business)} shows up, street by street</h2>
-      <div class="box anim" style="max-width:880px"><h3>Run it live</h3><p>Press the button: the Scan tool opens in its own tab with ${esc(lead.business)} filled in. Run the scan while you talk, press Save to lead, then come back here. This slide fills in by itself.</p>
-      <div style="margin-top:18px">${scanBtn}</div></div>`,
-    `${say('c_scan')}\n\nNo scan yet. Press "Run the full scan" (opens the Scan tool tab). Start it during discovery so it is ready by now.`);
+      <div style="margin-top:18px">${scanBtn}</div>`,
+    `${say('c_scan')}\n\nNo scan yet. Press "Run the full scan": the Scan tool opens in its own tab with the business filled in. Run it while you talk, press Save to lead, then come back here and the slide fills in by itself. Start it during discovery so it is ready by now.`);
   }
 
   if (comps.length) {

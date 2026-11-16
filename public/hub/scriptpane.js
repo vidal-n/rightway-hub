@@ -1,12 +1,12 @@
 // The script beside the call window: while a call is up on a computer or iPad, the script for that lead sits next to the call
-// window and follows it when it is dragged. Groups and steps, coaching notes on or off, Back and Next, and swipe. It can be
+// window and follows it when it is dragged. One paper style page per script (every step in order, scroll to read), prompts on or off. It can be
 // switched off for good (Dialer, Customize layout, or the Script button in the call window); the choice is saved on the
 // person's account. Modeled on the script panel next to the dial pad in Close.com and Orum style power dialers.
 import { scriptKeyFor } from './scriptpick.js';
 import { $, $$, esc, isPhone } from './core.js';
 import { buildScript, COLD_GROUPS } from '/js/leadintel.js';
-import { scriptLine, scriptSettings } from './prep.js';
-import { onSwipe, slideIn } from './swipe.js';
+import { scriptSettings } from './prep.js';
+import { paperPage } from '/js/scriptprint.js';
 import { uiNow, saveUi } from './uiprefs.js';
 
 export const scriptOn = () => uiNow().callScript !== false;
@@ -75,47 +75,28 @@ export async function showCallScript(opts) {
   const startGroup = COLD_GROUPS.includes(picked) ? picked : 'analysis';
   // Only the script picked for the campaign (or assigned by the split test) can be read here; with no pick every cold script shows.
   const only = COLD_GROUPS.includes(picked) ? picked : null;
-  const cold = s.steps.map((st, i) => [st, i]).filter(([st]) => st.kind === 'cold' && (!only || st.group === only));
-  const firstStep = Math.max(0, s.steps.findIndex((x) => x.group === startGroup));
+  const groups = s.groups.filter((g) => g.kind === 'cold' && (!only || g.key === only));
+  const cold = s.steps.filter((st) => st.kind === 'cold' && (!only || st.group === only));
   const el = document.createElement('aside');
   el.className = 'callscript';
   el.setAttribute('aria-label', 'Call script');
   el.innerHTML = `
     <div class="cs-head"><b>Script</b><span class="cs-who">${esc(lead.business || '')}</span>
-      <label class="small cs-notes"><input type="checkbox" id="csn"> Coaching notes</label>
+      <label class="small cs-notes"><input type="checkbox" id="csn"> Prompts</label>
       <button type="button" class="cs-x" aria-label="Hide the script" title="Hide the script. Turn it back on with the Script button or in Customize layout.">×</button></div>
-    <div class="seg cs-groups" role="tablist"${only ? ' hidden' : ''}>${s.groups.filter((g) => g.kind === 'cold' && (!only || g.key === only)).map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${esc(g.key)}">${esc(g.name)}</button>`).join('')}</div>
-    <div class="seg cs-tabs" role="tablist">${cold.map(([st, i]) => `<button type="button" role="tab" class="${i === firstStep ? 'is-on' : ''}" data-step="${i}" data-g="${esc(st.group)}"${st.group === startGroup ? '' : ' hidden'}>${esc(st.title)}</button>`).join('')}</div>
-    <div class="cs-body script-body hide-notes">${cold.map(([st, i]) => {
-      const sib = s.steps.map((x, j) => [x, j]).filter(([x]) => x.group === st.group), at = sib.findIndex(([, j]) => j === i);
-      const back = sib[at - 1], next = sib[at + 1];
-      return `<div class="script-step" data-body="${i}"${i === firstStep ? '' : ' hidden'}>${st.lines.map(scriptLine).join('')}<div class="script-nav">${back ? `<button type="button" class="btn btn-ghost btn-sm" data-go="${back[1]}">Back</button>` : '<span></span>'}<span class="script-pos small muted">${at + 1} of ${sib.length}</span>${next ? `<button type="button" class="btn btn-primary btn-sm" data-go="${next[1]}">Next: ${esc(next[0].title)}</button>` : '<span></span>'}</div></div>`;
-    }).join('')}</div>
-    <p class="cs-foot small muted">Swipe left for the next step, right for back.</p>`;
+    <div class="seg cs-groups" role="tablist"${groups.length < 2 ? ' hidden' : ''}>${groups.map((g) => `<button type="button" class="${g.key === startGroup ? 'is-on' : ''}" data-group="${esc(g.key)}">${esc(g.name)}</button>`).join('')}</div>
+    <div class="cs-body script-body script-read doc paper">${groups.map((g) => `<div class="script-page" data-page="${esc(g.key)}"${g.key === startGroup || groups.length < 2 ? '' : ' hidden'}>${paperPage(cold.filter((st) => st.group === g.key))}</div>`).join('')}</div>`;
   document.body.appendChild(el);
   pane = el;
   const notes = $('#csn', el);
-  try { notes.checked = localStorage.getItem('rw-script-notes') === '1'; } catch { /* ignore */ }
+  try { notes.checked = localStorage.getItem('rw-script-notes') !== '0'; } catch { notes.checked = true; }
   const paintNotes = () => { $('.script-body', el).classList.toggle('hide-notes', !notes.checked); try { localStorage.setItem('rw-script-notes', notes.checked ? '1' : '0'); } catch { /* ignore */ } };
   notes.addEventListener('change', paintNotes); paintNotes();
-  const go = (i) => $(`[data-step="${i}"]`, el)?.click();
   $$('[data-group]', el).forEach((b) => b.addEventListener('click', () => {
     $$('[data-group]', el).forEach((x) => x.classList.toggle('is-on', x === b));
-    const tabs = $$('[data-step]', el);
-    tabs.forEach((t) => { t.hidden = t.dataset.g !== b.dataset.group; });
-    tabs.find((t) => !t.hidden)?.click();
-  }));
-  $$('[data-step]', el).forEach((b) => b.addEventListener('click', () => {
-    $$('[data-step]', el).forEach((x) => x.classList.toggle('is-on', x === b));
-    $$('[data-body]', el).forEach((x) => { x.hidden = x.dataset.body !== b.dataset.step; });
+    $$('[data-page]', el).forEach((x) => { x.hidden = x.dataset.page !== b.dataset.group; });
     $('.cs-body', el).scrollTop = 0;
   }));
-  $$('[data-go]', el).forEach((b) => b.addEventListener('click', () => go(b.dataset.go)));
-  onSwipe($('.cs-body', el), (dir) => {
-    const step = $('.script-step:not([hidden])', el);
-    const btn = step && $(dir === 'next' ? '[data-go].btn-primary' : '[data-go].btn-ghost', step);
-    if (btn) { btn.click(); slideIn($('.script-step:not([hidden])', el), dir); }
-  });
   $('.cs-x', el).addEventListener('click', () => setScriptOn(false));
   place();
 }

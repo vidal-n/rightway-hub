@@ -371,7 +371,6 @@ button.chip.on { background: var(--btn); color: var(--btn-ink); border-color: tr
 .prob { border-left: 4px solid var(--warn); background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
 .prob.sev-high { border-left-color: var(--bad); } .prob.sev-low { border-left-color: #9AA8A2; }
 .say { font-size: 14px; margin-top: 4px; color: var(--ink-2); font-style: italic; }
-.script-tabs { flex-wrap: wrap; }
 .script-body { background: var(--mint-soft); border: 1px solid var(--mint-mid); border-radius: 14px; padding: 14px 16px; margin-top: 10px; font-size: 16.5px; line-height: 1.6; }
 .script-body p { margin: 0; } .script-body ol { margin: 0; padding-left: 20px; } .script-body li { margin-bottom: 6px; }
 .objs { display: grid; gap: 6px; }
@@ -451,8 +450,6 @@ ul.plain, ol.plain { padding-left: 20px; margin: 0 0 12px; } ul.plain li, ol.pla
 @media (prefers-reduced-motion: reduce) { .gmap-pt.is-scanning { animation: none; } }
 
 /* Script lines */
-.script-step .say-line { margin: 0 0 10px; font-size: 16px; line-height: 1.55; }
-.script-step .say-alt { margin: 0 0 10px; color: var(--ink-2); line-height: 1.5; }
 /* DO notes: directions for the rep, never read out loud. Upright and full contrast on a yellow tint, so they are easy to read and never pass for script. */
 .script-step .say-note { margin: 0 0 10px; font-size: 14.5px; line-height: 1.5; color: var(--ink); background: #FFF4D6; border-left: 4px solid #E8A317; padding: 7px 12px; border-radius: 0 8px 8px 0; }
 .do-tag { display: inline-block; background: #0F1B17; color: #FFD66B; font: 800 10.5px/1.7 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 0 6px; border-radius: 4px; margin-right: 7px; vertical-align: 1px; }
@@ -1890,11 +1887,7 @@ button.ac-chip:hover { background: rgba(124, 92, 214, .22); }
 .scstrip .row { gap: 12px; align-items: center; }
 
 /* Calmer script: one step at a time, coaching notes off until asked for, spoken lines larger */
-.script-body.hide-notes .say-note, .script-body.hide-notes .do-in { display: none; }
-.script-step .say-line { font-size: 19px; line-height: 1.6; margin: 0 0 16px; }
-.script-step .say-alt { margin: -6px 0 16px 14px; font-size: 15px; opacity: .85; }
-.script-step .say-screen { margin: 0 0 14px; padding: 6px 10px; font-size: 13px; }
-.script-nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--mint-mid); }
+.script-body.hide-notes .say-note, .script-body.hide-notes .do-in, .script-body.hide-notes p.d-cue { display: none; }
 
 /* Movable windows (Nov 2026): pop ups drag by their title bar */
 .modal.movable .card-head, .modal.movable .modal-head, .modal.movable .aud-head { cursor: grab; touch-action: none; user-select: none; }
@@ -2479,7 +2472,7 @@ p.badge, .badge.wrap { white-space: normal; max-width: 100%; display: block; ove
 .script-read.doc .d-title + .d-h { margin-top: 1.7em; }
 .script-read.doc p { margin: 0 0 1.15em; font: 400 14pt/1.15 Arial, 'Liberation Sans', Helvetica, sans-serif; overflow-wrap: anywhere; }
 .script-read.doc b { font-weight: 700; }
-.script-read.doc .d-cue { font-style: italic; text-decoration: underline; }
+.script-read.doc .d-cue { font-style: italic; text-decoration: underline; font-weight: 700; }
 @media (max-width: 600px) { .script-read.doc { padding: 22px 18px 12px; } .script-read.doc p, .script-read.doc .d-title, .script-read.doc .d-h { font-size: 12.5pt; } }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .script-read.doc .d-brand .on-light { display: none; } :root:not([data-theme="light"]) .script-read.doc .d-brand .on-dark { display: block; } }
 :root[data-theme="dark"] .script-read.doc .d-brand .on-light { display: none; }
@@ -2853,10 +2846,7 @@ body.lw-on { -webkit-user-select: none; user-select: none; }
 body.lw-on .modal, body.lw-on .modal input { -webkit-user-select: text; user-select: text; }
 
 /* ---------- Swipe through script steps ---------- */
-.swipe-hint { display: none; margin: 6px 0 0; }
-@media (pointer: coarse) { .swipe-hint { display: block; } }
 .script-body, .swipeable { touch-action: pan-y; }
-.script-nav .script-pos { align-self: center; }
 .d-pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
 .script-read .d-page[hidden] { display: none; }
 
@@ -2869,11 +2859,8 @@ body.lw-on .modal, body.lw-on .modal input { -webkit-user-select: text; user-sel
 .callscript .cs-x { border: 0; background: var(--surface-2, #F1F5F3); width: 28px; height: 28px; border-radius: 50%; font-size: 18px; line-height: 1; cursor: pointer; color: var(--ink); }
 .callscript .seg { flex-wrap: wrap; }
 .callscript .cs-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-top: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-.callscript .script-step .say-line { font-size: 17px; margin-bottom: 12px; }
-.callscript .cs-foot { margin: 0; text-align: center; }
 @media (prefers-reduced-motion: no-preference) { .callscript { animation: cs-in .3s cubic-bezier(.32, .72, 0, 1); } @keyframes cs-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } } }
 body.pdx .callscript { display: none; }
-@media (pointer: fine) { .callscript .cs-foot { display: none; } }
 
 /* Lead popup contact strip: phone, email and website right under the name */
 .lm-contact { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 8px 0 10px; align-items: flex-start; }
@@ -3158,3 +3145,14 @@ ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
 /* Start power dial with no script picked: the Script box flashes instead of sending the rep away (Nov 2026) */
 select.need-pick { outline: 3px solid var(--c-amber, #E07A0C); outline-offset: 2px; animation: needpick .6s ease 3; }
 @keyframes needpick { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--c-amber, #E07A0C) 30%, transparent); } }
+
+/* Script as one paper page (Nov 2026, V: read it like it is on paper, no flipping between steps): call prep and the script beside the call
+   use the reading copy markup (.script-read.doc.paper), every step in order on one scrolling page, prompts for the rep bold italic underlined. */
+.script-read.doc.paper { max-width: none; padding: 8px 6px 6px; }
+.script-read.doc.paper .script-page > .d-h:first-child { margin-top: .3em; }
+.script-read.doc.paper .d-h { font-size: 13pt; }
+.script-read.doc.paper p { font-size: 14pt; }
+.callscript .script-read.doc.paper p { font-size: 13pt; }
+.callscript .script-read.doc.paper .d-h { font-size: 12pt; }
+.script-read.doc.paper .script-page[hidden] { display: none; }
+@media (max-width: 600px) { .script-read.doc.paper { padding: 4px 2px; } .script-read.doc.paper p { font-size: 13pt; } }

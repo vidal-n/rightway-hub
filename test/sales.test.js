@@ -72,11 +72,13 @@ test('problems, score, plan, and script come from the research', () => {
   const spokenAll = (sc, g = 'cold') => sc.steps.filter((x) => x.group === g).flatMap((x) => x.lines).filter((l) => !/^\(/.test(l)).join(' ');
   const step = (sc, id) => (sc.steps.find((x) => x.id === id)?.lines || []).join('\n');
   const step0 = step;
-  // Cold call v10: casual pattern interrupt, the intro slipped in, never "consultant".
+  // Cold call v10: plain opener (no pattern interrupt), the intro right after they confirm, never "consultant".
   assert.equal(s.steps[0].id, 'k_open');
   assert.match(s.steps[0].lines[0], /^Hey, is this Bob\?$/);
   assert.equal(s.steps[0].group, 'cold');
-  assert.match(step(s, 'k_hook'), /Oh, I'm Vidal by the way, with RightWay Growth/);
+  assert.match(step(s, 'k_open'), /Oh, I'm Vidal by the way, with RightWay Growth/);
+  assert.ok(!s.steps.some((x) => x.id === 'k_hook'), 'no pattern interrupt step');
+  assert.doesNotMatch(JSON.stringify(s.steps.filter((x) => x.group === 'cold')), /still open, right|are open today, right/);
   assert.match(unbold(step(s, 'k_why')), /So I actually looked you guys up and used your info to build an automated, tailored strategy/);
   assert.match(unbold(step(s, 'k_why')), /book you a plan today, completely free/);
   assert.match(step(s, 'k_teach'), /We're gonna look into all your competitors/);
@@ -95,7 +97,6 @@ test('problems, score, plan, and script come from the research', () => {
   assert.equal(step(s, 'k_site'), '');
   const noSite = buildScript({ ...lead, website: '' }, { ...INTEL, listing: { ...INTEL.listing, url: '' } }, { rep: 'Vidal' });
   assert.match(step(noSite, 'k_site'), /couldn't find your website online/);
-  assert.match(step(s, 'k_hook'), INTEL.listing.hours === false ? /Google doesn't show your hours/ : /still open, right\?/);
   // Without research the call never claims the business was looked up.
   const nores = buildScript(lead, null, { rep: 'Vidal' });
   assert.doesNotMatch(step(nores, 'k_why'), /^So I actually looked you guys up/m);

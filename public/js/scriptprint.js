@@ -27,8 +27,6 @@ export const PRINT_VARS = {
   site_intro: `IF THEY HAVE NO WEBSITE: Hey ${B('first name')}, look, so I/we actually couldn't find your website online, so I/we decided to sit down and just built you one... look ${B('first name')}, it's already done. You wanna see it?`,
   site_who: `(If they ask who this is:) Oh my bad, I'm ${B('your name')}, with RightWay Growth. We build websites for ${B('industry')} businesses around ${B('city')}.`,
   site_note: '(Only when their demo site is built and the link is ready.)',
-  open_line: 'Hey, you guys are still open, right?',
-  open_where: "(If they ask why:) Just wanted to make sure I caught you before you closed.",
   strategy_note: '',
   strategy_line: 'So I/we actually looked you guys up and used your info to build an **automated, tailored strategy** to help bring in more of the specific, profitable jobs you actually want.',
   found_say: `(If they ask what you found:) ${B('scan line from call prep')} And ${B('X of 15')} directories Google checks have you wrong or missing.`,
@@ -88,6 +86,13 @@ export function docLine(l) {
   // A short quoted line (what the owner says) stays with its answer on paper.
   if (/^["\u201C\u201D].{0,110}["\u201C\u201D](\(\w+\))?$/.test(l.text)) return `<p class="d-q">${spoken(l.text)}</p>`;
   return `<p>${spoken(l.text)}</p>`;
+}
+// Call prep and the script beside the call (Nov 2026, V: "read the same format as if it were on paper, too much flipping"): one page per
+// script group, every step on it in order, same markup as the reading copy. Takes steps already filled in and voiced by buildScript
+// ({id, group, lines}); `only` limits it to the groups shown. Prompts for the rep are bold italic underlined (`p.d-cue`).
+export const paperLine = (raw) => docLine(classify(raw));
+export function paperPage(steps) {
+  return steps.map((st) => `<h2 class="d-h">${e(stepTitle(st.id))}:</h2>${st.lines.map(paperLine).join('')}`).join('');
 }
 // The objections that go on paper with a script.
 const QUICK = ["I'm busy right now", 'Just send me an email', 'Are you with Google?', 'How did you get my number?', 'I already have someone handling my Google'];

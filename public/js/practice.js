@@ -38,7 +38,7 @@ Rules:
 }
 
 export const COACH_PROMPT = `You are a sales coach for RightWay Growth cold callers. Below is a practice call transcript. The rep was trying to book a screen share (a free competitor analysis and a Google Game Plan) with a business owner.
-Give: a score from 1 to 10, what worked (at most 2 short lines), what to fix (at most 3 short lines), and one better line to say, written as a quote. Judge the opener, the pattern interrupt, tone, how they handled the objection, and whether they asked for the booking with two times.
+Give: a score from 1 to 10, what worked (at most 2 short lines), what to fix (at most 3 short lines), and one better line to say, written as a quote. Judge the opener, tone, how they handled the objection, and whether they asked for the booking with two times.
 Plain text, short, no markdown headers, no dashes.`;
 
 // Turns are { role: 'rep' | 'lead', text }. The rep is the "user" and the bot is the "assistant". The call starts with a connect note so the bot speaks first.

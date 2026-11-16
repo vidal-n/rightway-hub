@@ -487,7 +487,7 @@ export const SCRIPT_VERSION = 10;
 export const SCRIPT_GROUPS = [
   ['analysis', 'Competitor analysis', ['a_call', 'a_set', 'a_disc', 'a_reb', 'a_ml']],
   ['question', 'Question opener', ['q_open', 'q_state', 'q_listen', 'q_sum', 'q_ask', 'q_lock', 'q_reb']],
-  ['cold', 'Cold call', ['k_open', 'k_site', 'k_hook', 'k_why', 'k_ml', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
+  ['cold', 'Cold call', ['k_open', 'k_site', 'k_why', 'k_ml', 'k_value', 'k_teach', 'k_book', 'k_after', 'k_lock', 'gatekeeper', 'voicemail']],
   ['plan', 'Game Plan (website audit)', ['g_call', 'g_ask', 'g_set']],
   ['audit10', '10 Minute Business Profile Audit', ['b_open', 'b_pitch']],
   ['clarity', 'Clarity audit', ['c_open', 'c_frame', 'c_discovery', 'c_verify', 'c_scan', 'c_live', 'c_why', 'c_listings', 'c_story', 'c_program', 'c_process', 'c_trial', 'c_price', 'c_close', 'c_post', 'c_onboard', 'c_book']],
@@ -500,7 +500,7 @@ export const MEETING_GROUPS = ['clarity'];
 export const groupKind = (key) => (MEETING_GROUPS.includes(key) ? 'meeting' : 'cold');
 export const objectionKind = (q) => (/^Cold: /.test(q) ? 'cold' : 'meeting');
 export const SCRIPT_KEYS = [
-  ['k_open', 'Cold: the owner picks up'], ['k_site', 'Cold: no website, the site I built'], ['k_hook', 'Cold: the pattern interrupt'], ['k_why', 'Cold: why I called'],
+  ['k_open', 'Cold: the owner picks up'], ['k_site', 'Cold: no website, the site I built'], ['k_why', 'Cold: why I called'],
   ['k_value', 'Cold: on the fence'], ['k_teach', 'Cold: before you book'], ['k_book', 'Cold: book it on this call'], ['k_after', 'Cold: after booking, discovery'], ['k_lock', 'Cold: lock it in'],
   ['c_open', 'Opener: the Google clarity audit'], ['c_frame', 'Set the frame'], ['c_discovery', 'Discovery (write it down)'],
   ['c_verify', 'Verify the business'], ['c_scan', 'The clarity scan'], ['c_live', 'Search together'], ['c_why', 'Why they are up there (slow down)'],
@@ -659,16 +659,12 @@ export const DEFAULT_SCRIPT = {
   k_open: [
     "Hey, is this {first_or_owner}?",
     "(Only if the line really cut out: 'You broke up there, is this {first_or_owner}?')",
+    "Perfect. Oh, I'm {rep} by the way, with RightWay Growth.",
   ].join('\n'),
   k_site: [
     "{site_intro}",
     "{site_who}",
     "{site_note}",
-  ].join('\n'),
-  k_hook: [
-    "{open_line}",
-    "{open_where}",
-    "Perfect. Oh, I'm {rep} by the way, with RightWay Growth.",
   ].join('\n'),
   k_why: [
     "{strategy_note}",
@@ -841,7 +837,7 @@ export const DEFAULT_SCRIPT = {
     "(Under 25 seconds. Number twice, slowly.)",
   ].join('\n'),
   gatekeeper: [
-    "Hey, you guys are still open, right? ... Perfect. Is {first_or_owner} around?",
+    "Hey, is {first_or_owner} around?",
     "(They ask who's calling:) Oh, it's {rep}, with RightWay Growth. {gk_reason}",
     "Or: No worries. Who handles the Google stuff over there? ... Got it, when's the best time to catch them?",
     "(Get a name and a time. Log it as Gatekeeper.)",
@@ -1073,7 +1069,6 @@ function coldVars(lead, intel, { kw, top, first, L, lbad, worst }) {
   const info = industryInfo(lead.industry, intel?.listing?.category || lead.category);
   const city = lead.city || intel?.listing?.city || '';
   const hasSite = Boolean(intel?.listing?.url || lead.website);
-  const noHours = intel?.listing?.hours === false;
   const found = Boolean(intel?.found);
   const them = first || 'the owner';
   const jobs = 'more of the specific, profitable jobs you actually want';
@@ -1081,8 +1076,6 @@ function coldVars(lead, intel, { kw, top, first, L, lbad, worst }) {
     site_intro: hasSite ? '' : `IF THEY HAVE NO WEBSITE: Hey ${first || 'there'}, look, so I/we actually couldn't find your website online, so I/we decided to sit down and just built you one... look${first ? ` ${first}` : ''}, it's already done. You wanna see it?`,
     site_who: hasSite ? '' : "(If they ask who this is:) Oh my bad, I'm {rep}, with RightWay Growth. We build websites for {industry} businesses around {city}.",
     site_note: hasSite ? '' : '(Only when their demo site is built and the link is ready.)',
-    open_line: noHours ? "Hey, you guys are open today, right? Google doesn't show your hours, so I wasn't sure." : 'Hey, you guys are still open, right?',
-    open_where: noHours ? "(If they ask where:) On Google. Your hours aren't on your listing, so people can't tell if you're open." : "(If they ask why:) Just wanted to make sure I caught you before you closed.",
     strategy_note: found ? '' : '(No research yet? Say it this way:)',
     strategy_line: found ? `So I/we actually looked you guys up and used your info to build an **automated, tailored strategy** to help bring in ${jobs}.`
       : `So we've been putting together **tailored strategies** for ${info.label.toLowerCase()} businesses around ${city || 'here'} to help bring in ${jobs}.`,
