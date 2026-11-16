@@ -376,7 +376,7 @@ export async function teamPage(app, user) {
       <label class="field" id="tjob"><span>Job</span><select name="job">${JOBS.map(([k, n]) => `<option value="${k}"${k === 'setter' ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
       <div class="span-all row end"><button class="btn btn-primary" type="submit">Create invite link</button></div></form><div id="tout"></div></div>` : ''}
     <div class="card"><h2>Owners and agents</h2><ul class="list">${users.map((u) => `<li class="item"><span class="badge ${u.active ? '' : 'warn'}">${esc(jobLabel(u))}</span>
-      <div><div class="item-title">${esc(u.name || u.email)}${u.id === user.id ? ' (you)' : ''}</div><div class="item-sub">${esc(u.email)}${u.active ? '' : ' · invite pending'}</div></div>${goalCell(u, user)}${user.role === 'admin' && u.id !== user.id ? `<div class="row" style="gap:6px">${u.role === 'team' ? `<select data-job="${esc(u.id)}" aria-label="Job">${JOBS.map(([k, n]) => `<option value="${k}"${k === jobOf(u) ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-role="${esc(u.id)}" data-to="${u.role === 'admin' ? 'team' : 'admin'}">${u.role === 'admin' ? 'Make agent' : 'Make owner'}</button><button type="button" class="btn btn-ghost btn-sm" data-link="${esc(u.id)}" data-name="${esc(u.name || u.email)}" title="${u.active ? 'Makes a link that lets them choose a new password' : 'Their invite is waiting. Makes a fresh link.'}">${u.active ? 'Password link' : 'New invite link'}</button></div>` : '<span></span>'}</li>`).join('')}</ul>
+      <div><div class="item-title">${esc(u.name || u.email)}${u.id === user.id ? ' (you)' : ''}</div><div class="item-sub">${esc(u.email)}${u.active ? '' : ' · invite pending'}</div></div>${user.role === 'admin' ? `<button type="button" class="btn btn-ghost btn-sm" data-rename="${esc(u.id)}" data-name="${esc(u.name || '')}" title="Change the name shown in the Hub">Rename</button>` : ''}${goalCell(u, user)}${user.role === 'admin' && u.id !== user.id ? `<div class="row" style="gap:6px">${u.role === 'team' ? `<select data-job="${esc(u.id)}" aria-label="Job">${JOBS.map(([k, n]) => `<option value="${k}"${k === jobOf(u) ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>` : ''}<button type="button" class="btn btn-ghost btn-sm" data-role="${esc(u.id)}" data-to="${u.role === 'admin' ? 'team' : 'admin'}">${u.role === 'admin' ? 'Make agent' : 'Make owner'}</button><button type="button" class="btn btn-ghost btn-sm" data-link="${esc(u.id)}" data-name="${esc(u.name || u.email)}" title="${u.active ? 'Makes a link that lets them choose a new password' : 'Their invite is waiting. Makes a fresh link.'}">${u.active ? 'Password link' : 'New invite link'}</button></div>` : '<span></span>'}</li>`).join('')}</ul>
       <div class="jobs-key">${JOBS.map(([, n, d]) => `<p class="small"><b>${esc(n)}:</b> ${esc(d)}</p>`).join('')}</div>
       <p class="small muted" style="margin:12px 0 0">Owners can listen to agents' calls, hear agents' recordings, change phone settings and manage agents. Owners never see each other's personal line, recordings or vault. Agents only see their own calls and numbers.</p></div>`;
   $$('[data-role]', view).forEach((b) => b.addEventListener('click', async () => {
@@ -387,6 +387,15 @@ export async function teamPage(app, user) {
   $$('[data-link]', view).forEach((b) => b.addEventListener('click', async () => {
     try { const r = await api(`/api/users/${b.dataset.link}/reset`, { method: 'POST' }); showInvite($('#tout', view), r.inviteUrl, b.dataset.name); $('#tout', view)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
     catch (err) { toast(err.message, true); }
+  }));
+  $$('[data-rename]', view).forEach((b) => b.addEventListener('click', () => {
+    const m = modal(`<h2>Rename</h2><form id="rnf" class="form-grid"><label class="field span-all"><span>Name shown in the Hub</span><input name="name" value="${esc(b.dataset.name)}" maxlength="120" required autofocus></label>
+      <div class="span-all row end"><button class="btn btn-primary" type="submit">Save</button></div></form>`);
+    $('#rnf').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try { const r = await api(`/api/users/${b.dataset.rename}/name`, { method: 'PUT', body: { name: new FormData(e.target).get('name') } }); toast(`Now shown as ${r.name}`); m.close(); teamPage(app, user); }
+      catch (err) { toast(err.message, true); }
+    });
   }));
   $$('[data-job]', view).forEach((sel) => sel.addEventListener('change', async () => {
     try { await api(`/api/users/${sel.dataset.job}/job`, { method: 'PUT', body: { job: sel.value } }); toast(`Now ${JOBS.find(([k]) => k === sel.value)[1].toLowerCase()}. They see the change on their next page load.`); }

@@ -45,3 +45,23 @@ test('daily dial goal: default 60, saved per person, limits, shown by the dialer
   cookie = ownerCookie;
   assert.equal((await call('GET', '/api/dialer/queue')).data.stats.goal, 150);
 });
+
+test('owners rename a teammate; agents cannot; blank names refused', async () => {
+  resetSchemaCache();
+  const env = { DB: d1(), MEDIA: r2(), ACCESS_KEY: 'owner-key-123' };
+  let cookie = '';
+  const call = async (method, path, body) => {
+    const h = { 'x-rw': '1' }; if (cookie) h.cookie = cookie;
+    let payload; if (body !== undefined) { h['content-type'] = 'application/json'; payload = JSON.stringify(body); }
+    const res = await worker.fetch(new Request(`https://hub.test${path}`, { method, headers: h, body: payload }), env);
+    const set = res.headers.get('set-cookie'); if (set) cookie = set.split(';')[0];
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  };
+  await call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'Vidal Newton', password: 'correct horse battery' });
+  await call('POST', '/api/team/invite', { email: 'k@x.com', name: 'Kiron', role: 'team' });
+  const id = (await call('GET', '/api/team')).data.users.find((u) => u.email === 'k@x.com').id;
+  assert.equal((await call('PUT', `/api/users/${id}/name`, { name: '  Ron  ' })).data.name, 'Ron');
+  assert.equal((await call('GET', '/api/team')).data.users.find((u) => u.id === id).name, 'Ron');
+  assert.equal((await call('PUT', `/api/users/${id}/name`, { name: '   ' })).status, 400);
+  assert.equal((await call('PUT', '/api/users/nope/name', { name: 'X' })).status, 404);
+});

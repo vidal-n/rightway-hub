@@ -269,6 +269,17 @@ route('PUT', '/api/users/:id/job', async ({ env, user, params, body }) => {
   return json({ ok: true, job });
 });
 
+// Owners fix a teammate's display name (or their own). Staff only, client names stay on the client page.
+route('PUT', '/api/users/:id/name', async ({ env, user, params, body }) => {
+  requireAdmin(user);
+  const name = String((await body()).name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!name) throw new HttpError('Type a name.');
+  const target = await first(env, 'SELECT * FROM users WHERE id = ?', params.id);
+  if (!target || target.role === 'client') throw new HttpError('Teammate not found.', 404);
+  await run(env, 'UPDATE users SET name = ? WHERE id = ?', name, target.id);
+  return json({ ok: true, name });
+});
+
 route('DELETE', '/api/users/:id', async ({ env, user, params }) => {
   requireStaff(user);
   if (params.id === user.id) throw new HttpError("You can't remove yourself.");
