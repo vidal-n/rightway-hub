@@ -68,6 +68,23 @@ function getCtx() {
 }
 export function warmAudio() { appleSession(); try { getCtx()?.resume?.().catch(() => {}); } catch { /* ignore */ } }
 
+// A plain level meter on a mic stream: the analyser is pulled through a muted gain into the speakers' graph, because Safari (and a sleeping
+// context) leaves an analyser that goes nowhere reading flat zero. Returns { level(), stop(), running() } or null when there is no audio engine.
+function plainMeter(stream) {
+  const ctx = getCtx(); if (!ctx) return null;
+  try { ctx.resume?.().catch(() => {}); } catch { /* ignore */ }
+  const src = ctx.createMediaStreamSource(stream);
+  const an = ctx.createAnalyser(); an.fftSize = 1024;
+  const mute = ctx.createGain(); mute.gain.value = 0;
+  src.connect(an); an.connect(mute); mute.connect(ctx.destination);
+  const buf = new Float32Array(an.fftSize);
+  return {
+    level() { an.getFloatTimeDomainData(buf); let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]; return Math.sqrt(sum / buf.length); },
+    running: () => ctx.state === 'running',
+    stop() { try { src.disconnect(); an.disconnect(); mute.disconnect(); } catch { /* ignore */ } },
+  };
+}
+
 // iPad and iPhone (Nov 2026, V: the Yealink headset showed as picked but the iPad's own mic and speaker carried the call).
 // Safari puts a page's audio in "playback" mode unless told otherwise, and in that mode a Bluetooth headset is only a speaker (or not
 // used at all) and the mic falls back to the iPad's. WebKit's Audio Session API (Safari 16.4 and later) lets a page ask for a phone call
@@ -331,20 +348,14 @@ export function holdMic() {
 // Live level (0 to 1) of the held mic, so the test call's meter shows the real mic and not a made up bar. null = no mic is open.
 let meter = null;
 export function heldLevel() {
-  if (!held) { meter = null; return null; }
-  const ctx = getCtx(); if (!ctx) return null;
+  if (!held) { if (meter) { meter.m.stop(); } meter = null; return null; }
   try {
-    if (!meter || meter.stream !== held) {
-      const an = ctx.createAnalyser(); an.fftSize = 1024;
-      ctx.createMediaStreamSource(held).connect(an);
-      meter = { stream: held, an, buf: new Float32Array(an.fftSize) };
-    }
-    meter.an.getFloatTimeDomainData(meter.buf);
-    let sum = 0; for (const v of meter.buf) sum += v * v;
-    return Math.min(1, Math.sqrt(sum / meter.buf.length) * 3);
+    if (!meter || meter.stream !== held) { meter?.m.stop(); const m = plainMeter(held); if (!m) return null; meter = { stream: held, m }; }
+    return Math.min(1, meter.m.level() * 3);
   } catch { return null; }
 }
 export function dropMic() {
+  try { meter?.m.stop(); } catch { /* ignore */ }
   meter = null;
   const s = held; held = null;
   try { s?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
@@ -458,6 +469,7 @@ const isLive = (device) => Boolean(device?.calls?.length || device?.activeCall);
 const ENGINE_NOTE = { ai: 'Running: the Hub\'s voice cleanup is on the audio thread.', basic: 'Backup filter: the voice engine could not run here, so a simple filter is used. Your voice still goes through.', none: 'Off: nothing extra is added to your mic.', failed: 'Off: the browser would not start the audio engine, so your plain mic is used. Your voice still goes through.' };
 
 export function audioPanel({ device = null } = {}) {
+  warmAudio();      // inside the tap that opened the panel: iPhone and iPad only start audio from a tap, and a sleeping engine gives flat bars
   let stopMeter = () => {};
   let probe = null;
   const { el, close } = modal(`<div class="aud"><div class="aud-head"><h2>Phone audio</h2><button type="button" class="btn btn-ghost btn-sm" data-close>Done</button></div><div id="audbody"><div class="skeleton" style="height:240px"></div></div></div>`, { onClose: () => { stopMeter(); } });
@@ -625,6 +637,8 @@ export function audioPanel({ device = null } = {}) {
       dl.querySelectorAll('.extra').forEach((x) => x.remove());
       rows.forEach(([k, v]) => dl.insertAdjacentHTML('beforeend', `<dt class="extra">${esc(k)}</dt><dd class="extra">${esc(v)}</dd>`));
     };
+    // 3 seconds of exactly nothing from the mic: say why instead of leaving dead bars.
+    const flatHint = (running) => hint(running ? 'The mic is open but sending no sound. Check it is not muted (headset button, Mac Sound settings, Control Center) and that the right microphone is picked above, then speak.' : 'The browser is keeping the audio engine asleep. Tap anywhere on this window, then speak.');
     const draw = (lv, open) => { bIn.style.width = `${meterPct(lv.inp)}%`; bOut.style.width = `${meterPct(lv.out)}%`; bOut.classList.toggle('cut', open === false); };
     if (isLive(device)) {
       const t = setInterval(() => { const lv = liveLevels(); if (lv) draw(lv, proc?.gateOpen); const e = engineState(); diag(proc?.info, e?.engine || 'none'); }, 80);
@@ -637,13 +651,13 @@ export function audioPanel({ device = null } = {}) {
       try {
         const own = !held;
         raw = held || (await openMic(loadAudio())).stream; noteTrack(raw);
-        const ctx = getCtx(); const an = ctx.createAnalyser(); an.fftSize = 1024; const src = ctx.createMediaStreamSource(raw); src.connect(an);
-        const buf = new Float32Array(an.fftSize);
-        const tid = setInterval(() => { an.getFloatTimeDomainData(buf); let sum = 0; for (const v of buf) sum += v * v; const lv = Math.sqrt(sum / buf.length); draw({ inp: lv, out: lv }, true); }, 60);
+        const pm = plainMeter(raw); if (!pm) throw new Error('No audio engine');
+        let quiet = 0;
+        const tid = setInterval(() => { const lv = pm.level(); draw({ inp: lv, out: lv }, true); quiet = lv > 0.0005 ? 0 : quiet + 1; if (quiet === 50) flatHint(pm.running()); }, 60);
         const d = $('#adeng', el); if (d) d.textContent = 'Browser cleanup only on iPad and iPhone (keeps your headset connected).';
         const ins = (await navigator.mediaDevices.enumerateDevices().catch(() => [])).filter((x) => x.kind === 'audioinput');
         truth(ins);
-        stopMeter = () => { clearInterval(tid); try { src.disconnect(); } catch { /* ignore */ } if (own) raw.getTracks().forEach((x) => x.stop()); bIn.style.width = '0'; bOut.style.width = '0'; };
+        stopMeter = () => { clearInterval(tid); pm.stop(); if (own) raw.getTracks().forEach((x) => x.stop()); bIn.style.width = '0'; bOut.style.width = '0'; };
       } catch (e) { hint(micProblem(e)); }
       return;
     }
@@ -653,9 +667,16 @@ export function audioPanel({ device = null } = {}) {
       warmAudio();
       pr = new RwProcessor(); probe = pr;
       const out = await pr.createProcessedStream(raw);
-      const tid = setInterval(() => { draw(pr.nodes ? pr.levels() : { inp: 0, out: 0 }, pr.gateOpen); }, 60);
+      // The engine can refuse to start (a sleeping audio context): the bars then read the plain mic instead of sitting at zero.
+      const pm = pr.nodes ? null : plainMeter(raw);
+      let quiet = 0;
+      const tid = setInterval(() => {
+        if (pm) { const lv = pm.level(); draw({ inp: lv, out: lv }, true); quiet = lv > 0.0005 ? 0 : quiet + 1; if (quiet === 50) flatHint(pm.running()); return; }
+        const lv = pr.nodes ? pr.levels() : { inp: 0, out: 0 }; draw(lv, pr.gateOpen);
+        quiet = lv.inp > 0.0005 ? 0 : quiet + 1; if (quiet === 50) flatHint(true);
+      }, 60);
       diag(pr.info, pr.engine);
-      stopMeter = () => { clearInterval(tid); raw.getTracks().forEach((x) => x.stop()); pr.destroyProcessedStream(out); bIn.style.width = '0'; bOut.style.width = '0'; if (probe === pr) probe = null; };
+      stopMeter = () => { clearInterval(tid); pm?.stop(); raw.getTracks().forEach((x) => x.stop()); pr.destroyProcessedStream(out); bIn.style.width = '0'; bOut.style.width = '0'; if (probe === pr) probe = null; };
     } catch (e) { hint(micProblem(e)); raw?.getTracks().forEach((x) => x.stop()); }
   };
 
