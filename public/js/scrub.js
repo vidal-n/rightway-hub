@@ -1,5 +1,5 @@
-import { cleanPerson, isPersonName, nameFromEmail, firstFromEmail } from './names.js';
-export { isPersonName, cleanPerson, nameFromEmail, firstFromEmail };
+import { cleanPerson, cleanOwner, isPersonName, isOwnerName, nameFromEmail, firstFromEmail } from './names.js';
+export { isPersonName, isOwnerName, cleanPerson, cleanOwner, nameFromEmail, firstFromEmail };
 // The lead scrubber, the part that needs no network. Pure, so the Worker, the browser and the tests share it.
 // Cleans business names (SEO stuffing, legal endings, shouting), checks phones and emails, pulls emails, social pages and the
 // owner's name out of a website, and scores how complete and usable a lead's data is.
@@ -143,8 +143,9 @@ export function findOwner(html, text) {
     let m, guard = 0;
     // Matches may overlap ("Owner Operator Plumbing Owner: Mike Diaz"), so step one character past each start.
     while ((m = re.exec(src)) && guard++ < 200) {
-      const n = cleanPerson(m[1]);
-      if (n) return { name: n, via: i < 4 ? 'schema' : 'page' };
+      // The labeled spots accept a name with a first name we do not list; the loose "Meet ..." heading (the last pattern) stays strict.
+      const n = i < OWNER_RES.length - 1 ? cleanOwner(m[1]) : cleanPerson(m[1]);
+      if (n) return { name: n, via: i < 4 ? 'schema' : 'page', known: Boolean(cleanPerson(n)) };
       re.lastIndex = m.index + 1;
     }
   }

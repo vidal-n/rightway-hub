@@ -10,6 +10,7 @@ import { nameStem } from '../public/js/freedata.js';
 import { overpassQuery, osmRecord, sunbizSearchUrl, parseSunbizResults, pickEntity, parseSunbizDetail, pickOwner, yearsSince, entityName } from '../public/js/freedata.js';
 
 const UA = 'RightwayHub/1.0 (hello@rightwaygrowth.com)';
+const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 export const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 
 export async function leadMode(env) {
@@ -51,10 +52,20 @@ export async function sunbizLookup(lead, fetchImpl = fetch) {
   const words = entityName(lead.business_raw || lead.business).split(' ').filter(Boolean);
   if (!words.length) return { skipped: 'no name' };
   const term = words.slice(0, 3).join(' ');
+  // The registry answers a normal browser visit and turns away bots and bursts, so: browser headers, and one more try after a short pause
+  // on a block, a rate limit or a server hiccup (these were counted as "registry error" and never tried again).
   const get = async (url) => {
-    const res = await withTimeout(fetchImpl, url, { headers: { 'user-agent': 'Mozilla/5.0 (compatible; RightwayHub/1.0; +https://rightwaygrowth.com)', accept: 'text/html' } }, 12000);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.text();
+    let status = 0;
+    for (let k = 0; k < 3; k++) {
+      if (k) await new Promise((r) => setTimeout(r, 700 * k));
+      try {
+        const res = await withTimeout(fetchImpl, url, { headers: { 'user-agent': BROWSER_UA, accept: 'text/html,application/xhtml+xml', 'accept-language': 'en-US,en;q=0.9' } }, 12000);
+        if (res.ok) return res.text();
+        status = res.status;
+        if (![403, 429, 500, 502, 503, 504].includes(res.status)) break;
+      } catch (e) { status = 0; if (k === 2) throw new Error(e.name === 'AbortError' ? 'timed out' : 'no answer'); }
+    }
+    throw new Error(`HTTP ${status}`);
   };
   try {
     const list = parseSunbizResults(await get(sunbizSearchUrl(term)));
@@ -67,7 +78,7 @@ export async function sunbizLookup(lead, fetchImpl = fetch) {
       found: true, at: Date.now(), url, name: d.name || hit.name, kind: d.kind, status: d.status || hit.status, active: /^ACTIVE/i.test(d.status || hit.status), docNo: d.docNo, filed: d.filed,
       years: yearsSince(d.filed), principal: d.principal, agent: d.agent?.name || '', people: d.people.slice(0, 8), owner: owner?.name || '', ownerTitle: owner?.title || '', annualReports: d.annualReports.slice(-3),
     };
-  } catch (e) { return { found: false, error: e.message.slice(0, 120), at: Date.now() }; }
+  } catch (e) { return { found: false, error: e.message.slice(0, 120), retry: true, at: Date.now() }; }
 }
 
 // Every state: Florida reads Sunbiz (officers too), CO, OR, CT, NY and PA read their open data, the rest return the state's official search

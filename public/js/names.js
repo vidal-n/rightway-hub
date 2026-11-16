@@ -71,6 +71,39 @@ export function titleLike(raw, business = '') {
   return Boolean(norm(business)) && norm(s) === norm(business);
 }
 
+
+// Names from a labeled spot ("Owner: Yusimi Alvarez", schema founder, "Alvarez, Owner") or a registry officer list do not need a first name
+// from our list: the list is typed from memory and misses many real names (a Miami or Houston owner called Yusimi, Rolando or Thuy).
+// The shape is still checked: 2 to 3 plain capitalized words, no title, trade or page word, no common English word, no business word.
+const COMMON = new Set(`the our your this that these those free best quality professional premium certified licensed insured affordable reliable trusted local family
+ get call text email click read learn more view see find about contact home page menu search login log sign shop store cart blog news gallery photos reviews review
+ testimonials testimonial services service solutions solution systems system group company companies inc corp llc ltd co team staff crew experts expert specialists
+ specialist customers customer clients client welcome hello thank thanks help support work works working years year since over under north south east west central
+ new old great good top first one two three all any every each other next last back front main grand royal golden silver blue green red black white bright clear
+ fast quick rapid express direct total complete full prime elite pro plus max super ultra mega mighty classic modern smart green`.split(/\s+/).filter(Boolean));
+export function looseName(raw) {
+  const s = trimName(raw);
+  if (s.length < 5 || s.length > 40 || /[\d@&/\\:|()<>_=+*#!?%$^~`"]/.test(s)) return false;
+  const words = s.split(' ');
+  if (words.length < 2 || words.length > 3) return false;
+  const core = words.filter((w) => !/^[A-Za-z]\.?$/.test(w));
+  if (core.length < 2) return false;
+  for (const w of words) {
+    if (/^[A-Za-z]\.?$/.test(w)) continue;
+    if (!/^(?:[A-Z][a-z]+(?:['-][A-Z]?[a-z]+)?|Mc[A-Z][a-z]+|Mac[A-Z][a-z]+|O'[A-Z][a-z]+|De|Del|La|Van|Von|Di|Da|Dos)$/.test(w)) return false;
+    if (DENY.has(lc(w)) || COMMON.has(lc(w))) return false;
+    if (w.length < 2) return false;
+  }
+  return core.every((w) => w.length >= 3 || /^(?:Al|Ng|Li|Wu|Xu|Yu|Ho|Le|Vu|Do|Ly|Jo|Ty)$/.test(w));
+}
+// An owner name: a known first name, or a name shaped like a person from a labeled spot. Only for the owner_name column,
+// which is filled by checked paths (scrub, registry, import, a rep typing it), never for contact names.
+export const isOwnerName = (raw) => isPersonName(raw) || looseName(raw);
+export function cleanOwner(raw) {
+  const t = trimName(String(raw || '').replace(/[,;]+/g, ' '));
+  return isOwnerName(t) ? t : '';
+}
+
 export const isFirstName = (w) => FIRST_SET.has(lc(w));
 
 // The cleaned name, or '' when it is not a person.

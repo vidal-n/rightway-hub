@@ -16,7 +16,8 @@ import { mountCallSetup, scriptReady, loadList } from './callsetup.js';
 import { stripeSetup } from './stripesetup.js';
 import { autoScanCard } from './scans.js';
 import { hoverCards, hoverHtml } from './hovercard.js';
-import { isPersonName, titleLike } from '/js/names.js';
+import { isOwnerName, titleLike } from '/js/names.js';
+import { ownerReach, TIER_LABEL, TIER_HELP } from '/js/reach.js';
 import { placeCall, startPhone, onPhoneState, phoneState, hangUp, contactRows, initialsOf, takeCallDraft, wrapUp, closeCallWindow } from './phone.js';
 import { warmAudio, holdMic, dropMic, isApple, micHeld } from './audioset.js';
 import { arriving, leaving } from './dialwin.js';
@@ -242,7 +243,7 @@ export async function pipelinePage(app, user, openId, screen) {
     const open = rows.filter((l) => !['won', 'lost', 'dnc'].includes(l.stage));
     const f = p.f;
     const activeFilters = Object.entries(f).filter(([k, v]) => k !== 'q' && (Array.isArray(v) ? v.length : v !== '' && v != null && v !== false)).length;
-    const badNames = user.role === 'admin' ? all.filter((l) => (l.owner_name && !isPersonName(l.owner_name)) || (l.contact_name && titleLike(l.contact_name, l.business))).length : 0;
+    const badNames = user.role === 'admin' ? all.filter((l) => (l.owner_name && !isOwnerName(l.owner_name)) || (l.contact_name && titleLike(l.contact_name, l.business))).length : 0;
     const noOwner = user.role === 'admin' ? all.filter((l) => l.scrubbed_at && l.stage === 'new' && !personOf(l) && !calledBefore(l) && !l.dnc && !l.client_id && !l.meet_at).length : 0;
     const unscrubbed = rows.filter((l) => !l.scrubbed_at && !['won', 'lost', 'dnc'].includes(l.stage)).length;
     const unresearched = rows.filter((l) => !l.researched && !['won', 'lost', 'dnc'].includes(l.stage)).length;
@@ -422,6 +423,7 @@ export async function pipelinePage(app, user, openId, screen) {
   const LCOLS = [
     ['grade', 'Grade', '-score', (l) => gradeBadge(l.grade, l.score)],
     ['business', 'Business', 'business', (l) => `<b>${esc(l.business)}</b><div class="small">${esc([personOf(l), l.phone, PHONE_TYPE_LABEL[l.phone_type]].filter(Boolean).join(' · '))}</div>`],
+    ['reach', 'Owner reach', 'rscore', (l) => reachBadge(l)],
     ['person', 'Owner or contact', 'owner_name', (l) => esc(personOf(l) || '')],
     ['phone', 'Phone', 'phone', (l) => esc(l.phone || '')],
     ['phone_type', 'Phone type', 'phone_type', (l) => esc(PHONE_TYPE_LABEL[l.phone_type] || '')],
@@ -452,7 +454,7 @@ export async function pipelinePage(app, user, openId, screen) {
     ['held', 'Call list', 'list_label', (l) => (l.list_label ? `<span class="badge${l.held ? ' warn' : ''}">${esc(l.list_label)}</span>` : '')],
     ['created_at', 'Added', '-created_at', (l) => (l.created_at ? esc(new Date(l.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })) : '')],
   ];
-  const LCOL_DEFAULT = ['grade', 'business', 'city', 'tz_short', 'hours', 'industry', 'reviews', 'last_dispo', 'dials', 'reached', 'data_score', 'stage', 'next'];
+  const LCOL_DEFAULT = ['grade', 'reach', 'business', 'city', 'tz_short', 'hours', 'industry', 'reviews', 'last_dispo', 'dials', 'reached', 'data_score', 'stage', 'next'];
   const listCols = () => { const want = Array.isArray(p.cols) && p.cols.length ? p.cols : LCOL_DEFAULT; return LCOLS.filter((c) => want.includes(c[0])).sort((a, b) => want.indexOf(a[0]) - want.indexOf(b[0])); };
   const pickColumns = () => {
     let want = listCols().map((c) => c[0]);
@@ -885,6 +887,7 @@ function leadDataCard(box, l, scrub, onChange) {
     ${!l.scrubbed_at ? '<p class="small muted">Not scrubbed yet. Scrub reads their website for the owner, emails and social pages, and checks the number.</p>' : `<dl class="kv">
       ${l.business_raw && l.business_raw !== l.business ? `<dt>Name on Google</dt><dd>${esc(l.business_raw)}</dd>` : ''}
       <dt>Phone</dt><dd>${esc(PHONE_TYPE_LABEL[l.phone_type] || 'Type not checked')}${l.phone_carrier ? ` · ${esc(l.phone_carrier)}` : ''}</dd>
+      <dt>Owner reach</dt><dd>${reachDetail(l)}</dd>
       <dt>Owner</dt><dd>${esc(personOf(l) || 'Not found')}</dd>
       <dt>Email</dt><dd>${emails.length ? emails.slice(0, 4).map((x) => `${esc(x.email)} <span class="badge ${x.mx === false ? 'bad' : x.role ? 'warn' : ''}">${esc(x.mx === false ? 'no mail server' : x.role ? 'shared inbox' : x.mx ? 'valid' : 'not checked')}</span>`).join('<br>') : 'None found'}</dd>
       ${Object.keys(socials).length ? `<dt>Social</dt><dd>${Object.entries(socials).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(k === 'x' ? 'X' : k.charAt(0).toUpperCase() + k.slice(1))}</a>`).join(' · ')}</dd>` : ''}
@@ -2105,4 +2108,18 @@ async function mountHours(box, l, onSaved) {
     });
   };
   try { draw(await api(`/api/leads/${l.id}/hours`)); } catch { box.innerHTML = '<i>Hours</i><span class="muted small">Could not load.</span>'; }
+}
+
+// Owner reach tier chip (T1 owner likely ... T4 gatekeeper likely). Hover or open the lead for the three biggest reasons.
+function reachBadge(l) {
+  const t = l.rtier || ownerReach(l).tier;
+  if (t === 'X') return '<span class="badge bad">Do not call</span>';
+  const why = (l.rwhy || ownerReach(l).why || []).map((w) => `${w.pts > 0 ? '+' : ''}${w.pts} ${w.text}`).join('; ');
+  return `<span class="badge ${t === 'T1' ? 'good' : t === 'T4' ? 'warn' : ''}" title="${esc(`${TIER_LABEL[t] || ''}. ${why}`)}">${esc(t)} ${esc(l.rscore ?? ownerReach(l).score)}</span>`;
+}
+function reachDetail(l) {
+  const r = ownerReach(l);
+  const why = r.why.map((w) => `<div class="small">${w.pts > 0 ? '+' : ''}${w.pts} ${esc(w.text)}</div>`).join('');
+  const un = r.unchecked.length ? `<div class="small muted">Not checked yet: ${esc(r.unchecked.join(', '))}. Unknown is not counted against the lead.</div>` : '';
+  return `<b>${esc(r.tier)} ${esc(TIER_LABEL[r.tier] || '')}</b> · score ${r.score}${why}${un}<div class="small muted">${esc(TIER_HELP[r.tier] || '')} A guess from the data, tested against your calls in Call insights.</div>`;
 }

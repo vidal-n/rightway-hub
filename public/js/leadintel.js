@@ -1,7 +1,7 @@
 import { discoveryFor } from './discovery.js';
 import { LISTEN, ANALYSIS_ML, ML, catalogRows, ML_RULES } from './rebuttals.js';
 import { parseListings } from './listings.js';
-import { isPersonName, titleLike } from './names.js';
+import { isPersonName, isOwnerName, titleLike } from './names.js';
 import { SERVICE_LIST } from './plancopy.js';
 import { SCOPE, unitOf, hasQty, clampQty, tierOf, dollars } from './scope.js';
 import { refFor, photosFor } from './planref.js';
@@ -340,7 +340,7 @@ export function callCategory(lead = {}) {
 export function whoIs(lead = {}) {
   // An owner name that is not a person (a job title a scrub once saved) is ignored everywhere, so nobody asks for "Owner Operator".
   const rawOwner = String(lead.owner_name || '').trim();
-  const owner = rawOwner && isPersonName(rawOwner) ? rawOwner : '';
+  const owner = rawOwner && isOwnerName(rawOwner) ? rawOwner : '';
   const rawContact = String(lead.contact_name || '').trim();
   // A contact that is a job title or the business name ("owner", "vice president", Outscraper columns) is not a person either.
   const contact = rawContact && ((rawContact === rawOwner && !owner) || titleLike(rawContact, lead.business)) ? '' : rawContact;

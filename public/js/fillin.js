@@ -1,9 +1,11 @@
 // Pure logic for the Pipeline "Fill in missing info" panel (shared by the page and tests).
 import { PRICES } from './pricing.js';
-import { personOf } from './leadintel.js';
+import { isOwnerName } from './names.js';
+import { stateCode, ownerRegistry } from './registries.js';
 
 const OPEN = (l) => !['won', 'lost', 'dnc'].includes(l.stage) && !l.dnc;
-const isFL = (l) => !l.state || /^(fl|florida)$/i.test(String(l.state).trim());
+// A state whose registry can name officers or managers (Florida today, more as they are added in registries.js). A blank state counts as Florida.
+const hasOwnerRegistry = (l) => !l.state || ownerRegistry(stateCode(l.state));
 // A scrub already read the website and the registry. If it found nothing, the field is still empty but nothing is missing that a scrub can fix.
 const checked = (l) => Boolean(l.scrubbed_at);
 
@@ -16,9 +18,9 @@ export function fillItems(leads, { cleanName, twilio, owner }) {
       where: 'Our own clean up rules: drops SEO tails, LLC endings and ALL CAPS. No outside calls.',
       miss: (l) => Boolean(l.business) && !l.business_raw && cleanName(l.business, { city: l.city, state: l.state }).changed },
     { id: 'owner', title: 'Owner name', free: true, group: 'site',
-      where: 'Their website contact and about pages, and the Florida business registry (Sunbiz). Other states get a search link only.',
+      where: 'Their website contact and about pages, then the state business registry where it lists officers or managers (Florida today, more states as they are added). Other states get a search link.',
       // A real person's name is what counts. A lead the scrub already read still shows here when it has no name (the site may not have loaded, or Sunbiz may have been down), so it can be read again.
-      miss: (l) => !personOf(l) && (site(l) || isFL(l)) },
+      miss: (l) => !isOwnerName(l.owner_name) && (site(l) || hasOwnerRegistry(l)) },
     { id: 'email', title: 'Email address', free: true, group: 'site',
       where: 'Their website home, contact and about pages (mailto links and text). Then checks the email domain takes mail.',
       miss: (l) => !l.email && !checked(l) && site(l) },

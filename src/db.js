@@ -229,6 +229,10 @@ const SCHEMA = [
   `CREATE TRIGGER IF NOT EXISTS roll_sync_ins AFTER INSERT ON lead_roll BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
   `CREATE TRIGGER IF NOT EXISTS roll_sync_upd AFTER UPDATE ON lead_roll BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
   // Business hours per lead (src/hours.js, public/js/hours.js): packed week, where it came from, and Google's closed status. Own table (leads is near 100 columns).
+  // Website signals for the owner reach tiers (call tracking, answering service, front desk, ...): own table, leads is near D1's column limit.
+  `CREATE TABLE IF NOT EXISTS lead_reach (lead_id TEXT PRIMARY KEY, flags TEXT, at INTEGER)`,
+  `CREATE TRIGGER IF NOT EXISTS reach_sync_ins AFTER INSERT ON lead_reach BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
+  `CREATE TRIGGER IF NOT EXISTS reach_sync_upd AFTER UPDATE ON lead_reach BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
   `CREATE TABLE IF NOT EXISTS lead_hours (lead_id TEXT PRIMARY KEY, hours TEXT, src TEXT, status TEXT, at INTEGER)`,
   `CREATE TRIGGER IF NOT EXISTS hours_sync_ins AFTER INSERT ON lead_hours BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
   `CREATE TRIGGER IF NOT EXISTS hours_sync_upd AFTER UPDATE ON lead_hours BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,

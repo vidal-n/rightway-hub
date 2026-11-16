@@ -8,6 +8,9 @@
 import { entityName, yearsSince } from './freedata.js';
 
 // [code, name, registry, search page]. The links are the states' own public search pages.
+// States whose registry the Hub can read for officers or managers (not just the company). Florida reads Sunbiz; more are added here as their lookups are built.
+const OWNER_REGISTRY = new Set(['FL']);
+export const ownerRegistry = (code) => OWNER_REGISTRY.has(code);
 export const STATES = [
   ['AL', 'Alabama', 'Secretary of State', 'https://arc-sos.state.al.us/cgi/corpname.mbr/input'],
   ['AK', 'Alaska', 'Corporations Database', 'https://www.commerce.alaska.gov/cbp/main/search/entities'],

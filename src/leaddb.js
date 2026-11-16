@@ -7,7 +7,7 @@ import { all, first, run, batch, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { rollup, reachScore, engageScore, whereFor, cleanFilter, cleanQual, qualCount, insights, COLUMNS, COLUMN_MAP, PRESETS, answeredLabel } from '../public/js/leaddb.js';
-import { isPersonName } from '../public/js/names.js';
+import { isOwnerName } from '../public/js/names.js';
 import { likelyOwner } from '../public/js/leadfilter.js';
 import { dtf } from '../public/js/fmtcache.js';
 
@@ -41,7 +41,7 @@ export async function rollupLeads(env, ids = []) {
     for (const l of leads) {
       const list = by.get(l.id) || [];
       const r = rollup(list, t);
-      const facts = { ...l, ...r, owner_known: isPersonName(l.owner_name || ''), likely_owner: likelyOwner(l) };
+      const facts = { ...l, ...r, owner_known: isOwnerName(l.owner_name || ''), likely_owner: likelyOwner(l) };
       stmts.push(['UPDATE leads SET reach_score = ?, engage_score = ?, roll_at = ? WHERE id = ?', reachScore(facts), engageScore(facts, t), t, l.id]);
       stmts.push([`INSERT INTO lead_roll (lead_id, ${R_COLS.join(', ')}) VALUES (?, ${R_COLS.map(() => '?').join(', ')})
         ON CONFLICT(lead_id) DO UPDATE SET ${R_COLS.map((k) => `${k} = excluded.${k}`).join(', ')}`, l.id, ...R_COLS.map((k) => r[k] ?? null)]);

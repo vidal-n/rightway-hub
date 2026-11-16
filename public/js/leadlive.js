@@ -4,6 +4,7 @@ import { ZONE_SHORT, canCallNow, STATE_RULES } from './timezone.js';
 import { dtf } from './fmtcache.js';
 import { tradeOf } from './leadintel.js';
 import { unpackHours, openAt, nowText, hoursText } from './hours.js';
+import { ownerReach } from './reach.js';
 
 export function localTime(tz, at = Date.now()) {
   try { return dtf('en-US', { timeZone: tz || 'America/New_York', hour: 'numeric', minute: '2-digit' }).format(at); } catch { return ''; }
@@ -33,6 +34,9 @@ export function liveLead(l, at = Date.now()) {
   l.open_sun = week ? Boolean(week[7] && week[7].length) : null;
   l.hours_now = week && tz ? once(`n|${hrs}|${tz}`, at, () => nowText(week, tz, at)) : '';
   l.hours_text = week ? once(`x|${hrs}`, at, () => hoursText(week)) : '';
+  // Owner reach tier (T1 to T4), worked out here from what the row already carries, so it never goes stale in the local cache.
+  const r = ownerReach(l);
+  l.rtier = r.tier; l.rscore = r.score; l.rconf = r.conf; l.rwhy = r.why; l.runchecked = r.unchecked; l.rflagsl = r.flags;
   return l;
 }
 // A packed page ({cols, rows}) back into lead objects.

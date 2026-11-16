@@ -93,6 +93,7 @@ export const BOARD_MODES = [
     order: ['Open Saturday', 'Closed Saturday', 'Hours not known'] },
   { id: 'niche', label: 'Owner direct niche', group: 'Where it came from', key: (l) => l.niche_name || 'Other trades' },
   { id: 'phone', label: 'Phone type', group: 'Lead quality', key: (l) => ({ mobile: 'Mobile', landline: 'Landline', voip: 'Internet phone' }[l.phone_type] || 'Not checked'), order: ['Mobile', 'Landline', 'Internet phone', 'Not checked'] },
+  { id: 'rtier', label: 'Owner reach tier', group: 'Lead quality', key: (l) => ({ T1: 'T1 Owner likely', T2: 'T2 Owner probable', T3: 'T3 Unknown (enrich first)', T4: 'T4 Gatekeeper likely' }[l.rtier] || 'Not scored'), order: ['T1 Owner likely', 'T2 Owner probable', 'T3 Unknown (enrich first)', 'T4 Gatekeeper likely'] },
   { id: 'owner', label: 'Owner name', group: 'Lead quality', key: (l) => (personOf(l) ? 'Name known' : 'No name yet'), order: ['Name known', 'No name yet'] },
   { id: 'email', label: 'Email', group: 'Lead quality', key: (l) => (goodEmail(l) ? 'Has a good email' : l.email ? 'Email bounced or bad' : 'No email'), order: ['Has a good email', 'Email bounced or bad', 'No email'] },
   { id: 'site', label: 'Website', group: 'Lead quality', key: (l) => (l.website ? 'Has a website' : 'No website'), order: ['No website', 'Has a website'] },

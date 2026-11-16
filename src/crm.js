@@ -17,7 +17,8 @@ import { dtf } from '../public/js/fmtcache.js';
 import { autoChatFor } from './chat.js';
 import { can } from '../public/js/jobs.js';
 import { cleanNewLead, queueScrub } from './scrub.js';
-import { contactFromImport, isPersonName } from '../public/js/names.js';
+import { ownerReach } from '../public/js/reach.js';
+import { contactFromImport, isOwnerName } from '../public/js/names.js';
 import { packHours, parseAny } from '../public/js/hours.js';
 import { resolveZone, canCallNow, callBlock as hoursBlock, stateRuleText, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
 import { suppress, suppressMany, suppressedMap, noteHits, noteOutcome, entryFor, blockedKeys, leadBlocked, blockedFor, blockedPhone, blockText } from './suppress.js';
@@ -259,8 +260,13 @@ const LIST_COLS = `id, business, contact_name, phone, phone_digits, email, websi
   next_action_at, next_action, owner_id, attempts, last_call_at, dnc, sms_consent, client_id, score, grade, rating, reviews, map_rank, problems,
   intel_at, meet_at, meet_link, meet_by, closer_id, created_at, updated_at, business_raw, phone_type, email_status, owner_name, data_score, scrubbed_at, scrub, scrub_lookup,
   (CASE WHEN socials IS NULL OR socials IN ('', '{}') THEN 0 ELSE 1 END) AS has_socials,
-  (CASE WHEN place_id IS NOT NULL AND place_id != '' THEN 1 ELSE 0 END) AS has_place`;
+  (CASE WHEN place_id IS NOT NULL AND place_id != '' THEN 1 ELSE 0 END) AS has_place,
+  (SELECT flags FROM lead_reach WHERE lead_reach.lead_id = leads.id) AS rflags`;
 
+// What our own calls said about a lead, for the owner reach tier (src/crm.js dialer queue and public/js/reach.js).
+// Owner reach tier order for the dialer: owner likely first, gatekeeper likely last (never removed from the list).
+const tierRank = (l) => ({ T1: 0, T2: 1, T3: 2, T4: 3 }[l.rtier] ?? 2);
+const ROLL_COLS = `lead_roll.r_owner AS owner_talks, lead_roll.r_staff AS staff_talks, lead_roll.r_menu AS menus, lead_roll.r_service AS services, lead_roll.r_dials AS dials, lead_roll.r_connects AS connects`;
 export async function updateLead(env, id, set) {
   const cols = Object.keys(set);
   if (!cols.length) return;
@@ -284,7 +290,7 @@ route('GET', '/api/leads', async ({ env, user, url }) => {
   const lim = Number(url.searchParams.get('limit')) || 0;
   const cols = `${LIST_COLS}, lead_roll.r_dials AS dials, lead_roll.r_last_dispo AS last_dispo, lead_roll.r_connects AS connects, lead_roll.r_owner AS owner_talks,
     lead_roll.r_vm AS voicemails, lead_roll.r_noans AS no_answers, lead_roll.r_talk AS talk, lead_roll.r_last_by AS last_by, lead_roll.r_obj AS last_objection,
-    lead_roll.r_convs AS convs, lead_roll.r_menu AS menus, lead_roll.r_staff AS staff_talks, lead_roll.r_fast_hangs AS fast_hangs,
+    lead_roll.r_convs AS convs, lead_roll.r_menu AS menus, lead_roll.r_service AS services, lead_roll.r_staff AS staff_talks, lead_roll.r_fast_hangs AS fast_hangs,
     leads.reach_score, leads.engage_score, leads.qual_n, lead_hours.hours AS hrs, lead_hours.src AS hrs_src, lead_hours.status AS biz_status`;
   const where = []; const vals = [];
   if (stage) { where.push('leads.stage = ?'); vals.push(stage); }
@@ -381,7 +387,7 @@ export async function importLeads(env, user, rows, { source, tags, merge = true,
     // CSV name columns often hold a job title or a business label (Outscraper): keep a contact only when it reads as a person.
     if ('contact_name' in d) d.contact_name = contactFromImport(d.contact_name, d.business) || null;
     // The Lead finder's "Names only" mode looks the owner up before adding: a real person name found there is saved as the owner (and the contact) now.
-    if (r.owner_name && isPersonName(r.owner_name)) { d.owner_name = text(r.owner_name, 120); if (!d.contact_name) d.contact_name = d.owner_name; }
+    if (r.owner_name && isOwnerName(r.owner_name)) { d.owner_name = text(r.owner_name, 120); if (!d.contact_name) d.contact_name = d.owner_name; }
     if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) d.email = null;
     if (!d.phone_digits && !d.email) { skipped.invalid++; out[n] = { skipped: 'invalid' }; continue; }
     const ks = dupKeys(d);
@@ -797,15 +803,15 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   }
   const supp = `AND ('p:' || phone_digits) NOT IN (SELECT key FROM suppressions WHERE blocks = 1 AND lifted_at IS NULL)`;
   const rows = camp
-    ? (camp.ids.length ? await all(env, `SELECT ${LIST_COLS} FROM leads WHERE dnc = 0 AND stage NOT IN ('won', 'dnc') AND id IN (SELECT value FROM json_each(?)) ${supp} AND phone_digits IS NOT NULL LIMIT 2000`, JSON.stringify(camp.ids)) : [])
-    : await all(env, `SELECT ${LIST_COLS} FROM leads WHERE dnc = 0 AND stage IN (${useStages.map(() => '?').join(',')})
+    ? (camp.ids.length ? await all(env, `SELECT ${LIST_COLS}, ${ROLL_COLS} FROM leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id WHERE dnc = 0 AND stage NOT IN ('won', 'dnc') AND id IN (SELECT value FROM json_each(?)) ${supp} AND phone_digits IS NOT NULL LIMIT 2000`, JSON.stringify(camp.ids)) : [])
+    : await all(env, `SELECT ${LIST_COLS}, ${ROLL_COLS} FROM leads LEFT JOIN lead_roll ON lead_roll.lead_id = leads.id WHERE dnc = 0 AND stage IN (${useStages.map(() => '?').join(',')})
     ${supp}
     AND (next_action_at IS NULL OR next_action_at <= ?) AND phone_digits IS NOT NULL${dbSql} ORDER BY next_action_at IS NULL, next_action_at LIMIT 1000`, ...useStages, t, ...dbVals);
   // Florida caps sales calls at 3 per person in 24 hours on the same subject (Fla. Stat. 501.616(6)): leads dialed 3 times since this time yesterday wait.
   const capped = new Set((await all(env, `SELECT lead_id FROM activities WHERE type IN ('call','manual_call') AND at > ? AND lead_id IS NOT NULL
       AND (status IS NULL OR status NOT IN ('inbound','missed','voicemail','inbound_answered')) AND NOT (status = 'ready' AND outcome IS NULL) GROUP BY lead_id HAVING COUNT(*) >= 3`, t - 864e5)).map((r) => r.lead_id));
   const priority = { callback: 0, audit_requested: 1, no_show: 2, follow_up: 3, new: 4, attempting: 5, audit_booked: 6, not_now: 7, lost: 8 };
-  const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier', 'data', 'cat'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
+  const f = Object.fromEntries(['tz', 'grade', 'state', 'industry', 'tag', 'city', 'tier', 'data', 'cat', 'reach'].map((k) => [k, (url.searchParams.get(k) || '').trim()]));
   const minScore = Number(url.searchParams.get('minScore')) || 0;
   const has = (v, want) => !want || String(v || '').toLowerCase().includes(want.toLowerCase());
   const blockKeys = await blockedKeys(env); // copies of a Do Not Call business (another phone, same name and place or website) never come up
@@ -816,15 +822,16 @@ route('GET', '/api/dialer/queue', async ({ env, user, url }) => {
   const touched = open.filter((l) => l.stage === 'callback' || (l.attempts || 0) > 0 || l.last_call_at);
   const facts = touched.length ? await callFacts(env, touched.map((l) => l.id)) : new Map();
   const ownerOnly = (await getSettings(env)).owner_only !== '0'; // Owner name required (Settings via Pipeline, step 2): no real first name, no dial
-  const decorated = open.filter((l) => !callRule(l, facts.get(l.id), user, t)).map(decorate).filter((l) => !ownerOnly || personOf(l)); // once per lead: tiers and the queue share it
+  const decorated = open.filter((l) => !callRule(l, facts.get(l.id), user, t)).map(decorate).map((l) => { const r = ownerReach(l); return { ...l, rtier: r.tier, rscore: r.score }; }).filter((l) => !ownerOnly || personOf(l)); // once per lead: tiers and the queue share it
   const ready = decorated
     .map((l) => seeAppt(l, user))
     .filter((l) => (!f.tz || f.tz.split(',').includes(l.tz_short)) && (!f.grade || f.grade.split(',').includes(l.grade)) && (!f.state || l.state === f.state.toUpperCase())
       && has(`${l.industry} ${l.category}`, f.industry) && has(l.tags, f.tag) && has(l.city, f.city) && (l.score || 0) >= minScore)
     .filter((l) => !f.tier || tierOf(l) === f.tier)
+    .filter((l) => !f.reach || f.reach.split(',').includes(l.rtier))
     .filter((l) => !f.cat || callCategory(l).id === f.cat)
     .filter((l) => !f.data || (f.data === 'mobile' ? l.phone_type === 'mobile' : f.data === 'owner' ? Boolean(personOf(l)) : f.data === 'email' ? Boolean(l.email) && !['bad', 'no_mail_server'].includes(l.email_status) : true))
-    .sort((a, b) => (priority[a.stage] ?? 9) - (priority[b.stage] ?? 9) || (b.score || 0) - (a.score || 0) || (b.data_score || 0) - (a.data_score || 0) || (a.next_action_at || 0) - (b.next_action_at || 0));
+    .sort((a, b) => (priority[a.stage] ?? 9) - (priority[b.stage] ?? 9) || tierRank(a) - tierRank(b) || (b.score || 0) - (a.score || 0) || (b.data_score || 0) - (a.data_score || 0) || (a.next_action_at || 0) - (b.next_action_at || 0));
   const now_ = ready.filter((l) => l.callable_now);
   // Sub queues by lead quality, counted on everything callable now (ignores the tier filter so the tabs always show their size).
   const tiers = { hot: 0, good: 0, maybe: 0, low: 0, fresh: 0 };

@@ -12,11 +12,17 @@ import { extractProfile, mergeProfiles } from '../public/js/freedata.js';
 import { registryLookup, leadMode } from './freedata.js';
 import { titleLike } from '../public/js/names.js';
 import { personOf } from '../public/js/leadintel.js';
+import { siteFlags, mergeFlags } from '../public/js/reach.js';
 import { suppressMany } from './suppress.js';
 import { nameMatches, findPhones, pageText } from '../public/js/phonefind.js';
-import { isPersonName, cleanPerson, nameFromEmail, firstFromEmail, cleanName, phoneInfo, emailInfo, pickEmail, emailStatus, extractContacts, mergeContacts, contactLinks, dataScore } from '../public/js/scrub.js';
+import { isPersonName, isOwnerName, cleanPerson, cleanOwner, nameFromEmail, firstFromEmail, cleanName, phoneInfo, emailInfo, pickEmail, emailStatus, extractContacts, mergeContacts, contactLinks, dataScore } from '../public/js/scrub.js';
 
-const UA = 'Mozilla/5.0 (compatible; RightwayHub/1.0; +https://rightwaygrowth.com)';
+// Many small business sites (and the state registries) turn away anything that calls itself a bot, so the read looks like an ordinary browser visit.
+// Reading a public page the way a person's browser would is what the visitor is allowed to do; we still read only the pages that are linked for visitors.
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+const UA2 = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+const BROWSER_HEADERS = { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'accept-language': 'en-US,en;q=0.9', 'upgrade-insecure-requests': '1' };
+const PATHS = ['/contact', '/contact-us', '/about', '/about-us', '/our-story', '/meet-the-team', '/our-team', '/team'];
 const OPEN = ['new', 'attempting', 'callback', 'follow_up', 'not_now', 'audit_requested', 'no_show'];
 
 export async function scrubSettings(env) {
@@ -24,18 +30,38 @@ export async function scrubSettings(env) {
   return { auto: s.scrub_auto !== '0', ownerOnly: s.owner_only !== '0', ownerDrop: s.owner_drop === '1', lookup: s.scrub_lookup === '1', twilio: Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN) };
 }
 
-async function fetchPage(url, fetchImpl) {
+// One page read. A site that blocks or hiccups gets a second try as a phone browser, then the other www form, then plain http, because most
+// "the site did not open" results were bot blocks and slow starts, not dead sites. Returns { ok, html, url } or { ok: false, error, retry }.
+async function fetchOnce(target, fetchImpl, ua, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetchImpl(target, { redirect: 'follow', signal: ctrl.signal, headers: { ...BROWSER_HEADERS, 'user-agent': ua } });
+    if (!res.ok) return { ok: false, status: res.status, url: res.url || target, retry: [403, 406, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 525, 526].includes(res.status), error: res.status === 403 || res.status === 429 ? 'The site blocked our check.' : `The site returned an error (HTTP ${res.status}).` };
+    const html = (await res.text()).slice(0, 1_500_000);
+    if (/<title>\s*(?:just a moment|attention required|access denied|are you a robot)/i.test(html.slice(0, 4000))) return { ok: false, status: 403, url: res.url || target, retry: false, error: 'The site blocked our check.' };
+    return { ok: true, html, url: res.url || target };
+  } catch (e) {
+    return { ok: false, retry: true, error: e.name === 'AbortError' ? 'The site took too long to load.' : 'The site did not respond.' };
+  } finally { clearTimeout(timer); }
+}
+async function fetchPage(url, fetchImpl, { tries = 3 } = {}) {
   let target;
   try { target = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`); } catch { return { ok: false, error: 'Website address is not valid.' }; }
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 10000);
-  try {
-    const res = await fetchImpl(target.toString(), { redirect: 'follow', signal: ctrl.signal, headers: { 'user-agent': UA, accept: 'text/html' } });
-    if (!res.ok) return { ok: false, status: res.status, url: res.url || target.toString(), error: res.status === 403 || res.status === 429 ? 'The site blocked our check.' : `The site returned an error (HTTP ${res.status}).` };
-    return { ok: true, html: (await res.text()).slice(0, 1_500_000), url: res.url || target.toString() };
-  } catch (e) {
-    return { ok: false, error: e.name === 'AbortError' ? 'The site took too long to load.' : 'The site did not respond.' };
-  } finally { clearTimeout(timer); }
+  const host = target.hostname;
+  const flip = host.startsWith('www.') ? new URL(target) : new URL(target);
+  flip.hostname = host.startsWith('www.') ? host.slice(4) : `www.${host}`;
+  const http = new URL(target); http.protocol = 'http:';
+  const plan = [[target.toString(), UA, 9000], [target.toString(), UA2, 9000], [flip.toString(), UA, 7000], [http.toString(), UA, 7000]].slice(0, tries + 1);
+  let last = null;
+  for (const [u, ua, ms] of plan) {
+    const r = await fetchOnce(u, fetchImpl, ua, ms);
+    if (r.ok) return r;
+    last = r;
+    if (/too long/.test(r.error || '') && (plan.indexOf(plan.find((x) => x[0] === u && x[1] === ua)) >= 1)) break;   // two slow answers in a row: stop waiting
+    if (r.retry === false && r.status && r.status !== 403) break;   // a plain 404 or 410 will not change on a retry
+  }
+  return last || { ok: false, error: 'The site did not respond.' };
 }
 
 // Does the domain accept email? true, false, or null when we could not tell.
@@ -76,17 +102,26 @@ export async function scrubLead(env, lead, opts = {}) {
   // 3. The website: home page, then up to two contact or about pages.
   let c = { emails: [], socials: {}, phones: [], owner: null, host: '' };
   let profile = null;
+  let rflags = null;                       // website signals for the owner reach tier (call tracking, answering service, front desk ...)
   if (lead.website) {
     const home = await fetchPage(lead.website, fetchImpl);
     report.site = { ok: home.ok, url: home.url || null, https: String(home.url || '').startsWith('https://'), error: home.error || null };
     if (home.ok) {
       c = extractContacts(home.html, home.url);
+      rflags = siteFlags(home.html);
       try { profile = extractProfile(home.html); } catch { profile = null; }
       // Business hours (free): schema.org data, else the text near the word "hours". Home page first, then the contact pages.
       let hrs = hoursFromPage(home.html);
-      for (const link of contactLinks(home.html, home.url).slice(0, 2)) {
-        const pg = await fetchPage(link, fetchImpl);
+      // Owner names live on the About or Contact page. Follow the site's own links first; when it has none (menus built by script), try the usual paths.
+      let links = contactLinks(home.html, home.url);
+      if (!links.length) { try { const o = new URL(home.url).origin; links = PATHS.slice(0, 4).map((x) => o + x); } catch { links = []; } }
+      let read = 0;
+      for (const link of links.slice(0, 3)) {
+        if (c.owner && read >= 1) break;       // a name is already found, one more page for emails is enough
+        const pg = await fetchPage(link, fetchImpl, { tries: 1 });
         if (pg.ok) {
+          read++;
+          rflags = mergeFlags(rflags, siteFlags(pg.html));
           c = mergeContacts(c, extractContacts(pg.html, pg.url)); try { profile = mergeProfiles(profile, extractProfile(pg.html)); } catch { /* keep what we have */ }
           if (!hrs.week) hrs = hoursFromPage(pg.html);
         }
@@ -94,6 +129,7 @@ export async function scrubLead(env, lead, opts = {}) {
       if (hrs.week) { report.hours = { text: hoursText(hrs.week), how: hrs.how }; await saveHours(env, lead.id, hrs.week, 'site').catch(() => {}); }
     }
   }
+  if (rflags) await run(env, 'INSERT INTO lead_reach (lead_id, flags, at) VALUES (?, ?, ?) ON CONFLICT(lead_id) DO UPDATE SET flags = excluded.flags, at = excluded.at', lead.id, rflags.join(' '), now()).catch(() => {});
   // 4. Emails: theirs and the site's, checked, best first.
   const cache = new Map();
   const emails = [...new Set([lead.email, ...c.emails].filter(Boolean).map((e) => String(e).toLowerCase()))].slice(0, 8).map((e) => emailInfo(e, c.host));
@@ -105,9 +141,9 @@ export async function scrubLead(env, lead, opts = {}) {
   report.sitePhones = c.phones;
   report.profile = profile;
   // Florida registry (free): who is on the company's paperwork, and how long it has existed.
-  let sb = null;
+  let sb = null, reg = null;
   if (opts.sunbiz !== false && (await leadMode(env)).sunbiz) {
-    const reg = await registryLookup(lead, fetchImpl).catch(() => null);
+    reg = await registryLookup(lead, fetchImpl).catch((e) => ({ found: false, error: String(e?.message || e).slice(0, 120), at: Date.now() }));
     report.registry = reg;
     if (reg?.code === 'FL') { sb = reg; report.sunbiz = reg; }
   }
@@ -122,8 +158,8 @@ export async function scrubLead(env, lead, opts = {}) {
   set.email_status = emailStatus(chosen);
   // The owner is a person's name or nothing: the website's own word first, then the state registry. Every candidate has to pass
   // isPersonName, so a title ("Owner Operator", "Authorized Person") can never be saved. A name a rep typed is kept.
-  const ownerFound = cleanPerson(c.owner) || cleanPerson(sb?.found && sb.owner) || '';
-  const hadOwner = isPersonName(lead.owner_name);
+  const ownerFound = cleanOwner(c.owner) || cleanOwner(sb?.found && sb.owner) || cleanOwner(reg?.found && reg.owner) || '';
+  const hadOwner = isOwnerName(lead.owner_name);
   if (ownerFound && !hadOwner) { set.owner_name = ownerFound; report.name_source = c.owner ? (c.ownerVia === 'schema' ? 'website data' : 'website text') : 'state registry'; }
   else if (lead.owner_name && !hadOwner) { set.owner_name = null; }                                  // an old wrong value is cleared even when nothing better turns up
   // Nobody named on the site or registry: a first.last email on their own domain is a good contact name (never saved as the owner).
@@ -132,7 +168,7 @@ export async function scrubLead(env, lead, opts = {}) {
   if ((!lead.contact_name || contactBad) && (set.owner_name || emailName)) { set.contact_name = set.owner_name || emailName; if (!set.owner_name) report.name_source = 'email address'; }
   else if (contactBad) set.contact_name = null;
   const hint = firstFromEmail(chosen?.email || lead.email || best?.email);
-  if (hint && !set.owner_name && !emailName && !isPersonName(lead.owner_name)) report.name_hint = hint;
+  if (hint && !set.owner_name && !emailName && !isOwnerName(lead.owner_name)) report.name_hint = hint;
   if (Object.keys(c.socials).length) set.socials = JSON.stringify({ ...(safeJson(lead.socials) || {}), ...c.socials });
   if (report.site?.ok && report.site.url && lead.website && !/^https?:/i.test(lead.website)) set.website = report.site.url;
   const merged = { ...lead, ...set };
@@ -158,7 +194,7 @@ export async function scrubLead(env, lead, opts = {}) {
 // own word first (home page, then up to two contact or about pages, stopping at the first real name), then Florida's Sunbiz officers. Free, no lead row
 // needed. Every candidate has to pass isPersonName, so a title can never come back as a name. A first.last email is NOT enough here (it may be staff).
 export async function ownerNameFor(env, rec, { fetchImpl = fetch } = {}) {
-  const person = (n) => { const v = cleanPerson(n); return v && isPersonName(v) ? v : ''; };
+  const person = (n) => cleanOwner(n);
   let why = rec.website ? '' : 'No website.';
   if (rec.website) {
     const home = await fetchPage(rec.website, fetchImpl);
@@ -191,15 +227,15 @@ const safeJson = (s) => { try { return s ? JSON.parse(s) : null; } catch { retur
 // Background: a few queued leads per run.
 export async function scrubTick(env, max = 3, fetchImpl = fetch) {
   const cfg = await scrubSettings(env);
-  let n = 0;
-  while (n < max) {
-    const lead = await first(env, `SELECT * FROM leads WHERE scrub_queued = 1 AND (scrub_tried IS NULL OR scrub_tried < ?) ORDER BY created_at DESC LIMIT 1`, now() - 3600e3);
-    if (!lead) break;
-    await run(env, 'UPDATE leads SET scrub_tried = ? WHERE id = ?', now(), lead.id);
+  // Claim up to `max` leads at once and scrub them side by side: each one waits mostly on other people's websites, so running them together
+  // is several times faster than one after another (one lead was a full 10 to 30 seconds, which capped the queue near 180 an hour).
+  const leads = await all(env, `SELECT * FROM leads WHERE scrub_queued = 1 AND (scrub_tried IS NULL OR scrub_tried < ?) ORDER BY created_at DESC LIMIT ?`, now() - 3600e3, Math.max(1, max));
+  if (!leads.length) return 0;
+  await run(env, `UPDATE leads SET scrub_tried = ? WHERE id IN (${leads.map(() => '?').join(',')})`, now(), ...leads.map((l) => l.id));
+  await Promise.all(leads.map(async (lead) => {
     try { await scrubLead(env, lead, { fetchImpl, lookup: cfg.lookup || lead.scrub_lookup === 1 }); } catch (e) { console.error('scrub', lead.id, e.message); await run(env, 'UPDATE leads SET scrub_queued = 0 WHERE id = ?', lead.id); }
-    n++;
-  }
-  return n;
+  }));
+  return leads.length;
 }
 
 // New leads: the name is cleaned right away (free), the rest is queued when automatic scrubbing is on.
@@ -259,7 +295,7 @@ route('POST', '/api/scrub/fix-names', async ({ env, user, body }) => {
   const after = String(b?.after || '');
   const rows = await all(env, `SELECT id, business, owner_name, contact_name FROM leads WHERE ((owner_name IS NOT NULL AND owner_name != '') OR (contact_name IS NOT NULL AND contact_name != '')) AND id > ? ORDER BY id LIMIT 200`, after);
   // Bad owner name (a title or page heading), or a contact name that is not a person (Outscraper job titles and business labels).
-  const ownerBad = (r) => r.owner_name && !isPersonName(r.owner_name);
+  const ownerBad = (r) => r.owner_name && !isOwnerName(r.owner_name);
   const contactBad = (r) => r.contact_name && !ownerBad(r) && titleLike(r.contact_name, r.business);
   const bad = rows.filter((r) => ownerBad(r) || contactBad(r));
   for (const r of bad) {
@@ -307,7 +343,7 @@ route('POST', '/api/leads/find-phones', async ({ env, user, body }) => {
 
 route('POST', '/api/scrub/tick', async ({ env, user }) => {
   requireStaff(user);
-  const done = await scrubTick(env, 2);
+  const done = await scrubTick(env, 3);
   return json({ done, ...(await scrubStatus(env)) });
 });
 
