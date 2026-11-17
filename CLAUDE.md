@@ -841,6 +841,19 @@ Its "Package build-out" tab maps every package item to a Hub module and phase (2
   `GET /api/leaderboard?days=1|7|30&since=` (`src/leaderboard.js`, all staff, same counting rules as the dialer strip: `BOOKED_SQL`, owner talk = conversation, booked, callback, not interested or won result) returns per person dials, owner talks, booked, `rate` (booked per owner talk, percent, null with no talks) and `upcoming` (appointments they run, closer else booker), an `other` row (bookings and appointments with no rep behind them, such as online bookings, never credited to anyone), `handedOff` (booked by one person, run by another) and team totals.
   Widget `public/hub/leaderboard.js` (`mountLeaderboard`, 45 s cache, `bustLeaderboard` after a booking, period buttons remembered in localStorage `rw-lb-days`, "You" row highlighted, phones hide the Dials column): on the Dialer (`#lbcard`, `data-sec="leaderboard"`, hidden in Test power dial, in Customize layout and Edit screen) and the Dashboard (`data-wid="leaderboard"`, in `DASH_ITEMS`, Edit screen can move or remove it). The dialer's Coming up bar is now "Your appointments": `GET /api/calendar/upcoming?mine=1` returns only appointments the person booked or runs (`meet_by` or `closer_id`); the Dashboard Meetings card and Calendar still follow `apptScope` (owners see all). The dialer strip's booked count was already the person's own. Test `test/leaderboard.test.js`.
 
+- Hub clean up and free resize (Nov 2026, V: no form, edit the table, fewer dropdowns, every widget any size; on branch `hub-cleanup`, waiting for V's OK before main):
+  Leaderboard outside rows sit in the same table as the team (own section, columns line up); owners type straight into the cells and per talk works itself
+  out as they type (`rateOf` in `public/hub/leaderboard.js`); the number typed is the total for the period on screen: `PUT /api/rivals/:id/totals {days, since, field}`
+  puts the difference on today's row and takes a lower number off earlier days newest first, never below 0. The day form and its dropdown are gone (`PUT /api/rivals/:id/day` stays).
+  Widgets: Edit screen has a corner handle on every piece (`.lw-rs`): drag sideways for width in twelfths of the row (min 3, `colsFor`), up or down for height (fixed, content scrolls);
+  the size label resets it. Sizes are `c<1-12>` and/or `h<60-2400>` (`parseSize`, `sizeStr` in `public/js/layout.js`). Dashboard cards span the grid (`.bento > .lw-w`), other pieces
+  flow in a wrapping row (`.lw-flow`, items can carry a standard width `def`), the dialer's 3 panes become `fr` columns via `onApply({ size })`. Every widget is a size container
+  (`container-type: inline-size`) and `@container` rules in hub.css ("Widget sizes") lay narrow ones out. Edit screen also on Lead database (coverage cards, layout page `leaddb`).
+  Customize layout buttons (dialer, Pipeline) are hidden; their menus open from Edit screen, Options. Fewer dropdowns: `public/hub/segments.js` (from `staffShell`) turns any
+  dropdown with 2 to 4 short choices into tap buttons (the real select stays hidden as the source of truth and gets the same change event; opt out with `keep-select`) and hides a
+  dropdown with one choice. Also removed: the dialer header's duplicate Pipeline button, the "background research is off" line, the hint under Skip and Book, the resume strip on
+  Pipeline pages (the Pipeline has its own Your list row), quick links already in the workspace tab row. Checked in Playwright at 1366, 1180, 1106, 390 and 320 wide, not on a real iPad.
+
 ## Stack
 - Cloudflare Worker (`src/worker.js`) serves `/api/*` and `/r/*`; static app in `public/` (plain ES modules, no build step, no deps).
   Hub API in `src/hub.js` plus feature modules that register routes in `src/router.js` (public routes skip the x-rw check), auth in `src/auth.js` (PBKDF2 100k, SHA-256 hashed session tokens in an HttpOnly

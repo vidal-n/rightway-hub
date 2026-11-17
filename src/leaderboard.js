@@ -97,6 +97,39 @@ route('GET', '/api/rivals/:id/day', async ({ env, user, params, url }) => {
   return json({ dials: r?.dials || 0, talks: r?.talks || 0, booked: r?.booked || 0, callbacks: r?.callbacks || 0 });
 });
 
+// Inline edit on the leaderboard (Nov 2026, V: edit the table itself, no form): the number typed is the total for the period on screen.
+// The difference goes on today's row; a lower number takes the rest off earlier days in the period, newest first. Never below 0.
+const FIELDS = ['dials', 'talks', 'booked', 'callbacks'];
+route('PUT', '/api/rivals/:id/totals', async ({ env, user, params, body, url }) => {
+  requireAdmin(user);
+  const b = await body();
+  if (!await first(env, 'SELECT id FROM rivals WHERE id = ?', params.id)) throw new HttpError('Not found.', 404);
+  const t = Date.now();
+  const days = PERIODS.includes(Number(b.days)) ? Number(b.days) : 1;
+  const today = dayFrom(b.since ?? url.searchParams.get('since'), t);
+  const from = today - (days - 1) * 864e5;
+  const rows = await all(env, 'SELECT day, dials, talks, booked, callbacks FROM rival_days WHERE rival_id = ? AND day >= ? AND day <= ? ORDER BY day DESC', params.id, from, today);
+  const byDay = new Map(rows.map((r) => [r.day, { ...r }]));
+  if (!byDay.has(today)) byDay.set(today, { day: today, dials: 0, talks: 0, booked: 0, callbacks: 0 });
+  for (const f of FIELDS) {
+    if (b[f] === undefined || b[f] === null || b[f] === '') continue;
+    const want = count(b[f]);
+    const have = [...byDay.values()].reduce((s, r) => s + (r[f] || 0), 0);
+    let delta = want - have;
+    if (delta >= 0) { byDay.get(today)[f] += delta; continue; }
+    for (const r of [...byDay.values()].sort((x, y) => y.day - x.day)) {
+      if (!delta) break;
+      const take = Math.min(r[f] || 0, -delta);
+      r[f] -= take; delta += take;
+    }
+  }
+  await batch(env, [...byDay.values()].map((r) => [`INSERT INTO rival_days (rival_id, day, dials, talks, booked, callbacks) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(rival_id, day) DO UPDATE SET dials = excluded.dials, talks = excluded.talks, booked = excluded.booked, callbacks = excluded.callbacks`,
+  params.id, r.day, r.dials, r.talks, r.booked, r.callbacks]));
+  const sum = (f) => [...byDay.values()].reduce((s, r) => s + (r[f] || 0), 0);
+  return json({ ok: true, dials: sum('dials'), talks: sum('talks'), booked: sum('booked'), callbacks: sum('callbacks') });
+});
+
 route('PUT', '/api/rivals/:id/day', async ({ env, user, params, body }) => {
   requireAdmin(user);
   const b = await body();

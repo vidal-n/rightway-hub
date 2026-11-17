@@ -47,3 +47,19 @@ test('span helpers read and swap the w-N class', () => {
   assert.equal(sizeSpan('c6'), 6);
   assert.equal(sizeSpan('x'), null);
 });
+
+test('sizes: any width in twelfths and a height, cleaned and parsed', async () => {
+  const { parseSize, sizeStr, colsFor, cleanLayout: clean } = await import('../public/js/layout.js');
+  assert.deepEqual(parseSize('c6h320'), { w: 6, h: 320 });
+  assert.deepEqual(parseSize('h300'), { w: null, h: 300 });
+  assert.deepEqual(parseSize('c7'), { w: 7, h: null });
+  assert.deepEqual(parseSize('c13'), { w: null, h: null });
+  assert.deepEqual(parseSize('h20'), { w: null, h: null }, 'too short to be a height');
+  assert.equal(sizeStr({ w: 5, h: 333.4 }), 'c5h333');
+  assert.equal(sizeStr({}), null);
+  assert.deepEqual(clean({ size: { a: 'c5', b: 'c6h400', c: 'h9000', d: 'nope' } }).size, { a: 'c5', b: 'c6h400' });
+  // A pointer half way across a 1000px row is 6 columns; never under the minimum or over 12.
+  assert.equal(colsFor(493, 1000), 6);
+  assert.equal(colsFor(10, 1000, 14, 3), 3);
+  assert.equal(colsFor(5000, 1000), 12);
+});

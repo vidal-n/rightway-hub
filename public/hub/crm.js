@@ -518,7 +518,8 @@ export async function pipelinePage(app, user, openId, screen) {
   const wire = () => {
     offHover?.();
     // Edit screen: move, remove and add back the four steps. Saved on the person's account.
-    mountLayout(view, { page: 'pipeline', items: [['get', '1 Get leads'], ['clean', '2 Clean up'], ['pick', '3 Choose who to call'], ['work', '4 Call and work the list']].map(([id, label]) => ({ id, label, sel: `.fstep[data-sec="${id}"]` })) });
+    // Edit screen, Options opens the old Customize layout menu (its own button is hidden, one place to change the screen).
+    mountLayout(view, { page: 'pipeline', options: () => setTimeout(() => { playOpen = true; const pb = document.getElementById('playbody'); if (pb) pb.hidden = false; }, 0), items: [['get', '1 Get leads'], ['clean', '2 Clean up'], ['pick', '3 Choose who to call'], ['work', '4 Call and work the list']].map(([id, label]) => ({ id, label, sel: `.fstep[data-sec="${id}"]` })) });
     offHover = hoverCards(view, { selector: '.lead-card, tbody tr[data-id]', build: (el) => leadHover(all.find((x) => x.id === (el.dataset.id || ''))) });
     // Customize layout: ticks apply at once and the menu stays open (no redraw), same as the dialer.
     const pbody = document.getElementById('playbody');
@@ -1623,7 +1624,7 @@ export async function dialerPage(app, user) {
     view.innerHTML = `
       <div class="page-head"><div><p class="eyebrow">Power dialer</p><h1>Call queue</h1></div>
         <div class="row"><span class="badge">${q.queue.length - idx} ready now</span>${q.waitingForHours ? `<span class="badge gray">${q.waitingForHours} waiting for their calling hours</span>` : ''}
-          ${testMode ? '' : `<label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label>`}<a class="btn btn-ghost btn-sm" href="#/pipeline">Pipeline</a>
+          ${testMode ? '' : `<label class="row small" style="gap:6px"><input type="checkbox" id="dauto"${auto ? ' checked' : ''}> Auto research ahead<span class="cost-hint" data-cost="research_call"></span></label>`}
           ${testMode ? '' : scriptSelect()}
           <button class="btn btn-ghost btn-sm" id="pdtest" title="Try power dialing with pretend leads and a pretend call. Nothing is dialed or saved.">${testMode ? 'Exit test' : 'Test power dial'}</button>
           ${dialOn() ? `<label class="row small" style="gap:6px" title="Pause between calls while power dialing">Wait <select id="pdwh" class="pd-wait" style="width:auto;min-height:32px;padding:4px 8px">${waitOpts()}</select></label><button class="btn btn-primary btn-sm" id="pdgo">${power ? 'Power dialing...' : 'Start power dial'}</button>` : ''}</div></div>
@@ -1672,8 +1673,7 @@ export async function dialerPage(app, user) {
             </div>
           </div>
           <div class="card dial-after">
-            <div class="row" style="gap:8px"><button class="btn btn-ghost btn-sm" id="dskip">Skip for now</button><button class="btn btn-primary" id="dbook">Book appointment</button><button class="btn btn-ghost btn-sm" id="dlog" title="Called from your own phone? Log how it went here.">Log a result</button></div>
-            <p class="small muted" style="margin:8px 0 0">The result opens in the call window when a call ends. Keys 1 to 9 pick it there.</p>
+            <div class="row" style="gap:8px"><button class="btn btn-ghost btn-sm" id="dskip">Skip for now</button><button class="btn btn-primary" id="dbook">Book appointment</button><button class="btn btn-ghost btn-sm" id="dlog" title="Called from your own phone? Log how it went here. After a call in the Hub, the result opens in the call window (keys 1 to 9).">Log a result</button></div>
             ${l.notes ? fold('dold', 'Earlier notes', `<div class="caption">${esc(l.notes)}</div>`, false) : ''}
           </div>
         </div>
@@ -1682,12 +1682,15 @@ export async function dialerPage(app, user) {
     wireFolds(view);
     // Edit screen: the panes, the script sections and the strips can be moved, removed and added back.
     const COLS = { queue: '290px', lead: 'minmax(min(340px, 100%), 1fr)', prep: 'minmax(0, 1.25fr)' };
-    mountLayout(view, { page: 'dialer', onApply: ({ order, hidden }) => {
+    // A pane given a width in Edit screen takes that many twelfths of the row (as fr), the others keep their standard width.
+    mountLayout(view, { page: 'dialer', options: () => view.__openLay?.(), onApply: ({ order, hidden, size = {} }) => {
       const g = $('.dial-grid', view); if (!g) return;
       const shown = order.filter((id) => COLS[id] && !hidden.includes(id) && !(id === 'queue' && !lay.queue) && !(id === 'prep' && !lay.prep));
-      const custom = hidden.some((id) => COLS[id]) || order.filter((id) => COLS[id]).join() !== 'queue,lead,prep';
+      const wOf = (id) => { const m = /^c(\d+)/.exec(size[id] || ''); return m ? Number(m[1]) : null; };
+      const sized = shown.some((id) => wOf(id));
+      const custom = sized || hidden.some((id) => COLS[id]) || order.filter((id) => COLS[id]).join() !== 'queue,lead,prep';
       g.classList.toggle('lw-cols', custom);
-      if (custom) g.style.setProperty('--dg-cols', shown.length ? shown.map((id) => COLS[id]).join(' ') : '1fr'); else g.style.removeProperty('--dg-cols');
+      if (custom) g.style.setProperty('--dg-cols', shown.length ? shown.map((id) => (wOf(id) ? `minmax(0, ${wOf(id)}fr)` : COLS[id])).join(' ') : '1fr'); else g.style.removeProperty('--dg-cols');
     }, items: [
       ['setup', 'Today\'s list and script', '.dsetup'], ['strip', 'Today: dials and goal', '.dstrip'], ['upcoming', 'Your appointments', '.upcoming'], ['leaderboard', 'Leaderboard', '.dlb'],
       ['queue', 'Up next', '.dial-grid > .dial-queue'], ['lead', 'Call card', '.dial-grid > .dial-left'], ['prep', 'Script and research', '.dial-grid > .dial-prep'],
@@ -1706,6 +1709,8 @@ export async function dialerPage(app, user) {
     };
     const saveLay = () => { try { localStorage.setItem('rw-dial-layout', JSON.stringify(lay)); } catch { /* ignore */ } };
     const openLay = (on) => { layOpen = on; const b = $('#dlaybody', view); if (b) b.hidden = !on; $('#dlaybtn', view)?.setAttribute('aria-expanded', String(on)); };
+    // Edit screen, Options opens this menu (the Customize layout button itself is hidden to keep the strip clean).
+    view.__openLay = () => setTimeout(() => openLay(true), 0);
     $('#dlaybtn', view)?.addEventListener('click', (e) => { e.stopPropagation(); openLay(!layOpen); });
     $$('[data-lay]', view).forEach((c) => c.addEventListener('change', () => { lay[c.dataset.lay] = c.checked; saveLay(); applyLay(); }));
     $('#dcs', view)?.addEventListener('change', (e) => setScriptOn(e.target.checked));
@@ -1785,7 +1790,9 @@ export async function dialerPage(app, user) {
   let rs = null;
   const paintResearch = () => {
     const el = document.getElementById('rsx'); if (!el || !rs) return;
-    el.innerHTML = !rs.connected ? 'Background research needs DataForSEO connected.' : !rs.on ? `Background research is off${user.role === 'admin' ? ' (Settings)' : ''}.` : rs.left ? `Researching ${rs.left} lead${rs.left === 1 ? '' : 's'} in the background (${rs.done} of ${rs.cap} today). They move into Hot, Good, Maybe or Low as they finish.${rs.scrubbed ? ` ${rs.scrubbed} scrubbed out.` : ''}` : `Every lead is researched and graded.${rs.scrubbed ? ` ${rs.scrubbed} scrubbed out (bad numbers, toll free, closed).` : ''}`;
+    // Only say something when research is actually working (Nov 2026 clean up: "off" and "not connected" were a line of noise on every visit).
+    el.innerHTML = !rs.connected || !rs.on ? '' : rs.left ? `Researching ${rs.left} lead${rs.left === 1 ? '' : 's'} in the background (${rs.done} of ${rs.cap} today). They move into Hot, Good, Maybe or Low as they finish.${rs.scrubbed ? ` ${rs.scrubbed} scrubbed out.` : ''}` : '';
+    el.hidden = !el.innerHTML;
   };
   const rsTick = async () => {
     if (!document.body.contains(view)) return clearInterval(rsTimer);

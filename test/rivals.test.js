@@ -52,3 +52,36 @@ test('outside competitors show on the leaderboard and never reach the team numbe
   assert.equal(after.outside.list.length, 1);
   assert.equal(after.outside.total.booked, 4);
 });
+
+test('typing an outside total in the table puts the difference on today and never goes below zero', async () => {
+  resetSchemaCache();
+  const env = { DB: d1(), MEDIA: r2(), ACCESS_KEY: 'owner-key-790' };
+  let cookie = '';
+  const call = async (method, path, body) => {
+    const h = { 'x-rw': '1' }; if (cookie) h.cookie = cookie;
+    let payload; if (body !== undefined) { h['content-type'] = 'application/json'; payload = JSON.stringify(body); }
+    const res = await worker.fetch(new Request(`https://hub.test${path}`, { method, headers: h, body: payload }), env);
+    const set = res.headers.get('set-cookie'); if (set) cookie = set.split(';')[0];
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  };
+  await call('POST', '/api/auth/setup', { accessKey: 'owner-key-790', email: 'v@rightwaygrowth.com', name: 'Vidal Newton', password: 'correct horse battery' });
+  const josh = (await call('POST', '/api/rivals', { name: 'Josh' })).data.id;
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const yesterday = new Date(Date.now() - 864e5).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  await call('PUT', `/api/rivals/${josh}/day`, { date: yesterday, dials: 30, talks: 6, booked: 2 });
+  // 7 days view shows 6 talks; typing 10 adds 4 to today.
+  let r = await call('PUT', `/api/rivals/${josh}/totals`, { days: 7, talks: 10, booked: 3 });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.talks, 10);
+  assert.deepEqual((await call('GET', `/api/rivals/${josh}/day?date=${today}`)).data, { dials: 0, talks: 4, booked: 1, callbacks: 0 });
+  // Typing 1 for the week takes today's 4 and then 5 off yesterday.
+  r = await call('PUT', `/api/rivals/${josh}/totals`, { days: 7, talks: 1 });
+  assert.equal(r.data.talks, 1);
+  assert.equal((await call('GET', `/api/rivals/${josh}/day?date=${today}`)).data.talks, 0);
+  assert.equal((await call('GET', `/api/rivals/${josh}/day?date=${yesterday}`)).data.talks, 1);
+  const lb = (await call('GET', '/api/leaderboard?days=7')).data;
+  assert.equal(lb.outside.list[0].talks, 1);
+  assert.equal(lb.outside.list[0].booked, 3);
+  assert.equal(lb.outside.list[0].rate, 300);
+  assert.equal(lb.team.talks, 0, 'outside numbers stay out of the team');
+});

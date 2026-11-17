@@ -2820,7 +2820,8 @@ html:not(.is-phone) .callbar[data-state="wrap"] { width: min(540px, calc(100vw -
 .lw-editbtn[aria-pressed="true"] { background: var(--sel); color: var(--on-sel); border-color: var(--sel); }
 .lw-editing .lw-tile { position: relative; cursor: grab; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; outline: 2px dashed rgba(35, 176, 126, .65); outline-offset: 2px; border-radius: 14px; }
 .lw-editing .lw-tile * { pointer-events: none; }
-.lw-editing .lw-tile > .lw-x, .lw-editing .lw-tile > .lw-sz, .lw-editing .lw-tile .lw-x, .lw-editing .lw-tile .lw-sz { pointer-events: auto; }
+.lw-editing .lw-tile > .lw-x, .lw-editing .lw-tile > .lw-sz, .lw-editing .lw-tile .lw-x, .lw-editing .lw-tile .lw-sz, .lw-editing .lw-tile .lw-rs { pointer-events: auto; }
+.lw-editing .lw-tile.lw-resizing { animation: none !important; cursor: nwse-resize; }
 .lw-x { position: absolute; left: 8px; top: 8px; z-index: 6; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid #fff; background: var(--fill); color: var(--on-fill); font: 700 18px/1 var(--body, system-ui); display: grid; place-items: center; cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
 .lw-sz { position: absolute; right: 8px; top: 8px; z-index: 6; padding: 5px 11px; border-radius: 999px; border: 2px solid #fff; background: var(--mint-strong, #23B07E); color: #fff; font: 600 12px/1 var(--body, system-ui); cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); }
 .lw-editing .lw-tile summary { position: relative; }
@@ -3173,7 +3174,9 @@ select.need-pick { outline: 3px solid var(--c-amber, #E07A0C); outline-offset: 2
 .lb-who em.top { color: var(--accent); }
 .lb tr.me td { background: var(--mint-soft); }
 .lb tr.oth td { color: var(--muted); }
-.lb tfoot td { font-weight: 700; border-bottom: 0; padding-top: 10px; }
+.lb tfoot td, .lb tr.lb-tot td { font-weight: 700; padding-top: 10px; }
+.lb tr.lb-sec th { padding-top: 18px; color: var(--ink); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.lb tr.lb-sec th span { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--muted); }
 .lb .mav { width: 30px; height: 30px; border-radius: 9px; font-size: 12px; }
 .lb .mav.gray { background: var(--surface-2, var(--line)); color: var(--muted); }
 .lb-note { margin: 8px 0 0; }
@@ -3186,17 +3189,98 @@ select.need-pick { outline: 3px solid var(--c-amber, #E07A0C); outline-offset: 2
   .lb th, .lb td { padding-left: 4px; padding-right: 4px; }
 }
 
-/* Leaderboard: outside the team (friendly competition, typed in by an owner, never in analytics) */
-.lb-outside { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); }
-.lb-outside h3 { margin: 0 0 4px; font: 700 15px var(--font-display, inherit); }
-.lb-versus { margin: 8px 0; font-size: 13px; color: var(--muted); }
+/* Leaderboard: outside the team (friendly competition, owners type straight into the table, never in analytics) */
+.lb-versus { margin: 12px 0 0; font-size: 13px; color: var(--muted); }
 .lb-versus b { color: var(--ink); }
-.lb-out tfoot td { border-top: 1px solid var(--line); }
-.lb-rm { border: 1px solid var(--line); background: transparent; color: var(--muted); font: 600 12px var(--font-body, inherit); padding: 4px 8px; border-radius: 7px; cursor: pointer; min-height: 28px; }
-.lb-add { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-.lb-add input { flex: 1 1 180px; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, transparent); color: inherit; font: inherit; }
-.lb-enter { margin-top: 10px; }
-.lb-enter summary { cursor: pointer; font-weight: 600; font-size: 13px; }
-.lb-enter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); gap: 8px; align-items: end; margin-top: 8px; }
-.lb-enter-grid label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; }
-.lb-enter-grid input, .lb-enter-grid select { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, transparent); color: inherit; font: inherit; }
+.lb-versus .vs { display: inline-block; margin: 0 6px; padding: 1px 7px; border-radius: 99px; background: var(--surface-2, transparent); border: 1px solid var(--line); font: 700 11px var(--body); text-transform: uppercase; letter-spacing: .05em; }
+.lb-hint { margin: 0; }
+.lb tbody.lb-out { border-top: 2px dashed var(--line); }
+.lb-rm { margin-left: auto; border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 6px; border-radius: 6px; cursor: pointer; opacity: .55; }
+.lb-rm:hover, .lb-rm:focus-visible { opacity: 1; color: var(--ink); background: var(--surface-2, transparent); }
+.lb-in { width: 100%; max-width: 72px; margin-left: auto; display: block; min-height: 34px; padding: 4px 8px; text-align: right; border: 1px solid transparent; border-radius: 8px; background: transparent; color: inherit; font-size: 14px; transition: border-color .15s, background .15s; }
+.lb-in:hover { border-color: var(--line); }
+.lb-in:focus { outline: none; border-color: var(--mint-strong, #23B07E); background: var(--surface, transparent); }
+.lb-in.saving { opacity: .6; }
+.lb-in.saved { border-color: var(--mint-strong, #23B07E); }
+.lb-add { display: flex; gap: 8px; margin-top: 10px; }
+.lb-add input { flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; font-size: 14px; }
+
+/* ---------- Widget sizes (Nov 2026, V: every widget resizable to any size, content fits whatever size it is given) ----------
+   A width is twelfths of the row: dashboard cards span grid columns, other pieces flow in a wrapping row (.lw-flow).
+   A height is fixed with the content scrolling inside. Each widget is a size container, so its content lays out for its own width. */
+.bento > *, .lw-flow > *, .dial-grid > *, .dlb { container-type: inline-size; }
+.bento > .lw-w { grid-column: span var(--lw-w) !important; }
+div.lw-flow, section.lw-flow, main.lw-flow { display: flex !important; flex-wrap: wrap; column-gap: 14px; row-gap: 14px; align-items: flex-start; align-content: flex-start; }
+.lw-flow > .card, .lw-flow > .dstrip, .lw-flow > .upcoming { margin-top: 0; margin-bottom: 0; }
+.lw-flow > * { flex: 1 1 100%; min-width: 0; }
+.lw-flow > .lw-w { flex: 0 0 calc((100% + 14px) * var(--lw-w) / 12 - 14px); }
+.lw-h { overflow: auto; overscroll-behavior: contain; }
+.card.lw-h { display: flex; flex-direction: column; }
+.card.lw-h > .card-head { flex: none; }
+.card.lw-h > svg.chart { flex: 1 1 0; min-height: 60px; width: 100%; }
+.card.lw-h > .goal-ring, .card.lw-h > .dn-row { flex: 1 1 auto; min-height: 0; }
+@media (max-width: 700px) {
+  .bento > .lw-w { grid-column: span 12 !important; }
+  .lw-flow > .lw-w { flex-basis: 100%; }
+}
+/* Narrow widgets: stack the head, shrink tables, put side by side parts under each other. */
+@container (max-width: 420px) {
+  .card-head { flex-wrap: wrap; gap: 6px; }
+  .card-head h2 { font-size: 16px; }
+  .lb th, .lb td { padding-left: 6px; padding-right: 6px; font-size: 12.5px; }
+  .lb th:nth-child(5), .lb td:nth-child(5) { display: none; }
+  .lb-who em { display: none; }
+  .lb-chips .lb-chip { padding: 4px 8px; font-size: 12px; }
+  .dn-row, .cl-row { flex-direction: column; align-items: flex-start; }
+  .mini3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .stat-num { font-size: 30px; }
+  .tile-spark { display: none; }
+  .dstrip { flex-wrap: wrap; row-gap: 6px; }
+  .upcoming { flex-wrap: wrap; }
+  .w-12 .feed { grid-template-columns: 1fr; }
+}
+@container (max-width: 260px) {
+  .lb th:nth-child(6), .lb td:nth-child(6), .lb th:nth-child(7), .lb td:nth-child(7) { display: none; }
+  .goal-ring svg { max-width: 110px; }
+  .dn-leg { font-size: 12px; }
+}
+/* Edit screen: the corner handle that resizes, and the live size while dragging. */
+.lw-editing .lw-tile { position: relative; }
+.lw-rs { position: absolute; right: 4px; bottom: 4px; width: 26px; height: 26px; z-index: 6; cursor: nwse-resize; touch-action: none; border-radius: 8px;
+  background: var(--surface, #fff); border: 1px solid var(--line); box-shadow: 0 2px 6px rgba(0,0,0,.18); }
+.lw-rs::before { content: ''; position: absolute; inset: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); border-radius: 0 0 3px 0; }
+details > summary > .lw-rs { position: absolute; top: 50%; bottom: auto; transform: translateY(-50%); right: 40px; cursor: ew-resize; }
+.lw-resizing { outline: 2px solid var(--mint-strong, #23B07E); outline-offset: 2px; }
+.lw-resizing[data-lw-live]::after { content: attr(data-lw-live); position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 7;
+  padding: 6px 12px; border-radius: 99px; background: var(--fill, #0F1B17); color: var(--on-fill, #fff); font: 600 13px var(--body); white-space: nowrap; pointer-events: none; }
+.lw-editing .lw-tile.lw-h { overflow: hidden; }
+/* The dialer's Customize layout button lives in Edit screen, Options now (one place to change the screen). */
+.dlayout .dl-btn { display: none !important; }
+.lb input.lb-in { width: 64px; max-width: 64px; min-width: 0; flex: none; }
+.lb td:first-child { width: 34%; }
+.lb .lb-who { min-width: 140px; }
+.lb .lb-who b { overflow-wrap: anywhere; }
+
+/* Fewer dropdowns (public/hub/segments.js): short choice lists show as tap buttons, a one choice dropdown is hidden. */
+select.seg-src, select.seg-one { display: none !important; }
+label:has(> select.seg-one) { display: none !important; }
+.seg.seg-auto { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); vertical-align: middle; max-width: 100%; }
+.seg.seg-auto button { border: 0; background: none; padding: 5px 11px; min-height: 30px; border-radius: 8px; font: 600 13px var(--body); color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+.seg.seg-auto button.is-on { background: var(--sel); color: var(--on-sel); }
+.seg.seg-auto button:disabled { opacity: .45; cursor: default; }
+label > .seg.seg-auto { margin-top: 4px; }
+#ftmpl { max-width: 260px; }
+/* The leaderboard in a narrow widget or on a phone: drop Dials and Next (still on wider screens), keep Booked, Talks, Per talk and Callbacks. */
+@container (max-width: 480px) {
+  .lb td:first-child { width: auto; }
+  .lb .lb-who { min-width: 84px; gap: 4px; }
+  .lb .lb-who .mav { display: none; }
+  .lb th:nth-child(5), .lb td:nth-child(5), .lb th:nth-child(7), .lb td:nth-child(7) { display: none; }
+  .lb th, .lb td { padding-left: 4px; padding-right: 4px; }
+  .lb th { font-size: 10.5px; }
+  .lb input.lb-in { width: 40px; max-width: 40px; padding: 4px 3px; font-size: 13px; }
+  .lb tr.lb-sec th span, .lb .lb-rm { display: none; }
+  .lb th { letter-spacing: 0; font-size: 10px; }
+  .lb th, .lb td { padding-left: 3px; padding-right: 3px; }
+  .lb { font-size: 13px; }
+}

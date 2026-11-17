@@ -11,9 +11,11 @@ export function mountQuickBar(host, user, pages) {
   if (!host) return;
   const ok = (href) => pages.some((p) => p[1] === href);
   const draw = () => {
-    const mine = pipelineFirst(quickLinks() || DEFAULTS).filter(ok);
+    // A quick link that is already a tab in this workspace's tab row is left out here, so the same page is not offered twice (Nov 2026 clean up).
+    const inTabs = new Set([...document.querySelectorAll('#wstabs a[href]')].map((a) => a.getAttribute('href')));
+    const mine = pipelineFirst(quickLinks() || DEFAULTS).filter(ok).filter((href) => !inTabs.has(href));
     const rows = mine.map((href) => pages.find((p) => p[1] === href)).filter(Boolean);
-    host.innerHTML = `<span class="qb-cap">Quick</span>${rows.map(([name, href]) => `<a class="qb-chip${same(href) ? ' is-on' : ''}" href="${esc(href)}">${esc(String(name).split(':')[0])}</a>`).join('')}<button type="button" class="qb-edit" aria-label="Edit quick links" title="Choose your quick links">+ Edit</button>`;
+    host.innerHTML = `${rows.length ? '<span class="qb-cap">Quick</span>' : ''}${rows.map(([name, href]) => `<a class="qb-chip${same(href) ? ' is-on' : ''}" href="${esc(href)}">${esc(String(name).split(':')[0])}</a>`).join('')}<button type="button" class="qb-edit" aria-label="Edit quick links" title="Choose your quick links">+ Edit</button>`;
     $('.qb-edit', host).onclick = edit;
   };
   const edit = () => {
@@ -40,6 +42,7 @@ export function mountQuickBar(host, user, pages) {
     $('#qlreset', m.el).onclick = () => save(DEFAULTS.filter(ok));
   };
   draw();
+  requestAnimationFrame(draw); // after the workspace tabs are on the page
   ensurePrefs().then(draw).catch(() => {});
   window.addEventListener('hashchange', draw, { once: true });
 }

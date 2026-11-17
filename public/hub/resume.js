@@ -98,6 +98,7 @@ export async function maybeResume() {
 export async function mountStrip(app, active) {
   if (!['home', 'phone', 'dialer', 'pipeline'].includes(active)) return;
   if (['phone', 'dialer'].includes(active) && !/^#\/(phone|dialer)\/?(\?.*)?$/.test(location.hash)) return; // only on the Dialer, not History, Texts or Keypad
+  if (active === 'pipeline') return; // the Pipeline has its own "Your list" row with Open the dialer, so no second strip there (Nov 2026 clean up)
   const host = $('#vscroll', app) || $('#view', app)?.parentElement;
   if (!host || $('#resume-strip', host) || flag('rw-resume-hide') || window.__rwPowerPause) return;
   const el = document.createElement('div');

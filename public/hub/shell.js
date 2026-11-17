@@ -168,6 +168,7 @@ export function staffShell(app, user, active, inner) {
   // Overhaul helpers: swipe and snap tabs, chip rows as dropdowns, (i) explainers on numbers, sounds.
   import('./wsnav.js').then((m) => m.wireWsNav()).catch(() => {});
   import('./compact.js').then((m) => m.wireCompact()).catch(() => {});
+  import('./segments.js').then((m) => m.wireSegments()).catch(() => {});
   import('./explain.js').then((m) => m.wireExplain()).catch(() => {});
   import('./sound.js').then((m) => m.wireSoundBtn()).catch(() => {});
   import('./tour.js').then((m) => m.maybeTour(user)).catch(() => {});

@@ -6,6 +6,7 @@ const TZ_NAME = { ET: 'Eastern (ET)', CT: 'Central (CT)', MT: 'Mountain (MT)', A
 import { donut } from '../js/charts.js';
 import { $, $$, esc, api, toast, fmt, modal, busy } from './core.js';
 import { staffShell, pipeTabs } from './staff.js';
+import { mountLayout } from './widgets.js';
 import { FILTERS, FILTER_CATS, FILTER_MAP, COLUMNS, COLUMN_MAP, DEFAULT_COLUMNS, PRESETS, cleanFilter, filterCount, answeredLabel, objectionLabel, comboLabel, engageTier, reachTier } from '../js/leaddb.js';
 
 const KEY = 'rw-db-state';
@@ -77,15 +78,15 @@ export async function databasePage(app, user) {
     ${pipeTabs('database')}
     ${meta.pending ? `<div class="banner" style="margin-bottom:12px">${fmt.int(meta.pending)} businesses still need their call history added up. It runs on its own a few dozen a minute${owner ? ', or <button class="linkbtn" id="dbrebuild">add them all up now</button>' : ''}.</div>` : ''}
     <div class="db-charts">
-      <div class="card"><div class="card-head"><h3>Data coverage</h3><span class="small muted">of ${fmt.int(H.total || 0)} businesses</span></div><div class="cov">${[['Phone', H.phone], ['Mobile line', H.mobile], ['Owner name', H.owner], ['Valid email', H.email_valid], ['Website', H.website], ['Researched', H.researched], ['Scrubbed', H.scrubbed]]
+      <div class="card" data-wid="datacov"><div class="card-head"><h3>Data coverage</h3><span class="small muted">of ${fmt.int(H.total || 0)} businesses</span></div><div class="cov">${[['Phone', H.phone], ['Mobile line', H.mobile], ['Owner name', H.owner], ['Valid email', H.email_valid], ['Website', H.website], ['Researched', H.researched], ['Scrubbed', H.scrubbed]]
         .map(([n, v]) => { const p = H.total ? Math.round((100 * (v || 0)) / H.total) : 0; return `<div class="cr"><span>${esc(n)}</span><span class="cb"><i style="width:${p}%"></i></span><b>${p}%</b></div>`; }).join('')}</div>
         <p class="small muted" style="margin:10px 0 0">Owner name and mobile line raise the chance the owner answers; scrub to fill them (free, Pipeline step 2).</p></div>
-      <div class="card"><div class="card-head"><h3>Call coverage</h3><span class="small muted">where every business stands</span></div>${(() => {
+      <div class="card" data-wid="callcov"><div class="card-head"><h3>Call coverage</h3><span class="small muted">where every business stands</span></div>${(() => {
         const never = H.never || 0, owner = H.reached_owner || 0, dnc = H.dnc || 0, called = Math.max(0, (H.total || 0) - never - owner);
         return `<div class="ins-donut">${donut([{ label: 'Never called', value: never, color: 'var(--c-slate)' }, { label: 'Called, owner not reached', value: called, color: 'var(--c-amber)' }, { label: 'Reached the owner', value: owner, color: 'var(--c-green)' }], { center: fmt.int(H.total || 0), sub: 'businesses' })}
           <ul class="ins-legend"><li><i style="background:var(--c-slate)"></i>Never called<b class="mono">${fmt.int(never)}</b></li><li><i style="background:var(--c-amber)"></i>Called, owner not reached<b class="mono">${fmt.int(called)}</b></li><li><i style="background:var(--c-green)"></i>Reached the owner<b class="mono">${fmt.int(owner)}</b></li><li><i style="background:var(--bad)"></i>Do not call<b class="mono">${fmt.int(dnc)}</b></li><li><i style="background:var(--c-violet)"></i>Qualification answers on file<b class="mono">${fmt.int(H.qualified || 0)}</b></li><li><i style="background:var(--line-2)"></i>Data over 6 months old<b class="mono">${fmt.int(H.stale || 0)}</b></li></ul></div>`;
       })()}</div>
-      ${(H.byTz || []).length ? `<div class="card cov-tz"><div class="card-head"><h3>Call coverage by time zone</h3><span class="small muted">every lead, imports included</span></div>
+      ${(H.byTz || []).length ? `<div class="card cov-tz" data-wid="tzcov"><div class="card-head"><h3>Call coverage by time zone</h3><span class="small muted">every lead, imports included</span></div>
         <div class="table-wrap"><table class="pv"><thead><tr><th>Time zone</th><th>Businesses</th><th>Never called</th><th>Called, owner not reached</th><th>Reached the owner</th><th>Do not call</th><th>Qualification on file</th></tr></thead>
         <tbody>${H.byTz.map((r) => { const called = Math.max(0, (r.total || 0) - (r.never || 0) - (r.reached_owner || 0)); return `<tr><th scope="row">${esc(TZ_NAME[ZONE_SHORT[r.tz]] || 'Not known')}</th><td>${fmt.int(r.total)}</td><td>${fmt.int(r.never)}</td><td>${fmt.int(called)}</td><td>${fmt.int(r.reached_owner)}</td><td>${fmt.int(r.dnc)}</td><td>${fmt.int(r.qualified)}</td></tr>`; }).join('')}</tbody></table></div></div>` : ''}
     </div>
@@ -104,6 +105,8 @@ export async function databasePage(app, user) {
         <div id="dbres"><div class="skeleton"></div></div>
       </section>
     </div>`;
+  // Edit screen (same as the Dashboard): move, resize, remove and add back the three coverage cards.
+  mountLayout(view, { page: 'leaddb', items: [['datacov', 'Data coverage', 6], ['callcov', 'Call coverage', 6], ['tzcov', 'Call coverage by time zone', 12]].map(([id, label, def]) => ({ id, label, def, sel: `.db-charts > [data-wid="${id}"]` })) });
 
   const filtersBox = $('#dbfilters', view);
   const drawFilters = () => {
