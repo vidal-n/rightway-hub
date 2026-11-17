@@ -14,13 +14,15 @@ const head = (title, eyebrow = 'Power dialer') => `<div class="page-head"><div><
 export async function recordingsPage(app, user) {
   const view = staffShell(app, user, 'dialer');
   let rep = '';
+  let q = '';
   const load = async () => {
     let d;
-    try { d = await api(`/api/recordings${rep ? `?rep=${encodeURIComponent(rep)}` : ''}`); }
+    try { d = await api(`/api/recordings?${new URLSearchParams({ ...(rep ? { rep } : {}), ...(q ? { q } : {}) })}`); }
     catch (e) { view.innerHTML = `${head('Recordings')}${dialTabs('recordings', user)}<p class="err-text">${esc(e.message)}</p>`; return; }
     view.innerHTML = `${head('Recordings')}${dialTabs('recordings', user)}
       <div class="row" style="margin-bottom:14px;justify-content:space-between">
         <p class="small muted" style="margin:0">${d.canSeeAll ? 'Every recorded call. Reps only see their own.' : 'Your recorded calls. Listen back to sharpen your pitch.'}</p>
+        <input type="search" id="rsearch" class="rec-search" placeholder="Search a name, business, number or result" value="${esc(q)}" autocomplete="off" style="max-width:320px">
         ${d.canSeeAll ? `<label class="row small" style="gap:8px">Rep <select id="rrep"><option value="">Everyone</option>${d.reps.map((r) => `<option value="${esc(r.id)}"${r.id === rep ? ' selected' : ''}>${esc(r.name || r.email)}</option>`).join('')}</select></label>` : ''}
       </div>
       ${d.recordings.length ? `<div class="card rec-list">${d.recordings.map((r) => {
@@ -28,14 +30,17 @@ export async function recordingsPage(app, user) {
         const dir = r.to_num ? 'Outbound' : 'Inbound';
         return `<div class="rec-row" data-id="${esc(r.id)}">
           <div class="rec-main"><b>${esc(r.business || pretty(num) || 'Unknown caller')}</b>
-            <span class="small muted">${esc([r.business ? pretty(num) : '', dir, d.canSeeAll ? r.rep || (r.to_num ? '' : 'Answered in the Hub') : '', when(r.at)].filter(Boolean).join(' · '))}</span></div>
+            <span class="small muted">${esc([r.business ? pretty(num) : '', r.owner_name || '', dir, r.dispo || '', d.canSeeAll ? r.rep || (r.to_num ? '' : 'Answered in the Hub') : '', when(r.at)].filter(Boolean).join(' · '))}</span></div>
           <span class="badge gray">${mins(r.rec_secs || r.duration)}</span>
           <button type="button" class="btn btn-ghost btn-sm" data-play>${picon.ear}Play</button>
           ${d.canSeeAll ? '<button type="button" class="linkbtn small" data-del>Delete</button>' : ''}
           <div class="rec-audio"></div>
         </div>`;
-      }).join('')}</div>` : `<div class="card empty"><h3>No recordings yet</h3><p>${d.canSeeAll ? 'Turn recording on in Phone setup. Calls that connect will show up here.' : 'When the owner turns recording on, your calls that connect show up here.'}</p></div>`}`;
+      }).join('')}</div>` : `<div class="card empty"><h3>${q ? 'No recording matches that' : 'No recordings yet'}</h3><p>${d.canSeeAll ? 'Turn recording on in Phone setup. Calls that connect will show up here.' : 'When the owner turns recording on, your calls that connect show up here.'}</p></div>`}`;
     $('#rrep', view)?.addEventListener('change', (e) => { rep = e.target.value; load(); });
+    const box = $('#rsearch', view);
+    let t;
+    box.addEventListener('input', () => { clearTimeout(t); t = setTimeout(async () => { q = box.value.trim(); await load(); const b2 = $('#rsearch', view); b2.focus(); b2.setSelectionRange(b2.value.length, b2.value.length); }, 350); });
     $$('.rec-row', view).forEach((row) => {
       $('[data-play]', row).addEventListener('click', (e) => {
         const box = $('.rec-audio', row);
@@ -114,6 +119,11 @@ export async function phoneSetupPage(app, user) {
             <p class="small muted" style="margin:0">Records calls placed from the Hub that connect, and incoming calls. Reps hear their own in Recordings, owners hear all. Calls nobody answers are not kept. Florida needs everyone on the call to know, so say it at the start: "Just so you know, this call is recorded."</p></div>
           <label class="switch"><input type="checkbox" id="srec"${d.recording ? ' checked' : ''}><span></span></label>
         </div>
+        <div class="row" style="justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:nowrap;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+          <div><h3 style="margin:0 0 6px">Delete recordings when nobody was reached</h3>
+            <p class="small muted" style="margin:0">When a result is saved, the recording stays on the lead only if the owner or a gatekeeper picked up (or the result is Do not call, which is proof of the request). Voicemail, phone menu, no answer, dead line, wrong number and bad connection recordings are deleted. Set "Who picked up" in the result window when it was not guessed right.</p></div>
+          <label class="switch"><input type="checkbox" id="sauto"${d.autoDelete !== false ? ' checked' : ''}><span></span></label>
+        </div>
       </div>
       <div class="card" style="max-width:760px;margin-top:14px">
         <h3 style="margin:0 0 6px">Your numbers</h3>
@@ -130,6 +140,10 @@ export async function phoneSetupPage(app, user) {
     dispoEditor($('#sdispo', view));
     $('#srec', view).addEventListener('change', async (e) => {
       try { const r = await api('/api/voice/setup', { method: 'PUT', body: { recording: e.target.checked } }); toast(r.recording ? 'Recording is on' : 'Recording is off'); }
+      catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }
+    });
+    $('#sauto', view).addEventListener('change', async (e) => {
+      try { const r = await api('/api/voice/setup', { method: 'PUT', body: { autoDelete: e.target.checked } }); toast(r.autoDelete ? 'Recordings with nobody reached are deleted' : 'All recordings are kept'); }
       catch (err) { toast(err.message, true); e.target.checked = !e.target.checked; }
     });
     const connect = async (btn, sids) => {

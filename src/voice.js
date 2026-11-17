@@ -323,6 +323,8 @@ route('POST', '/api/twilio/recording', async ({ env, request, url }) => {
     return twiml('');
   }
   await run(env, 'UPDATE activities SET rec_sid = ?, rec_secs = ? WHERE id = ?', p.RecordingSid, Number(p.RecordingDuration || 0), a.id);
+  // The result may already be saved (then this decides now) or not yet (then saving the result decides): src/recrule.js.
+  if (a.to_num) await (await import('./recrule.js')).applyRecordingRule(env, a.id).catch((e) => console.error('recording rule', e.message));
   return twiml('');
 }, { public: true });
 
@@ -385,6 +387,7 @@ route('POST', '/api/voice/calls/:id/disposition', async ({ env, user, params, bo
     }
   }
   await run(env, 'UPDATE activities SET outcome = ?, dispo = ?, note = ?, dispo_at = ? WHERE id = ?', d.acts, d.label, note || null, now(), a.id);
+  await (await import('./recrule.js')).applyRecordingRule(env, a.id, d.acts).catch((e) => console.error('recording rule', e.message));
   return json({ ok: true, leadId: null, dispo: d });
 });
 
@@ -427,15 +430,33 @@ route('POST', '/api/voice/monitor/:id', async ({ env, user, params, body }) => {
 route('GET', '/api/recordings', async ({ env, user, url }) => {
   requireStaff(user);
   const rep = user.role === 'admin' ? url.searchParams.get('rep') || '' : user.id;
-  const rows = await all(env, `SELECT a.id, a.at, a.type, a.status, a.duration, a.rec_secs, a.to_num, a.from_num, a.body, a.by, u.name AS rep, l.business, l.id AS lead_id
+  // Search (V: type a name like Barajas): business, owner or contact name, phone digits, result, rep.
+  const q = String(url.searchParams.get('q') || '').trim().slice(0, 60).toLowerCase();
+  const digits = q.replace(/\D/g, '');
+  const like = `%${q.replace(/[%_]/g, '')}%`;
+  const qSql = q ? `AND (lower(l.business) LIKE ? OR lower(COALESCE(l.owner_name, '')) LIKE ? OR lower(COALESCE(l.contact_name, '')) LIKE ? OR lower(COALESCE(a.dispo, '')) LIKE ? OR lower(COALESCE(u.name, '')) LIKE ? OR lower(COALESCE(a.body, '')) LIKE ?${digits.length >= 3 ? ' OR a.to_num LIKE ? OR a.from_num LIKE ?' : ''})` : '';
+  const qArgs = q ? [like, like, like, like, like, like, ...(digits.length >= 3 ? [`%${digits}%`, `%${digits}%`] : [])] : [];
+  const rows = await all(env, `SELECT a.id, a.at, a.type, a.status, a.duration, a.rec_secs, a.to_num, a.from_num, a.body, a.by, a.dispo, a.outcome, u.name AS rep, l.business, l.owner_name, l.contact_name, l.id AS lead_id
     FROM activities a LEFT JOIN users u ON u.id = a.by LEFT JOIN leads l ON l.id = a.lead_id
-    WHERE a.rec_sid IS NOT NULL ${rep ? 'AND a.by = ?' : ''} ORDER BY a.at DESC LIMIT 200`, ...(rep ? [rep] : []));
+    WHERE a.rec_sid IS NOT NULL ${rep ? 'AND a.by = ?' : ''} ${qSql} ORDER BY a.at DESC LIMIT 200`, ...(rep ? [rep] : []), ...qArgs);
   const reps = user.role === 'admin' ? await all(env, "SELECT id, name, email FROM users WHERE (role = 'team' OR id = ?) ORDER BY name", user.id) : [];
   const L = await import('./lines.js');
   const hide = await L.hiddenLines(env, user);
   const roles = Object.fromEntries((await all(env, 'SELECT id, role FROM users')).map((u) => [u.id, u.role]));
   const visible = rows.filter((r) => (!r.by || r.by === user.id || (user.role === 'admin' && roles[r.by] !== 'admin')) && !hide.has(r.to_num) && !hide.has(r.from_num));
   return json({ recordings: visible, reps, canSeeAll: user.role === 'admin' });
+});
+
+// Every kept recording of one lead (they stay on the lead when we reached the owner or a gatekeeper; the rest are deleted by src/recrule.js).
+route('GET', '/api/leads/:id/recordings', async ({ env, user, params }) => {
+  requireStaff(user);
+  const rows = await all(env, `SELECT a.id, a.at, a.duration, a.rec_secs, a.to_num, a.from_num, a.by, a.dispo, a.outcome, u.name AS rep
+    FROM activities a LEFT JOIN users u ON u.id = a.by WHERE a.lead_id = ? AND a.rec_sid IS NOT NULL ORDER BY a.at DESC LIMIT 50`, params.id);
+  const L = await import('./lines.js');
+  const hide = await L.hiddenLines(env, user);
+  const roles = Object.fromEntries((await all(env, 'SELECT id, role FROM users')).map((u) => [u.id, u.role]));
+  const visible = rows.filter((r) => (!r.by || r.by === user.id || (user.role === 'admin' && roles[r.by] !== 'admin')) && !hide.has(r.to_num) && !hide.has(r.from_num));
+  return json({ recordings: visible });
 });
 
 async function recordingFor(env, user, id) {
@@ -474,14 +495,15 @@ route('GET', '/api/voice/setup', async ({ env, user, url }) => {
     calls: n.voice_url === voiceUrl ? 'hub' : n.voice_url || n.voice_application_sid || n.trunk_sid ? 'other' : 'none',
     texts: n.sms_url === smsUrl ? 'hub' : n.sms_url || n.sms_application_sid ? 'other' : 'none',
   }));
-  return json({ ready: true, recording: await recordingOn(env), numbers, main: env.TWILIO_FROM, tracking: trackingSids.size });
+  return json({ ready: true, recording: await recordingOn(env), autoDelete: (await getSettings(env).catch(() => ({}))).rec_autodelete !== '0', numbers, main: env.TWILIO_FROM, tracking: trackingSids.size });
 });
 
 route('PUT', '/api/voice/setup', async ({ env, user, body }) => {
   requireAdmin(user);
   const b = await body();
   if ('recording' in b) await setSetting(env, 'call_recording', b.recording ? '1' : '0');
-  return json({ ok: true, recording: await recordingOn(env) });
+  if ('autoDelete' in b) await setSetting(env, 'rec_autodelete', b.autoDelete ? '1' : '0');
+  return json({ ok: true, recording: await recordingOn(env), autoDelete: (await getSettings(env).catch(() => ({}))).rec_autodelete !== '0' });
 });
 
 route('POST', '/api/voice/connect-numbers', async ({ env, user, url, body }) => {

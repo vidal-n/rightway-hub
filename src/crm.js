@@ -637,6 +637,8 @@ export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activ
   // Lead database: who answered, how far it got, the objection; then the lead's roll up and scores.
   const { saveCallDetail, rollupLeads } = await import('./leaddb.js');
   await saveCallDetail(env, actId, l.id, detail || {}, d.id).catch((e) => console.error('call detail', e.message));
+  // Recording clean up: the result is saved, so a recording with no owner or gatekeeper on the call goes away (src/recrule.js).
+  await (await import('./recrule.js')).applyRecordingRule(env, actId, d.acts).catch((e) => console.error('recording rule', e.message));
   await rollupLeads(env, [l.id]).catch((e) => console.error('roll up', e.message));
   await wf(env, 'call_result', { leadId: l.id, outcome: d.acts, dispo: d.id });
   if (set.stage && set.stage !== l.stage) await wf(env, 'stage_changed', { leadId: l.id, stage: set.stage });

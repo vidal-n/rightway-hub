@@ -73,7 +73,7 @@ if (!window.__rwTelGuard) {
   window.__rwTelGuard = true;
   document.addEventListener('click', async (e) => {
     const a = e.target.closest?.('a[data-tel-lead]');
-    if (!a || a.dataset.telOk === '1') return;
+    if (!a || a.dataset.telOk === '1' || a.hasAttribute('data-hubcall')) return;   // data-hubcall links call through the Hub's phone instead (lead page)
     e.preventDefault();
     try {
       const r = await api(`/api/leads/${encodeURIComponent(a.dataset.telLead)}/call-check`);
@@ -939,7 +939,7 @@ function contactStrip(l, scrub) {
   const tag = l.email && l.email_status ? (EMAIL_STATUS_LABEL[l.email_status] || '') : '';
   const site = l.website ? String(l.website).replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '') : '';
   return `<div class="lm-contact">
-    <div class="lmc"><i>Phone</i>${l.phone ? `<a href="${telHref(l.phone)}" data-tel-lead="${esc(l.id)}">${esc(l.phone)}</a>` : '<span class="muted">None</span>'}</div>
+    <div class="lmc"><i>Phone</i>${l.phone ? `<a href="${telHref(l.phone)}" data-tel-lead="${esc(l.id)}" data-hubcall>${esc(l.phone)}</a>` : '<span class="muted">None</span>'}</div>
     <div class="lmc lmc-mail"><i>Email</i>${l.email ? `<a href="mailto:${esc(l.email)}" id="lmailx" title="Write to them from the Hub">${esc(l.email)}</a>${tag ? ` <span class="badge ${bad ? 'bad' : 'gray'}">${esc(tag)}</span>` : ''}`
       : `<span class="muted">No email on file</span> <button type="button" class="linkbtn small" id="laddmail2">Add it</button>`}${found.length ? `<small class="muted">Also found: ${found.slice(0, 2).map((e) => esc(e)).join(', ')}</small>` : ''}</div>
     <div class="lmc lmc-hours" id="lhours"><i>Hours</i><span class="muted small">Loading...</span></div>
@@ -963,7 +963,7 @@ export async function leadModal(id, onChange) {
       <button class="btn btn-ghost btn-sm" data-close>Close</button></div>
     ${contactStrip(l, data.scrub)}
     <div class="row lm-actions">
-      ${l.phone ? `<a class="btn btn-mint" href="${telHref(l.phone)}" data-tel-lead="${esc(l.id)}">${icon.phone}${esc(l.phone)}</a>` : ''}
+      ${l.phone ? `<a class="btn btn-mint" href="${telHref(l.phone)}" data-tel-lead="${esc(l.id)}" data-hubcall id="lcall">${icon.phone}Call ${esc(l.phone)}</a>` : ''}
       ${l.email ? `<button class="btn btn-ghost" id="lmailbtn">${icon.mail}Email</button>` : '<button class="btn btn-ghost" id="laddmail">' + icon.mail + 'Add email</button>'}
       <button class="btn btn-ghost" id="lmeetbtn">Add appointment</button>
       <button class="btn btn-ghost" id="lbooklink" title="A personal booking page link for this lead">Booking link</button>
@@ -1036,6 +1036,7 @@ export async function leadModal(id, onChange) {
         ${fold('lm-calls', 'Call intelligence', callIntelHtml(l), false)}
         ${fold('lm-qual', 'Qualification', '<div id="lqual"></div>', false)}
         ${fold('lm-mail', 'Recent email', '<div class="card" id="lmail" style="box-shadow:none;padding:0"></div>', false)}
+        ${fold('lm-rec', 'Call recordings', '<div id="lrecs" class="small muted">Loading...</div>', false)}
         ${fold('lm-hist', 'History', `<ul class="feed">${data.activities.map((a) => `<li><span class="dot">${a.type === 'call' ? icon.msg : a.type === 'payment' ? icon.star : icon.note}</span>
           <div><div>${esc(activityText(a))}</div>${a.body && a.type !== 'stage' ? `<div class="small">${esc(a.body)}</div>` : ''}</div><span class="small">${esc(fmt.ago(a.at))}</span></li>`).join('') || '<li class="muted">Nothing yet.</li>'}</ul>`, false, data.activities.length)}
         <button class="btn btn-danger btn-sm" id="ldel" style="margin-top:16px">Delete lead</button>
@@ -1046,6 +1047,37 @@ export async function leadModal(id, onChange) {
   prepPanel($('#lprep', m.el), l, data.intel, { rep: REP, voice: VOICE, lock: /^#\/(phone|dialer)/.test(location.hash), onResearched: () => { changed = true; } });
   if ($('#lmeet', m.el)) meetingPanel($('#lmeet', m.el), l, data.intel, { rep: REP, voice: VOICE });
   $('#ltexts', m.el)?.addEventListener('click', () => textModal(l, { rep: REP, onChange: () => { changed = true; } }));
+  // Call from the Hub's own phone (Twilio, through this computer's mic) instead of opening the phone app, which does nothing on a computer or iPad.
+  // The server still checks Do Not Call, calling hours and who holds the lead. Without Twilio the old tel: link runs as before.
+  $$('[data-hubcall]', m.el).forEach((a) => a.addEventListener('click', async (e) => {
+    if (a.dataset.telOk === '1') return;
+    e.preventDefault(); e.stopPropagation();
+    let tw = false;
+    try { tw = Boolean((await api('/api/me')).twilio); } catch { /* fall back to the phone link */ }
+    if (!tw) { a.removeAttribute('data-hubcall'); a.click(); return; }   // no Twilio: the phone link, with the Do Not Call check
+    if (phoneState().onCall) return toast('You are already on a call. Hang up first.', true);
+    const btn = a.id === 'lcall' ? a : null;
+    if (btn) btn.classList.add('is-busy');
+    try {
+      await placeCall({ leadId: l.id, name: l.business, who: whoIs(l), script: scriptTag(l),
+        onEnd: (r) => {
+          changed = true;
+          dispositionModal({ title: r.name || l.business, sub: 'Saving the result moves the lead to its next step.', answered: r.answered,
+            onSave: async (d) => { await api(`/api/voice/calls/${r.activityId}/disposition`, { method: 'POST', body: d }); toast('Saved'); } });
+        } });
+    } catch (err) { toast(err.message, true); } finally { btn?.classList.remove('is-busy'); }
+  }));
+  // Recordings of this lead's calls (only calls where we reached the owner or a gatekeeper are kept, see src/recrule.js).
+  api(`/api/leads/${l.id}/recordings`).then(({ recordings }) => {
+    const host = $('#lrecs', m.el);
+    if (!host) return;
+    host.classList.remove('muted');
+    host.innerHTML = recordings.length ? recordings.map((r) => `<div class="rec-row" data-id="${esc(r.id)}"><div class="rec-main"><b>${esc(new Date(r.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b>
+        <span class="small muted">${esc([r.dispo || r.outcome || '', r.rep || ''].filter(Boolean).join(' · '))}</span></div>
+        <span class="badge gray">${Math.floor((r.rec_secs || r.duration || 0) / 60)}:${String((r.rec_secs || r.duration || 0) % 60).padStart(2, '0')}</span>
+        <audio controls preload="none" src="/api/recordings/${encodeURIComponent(r.id)}/audio" style="width:100%;margin-top:6px"></audio></div>`).join('')
+      : '<span class="muted">No recording kept. Calls are recorded when recording is on, and kept when we reach the owner or a gatekeeper.</span>';
+  }).catch(() => { const h = $('#lrecs', m.el); if (h) h.textContent = 'Could not load recordings.'; });
   // Google: write to them, see what you have already sent, and put a meeting on your own calendar.
   $$('#laddmail, #laddmail2', m.el).forEach((b) => b.addEventListener('click', () => { m.close(); leadForm(l, () => onChange?.()); }));
   mountHours($('#lhours', m.el), l, () => { changed = true; });
