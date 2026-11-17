@@ -27,4 +27,8 @@ export const PLAN_ORDER = ['starter', 'growth', 'authority', 'leader'];
 
 // Website work stays in the closer's notes. The presentation and the analysis never list it (it is sold separately, after results).
 export const WEBSITE_SERVICE_IDS = ['onpage', 'webcare'];
+// Needs that live on the client's website. The deck shows them as "also needed to rank higher" (a need, never something we provide
+// in the monthly work), since the website is a separate service (Nov 2026, V). They stay in the quote and the closer notes.
+export const WEBSITE_NEED_IDS = ['pages'];
+export const NEED_COPY = { pages: 'Google needs a page for each service and city you want to be found in. Those pages live on your website, which is its own project, separate from the monthly work.' };
 export const WEBSITE_PROBLEM_KEYS = ['no_website', 'no_https', 'weak_title', 'no_schema', 'no_click_to_call', 'site_down', 'slow_site'];

@@ -2,7 +2,7 @@
 // Open /present.html#<leadId>. Presenter view: /present.html?presenter=1#<leadId>. Keys: arrows or space, F fullscreen, P presenter view.
 import { findProblems, industryInfo, rankText, buildScript, roi, top10Of, quoteFor, allServicesFor, unbold } from './leadintel.js';
 import { ninetyDayPlan, reviewTarget } from './fulfill.js';
-import { SERVICE_LIST, WEBSITE_SERVICE_IDS, WEBSITE_PROBLEM_KEYS } from './plancopy.js';
+import { SERVICE_LIST, WEBSITE_SERVICE_IDS, WEBSITE_PROBLEM_KEYS, WEBSITE_NEED_IDS, NEED_COPY } from './plancopy.js';
 import { INCLUDED_ALL, refFor, refLines, refMoney } from './planref.js';
 import { urgencyFor, LF8 } from './lifeforce.js';
 import { webLines } from './webprice.js';
@@ -63,7 +63,8 @@ function slides() {
   const rt = reviewTarget(intel);
   const qtyOf = (id) => Q.services.find((x) => x.id === id)?.qty;
   const nd = ninetyDayPlan(plan, intel, lead, { posts: qtyOf('posts'), pages: qtyOf('pages') || 0, links: qtyOf('links') || 0 });
-  const shown = Q.services.filter((x) => !WEBSITE_SERVICE_IDS.includes(x.id));
+  const shown = Q.services.filter((x) => !WEBSITE_SERVICE_IDS.includes(x.id) && !WEBSITE_NEED_IDS.includes(x.id));
+  const needed = Q.services.filter((x) => WEBSITE_NEED_IDS.includes(x.id));
   const hiddenSvc = Q.services.filter((x) => WEBSITE_SERVICE_IDS.includes(x.id));
   const ref = refFor(Q.services.map((x) => ({ id: x.id, qty: x.qty })));
   const siteProbs = probs.filter((p) => WEBSITE_PROBLEM_KEYS.includes(p.key));
@@ -174,9 +175,10 @@ function slides() {
     ${intel?.grid ? `<p class="lead" style="margin:-6px 0 22px">Today: first page (top 10) in ${t10} of ${intel.grid.points} spots around you. Goal: the first page across ${esc(city || 'your area')}, then climb.</p>` : ''}
     <span class="plan-tag" title="For us only">Plan: ${esc(ref.name)}</span>
     <div class="svcs anim${shown.length > 6 ? ' many' : ''}">${shown.map((x) => `<div class="svc" data-svc="${esc(x.id)}"><button class="svc-x" data-drop="${esc(x.id)}" title="Remove" aria-label="Remove ${esc(x.name)}">×</button><b>${esc(x.name)}</b><span>${x.unit ? `<strong>${x.qty} ${esc(x.unit)}.</strong> ` : ''}${esc(x.why || x.what)}</span></div>`).join('')}</div>
+    ${needed.length ? `<div class="need anim"><span class="need-h">Also needed to rank higher</span>${needed.map((x) => `<div class="need-i" data-svc="${esc(x.id)}"><button class="svc-x" data-drop="${esc(x.id)}" title="Remove" aria-label="Remove ${esc(x.name)}">×</button><b>${esc(x.name)}</b><span>${esc(NEED_COPY[x.id] || x.why || x.what)}</span></div>`).join('')}</div>` : ''}
     <div class="incl anim"><span>Included every month</span>${INCLUDED_ALL.map((x) => `<b title="${esc(x.what)}">${esc(x.name)}</b>`).join('')}</div>
-    ${SERVICE_LIST.some((x) => !WEBSITE_SERVICE_IDS.includes(x.id) && !Q.services.find((y) => y.id === x.id)) ? `<div class="svc-add" style="position:absolute;bottom:96px;right:116px"><select id="svc-add"><option value="">Add a service</option>${SERVICE_LIST.filter((x) => !WEBSITE_SERVICE_IDS.includes(x.id) && !Q.services.find((y) => y.id === x.id)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div>` : ''}`,
-  `Only what they need. Walk each one: what it is, and why it gets them onto the first page (top 10) in more of their area. Rank also depends on distance and relevance, so never promise a spot.\n\n${say('c_story')}\n\n(Hover a service and press × to drop it, or add one from the list. The price slide and the work order use this list.)\n\nEvery line is sized from their own scan, so say the number out loud: posts, links, reviews a month, directories to fix. Included on every plan, say it as a bonus: competitor analysis, a monthly branding call, and the Rightway app with a direct line to their manager.\n\nPRICING GUIDE (closer only):\n${refLines(Q.services.map((x) => ({ id: x.id, qty: x.qty }))).join('\n')}${siteNotes}`);
+    ${SERVICE_LIST.some((x) => !WEBSITE_SERVICE_IDS.includes(x.id) && !Q.services.find((y) => y.id === x.id)) ? `<div class="svc-add" style="margin-top:14px;text-align:right"><select id="svc-add"><option value="">Add a service</option>${SERVICE_LIST.filter((x) => !WEBSITE_SERVICE_IDS.includes(x.id) && !Q.services.find((y) => y.id === x.id)).map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div>` : ''}`,
+  `Only what they need. Walk each one: what it is, and why it gets them onto the first page (top 10) in more of their area. "Also needed to rank higher" is what they need on their website: say it as a need, not something we are doing in the monthly work. Websites are a separate service, sold after results. Rank also depends on distance and relevance, so never promise a spot.\n\n${say('c_story')}\n\n(Hover a service and press × to drop it, or add one from the list. The price slide and the work order use this list.)\n\nEvery line is sized from their own scan, so say the number out loud: posts, links, reviews a month, directories to fix. Included on every plan, say it as a bonus: competitor analysis, a monthly branding call, and the Rightway app with a direct line to their manager.\n\nPRICING GUIDE (closer only):\n${refLines(Q.services.map((x) => ({ id: x.id, qty: x.qty }))).join('\n')}${siteNotes}`);
 
   add('days', 'First 90 days', `<p class="kicker">First 90 days</p><h2>What happens after you say yes</h2>
     <div class="months anim">${nd.months.map((m) => `<div class="month"><h3>${esc(m.title)}</h3><ul>${m.items.filter((x) => !SITE_WORDS.test(x)).slice(0, 5).map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</div>

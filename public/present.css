@@ -246,3 +246,10 @@ body.presenter { overflow: auto; background: #0B1411; color: #E7F1EC; }
 .incl b { background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-weight: 600; }
 .pv .guide .gref { font-size: 20px; margin: 6px 0; } .pv .guide .gref span { background: #23B07E; color: #0F1B17; border-radius: 8px; padding: 2px 10px; font-weight: 700; margin-right: 8px; }
 .pv .guide .small { font-size: 14px; color: #A9BBB3; margin: 4px 0; }
+
+/* "Also needed to rank higher": a need that lives on their website, shown apart from what we provide (Nov 2026, V) */
+.need { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 18px; padding: 14px 18px; border: 1.5px dashed var(--line); border-radius: 14px; }
+.need-h { font: 600 14px var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.need-i { position: relative; flex: 1 1 320px; min-width: 0; display: grid; gap: 2px; font-size: 17px; color: var(--ink-2); }
+.need-i b { color: var(--ink); font-size: 19px; }
+.need-i:hover .svc-x { opacity: 1; }
