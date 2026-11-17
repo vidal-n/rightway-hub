@@ -3185,3 +3185,18 @@ select.need-pick { outline: 3px solid var(--c-amber, #E07A0C); outline-offset: 2
   .lb-who .mav { display: none; }
   .lb th, .lb td { padding-left: 4px; padding-right: 4px; }
 }
+
+/* Leaderboard: outside the team (friendly competition, typed in by an owner, never in analytics) */
+.lb-outside { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.lb-outside h3 { margin: 0 0 4px; font: 700 15px var(--font-display, inherit); }
+.lb-versus { margin: 8px 0; font-size: 13px; color: var(--muted); }
+.lb-versus b { color: var(--ink); }
+.lb-out tfoot td { border-top: 1px solid var(--line); }
+.lb-rm { border: 1px solid var(--line); background: transparent; color: var(--muted); font: 600 12px var(--font-body, inherit); padding: 4px 8px; border-radius: 7px; cursor: pointer; min-height: 28px; }
+.lb-add { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.lb-add input { flex: 1 1 180px; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, transparent); color: inherit; font: inherit; }
+.lb-enter { margin-top: 10px; }
+.lb-enter summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.lb-enter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr)); gap: 8px; align-items: end; margin-top: 8px; }
+.lb-enter-grid label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; }
+.lb-enter-grid input, .lb-enter-grid select { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface, transparent); color: inherit; font: inherit; }

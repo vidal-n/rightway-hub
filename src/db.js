@@ -236,6 +236,10 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS lead_hours (lead_id TEXT PRIMARY KEY, hours TEXT, src TEXT, status TEXT, at INTEGER)`,
   // Callback reminders (Nov 2026, V): one row per lead and callback time, so each callback reminds its setter once.
   `CREATE TABLE IF NOT EXISTS callback_reminders (lead_id TEXT NOT NULL, due_at INTEGER NOT NULL, sent_at INTEGER, PRIMARY KEY (lead_id, due_at))`,
+  // Outside competitors on the leaderboard (Nov 2026, V: friendly competition, typed in by hand). Kept apart from activities,
+  // so these numbers never reach the Hub's reports, analytics, bookings or dials. One row per name and New York day.
+  `CREATE TABLE IF NOT EXISTS rivals (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS rival_days (rival_id TEXT NOT NULL, day INTEGER NOT NULL, dials INTEGER NOT NULL DEFAULT 0, talks INTEGER NOT NULL DEFAULT 0, booked INTEGER NOT NULL DEFAULT 0, callbacks INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (rival_id, day))`,
   `CREATE TRIGGER IF NOT EXISTS hours_sync_ins AFTER INSERT ON lead_hours BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
   `CREATE TRIGGER IF NOT EXISTS hours_sync_upd AFTER UPDATE ON lead_hours BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
 ];

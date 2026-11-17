@@ -3,12 +3,15 @@
 // Per person: dials, owner talks, booked, booked per owner talk (the conversion rate), and upcoming appointments they run. Online bookings
 // and anything with no rep behind it sit on their own "Online and unassigned" row so nobody is credited for them.
 // Counts use the same rules as the dialer strip (`BOOKED_SQL`, owner talk = a conversation, booked, callback, not interested or won result).
-import { json } from './util.js';
-import { all, first } from './db.js';
-import { requireStaff } from './auth.js';
+// Outside competitors (Nov 2026, V: Josh and Grace compete for fun against the team). Their numbers are typed in by an owner, live in
+// `rivals` and `rival_days` only, and are never read by any report, analytics, booking or dial count. Shown as "Outside the team"
+// with a Rightway team total to compare against.
+import { json, HttpError } from './util.js';
+import { all, first, run, batch, newId, now } from './db.js';
+import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { BOOKED_SQL, CALLBACK_SQL } from './crm.js';
-import { dayFrom } from './day.js';
+import { dayFrom, dayStart } from './day.js';
 
 export const PERIODS = [1, 7, 30];
 
@@ -45,11 +48,63 @@ route('GET', '/api/leaderboard', async ({ env, user, url }) => {
   // Callbacks: the rep's own, set on a call. Booked audits stay separate (a callback is not a booking).
   let otherCallbacks = 0;
   for (const [k, r] of by) if (!ids.has(k)) otherCallbacks += r.callbacks || 0;
+  // Outside competitors: summed from their own typed-in days over the same period.
+  const rivalRows = await all(env, `SELECT r.id, r.name, COALESCE(SUM(d.dials), 0) AS dials, COALESCE(SUM(d.talks), 0) AS talks,
+    COALESCE(SUM(d.booked), 0) AS booked, COALESCE(SUM(d.callbacks), 0) AS callbacks
+    FROM rivals r LEFT JOIN rival_days d ON d.rival_id = r.id AND d.day >= ? AND d.day <= ? GROUP BY r.id, r.name`, from, today).catch(() => []);
+  const outside = rivalRows.map((r) => ({ id: r.id, name: r.name, dials: r.dials, talks: r.talks, booked: r.booked, callbacks: r.callbacks, rate: rate(r.booked, r.talks) }))
+    .sort((a, b) => b.booked - a.booked || (b.rate ?? -1) - (a.rate ?? -1) || b.talks - a.talks || a.name.localeCompare(b.name));
+  const outTotal = outside.reduce((s, r) => ({ dials: s.dials + r.dials, talks: s.talks + r.talks, booked: s.booked + r.booked, callbacks: s.callbacks + r.callbacks }), { dials: 0, talks: 0, booked: 0, callbacks: 0 });
   return json({
     days, from, agents,
     other: { booked: otherBooked, upcoming: otherUpcoming, callbacks: otherCallbacks },
     handedOff: handed?.n || 0,
     team: { dials: sum('dials'), talks, booked, callbacks: sum('callbacks'), rate: rate(booked, talks) },
+    outside: { list: outside, total: { ...outTotal, rate: rate(outTotal.booked, outTotal.talks) } },
+    canEdit: user.role === 'admin',
     me: user.id,
   });
+});
+
+// ---------- outside competitors: owners add names and type each day's numbers ----------
+const dayMs = (date) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) throw new HttpError('Pick a date.');
+  const t = Date.parse(`${date}T12:00:00Z`);
+  if (!Number.isFinite(t)) throw new HttpError('Pick a date.');
+  return dayStart(t, 'America/New_York');
+};
+const count = (v) => Math.max(0, Math.min(100000, Math.round(Number(v) || 0)));
+
+route('POST', '/api/rivals', async ({ env, user, body }) => {
+  requireAdmin(user);
+  const name = String((await body()).name || '').trim().slice(0, 80);
+  if (!name) throw new HttpError('Type a name.');
+  const id = newId('rv_');
+  await run(env, 'INSERT INTO rivals (id, name, created_at) VALUES (?, ?, ?)', id, name, now());
+  return json({ id, name });
+});
+
+route('DELETE', '/api/rivals/:id', async ({ env, user, params }) => {
+  requireAdmin(user);
+  await batch(env, [['DELETE FROM rival_days WHERE rival_id = ?', params.id], ['DELETE FROM rivals WHERE id = ?', params.id]]);
+  return json({ ok: true });
+});
+
+route('GET', '/api/rivals/:id/day', async ({ env, user, params, url }) => {
+  requireAdmin(user);
+  const day = dayMs(url.searchParams.get('date'));
+  const r = await first(env, 'SELECT dials, talks, booked, callbacks FROM rival_days WHERE rival_id = ? AND day = ?', params.id, day);
+  return json({ dials: r?.dials || 0, talks: r?.talks || 0, booked: r?.booked || 0, callbacks: r?.callbacks || 0 });
+});
+
+route('PUT', '/api/rivals/:id/day', async ({ env, user, params, body }) => {
+  requireAdmin(user);
+  const b = await body();
+  if (!await first(env, 'SELECT id FROM rivals WHERE id = ?', params.id)) throw new HttpError('Not found.', 404);
+  const day = dayMs(b.date);
+  const v = { dials: count(b.dials), talks: count(b.talks), booked: count(b.booked), callbacks: count(b.callbacks) };
+  await run(env, `INSERT INTO rival_days (rival_id, day, dials, talks, booked, callbacks) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(rival_id, day) DO UPDATE SET dials = excluded.dials, talks = excluded.talks, booked = excluded.booked, callbacks = excluded.callbacks`,
+  params.id, day, v.dials, v.talks, v.booked, v.callbacks);
+  return json({ ok: true, day });
 });
