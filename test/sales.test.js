@@ -108,7 +108,7 @@ test('problems, score, plan, and script come from the research', () => {
   const withL = buildScript({ ...lead, listings: JSON.stringify({ counts: { mismatch: 3, missing: 2, match: 1 }, results: [{ name: 'Yelp', status: 'mismatch' }, ...Array(14).fill({ name: 'X', status: 'match' })] }) }, INTEL, { rep: 'Vidal' });
   assert.match(step(withL, 'k_why'), /5 of 15 directories Google checks have you wrong or missing, Yelp for one/);
   assert.match(step(withL, 'c_listings'), /5 of the 15 directories I checked/);
-  assert.match(step(withL, 'c_open'), /ten clients at a time/);
+  assert.match(step(withL, 'c_open'), /a small number of clients at a time/);
   assert.match(step(withL, 'c_discovery'), /Scan tool tab/);
   assert.match(step(s, 'c_scan'), /from \d+ spots around Summit Roofing/);
   assert.match(step(s, 'c_scan'), /Same search/);

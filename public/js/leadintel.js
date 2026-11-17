@@ -704,8 +704,8 @@ export const DEFAULT_SCRIPT = {
   c_open: [
     "Hey, is this {first_or_owner}? ... Hey {first}, it's {rep}, with RightWay Growth. We're all set for your **Google clarity audit**.",
     "(Smile. Then:) Quick agenda so you know how this goes. I'm going to show you exactly what a customer sees when they look for you on Google, where the inconsistencies are, and what's causing them. At the end, we'll both decide if it makes sense to work together.",
-    "And just so you know, we only take on **ten clients at a time**, so we can focus on the relationship, quality and results. So this is as much me seeing if you're a fit as you seeing if we are. Fair?",
-    "(Slow, low, certain. You're the one who did the work. You don't need this deal. You're deciding who gets one of the ten spots.)",
+    "And just so you know, we only take on a small number of clients at a time, so we can focus on the relationship, quality and results. So this is as much me seeing if you're a fit as you seeing if we are. Fair?",
+    "(Slow, low, certain. You're the one who did the work. You don't need this deal. You're deciding who we take on.)",
   ].join('\n'),
   c_frame: [
     "I just want to confirm, is {email_or_ask} still the best email for you? Perfect. I'm sending you a link to my screen right now. That way you see the exact same thing I see, and nothing gets lost in translation, OK?",
@@ -771,7 +771,7 @@ export const DEFAULT_SCRIPT = {
     "And that's exactly why we're having this conversation. Whenever we audit a business and see inconsistencies like these, and we can see it's affecting where you show up and how far out you show up, then obviously we're going to offer you a way to fix it.",
     "It's our **local growth program**, and it's what we've just been going over. First we do a **data cleanup**: every listing with wrong or outdated information gets corrected, so the damage stops. Then we get you in front of every directory Google checks that doesn't know who you are yet, and we build out your Google profile the right way.",
     '(PAUSE)',
-    "Now before I go any further, I want to make sure we're on the same page. Like I said at the start, we only take on **ten clients at a time**, so we can focus on the relationship, the quality and the results. And I'll be straight with you: I/our founder used to work inside the big marketing companies. Year long contracts, reports nobody could read, promises of number one on Google. RightWay was built to do the opposite. You see every task, you see the map every month, and after the first three months you can leave any time. Fair?",
+    "Now before I go any further, I want to make sure we're on the same page. Like I said at the start, we only take on a small number of clients at a time, so we can focus on the relationship, the quality and the results. And I'll be straight with you: I/our founder used to work inside the big marketing companies. Year long contracts, reports nobody could read, promises of number one on Google. RightWay was built to do the opposite. You see every task, you see the map every month, and after the first three months you can leave any time. Fair?",
     '(SCREEN: "What gets you results" slide: only the services they need. Point at each one as you say it. Drop or add one live if discovery says so.)',
   ].join('\n'),
   c_program: [
