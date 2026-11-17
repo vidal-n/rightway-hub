@@ -121,6 +121,7 @@ export function staffShell(app, user, active, inner) {
             <button type="button" class="stpill" data-stpill aria-label="Your status">${pillHtml()}</button>
             <a class="cmd-ico warn" href="#/settings" data-wallet hidden aria-label="A wallet is low">${icon.money}</a>
             <button type="button" class="cmd-ico" id="sndbtn" aria-label="Sounds" title="Sounds on or off"></button>
+            <button type="button" class="cmd-ico" id="thmbtn" aria-label="Theme" title="Theme: Auto, Light or Dark"></button>
             <button type="button" class="cmd-ico" id="notifbtn" aria-label="Notifications" aria-haspopup="dialog" title="Notifications">${icon.bell}<b class="nbadge" data-badge="alerts" hidden></b></button>
             <a class="cmd-ico hide-s" href="#/settings" aria-label="Settings">${icon.cog}</a>
             <button type="button" class="pbub" data-pbub title="${esc(user.name || user.email || 'Profile')}" aria-label="Profile menu">${avatarHtml(user, initials(user))}</button>
@@ -171,6 +172,7 @@ export function staffShell(app, user, active, inner) {
   import('./segments.js').then((m) => m.wireSegments()).catch(() => {});
   import('./explain.js').then((m) => m.wireExplain()).catch(() => {});
   import('./sound.js').then((m) => m.wireSoundBtn()).catch(() => {});
+  mountTheme();
   import('./tour.js').then((m) => m.maybeTour(user)).catch(() => {});
   import('./resume.js').then((m) => { m.mountStrip(app, active); m.maybeResume(); }).catch(() => {});
   if (user.role === 'admin') import('./costhint.js').then((m) => m.startCostHints()).catch(() => {});
@@ -200,6 +202,23 @@ export function railLinks(user) {
   }).join('');
 }
 
+// Theme switch (public/js/theme.js): one button in the command bar cycles Auto, Light, Dark.
+const THEME_ICON = {
+  auto: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v16"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/></svg>',
+  light: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/></svg>',
+  dark: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>',
+};
+export function mountTheme() {
+  const b = document.getElementById('thmbtn');
+  if (!b || b.dataset.on) return;
+  b.dataset.on = '1';
+  import('/js/theme.js').then((t) => {
+    const paint = () => { const m = t.getMode(); b.innerHTML = THEME_ICON[m]; b.title = `Theme: ${t.MODE_LABEL[m]} (tap to change)`; b.setAttribute('aria-label', `Theme: ${t.MODE_LABEL[m]}`); };
+    paint();
+    b.onclick = () => { const m = t.setMode(t.nextMode(t.getMode())); paint(); toast(`Theme: ${t.MODE_LABEL[m]}`); };
+  }).catch(() => {});
+}
+
 function profileMenu(b, user, logout) {
   const wasOpen = document.querySelector('.pmenu:not(.stmenu)');
   closeMenus();
@@ -219,6 +238,7 @@ function profileMenu(b, user, logout) {
     <a href="#/settings" role="menuitem">${icon.cog}Settings</a>
     <a href="#/notifications" role="menuitem">${icon.bell}Notifications</a>
     <button type="button" data-pm="sound" role="menuitem">${icon.bell}Sounds: <span data-sndstate>on</span></button>
+    <button type="button" data-pm="theme" role="menuitem">${THEME_ICON.auto}Theme: <span data-thmstate>Auto</span></button>
     <button type="button" data-audio role="menuitem">${icon.mic || icon.headset || icon.cog}Phone audio and noise</button>
     <button type="button" data-pm="photo" role="menuitem">${icon.camera}${user.avatar_at ? 'Change profile photo' : 'Add a profile photo'}</button>
     ${user.avatar_at ? `<button type="button" data-pm="nophoto" role="menuitem">${icon.trash}Remove photo</button>` : ''}
@@ -232,6 +252,10 @@ function profileMenu(b, user, logout) {
   m.querySelector('[data-pm="nav"]').onclick = () => { close(); customizeMenu(user, () => location.reload()); };
   m.querySelector('[data-pm="screen"]').onclick = () => { close(); import('./screencheck.js').then((x) => x.screenCheck()); };
   m.querySelector('[data-pm="out"]').onclick = logout;
+  import('/js/theme.js').then((t) => {
+    const st = m.querySelector('[data-thmstate]'); if (st) st.textContent = t.MODE_LABEL[t.getMode()];
+    m.querySelector('[data-pm="theme"]').onclick = () => { t.setMode(t.nextMode(t.getMode())); close(); };
+  }).catch(() => {});
   import('./sound.js').then((snd) => {
     const st = m.querySelector('[data-sndstate]'); if (st) st.textContent = snd.soundOn() ? 'on' : 'off';
     m.querySelector('[data-pm="sound"]').onclick = () => { snd.setSound(!snd.soundOn()); close(); };

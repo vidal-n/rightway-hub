@@ -77,7 +77,7 @@ export async function prepPanel(el, lead, intel, { rep = '', voice = 'I', onRese
           <div class="small">${esc(rec.why.join(' · '))}</div></div>
         <div class="row" style="margin-left:auto">
           <button class="btn btn-ghost btn-sm" data-act="research">${intel ? 'Refresh research' : 'Research now'}<span class="cost-hint" data-cost="research_call"></span></button>
-          ${can(window.__rwUser, 'close') && !lead.test ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
+          ${can(window.__rwUser, 'close') && !lead.test ? `<a class="btn btn-ghost btn-sm" href="/audit.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
           <a class="btn btn-ghost btn-sm" href="/scan.html?lead=${esc(lead.id)}" target="_blank" rel="noopener">Scan tool</a>` : ''}
           <button class="btn btn-ghost btn-sm" data-act="book">Book meeting</button>
           <button class="btn btn-ghost btn-sm" data-act="meetnow" title="Starts a Google Meet now, invites them by email, and opens it beside the Hub">Google Meet now</button>
@@ -179,7 +179,7 @@ export async function meetingPanel(el, lead, intel, { rep = '', voice = 'I' } = 
   el.innerHTML = `<div class="prep prep-meeting">
     <div class="prep-head"><div style="min-width:0"><div class="item-title">Meeting script: the Google clarity audit</div><div class="small">For the booked screen share, never for a cold call.</div></div>
       <div class="row" style="margin-left:auto">
-        ${can(window.__rwUser, 'close') && !lead.test ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
+        ${can(window.__rwUser, 'close') && !lead.test ? `<a class="btn btn-ghost btn-sm" href="/audit.html#${esc(lead.id)}" target="_blank" rel="noopener">Present</a>
         <a class="btn btn-ghost btn-sm" href="/scan.html?lead=${esc(lead.id)}" target="_blank" rel="noopener">Scan tool</a>` : ''}
         <button class="btn btn-ghost btn-sm" data-act="meetnow" title="Starts a Google Meet now, invites them by email, and opens it beside the Hub">Google Meet now</button>
       </div></div>

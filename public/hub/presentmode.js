@@ -136,7 +136,7 @@ function leadFlow(app, leadId, name, pack) {
         <button type="button" class="btn btn-ghost btn-sm" id="pmnotes" title="Your notes, on this computer or on your phone. Never on the shared screen.">My notes</button>
         <button type="button" class="btn btn-ghost btn-sm hide-s" id="pmfull">Full screen</button>
         <button type="button" class="btn btn-primary btn-sm" id="pmexit">Exit</button></div></header>
-    <main class="pm-body is-frame"><iframe class="pm-frame" id="pmdeck" src="/present.html?embed=1#${encodeURIComponent(leadId)}" title="Presentation" allow="fullscreen"></iframe></main></div>`;
+    <main class="pm-body is-frame"><iframe class="pm-frame" id="pmdeck" src="/audit.html?embed=1#${encodeURIComponent(leadId)}" title="Audit report" allow="fullscreen"></iframe></main></div>`;
   try { history.replaceState(null, '', `#/present/lead/${leadId}`); } catch { /* fine */ }
   $('#pmexit').onclick = () => exitPresent();
   $('#pmfull').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); };
@@ -149,10 +149,10 @@ function leadFlow(app, leadId, name, pack) {
 
 // Notes: in a window on this computer (same device), or on a phone (the iPad mirrors everything it shows, so put the notes on your phone).
 function notesModal(leadId) {
-  const url = `${location.origin}/present.html?presenter=1#${encodeURIComponent(leadId)}`;
+  const url = `${location.origin}/audit.html?notes=1#${encodeURIComponent(leadId)}`;
   const m = modal(`<h2>Your notes</h2><p class="muted small">Open this before you share your screen. Presenting from an iPad? Use your phone: an iPad share shows everything on the iPad.</p>
     <div class="row" style="gap:8px;margin:10px 0"><button class="btn btn-primary" id="pmnw">Open notes in a window</button><button class="btn btn-ghost" id="pmnc">Copy the link</button></div>
-    <div class="pm-qr"><b>On your phone</b><span class="small muted">Scan with the camera, log in, and the notes follow the screen. Back and Next on the phone move the presentation.</span>${qrSvg(url, { title: 'Notes link' })}</div>`);
+    <div class="pm-qr"><b>On your phone</b><span class="small muted">Scan with the camera, log in, and the notes follow the report. Tap a section on the phone to scroll the report to it. The work order and payment link are there too.</span>${qrSvg(url, { title: 'Notes link' })}</div>`);
   $('#pmnw').onclick = () => { window.open(url, 'rw-presenter', 'width=1100,height=780'); m.close(); };
   $('#pmnc').onclick = () => copy(url, 'Link copied');
 }

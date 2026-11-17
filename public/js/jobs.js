@@ -29,7 +29,8 @@ export const canRunCalls = (user) => can(user, 'close');
 // Which API paths need which job ability (owners pass everything; clients have their own checks).
 const RULES = [
   [/^\/api\/(clients|tasks|work|content|posts|reports|site|citations|scans|autoscan|guides|time|meetings|gbp|reputation|leader|quarterly|tracked-calls|tracking|access|onboarding|sample-client)(\/|$)/, 'deliver'],
-  [/^\/api\/leads\/[^/]+\/(quote|work-order|payment-link|deep-scan|convert|pack|pack\/send)$/, 'close'],
+  [/^\/api\/leads\/[^/]+\/(quote|work-order|payment-link|deep-scan|convert|pack|pack\/send|deal)$/, 'close'],
+  [/^\/api\/(deals|work-orders)(\/|$)/, 'close'],
 ];
 export function capFor(method, path) {
   for (const [re, cap] of RULES) if (re.test(path)) return cap;

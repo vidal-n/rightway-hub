@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const FILES = ['public/hub.css', 'public/hub5.css'];
+const FILES = ['public/hub.css', 'public/hub5.css', 'public/hub6.css'];
 // Allowed on purpose: small inverted bits whose text token flips with it (tooltip, progress fills).
 const ALLOW = [/\.pc-tip\b/, /\.hbar \.fill/, /\.pin\b/];
 

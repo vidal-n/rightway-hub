@@ -72,7 +72,7 @@ export async function meetPage(app, user) {
       <span class="mono" style="min-width:150px">${esc(new Date(x.start).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }))}</span>
       <b style="flex:1;min-width:0">${esc(x.title)}</b><span class="small">${esc([x.who, x.by].filter(Boolean).join(' · '))}</span>
       ${x.link ? `<button class="btn btn-primary btn-sm" data-join="${esc(x.link)}">Join</button>` : '<span class="small muted">No link yet</span>'}
-      ${x.kind === 'audit' && x.open && can(window.__rwUser, 'close') ? `<a class="btn btn-ghost btn-sm" href="/present.html#${esc(x.id)}" target="_blank" rel="noopener">Present</a>` : ''}</div>`).join('')
+      ${x.kind === 'audit' && x.open && can(window.__rwUser, 'close') ? `<a class="btn btn-ghost btn-sm" href="/audit.html#${esc(x.id)}" target="_blank" rel="noopener">Present</a>` : ''}</div>`).join('')
       : '<p class="small muted" style="margin:0">Nothing booked in the next week.</p>';
     $$('[data-join]', view).forEach((b) => b.addEventListener('click', () => openMeet(b.dataset.join)));
   } catch (e) { $('#mup', view).innerHTML = `<p class="err-text">${esc(e.message)}</p>`; }

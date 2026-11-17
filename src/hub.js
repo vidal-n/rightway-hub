@@ -649,6 +649,7 @@ import './reputation.js';
 import './leader.js';
 import './quarterly.js';
 import './workorders.js';
+import './deals.js';
 import './scope.js';
 import './calls.js';
 import './sms.js';

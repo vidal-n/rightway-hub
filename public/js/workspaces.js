@@ -8,7 +8,7 @@ export const WORKSPACES = [
   ['clients', 'Clients', 'users', [['All clients', '#/clients', 'deliver'], ['Client view', '#/clients/view', 'close']]],
   ['deliver', 'Deliver', 'check', [['My work', '#/work', 'deliver', 'work'], ['Posts to publish', '#/work/posts', 'deliver'], ['Schedule', '#/work/schedule'], ['Hours', '#/work/hours', 'deliver'], ['Guides', '#/work/guides', 'deliver']]],
   ['insights', 'Insights', 'chart', [['Call insights', '#/pipeline/insights'], ['Script tests', '#/pipeline/scripts'], ['Call analytics', '#/agents/analytics'], ['Master sheet', '#/agents/sheet']]],
-  ['money', 'Money', 'money', [['Payments', '#/payments', 'admin'], ['Budget', '#/settings/budget', 'admin']]],
+  ['money', 'Money', 'money', [['Deal desk', '#/deals', 'close'], ['Payments', '#/payments', 'admin'], ['Budget', '#/settings/budget', 'admin']]],
   ['automate', 'Automate', 'spark', [['Workflows', '#/automations/workflows', 'admin'], ['Booking reminders', '#/automations', 'admin'], ['Google', '#/google'], ['Vault', '#/vault', 'admin']]],
   ['settings', 'Settings', 'cog', [['Settings', '#/settings'], ['Agents and roles', '#/settings/team', 'admin'], ['Files', '#/settings/files', 'admin'], ['Bug reports', '#/settings/bugs', 'admin']]],
 ];

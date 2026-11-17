@@ -157,6 +157,7 @@ async function route() {
   if (parts[0] === 'work') return import('./work.js').then((m) => m.workPage(app, u, parts[1] || '', parts[2] || ''));
   if (parts[0] === 'alerts' || parts[0] === 'notifications') return import('./alerts.js').then((m) => m.alertsPage(app, u));
   if (parts[0] === 'payments') return paymentsPage(app, u);
+  if (parts[0] === 'deals') { if (!can(u, 'close')) { location.replace('#/'); return; } return import('./dealdesk.js').then((m) => m.dealDeskPage(app, u, decodeURIComponent(parts[1] || ''))); }
   if (parts[0] === 'mail') return import('./gstate.js').then((g) => g.hasGoogle('mail')).then((gm) => (gm ? import('./mail.js').then((m) => m.mailPage(app, u, parts[1] || '', parts[2] || '')) : import('./hubmail.js').then((m) => m.mailPage(app, u))));
   if (parts[0] === 'files') { location.replace(`#/settings/files${parts[1] ? `/${parts[1]}` : ''}`); return; }
   if (parts[0] === 'google' && parts[1] === 'drive') return import('./gdrive.js').then((m) => m.drivePage(app, u, parts[2] || ''));

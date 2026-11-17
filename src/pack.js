@@ -102,6 +102,10 @@ route('PUT', '/api/present/:id/sync', async ({ env, user, params, body }) => {
   if (int(b.n) != null) v.n = int(b.n);
   if (Number.isFinite(b.t0) && b.t0 > 1e12 && b.t0 <= now() + 6e4 && (!v.t0 || b.reset)) v.t0 = Math.round(b.t0); // when the meeting started
   if (int(b.cmd) != null) { v.cmd = int(b.cmd); v.cseq = (Number(v.cseq) || 0) + 1; }
+  // The scrolling report syncs by section name instead of slide number: k = the section on screen, ck = a section the notes ask it to scroll to.
+  const keyOf = (x) => (typeof x === 'string' && /^[a-z_]{1,20}$/.test(x) ? x : null);
+  if (keyOf(b.k)) { v.k = keyOf(b.k); v.at = now(); }
+  if (keyOf(b.ck)) { v.ck = keyOf(b.ck); v.cseq = (Number(v.cseq) || 0) + 1; }
   await run(env, 'INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', key, JSON.stringify(v));
   return json(v);
 });

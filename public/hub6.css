@@ -1,0 +1,102 @@
+/* ===== Hub v6, professional skin (Nov 2026, V: "the Hub looks gamified or childish, make it modern and professional") =====
+   Loaded after hub5.css. Ideas from the enterprise tools V's team knows (Linear, Stripe Dashboard, HubSpot, Close.com): one calm accent instead of a colour per
+   workspace, flat surfaces with a hairline border, small radii, quiet type (one family, medium weights, no heavy display headings), neutral rail with plain icons,
+   solid primary buttons, no bounce. Dark rules live in the usual prefers-color-scheme blocks, which public/js/theme.js can force on or off. */
+:root {
+  --bg: #F6F7F7; --surface: #FFFFFF; --surface-2: #FAFBFA; --ink: #15201B; --ink-2: #2E3B35; --muted: #5E6B65; --line: #E2E7E4; --line-2: #CFD6D2;
+  --acc: #0A6B4C; --acc-soft: #E8F3EE; --btn: #0A6B4C; --btn-ink: #FFFFFF; --btn-hover: #085A40;
+  --fill: #FFFFFF; --on-fill: #15201B; --sel: #0A6B4C; --on-sel: #FFFFFF;
+  --mint-soft: #EEF5F1; --mint-mid: #DCEBE4;
+  --r: 10px; --shadow: none;
+  --display: 'Instrument Sans', system-ui, sans-serif;
+  --ws-home: var(--acc); --ws-sell: var(--acc); --ws-inbox: var(--acc); --ws-clients: var(--acc); --ws-deliver: var(--acc); --ws-insights: var(--acc); --ws-money: var(--acc); --ws-automate: var(--acc); --ws-settings: var(--acc);
+  --wsc: var(--acc); --wst: var(--acc); --wsl: var(--acc-soft);
+  --rail: #111A16; --rail-ink: #A9B8B1;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0C1210; --surface: #121A17; --surface-2: #161F1B; --ink: #E8EEEB; --ink-2: #C3CFC9; --muted: #8F9E97; --line: #243029; --line-2: #33413A;
+    --acc: #5CD6A8; --acc-soft: rgba(92, 214, 168, .12); --btn: #2FBF8D; --btn-ink: #04140D; --btn-hover: #4BD3A2;
+    --fill: #121A17; --on-fill: #E8EEEB; --sel: #2FBF8D; --on-sel: #04140D;
+    --mint-soft: rgba(92, 214, 168, .08); --mint-mid: rgba(92, 214, 168, .16);
+    --rail: #090F0D; --rail-ink: #94A39C;
+    --ws-home: var(--acc); --ws-sell: var(--acc); --ws-inbox: var(--acc); --ws-clients: var(--acc); --ws-deliver: var(--acc); --ws-insights: var(--acc); --ws-money: var(--acc); --ws-automate: var(--acc); --ws-settings: var(--acc);
+    --wsc: var(--acc); --wst: var(--acc); --wsl: var(--acc-soft);
+  }
+}
+body { font-size: 15px; }
+h1, h2, h3, .hub .main h2 { font-family: var(--display); font-weight: 600; letter-spacing: -.01em; }
+.hub .main .page-head h1 { font: 600 24px/1.25 var(--display); letter-spacing: -.015em; }
+.hub .main h2 { font-size: 18px; } .hub .main h3 { font-size: 15.5px; }
+.stat-num, .tile .stat-num, .ins-tile b, .num, .mono.big { font-weight: 600; letter-spacing: -.01em; }
+.stat-num { font-weight: 600; }
+
+/* Rail: narrow, neutral, plain icons. Active = a lighter tile with a thin accent edge. */
+@media (min-width: 901px) {
+  .hub, body.rail-collapsed .hub { grid-template-columns: 76px minmax(0, 1fr); }
+  .rail nav a.ws-tile { border-radius: 8px; font: 500 11px/1.1 var(--body); padding: 9px 2px 7px; color: var(--rail-ink); }
+  .rail nav a.ws-tile:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+  .rail nav a.ws-tile.is-active, html[data-ws] .rail nav a.ws-tile.is-active { background: rgba(255, 255, 255, .10); color: #fff; box-shadow: inset 2px 0 0 var(--acc); }
+  html[data-ws=money] .rail nav a.ws-tile.is-active, html[data-ws=deliver] .rail nav a.ws-tile.is-active { color: #fff; }
+  .rail nav a.ws-tile .nbadge { background: #D64545; }
+  .rail nav a.ws-tile.is-active .nbadge { background: #D64545; color: #fff; }
+}
+html .rail nav [data-wsg] .ws-tile:not(.is-active) svg, html .rail nav a.ws-tile[data-nav] svg { color: inherit; }
+.rail nav a.ws-tile svg { width: 20px; height: 20px; stroke-width: 1.7; }
+.rail-brand .rb-mark { border-radius: 8px; }
+@media (max-width: 900px) { .rail nav a.ws-tile.is-active { background: rgba(255, 255, 255, .1); } .rail nav a.ws-tile.is-active::before { background: var(--acc); } }
+
+/* Command bar and tabs */
+.hub .cmd { box-shadow: none; border-bottom: 1px solid var(--line); }
+.cmd-title small, .cmd-title[data-ws] small { display: none; }
+.cmd-title b { font: 600 16px var(--display); letter-spacing: -.005em; }
+.cmd-search, .cmd-ico, .stpill { border-radius: 8px; }
+.cmd-search:hover, .cmd-ico:hover { border-color: var(--line-2); }
+.ws-tabs a { font: 500 14px var(--body); padding: 12px 12px 11px; }
+.ws-tabs a.is-active { color: var(--ink); font-weight: 600; }
+.ws-tabs a::after { height: 2px; border-radius: 0; transition: none; }
+.ws-tabs a .nbadge { background: #D64545; }
+.hub .main .tabs a, .hub .main .tabs button { font-weight: 500; }
+.hub .main .tabs a.is-active, .hub .main .tabs button.is-active { font-weight: 600; }
+
+/* Surfaces */
+.hub .main .card, .card { border-radius: var(--r); box-shadow: none; }
+.hub .main .stat { border-radius: 8px; }
+.hub .main .stat[class*="tint-"], .hub .main .card[class*="wc-"] { box-shadow: none; background: var(--surface); }
+.hub .main .stat.hero, .hub .main .tile.hero { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+.stat.hero .stat-num, .hero .stat-num { color: var(--ink); } .stat.hero .stat-label, .hero .stat-label { color: var(--muted); }
+.hub .resume-strip { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; }
+.hub .resume-strip .rs-text b { color: var(--ink); font: 600 14.5px var(--body); }
+.hello h1, .hello .hello-name { font-weight: 600; }
+.hello-av { border-radius: 10px; }
+
+/* Controls */
+.btn { border-radius: 8px; font: 600 14px var(--body); min-height: 38px; padding: 8px 16px; transition: background .12s, border-color .12s; }
+.btn:active { transform: none; }
+.btn-sm { min-height: 32px; padding: 5px 12px; font-size: 13px; border-radius: 7px; }
+.btn-xl { min-height: 52px; border-radius: 10px; font-size: 16px; }
+.btn-ghost { background: var(--surface); border-color: var(--line-2); color: var(--ink); }
+.btn-ghost:hover { background: var(--surface-2); border-color: var(--line-2); }
+.btn-mint { background: var(--acc-soft); color: var(--acc); box-shadow: none; border-color: transparent; }
+.btn-mint:hover:not(:disabled) { background: var(--mint-mid); }
+input, select, textarea { border-radius: 8px; min-height: 38px; padding: 8px 12px; background: var(--surface); }
+textarea { min-height: 90px; }
+input:focus, select:focus, textarea:focus, :focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+.badge { border-radius: 6px; font-weight: 600; }
+.chip, .chips button, .seg, .seg button, .tiers button { border-radius: 8px; }
+.pill, .stpill { border-radius: 8px; }
+.modal { border-radius: 12px; }
+.toast { border-radius: 8px; }
+.col, .board .col { border-radius: 10px; }
+
+/* Calm motion */
+:root { --spring: cubic-bezier(.32, .72, 0, 1); }
+@media (prefers-reduced-motion: no-preference) { .btn, .card, a, button { transition-duration: .12s; } }
+
+/* Dark: sticky bits that hub.css paints with the old accent */
+@media (prefers-color-scheme: dark) {
+  .tabs a.is-active, .seg button.is-on, .tiers button.is-on, .aib, .hello-av, .pbub { background: var(--sel); color: var(--on-sel); }
+}
+.pbub, .hello-av { background: var(--acc-soft); color: var(--acc); border: 1px solid var(--line); font-weight: 600; }
+.pbub.big { background: var(--acc-soft); }
+@media (prefers-color-scheme: dark) { .pbub, .hello-av { background: var(--acc-soft); color: var(--acc); } }
