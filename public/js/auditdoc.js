@@ -158,8 +158,9 @@ export function buildAudit(lead = {}, { intel = null, listings = null, deepScan 
 // Section list for the sticky nav. A section with nothing behind it is left out.
 export function sectionsOf(a) {
   if (!a?.ready) return [];
-  const s = [['summary', 'Summary'], ['scan', 'Map scan'], ['ahead', 'Who is ahead'], ['passing', 'How to pass them'], ['profile', 'Google profile'], ['citations', 'Citations'], ['fixes', 'Exact fixes'], ['plan', 'Game plan'], ['roadmap', '90 days']];
-  return s.filter(([k]) => (k === 'scan' ? a.scans.length : k === 'ahead' || k === 'passing' ? a.competitors.length : k === 'citations' ? true : true));
+  // Order of the page: the scan first, directories right under it, then who is ahead, how to pass them, the profile, fixes, plan, 90 days.
+  const s = [['summary', 'Overview'], ['scan', 'Map scan'], ['citations', 'Citations'], ['ahead', 'Who is ahead'], ['passing', 'How to pass them'], ['profile', 'Google profile'], ['fixes', 'Exact fixes'], ['plan', 'Game plan'], ['roadmap', '90 days']];
+  return s.filter(([k]) => (k === 'ahead' || k === 'passing' ? a.competitors.length : true));
 }
 
 export { whyThey };

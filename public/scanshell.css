@@ -1,7 +1,7 @@
 /* Scan tool shell, Hub v5 look (Nov 2026, V: the scan tool tab does not match the rest of the Hub). Mirrors public/hub5.css: an 88px ink rail of
    workspace tiles, a command bar with the workspace colour strip, an underline tab strip, a flat paper canvas. Built by public/scanshell.js. */
 :root {
-  --bg: #F1F5F3; --card: #FFFFFF; --card-2: #F6F9F7; --line: #D2DCD7; --muted: #4C5D56;
+  --bg: #E3EAE6; --card: #FFFFFF; --card-2: #EDF2EF; --line: #C3CFC8; --muted: #42514A;
   --ws-sell: #E2492F; --wsc: var(--ws-sell); --wst: color-mix(in srgb, var(--wsc) 82%, #000);
   --rail: #0A1411; --rail-ink: #B7C8C0; --spring: cubic-bezier(.32, 1.25, .5, 1);
 }

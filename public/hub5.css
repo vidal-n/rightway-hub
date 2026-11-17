@@ -3,7 +3,7 @@
    one "do this now" signal (Linear's base + accent + contrast idea), numbers in tabular figures, every number explains itself.
    Colour means place: --wsc is the open workspace (set on <html data-ws>). Mint means act now. Red means something is wrong. */
 :root {
-  --bg: #F1F5F3; --surface: #FFFFFF; --surface-2: #F6F9F7; --ink: #0F1B17; --ink-2: #22322C; --muted: #4C5D56; --line: #D2DCD7; --line-2: #B9C7C0;
+  --bg: #E3EAE6; --surface: #FFFFFF; --surface-2: #EDF2EF; --ink: #0E1A15; --ink-2: #26362F; --muted: #42514A; --line: #C3CFC8; --line-2: #A5B5AD;
   --r: 14px; --shadow: 0 1px 0 rgba(15, 27, 23, .04);
   --ws-home: #1E9E70; --ws-sell: #E2492F; --ws-inbox: #2A63E8; --ws-clients: #6E4FE6; --ws-deliver: #E07A0C; --ws-insights: #0B93A6; --ws-money: #B58A00; --ws-automate: #4F625B; --ws-settings: #4F625B;
   --wsc: var(--ws-home);

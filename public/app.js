@@ -236,6 +236,17 @@ async function runBatch(scans) {
   }
   state.batchRunning = false;
   renderKwTabs();
+  // Inside the audit report (embedded, opened from a lead) the finished scan saves itself and the report builds from it.
+  if (state.leadId && document.documentElement.classList.contains('is-embed') && scans.every((x) => x.completedAt)) {
+    try { await saveLeadScans(scans); setStatus($('#r-progress-label'), 'Saved. The report is building...'); } catch (err) { setStatus($('#r-progress-label'), `Could not save: ${err.message}. Press Save.`, true); }
+  }
+}
+
+// One path for saving a finished scan to the lead (the button and the embedded auto save).
+async function saveLeadScans(list) {
+  await hubApi(`/api/leads/${encodeURIComponent(state.leadId)}/deep-scan`, { method: 'POST', body: { scans: list.map((x) => ({ keyword: x.keyword, size: x.size, radius: x.radius, points: x.points })) } });
+  try { new BroadcastChannel(`rw-present-${state.leadId}`).postMessage({ type: 'deep' }); } catch { /* the report also checks when you switch back */ }
+  try { window.parent !== window && window.parent.postMessage({ type: 'rw-scan-saved', lead: state.leadId }, location.origin); } catch { /* not framed */ }
 }
 
 function renderKwTabs() {
@@ -890,8 +901,7 @@ function setupSave(scan) {
       if (list.some((x) => !x.completedAt)) return setStatus($('#r-progress-label'), 'Wait for the scan to finish, then save it.', true);
       btn.disabled = true;
       try {
-        await hubApi(`/api/leads/${encodeURIComponent(state.leadId)}/deep-scan`, { method: 'POST', body: { scans: list.map((x) => ({ keyword: x.keyword, size: x.size, radius: x.radius, points: x.points })) } });
-        try { new BroadcastChannel(`rw-present-${state.leadId}`).postMessage({ type: 'deep' }); } catch { /* the slideshow also checks when you switch back */ }
+        await saveLeadScans(list);
         btn.textContent = document.documentElement.classList.contains('is-embed') ? 'Saved. Back to the presentation...' : 'Saved. Switch back to the slideshow tab.';
       } catch (err) { btn.disabled = false; setStatus($('#r-progress-label'), err.message, true); }
     });
@@ -933,7 +943,7 @@ async function hubSession() {
       const bar = document.createElement('div');
       bar.className = 'leadbar';
       bar.innerHTML = document.documentElement.classList.contains('is-embed')
-        ? `<b>Live scan for ${esc(l.business)}</b><span>Pick the search and radius (up to 50 miles), run it, then press Save. The presentation updates and comes back by itself.</span>`
+        ? `<b>Live scan for ${esc(l.business)}</b><span>Find the business, pick the search and radius (up to 50 miles) and run it. It saves itself and the audit builds underneath.</span>`
         : `<b>Audit scan for ${esc(l.business)}</b><span>Run it, press Save, then switch back to the slideshow tab. The scan slide updates by itself.</span>`;
       document.querySelector('main, .wrap, body').prepend(bar);
       if (intel?.keyword) { $('#scan-keyword').value = [intel.keyword, ...(qs.get('more') || '').split(',').filter(Boolean)].slice(0, MAX_KEYWORDS).join(', '); updateCost(); }
@@ -943,6 +953,7 @@ async function hubSession() {
           url: L.url || l.website || '', domain: '', phone: L.phone || l.phone || '', additional_categories: [], rating: L.rating ?? null, reviews: L.reviews ?? null, claimed: L.claimed ?? null, photos: L.photos ?? null, hours: Boolean(L.hours) });
       } else {
         $('#find-name').value = l.business;
+        $('#find-location').value = [l.city, l.state].filter(Boolean).join(', ');
         setStatus($('#find-status'), `Find ${l.business} on Google, then run the scan.`);
       }
     } catch (err) { setStatus($('#find-status'), err.message, true); }

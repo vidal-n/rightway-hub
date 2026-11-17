@@ -3,11 +3,11 @@
    workspace, flat surfaces with a hairline border, small radii, quiet type (one family, medium weights, no heavy display headings), neutral rail with plain icons,
    solid primary buttons, no bounce. Dark rules live in the usual prefers-color-scheme blocks, which public/js/theme.js can force on or off. */
 :root {
-  --bg: #F6F7F7; --surface: #FFFFFF; --surface-2: #FAFBFA; --ink: #15201B; --ink-2: #2E3B35; --muted: #5E6B65; --line: #E2E7E4; --line-2: #CFD6D2;
-  --acc: #0A6B4C; --acc-soft: #E8F3EE; --btn: #0A6B4C; --btn-ink: #FFFFFF; --btn-hover: #085A40;
+  --bg: #E3EAE6; --surface: #FFFFFF; --surface-2: #EDF2EF; --ink: #0E1A15; --ink-2: #26362F; --muted: #42514A; --line: #C3CFC8; --line-2: #A5B5AD;
+  --acc: #0A6B4C; --acc-soft: #D6EBE1; --btn: #0A6B4C; --btn-ink: #FFFFFF; --btn-hover: #085A40;
   --fill: #FFFFFF; --on-fill: #15201B; --sel: #0A6B4C; --on-sel: #FFFFFF;
-  --mint-soft: #EEF5F1; --mint-mid: #DCEBE4;
-  --r: 10px; --shadow: none;
+  --mint-soft: #E1EDE7; --mint-mid: #C9E0D5;
+  --r: 10px; --shadow: 0 1px 2px rgba(13, 25, 20, .10), 0 8px 20px -12px rgba(13, 25, 20, .24);
   --display: 'Instrument Sans', system-ui, sans-serif;
   --ws-home: var(--acc); --ws-sell: var(--acc); --ws-inbox: var(--acc); --ws-clients: var(--acc); --ws-deliver: var(--acc); --ws-insights: var(--acc); --ws-money: var(--acc); --ws-automate: var(--acc); --ws-settings: var(--acc);
   --wsc: var(--acc); --wst: var(--acc); --wsl: var(--acc-soft);
@@ -19,7 +19,7 @@
     --acc: #5CD6A8; --acc-soft: rgba(92, 214, 168, .12); --btn: #2FBF8D; --btn-ink: #04140D; --btn-hover: #4BD3A2;
     --fill: #121A17; --on-fill: #E8EEEB; --sel: #2FBF8D; --on-sel: #04140D;
     --mint-soft: rgba(92, 214, 168, .08); --mint-mid: rgba(92, 214, 168, .16);
-    --rail: #090F0D; --rail-ink: #94A39C;
+    --rail: #090F0D; --rail-ink: #94A39C; --shadow: none;
     --ws-home: var(--acc); --ws-sell: var(--acc); --ws-inbox: var(--acc); --ws-clients: var(--acc); --ws-deliver: var(--acc); --ws-insights: var(--acc); --ws-money: var(--acc); --ws-automate: var(--acc); --ws-settings: var(--acc);
     --wsc: var(--acc); --wst: var(--acc); --wsl: var(--acc-soft);
   }
@@ -151,3 +151,23 @@ tbody tr, .table tr { border-color: var(--line); }
 .hub .main .btn-mint { background: var(--acc-soft); }
 .rail { background: var(--rail); }
 .rail nav a.ws-tile.is-active, html[data-ws] .rail nav a.ws-tile.is-active { background: rgba(255, 255, 255, .08); }
+
+/* ===== Shaded light mode (Nov 2026, V: light mode looked whitewashed, wants shading and colour with a contrast graded palette, whole Hub) =====
+   The light tokens above are now a tinted canvas (#E3EAE6) under white panels with a visible edge (#C3CFC8) and a soft two part shadow, darker muted text
+   (#42514A, 6.9 to 1 on the canvas) and stronger input borders. Dark mode is untouched: every rule below reads variables, and --shadow is none there.
+   Same palette in public/audit.css, scanshell.css and styles.css so the Hub, the report, the scan tool and the client app match. */
+.hub .main .card, .card, .hub .main .stat, .hub .tbl-wrap, .hub .table-wrap, .hub .main .col, .hub .main .tile { box-shadow: var(--shadow); }
+.hub .main .stat { border-top: 3px solid color-mix(in srgb, var(--acc) 70%, var(--line)); }
+.hub .main .card { border-color: var(--line); }
+.hub .cmd { background: var(--surface); box-shadow: 0 1px 0 var(--line); }
+.hub #wsbar { background: color-mix(in srgb, var(--surface) 70%, var(--bg)); border-bottom: 1px solid var(--line); }
+.hub .main th, .hub .main thead th { background: var(--surface-2); color: var(--muted); }
+.hub .main tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 55%, var(--surface)); }
+.hub .main tbody tr:hover td { background: var(--mint-soft); }
+.hub input:not([type=checkbox]):not([type=radio]), .hub select, .hub textarea, .input { border-color: var(--line-2); background: var(--surface); }
+.hub input:focus, .hub select:focus, .hub textarea:focus { outline: 2px solid var(--acc); outline-offset: 1px; border-color: var(--acc); }
+.hub .btn:not(.btn-primary):not(.btn-mint) { border-color: var(--line-2); }
+.hub .chip, .hub .chips button { border-color: var(--line-2); }
+.hub .chip.on, .hub .chips button.on { background: var(--sel); color: var(--on-sel); border-color: var(--sel); }
+.hub .main .col { background: color-mix(in srgb, var(--surface-2) 75%, var(--bg)); }
+.badge, .hub .badge { border: 1px solid color-mix(in srgb, currentColor 25%, transparent); }

@@ -1,15 +1,15 @@
 :root {
   color-scheme: light dark;
-  --bg: #F4F8F6;
+  --bg: #E3EAE6;
   --card: #FFFFFF;
-  --card-2: #F7FBF9;
-  --ink: #0F1B17;
-  --ink-2: #33433D;
-  --muted: #5E6E68;
-  --line: #DCE6E1;
+  --card-2: #EDF2EF;
+  --ink: #0E1A15;
+  --ink-2: #2B3B34;
+  --muted: #42514A;
+  --line: #C3CFC8;
   --mint: #9DEBCB;
-  --mint-soft: #EAF8F1;
-  --mint-mid: #D6F5E7;
+  --mint-soft: #DDEEE6;
+  --mint-mid: #C5E6D6;
   --mint-strong: #23B07E;
   --accent: #0A6B4C;
   --btn-bg: #0F1B17;
@@ -349,3 +349,7 @@ body.costs-hidden .money { filter: blur(7px); user-select: none; -webkit-user-se
 .sx-cost { margin-left: 8px; cursor: pointer; font-family: inherit; }
 .sx-cost[aria-pressed="true"] { background: var(--mint-soft); border-color: var(--mint-strong); }
 @media (max-width: 760px) { .sx-cost { margin-left: 6px; } }
+
+/* Shaded light mode (Nov 2026): panels sit on the tinted canvas with an edge and a soft shadow. */
+.sx .card, .card { box-shadow: 0 1px 2px rgba(13, 25, 20, .10), 0 8px 20px -12px rgba(13, 25, 20, .24); }
+@media (prefers-color-scheme: dark) { .sx .card, .card { box-shadow: none; } }
