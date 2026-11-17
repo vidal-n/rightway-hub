@@ -892,7 +892,7 @@ function setupSave(scan) {
       try {
         await hubApi(`/api/leads/${encodeURIComponent(state.leadId)}/deep-scan`, { method: 'POST', body: { scans: list.map((x) => ({ keyword: x.keyword, size: x.size, radius: x.radius, points: x.points })) } });
         try { new BroadcastChannel(`rw-present-${state.leadId}`).postMessage({ type: 'deep' }); } catch { /* the slideshow also checks when you switch back */ }
-        btn.textContent = 'Saved. Switch back to the slideshow tab.';
+        btn.textContent = document.documentElement.classList.contains('is-embed') ? 'Saved. Back to the presentation...' : 'Saved. Switch back to the slideshow tab.';
       } catch (err) { btn.disabled = false; setStatus($('#r-progress-label'), err.message, true); }
     });
     return;
@@ -932,7 +932,9 @@ async function hubSession() {
       document.title = `Scan: ${l.business}`;
       const bar = document.createElement('div');
       bar.className = 'leadbar';
-      bar.innerHTML = `<b>Audit scan for ${esc(l.business)}</b><span>Run it, press Save, then switch back to the slideshow tab. The scan slide updates by itself.</span>`;
+      bar.innerHTML = document.documentElement.classList.contains('is-embed')
+        ? `<b>Live scan for ${esc(l.business)}</b><span>Pick the search and radius (up to 50 miles), run it, then press Save. The presentation updates and comes back by itself.</span>`
+        : `<b>Audit scan for ${esc(l.business)}</b><span>Run it, press Save, then switch back to the slideshow tab. The scan slide updates by itself.</span>`;
       document.querySelector('main, .wrap, body').prepend(bar);
       if (intel?.keyword) { $('#scan-keyword').value = [intel.keyword, ...(qs.get('more') || '').split(',').filter(Boolean)].slice(0, MAX_KEYWORDS).join(', '); updateCost(); }
       const L = intel?.listing;

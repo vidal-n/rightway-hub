@@ -1,8 +1,11 @@
-// Present mode: a switch in the top bar. Search the business you are pitching, and the whole screen becomes a clean view built for them:
-// the competitor analysis, the game plan, the slides and the live scan, in one window you can screen share.
+// Present mode: a switch in the top bar. Search the business you are pitching, and the whole screen becomes a clean view built for them.
+// For a lead (the clarity audit) it is ONE straight line, first screen to last, in the order of the pitch (public/js/pitchflow.js, from the
+// research report "Audit meeting pitch framework"): the deck runs here, the live scan opens inside it, and the work order is signed on the call.
+// No tabs to hop between on a shared screen. Modeled on Keynote and Pitch presenting with a presenter remote, and Gong's winning demo order.
 // Nothing internal shows here: no menus, no pipeline, no prices of other deals, no notes, no alerts, no call bar. Your notes open in their own window.
 import { $, $$, esc, api, toast, copy, modal, busy, icon } from './core.js';
 import { packParts } from '/js/packview.js';
+import { qrSvg } from '/js/qr.js';
 
 const FROM = 'rw-present-from';
 
@@ -65,6 +68,7 @@ export async function presentView(app, user, kind, id, tabKey) {
     }
   } catch (e) { app.innerHTML = `<div class="pm"><div class="pm-body"><p>${esc(e.message)}</p><button class="btn btn-ghost" id="pmx">Exit</button></div></div>`; $('#pmx').onclick = () => exitPresent(); return; }
 
+  if (kind === 'lead') return leadFlow(app, id, name, pack);
   const tabs = (kind === 'client' ? TABS_CLIENT : TABS_LEAD).filter(([k]) => (k === 'progress' ? report : true));
   let tab = tabKey && tabs.some(([k]) => k === tabKey) ? tabKey : tabs[0][0];
   const parts = pack?.ready ? packParts(pack) : null;
@@ -121,6 +125,36 @@ export async function presentView(app, user, kind, id, tabKey) {
   $('#pmnotes')?.addEventListener('click', () => window.open(`/#/pipeline/${encodeURIComponent(leadId)}`, 'rw-notes', 'width=520,height=820'));
   $('#pmsend')?.addEventListener('click', () => sendModal(leadId, name));
   show(tab);
+}
+
+// The clarity audit as one flow: the deck (/present.html) fills the window, its own bar does Back and Next, the scan opens inside it.
+function leadFlow(app, leadId, name, pack) {
+  app.innerHTML = `<div class="pm pm-flow">
+    <header class="pm-bar"><picture><source media="(prefers-color-scheme: dark)" srcset="/brand/rightway-logo-dark.svg"><img class="pm-logo" src="/brand/rightway-logo-light.svg" alt="Rightway Growth"></picture><b class="pm-name">${esc(name)}</b>
+      <span class="pm-sp"></span>
+      <div class="pm-actions">${pack?.ready ? '<button type="button" class="btn btn-ghost btn-sm" id="pmsend">Send analysis</button>' : ''}
+        <button type="button" class="btn btn-ghost btn-sm" id="pmnotes" title="Your notes, on this computer or on your phone. Never on the shared screen.">My notes</button>
+        <button type="button" class="btn btn-ghost btn-sm hide-s" id="pmfull">Full screen</button>
+        <button type="button" class="btn btn-primary btn-sm" id="pmexit">Exit</button></div></header>
+    <main class="pm-body is-frame"><iframe class="pm-frame" id="pmdeck" src="/present.html?embed=1#${encodeURIComponent(leadId)}" title="Presentation" allow="fullscreen"></iframe></main></div>`;
+  try { history.replaceState(null, '', `#/present/lead/${leadId}`); } catch { /* fine */ }
+  $('#pmexit').onclick = () => exitPresent();
+  $('#pmfull').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.().catch(() => {}); };
+  $('#pmsend')?.addEventListener('click', () => sendModal(leadId, name));
+  $('#pmnotes').onclick = () => notesModal(leadId);
+  // Keys go to the deck even when the Hub frame has focus.
+  const deck = $('#pmdeck');
+  deck.addEventListener('load', () => { try { deck.contentWindow.focus(); } catch { /* fine */ } });
+}
+
+// Notes: in a window on this computer (same device), or on a phone (the iPad mirrors everything it shows, so put the notes on your phone).
+function notesModal(leadId) {
+  const url = `${location.origin}/present.html?presenter=1#${encodeURIComponent(leadId)}`;
+  const m = modal(`<h2>Your notes</h2><p class="muted small">Open this before you share your screen. Presenting from an iPad? Use your phone: an iPad share shows everything on the iPad.</p>
+    <div class="row" style="gap:8px;margin:10px 0"><button class="btn btn-primary" id="pmnw">Open notes in a window</button><button class="btn btn-ghost" id="pmnc">Copy the link</button></div>
+    <div class="pm-qr"><b>On your phone</b><span class="small muted">Scan with the camera, log in, and the notes follow the screen. Back and Next on the phone move the presentation.</span>${qrSvg(url, { title: 'Notes link' })}</div>`);
+  $('#pmnw').onclick = () => { window.open(url, 'rw-presenter', 'width=1100,height=780'); m.close(); };
+  $('#pmnc').onclick = () => copy(url, 'Link copied');
 }
 
 function sendModal(leadId, name) {

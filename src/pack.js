@@ -79,3 +79,29 @@ route('GET', '/api/present/client/:id', async ({ env, user, params, url }) => {
   const r = await first(env, 'SELECT token FROM reports WHERE client_id = ? ORDER BY month DESC LIMIT 1', c.id);
   return json({ name: c.name, lead_id: l?.id || null, report_link: r ? `${originOf(url, env)}/report.html#${r.token}` : null });
 });
+
+// Present mode notes on a second device (Nov 2026, research: a mirrored iPad share shows everything on the iPad, so the notes must live on
+// a phone or laptop). The deck saves which screen it is on; the presenter view polls it and can send Back and Next (cmd, numbered by cseq).
+// One small row in settings per lead: present:<leadId>. Modeled on the presenter remote in Keynote and Google Slides.
+route('GET', '/api/present/:id/sync', async ({ env, user, params }) => {
+  requireStaff(user);
+  const r = await first(env, 'SELECT v FROM settings WHERE k = ?', `present:${params.id}`);
+  let v = {};
+  try { v = r?.v ? JSON.parse(r.v) : {}; } catch { v = {}; }
+  return json(v);
+});
+route('PUT', '/api/present/:id/sync', async ({ env, user, params, body }) => {
+  requireStaff(user);
+  const b = await body();
+  const key = `present:${params.id}`;
+  const r = await first(env, 'SELECT v FROM settings WHERE k = ?', key);
+  let v = {};
+  try { v = r?.v ? JSON.parse(r.v) : {}; } catch { v = {}; }
+  const int = (x) => (Number.isInteger(x) && x >= 0 && x < 200 ? x : null);
+  if (int(b.i) != null) { v.i = int(b.i); v.at = now(); }
+  if (int(b.n) != null) v.n = int(b.n);
+  if (Number.isFinite(b.t0) && b.t0 > 1e12 && b.t0 <= now() + 6e4 && (!v.t0 || b.reset)) v.t0 = Math.round(b.t0); // when the meeting started
+  if (int(b.cmd) != null) { v.cmd = int(b.cmd); v.cseq = (Number(v.cseq) || 0) + 1; }
+  await run(env, 'INSERT INTO settings (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', key, JSON.stringify(v));
+  return json(v);
+});
