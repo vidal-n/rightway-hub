@@ -3156,3 +3156,32 @@ select.need-pick { outline: 3px solid var(--c-amber, #E07A0C); outline-offset: 2
 .callscript .script-read.doc.paper .d-h { font-size: 12pt; }
 .script-read.doc.paper .script-page[hidden] { display: none; }
 @media (max-width: 600px) { .script-read.doc.paper { padding: 4px 2px; } .script-read.doc.paper p { font-size: 13pt; } }
+
+/* Leaderboard widget (Dialer and Dashboard). Teammates' bookings live here, the Coming up bar is the viewer's own. */
+.lb-chips { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2, var(--card)); }
+.lb-chip { border: 0; background: transparent; color: var(--muted); font: 600 12px var(--font-body, inherit); padding: 5px 10px; border-radius: 7px; cursor: pointer; min-height: 28px; }
+.lb-chip.on { background: var(--sel); color: var(--on-sel); }
+.lb { width: 100%; border-collapse: collapse; font-size: 14px; }
+.lb th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 6px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.lb td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.lb .num { text-align: right; white-space: nowrap; }
+.lb th.num { text-align: right; }
+.lb-who { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.lb-who > span { display: grid; min-width: 0; }
+.lb-who b { overflow-wrap: anywhere; }
+.lb-who em { font-style: normal; font-size: 11px; color: var(--muted); }
+.lb-who em.top { color: var(--accent); }
+.lb tr.me td { background: var(--mint-soft); }
+.lb tr.oth td { color: var(--muted); }
+.lb tfoot td { font-weight: 700; border-bottom: 0; padding-top: 10px; }
+.lb .mav { width: 30px; height: 30px; border-radius: 9px; font-size: 12px; }
+.lb .mav.gray { background: var(--surface-2, var(--line)); color: var(--muted); }
+.lb-note { margin: 8px 0 0; }
+.dlb { margin: 0 0 14px; padding: 12px 16px; min-width: 0; max-width: 100%; box-sizing: border-box; }
+[data-hide~="leaderboard"] [data-sec="leaderboard"] { display: none !important; }
+@media (max-width: 600px) {
+  .lb th:nth-child(5), .lb td:nth-child(5) { display: none; }
+  .lb-who { min-width: 90px; }
+  .lb-who .mav { display: none; }
+  .lb th, .lb td { padding-left: 4px; padding-right: 4px; }
+}

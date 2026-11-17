@@ -302,9 +302,11 @@ route('POST', '/api/leads/:id/meeting', async ({ env, user, params, body, defer 
   return json({ ok: true, meet: after?.meet_link || null, start, closer_id: closerId, google: Boolean(g.google), googleError: gErr, rep: String(closer?.name || user.name || '').split(' ')[0] });
 });
 
-route('GET', '/api/calendar/upcoming', async ({ env, user }) => {
+route('GET', '/api/calendar/upcoming', async ({ env, user, url }) => {
   requireStaff(user);
-  const scope = apptScope(user);
+  // `mine=1` (the dialer's Coming up): only appointments this person booked or runs. Owners normally see every appointment, so without
+  // this their Coming up bar fills with teammates' and online bookings, which now live on the Leaderboard.
+  const scope = url.searchParams.get('mine') ? { sql: ' AND (meet_by = ? OR closer_id = ?)', args: [user.id, user.id] } : apptScope(user);
   const meetings = await all(env, `SELECT id, business, contact_name, phone, timezone, meet_at, meet_link, stage, score, grade, plan FROM leads WHERE meet_at >= ?${scope.sql} ORDER BY meet_at LIMIT 50`, now() - 2 * 3600e3, ...scope.args);
   let events = [];
   const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);

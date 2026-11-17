@@ -657,6 +657,7 @@ import './dispo.js';
 import './payments.js';
 import './googleapps.js';
 import './dashboard.js';
+import './leaderboard.js';
 import './sample.js';
 import './intel.js';
 import './google.js';

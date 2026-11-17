@@ -7,13 +7,14 @@ import { paymentsSnapshot } from './payments.js';
 import { initials } from './shell.js';
 import { avatarHtml, wireAvatars, miniAvatar } from './avatar.js';
 import { mountLayout } from './widgets.js';
+import { mountLeaderboard } from './leaderboard.js';
 import { lineChart, barChart, donut, ring, spark, legend } from '/js/charts.js';
 
 const when = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const hello = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
 const ACT = { call: 'Call', sms: 'Text', stage: 'Update', note: 'Note', payment: 'Payment', meeting: 'Meeting' };
 
-const DASH_ITEMS = [['dials', 'Dials today'], ['talks', 'Owner conversations'], ['booked', 'Audits booked'], ['callable', 'Leads you can call'], ['calls14', 'Calls, last 14 days'], ['goal', 'Today\'s goal'], ['pipeline', 'Pipeline'], ['funnel', 'Conversion funnel'], ['quality', 'Lead quality'], ['hours', 'Best hours to call'], ['meetings', 'Meetings coming up'], ['callbacks', 'Callbacks due'], ['payments', 'Payments'], ['budget', 'Budget and costs'], ['balances', 'Balances'], ['floor', 'Team floor'], ['clients', 'Clients'], ['activity', 'Recent activity']];
+const DASH_ITEMS = [['dials', 'Dials today'], ['talks', 'Owner conversations'], ['booked', 'Audits booked'], ['callable', 'Leads you can call'], ['calls14', 'Calls, last 14 days'], ['goal', 'Today\'s goal'], ['pipeline', 'Pipeline'], ['funnel', 'Conversion funnel'], ['quality', 'Lead quality'], ['hours', 'Best hours to call'], ['meetings', 'Meetings coming up'], ['callbacks', 'Callbacks due'], ['payments', 'Payments'], ['budget', 'Budget and costs'], ['balances', 'Balances'], ['leaderboard', 'Leaderboard'], ['floor', 'Team floor'], ['clients', 'Clients'], ['activity', 'Recent activity']];
 const PIPE = [['new', 'New', 'var(--c-slate)'], ['attempting', 'Attempting', 'var(--c-blue)'], ['callback', 'Callback', 'var(--c-amber)'], ['audit_booked', 'Audit booked', 'var(--c-violet)'], ['follow_up', 'Follow up', 'var(--c-teal)'], ['won', 'Won', 'var(--c-green)']];
 const GRADE = { A: 'var(--c-green)', B: 'var(--c-teal)', C: 'var(--c-amber)', D: 'var(--c-slate)', 'Not scored': 'var(--c-line)' };
 const ACT_TONE = { call: 'k-call', sms: 'k-text', stage: 'k-lead', note: 'k-task', payment: 'k-money', meeting: 'k-meet' };
@@ -81,6 +82,7 @@ export async function homePage(app, user) {
           <div><div class="item-title">${esc(l.business)}</div><div class="item-sub">${esc(l.next_action || STAGE_LABEL[l.stage] || '')}</div></div>${l.grade ? `<span class="badge gray">${esc(l.grade)}</span>` : ''}</li>`).join('')}</ul>`
         : '<p class="muted">Nothing due today. The dialer brings callbacks back at the right time automatically.</p>'}</div>
       ${admin ? '<div class="card w-4 wc-green" id="paysnap" data-wid="payments"><div class="card-head"><h2>Payments</h2></div><div class="skeleton" style="height:70px"></div></div><div class="card w-4 wc-violet" id="budsnap" data-wid="budget"><div class="card-head"><h2>Budget and costs</h2></div><div class="skeleton" style="height:120px"></div></div><div class="card w-4 wc-amber" id="balsnap" data-wid="balances"></div>' : ''}
+      <div class="card w-6 wc-green" id="lbcard" data-wid="leaderboard"><div class="card-head"><h2>Leaderboard</h2></div><div class="skeleton" style="height:90px"></div></div>
       <div class="card w-4 wc-teal" id="floor" data-wid="floor"><div class="card-head"><h2>Team floor</h2><a class="btn btn-ghost btn-sm" href="#/agents">Agents</a></div><div class="skeleton" style="height:70px"></div></div>
       ${can(user, 'deliver') ? `<div class="card w-4 wc-green" data-wid="clients"><div class="card-head"><h2>Clients</h2><a class="btn btn-ghost btn-sm" href="#/clients">Open</a></div>
         <div class="cl-row">${ring(workPct, { size: 104, thick: 12, color: 'var(--c-green)', center: `${workPct}%`, sub: 'work done' })}<div class="cl-nums">${d.clients.mrr != null ? `<div><b class="mono">${fmt.money(d.clients.mrr)}</b><span>monthly revenue</span></div>` : ''}<div><b class="mono">${d.clients.active}</b><span>active clients</span></div><div><b class="mono">${d.orders.signed}</b><span>signed this month</span></div></div></div>
@@ -95,6 +97,7 @@ export async function homePage(app, user) {
   wireAvatars(view);
   // Edit screen: move, resize, remove and add back the dashboard pieces. Saved on the person's account.
   mountLayout(view, { page: 'dashboard', items: DASH_ITEMS.map(([id, label]) => ({ id, label, sel: `.bento > [data-wid="${id}"]`, spans: true })) });
+  mountLeaderboard($('#lbcard', view));
   $('#hgoal', view)?.addEventListener('click', (e) => editGoal(e.currentTarget, DIAL_TARGET, () => homePage(app, user)));
   api('/api/agents').then((r) => {
     const box = $('#floor', view); if (!box) return;

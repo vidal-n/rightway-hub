@@ -10,6 +10,7 @@ import { dialTabs, callerSelect, bindCaller, phoneBadge } from './dialout.js';
 import { loadDispos, keyed, dispositionModal, isoWhen } from './dispo.js';
 import { saveDial } from './resume.js';
 import { mountLayout } from './widgets.js';
+import { mountLeaderboard, bustLeaderboard } from './leaderboard.js';
 import { showCallScript, setScriptOn, scriptOn } from './scriptpane.js';
 import { scriptLabel, scriptSelect, scriptName, scriptText, scriptTag, loadScriptTest, setPicked, pickedScript } from './scriptpick.js';
 import { mountCallSetup, scriptReady, loadList } from './callsetup.js';
@@ -1418,7 +1419,7 @@ export async function dialerPage(app, user) {
   // The dialer only runs the list this person loaded on the Pipeline (Nov 2026, V). Nothing else is ever asked for.
   const qs = 'campaign=1';
   let me, q, cal, nums = { numbers: [] };
-  try { [me, q, cal, nums] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150&since=${new Date().setHours(0, 0, 0, 0)}${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming').catch(() => ({ meetings: [] })), api('/api/dialer/numbers').catch(() => ({ numbers: [] }))]); }
+  try { [me, q, cal, nums] = await Promise.all([api('/api/me'), api(`/api/dialer/queue?limit=150&since=${new Date().setHours(0, 0, 0, 0)}${qs ? `&${qs}` : ''}`), api('/api/calendar/upcoming?mine=1').catch(() => ({ meetings: [] })), api('/api/dialer/numbers').catch(() => ({ numbers: [] }))]); }
   catch (e) { view.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   await refreshDispos();
   if (me.twilio) startPhone().catch(() => {});
@@ -1602,7 +1603,7 @@ export async function dialerPage(app, user) {
   setTimeout(() => api('/api/balances/status').then((b) => { const el = document.getElementById('lowbal'); if (el && b.low?.length) el.innerHTML = `<div class="card" style="border-color:#E8A33D;margin-bottom:12px"><b>${b.low.map((x) => esc(x.name)).join(' and ')} balance ${b.low.some((x) => x.empty) ? 'is empty' : 'is low'}.</b> <span class="small">${b.low.some((x) => x.key === 'twilio') ? 'Calls and texts stop when Twilio runs out. ' : ''}${b.low.some((x) => x.key === 'dataforseo') ? 'Research and scans stop when DataForSEO runs out. ' : ''}An owner can add funds from the Dashboard.</span></div>`; }).catch(() => {}), 50);
   const filterText = Object.entries(flt).filter(([k, v]) => v && !['tier', 'cat', 'db', 'campaign'].includes(k)).map(([k, v]) => (k === 'label' ? (flt.db ? `Lead database search: ${v}` : String(v)) : k === 'stage' ? `Column: ${String(v).split(',').map((x) => STAGE_LABEL[x] || x).join(', ')}` : `${k === 'tz' ? 'Time zone' : k[0].toUpperCase() + k.slice(1)}: ${v}`)).join(' · ');
   const listText = q.campaign ? `${q.campaign.label || `${q.campaign.total} leads`}${q.campaign.at ? `, saved ${new Date(q.campaign.at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}` : 'No list loaded. Load one in the Pipeline.';
-  let lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true };
+  let lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, leaderboard: true, notes: true, links: true };
   let layOpen = false;
   // Click anywhere else, or press Escape, to close the layout menu.
   const shutLay = () => { layOpen = false; const b = document.getElementById('dlaybody'); if (b) b.hidden = true; document.getElementById('dlaybtn')?.setAttribute('aria-expanded', 'false'); };
@@ -1634,13 +1635,14 @@ export async function dialerPage(app, user) {
         <div class="dlayout"><button type="button" class="dl-btn" id="dlaybtn" aria-expanded="${layOpen}" aria-haspopup="true">Customize layout</button>
           <div class="dlayout-body" id="dlaybody" role="group" aria-label="Customize layout"${layOpen ? '' : ' hidden'}>
             <p class="small muted" style="margin:0">Show or hide. Saved for you on this computer.</p>
-            ${[['queue', 'Up next list'], ['prep', 'Script and research'], ['upcoming', 'Coming up appointments'], ['links', 'Map, profile and website buttons'], ['notes', 'Note and callback time'], ['compact', 'Tighter spacing']]
+            ${[['queue', 'Up next list'], ['prep', 'Script and research'], ['upcoming', 'Your appointments'], ['leaderboard', 'Leaderboard'], ['links', 'Map, profile and website buttons'], ['notes', 'Note and callback time'], ['compact', 'Tighter spacing']]
               .map(([k, n]) => `<label><input type="checkbox" data-lay="${k}"${lay[k] ? ' checked' : ''}> ${n}</label>`).join('')}
             <label title="While a call is up, the script for that lead sits next to the call window"><input type="checkbox" id="dcs"${scriptOn() ? ' checked' : ''}> Script beside the call window</label>
             <button type="button" class="btn btn-ghost btn-sm" id="dlayreset">Show everything</button></div></div></div>
       <div id="lowbal"></div>
-      ${upcoming.length ? `<div class="card upcoming" data-sec="upcoming"><b>Coming up</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(bothTimes(m.meet_at, validZone(m.timezone) || yourZone(), yourZone()))} ${esc(m.business)}</span>
+      ${upcoming.length ? `<div class="card upcoming" data-sec="upcoming"><b>Your appointments</b>${upcoming.map((m) => `<span class="badge${m.meet_at < Date.now() + 3600e3 ? ' warn' : ''}">${esc(bothTimes(m.meet_at, validZone(m.timezone) || yourZone(), yourZone()))} ${esc(m.business)}</span>
         ${m.meet_link ? `<a class="small" href="${esc(m.meet_link)}" target="_blank" rel="noopener">Meet</a>` : ''}${can(window.__rwUser, 'close') ? `<a class="small" href="/present.html#${esc(m.id)}" target="_blank" rel="noopener">Present</a>` : ''}`).join('')}</div>` : ''}
+      ${testMode ? '' : '<div class="card dlb" id="lbcard" data-sec="leaderboard"><div class="card-head"><h2>Leaderboard</h2></div><div class="skeleton" style="height:60px"></div></div>'}
       ${needList() ? `<div class="card empty dial-gate"><h3>Load a list from the Pipeline first</h3><p>The dialer only runs the list you load in the Pipeline. Pick who to call and the script for today there, then come back here and press Start power dial.</p><a class="btn btn-mint btn-xl" href="#/pipeline">Go to the Pipeline</a></div>` : !l && testMode ? testSummaryHtml(testLog) : !l ? `<div class="card empty"><h3>Queue clear</h3><p>No one is due right now inside 8am to 8pm their time${filterText ? ' for this filter' : ''}. Import leads or check back later.</p><div class="row" style="justify-content:center;gap:8px"><a class="btn btn-primary" href="#/pipeline">Go to pipeline</a>${q.campaign ? '<button type="button" class="btn btn-ghost" id="dclose">Close out this campaign</button>' : ''}</div></div>` : `
       <div class="dial-grid${lay.queue ? '' : ' no-queue'}${lay.prep ? '' : ' no-prep'}${lay.compact ? ' tight' : ''}">
         <aside class="dial-queue card" aria-label="Up next"><div class="card-head"><h3>Up next</h3><span class="small muted">${Math.max(0, q.queue.length - idx - 1)} after this</span></div>
@@ -1687,7 +1689,7 @@ export async function dialerPage(app, user) {
       g.classList.toggle('lw-cols', custom);
       if (custom) g.style.setProperty('--dg-cols', shown.length ? shown.map((id) => COLS[id]).join(' ') : '1fr'); else g.style.removeProperty('--dg-cols');
     }, items: [
-      ['setup', 'Today\'s list and script', '.dsetup'], ['strip', 'Today: dials and goal', '.dstrip'], ['upcoming', 'Coming up', '.upcoming'],
+      ['setup', 'Today\'s list and script', '.dsetup'], ['strip', 'Today: dials and goal', '.dstrip'], ['upcoming', 'Your appointments', '.upcoming'], ['leaderboard', 'Leaderboard', '.dlb'],
       ['queue', 'Up next', '.dial-grid > .dial-queue'], ['lead', 'Call card', '.dial-grid > .dial-left'], ['prep', 'Script and research', '.dial-grid > .dial-prep'],
       ['callcard', 'Who to call', '.dial-left > .dial-card'], ['actions', 'Skip and book', '.dial-left > .dial-after'],
       ['p-script', 'Script', '.dial-prep details.fold[data-fold="script"]'], ['p-snapshot', 'Their numbers', '.dial-prep details.fold[data-fold="snapshot"]'],
@@ -1698,7 +1700,7 @@ export async function dialerPage(app, user) {
     $$('[data-jump]', view).forEach((b) => b.addEventListener('click', () => { if (busyPhase()) return toast('Finish this call and save the result first.', true); idx = Number(b.dataset.jump); render(); }));
     // Customize layout: tick boxes change the page in place (no redraw), so the menu stays open while you choose.
     const applyLay = () => {
-      view.dataset.hide = ['tiers', 'cats', 'upcoming', 'links', 'notes'].filter((k) => !lay[k]).join(' ');
+      view.dataset.hide = ['tiers', 'cats', 'upcoming', 'leaderboard', 'links', 'notes'].filter((k) => !lay[k]).join(' ');
       const g = $('.dial-grid', view);
       if (g) { g.classList.toggle('no-queue', !lay.queue); g.classList.toggle('no-prep', !lay.prep); g.classList.toggle('tight', Boolean(lay.compact)); }
     };
@@ -1707,9 +1709,10 @@ export async function dialerPage(app, user) {
     $('#dlaybtn', view)?.addEventListener('click', (e) => { e.stopPropagation(); openLay(!layOpen); });
     $$('[data-lay]', view).forEach((c) => c.addEventListener('change', () => { lay[c.dataset.lay] = c.checked; saveLay(); applyLay(); }));
     $('#dcs', view)?.addEventListener('change', (e) => setScriptOn(e.target.checked));
-    $('#dlayreset', view)?.addEventListener('click', () => { lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, notes: true, links: true }; saveLay(); applyLay(); $$('[data-lay]', view).forEach((c) => { c.checked = Boolean(lay[c.dataset.lay]); }); });
+    $('#dlayreset', view)?.addEventListener('click', () => { lay = { queue: true, prep: true, compact: false, tiers: true, cats: true, upcoming: true, leaderboard: true, notes: true, links: true }; saveLay(); applyLay(); $$('[data-lay]', view).forEach((c) => { c.checked = Boolean(lay[c.dataset.lay]); }); });
     $('#dgoal', view)?.addEventListener('click', (e) => editGoal(e.currentTarget, q.stats.goal || 60, (g) => { q.stats.goal = g; render(); }));
     applyLay();
+    mountLeaderboard($('#lbcard', view));
     offDialHover?.();
     offDialHover = hoverCards(view, { selector: '[data-jump]', build: (el) => leadHover(q.queue[Number(el.dataset.jump)]) });
     $('#dauto', view)?.addEventListener('change', (e) => { auto = e.target.checked; try { localStorage.setItem('rw-dial-auto2', auto ? '1' : '0'); } catch { /* ignore */ } if (auto) { intelCache.delete(q.queue[idx]?.id); prefetch(q.queue[idx]); } });
@@ -1825,7 +1828,7 @@ export async function dialerPage(app, user) {
       const booked = acts === 'booked';
       testLog.push({ id: l?.id, label: dd.label || outcome, talk, booked, score: testScore.get(l?.id) ?? null });
       testHit(l, `Result: ${dd.label || outcome}`);
-      q.stats.dials++; if (talk) q.stats.talks++; if (booked) q.stats.booked++;
+      q.stats.dials++; if (talk) q.stats.talks++; if (booked) { q.stats.booked++; bustLeaderboard(); }
       toast(`Test result: ${dd.label || outcome}. Nothing was saved.`);
       return advance();
     }
@@ -1845,7 +1848,7 @@ export async function dialerPage(app, user) {
     bookedDuring.delete(l.id);
     q.stats.dials++;
     if (['conversation', 'booked', 'callback', 'not_interested'].includes(acts)) q.stats.talks++;
-    if (acts === 'booked') { q.stats.booked++; toast('Audit booked'); }
+    if (acts === 'booked') { q.stats.booked++; bustLeaderboard(); toast('Audit booked'); }
     advance();
   };
   // Training, Warm up starts the pretend dialer straight away.
