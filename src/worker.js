@@ -13,7 +13,7 @@ import { autoScanTick } from './autoscan.js';
 import { auditTick, enqueueDueAudits } from './siteaudit.js';
 import { reviewTick } from './reputation.js';
 import { ensureMonthTasks } from './work.js';
-import { digestTick, meetingReminders } from './notify.js';
+import { digestTick, meetingReminders, callbackReminders } from './notify.js';
 import { ensureClientChats } from './chat.js';
 import { socialAutoTick } from './socialauto.js';
 import { automationTick } from './automations.js';
@@ -54,6 +54,7 @@ export default {
       await ensureMonthTasks(env).catch((e) => console.error('task engine', e));
       await digestTick(env).catch((e) => console.error('digest', e));
       await meetingReminders(env).catch((e) => console.error('meeting reminders', e));
+      await callbackReminders(env).catch((e) => console.error('callback reminders', e));
       await costTick(env).catch((e) => console.error('budget check', e));
       // Lead invites for bookings made without one, then the shared team calendar kept in step with the Hub (a few Google calls each run).
       if (used < 35) await inviteTick(env, 2).catch((e) => console.error('invites', e));

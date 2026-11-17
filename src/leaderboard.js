@@ -7,7 +7,7 @@ import { json } from './util.js';
 import { all, first } from './db.js';
 import { requireStaff } from './auth.js';
 import { route } from './router.js';
-import { BOOKED_SQL } from './crm.js';
+import { BOOKED_SQL, CALLBACK_SQL } from './crm.js';
 import { dayFrom } from './day.js';
 
 export const PERIODS = [1, 7, 30];
@@ -20,7 +20,7 @@ route('GET', '/api/leaderboard', async ({ env, user, url }) => {
   const from = today - (days - 1) * 864e5;
   const [people, rows, appts, handed] = await Promise.all([
     all(env, "SELECT id, name, email, role, avatar_at FROM users WHERE role IN ('admin','team') ORDER BY name"),
-    all(env, `SELECT by, SUM(type = 'call' AND COALESCE(outcome, '') != 'glitch') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked
+    all(env, `SELECT by, SUM(type = 'call' AND COALESCE(outcome, '') != 'glitch') AS dials, SUM(type = 'call' AND outcome IN ('conversation','booked','callback','not_interested','won')) AS talks, SUM(${BOOKED_SQL}) AS booked, SUM(${CALLBACK_SQL}) AS callbacks
       FROM activities WHERE type IN ('call','meeting') AND at >= ? AND at <= ? GROUP BY by`, from, t),
     // Who runs each upcoming appointment: the closer, else the person who booked it. No one = an online booking nobody has claimed.
     all(env, 'SELECT COALESCE(closer_id, meet_by) AS who, COUNT(*) AS n FROM leads WHERE meet_at > ? GROUP BY COALESCE(closer_id, meet_by)', t - 3600e3),
@@ -33,7 +33,7 @@ route('GET', '/api/leaderboard', async ({ env, user, url }) => {
   const agents = people.map((p) => {
     const r = by.get(p.id) || {};
     const dials = r.dials || 0, talks = r.talks || 0, booked = r.booked || 0;
-    return { id: p.id, name: p.name || p.email, role: p.role, avatar: p.avatar_at || null, dials, talks, booked, rate: rate(booked, talks), upcoming: run.get(p.id) || 0 };
+    return { id: p.id, name: p.name || p.email, role: p.role, avatar: p.avatar_at || null, dials, talks, booked, callbacks: r.callbacks || 0, rate: rate(booked, talks), upcoming: run.get(p.id) || 0 };
   });
   // Everything booked or run by nobody on the team: online bookings, deleted users, old rows.
   let otherBooked = 0, otherUpcoming = 0;
@@ -42,11 +42,14 @@ route('GET', '/api/leaderboard', async ({ env, user, url }) => {
   agents.sort((a, b) => b.booked - a.booked || (b.rate ?? -1) - (a.rate ?? -1) || b.talks - a.talks || b.dials - a.dials || String(a.name).localeCompare(String(b.name)));
   const sum = (k) => agents.reduce((s, a) => s + a[k], 0);
   const talks = sum('talks'), booked = sum('booked');
+  // Callbacks: the rep's own, set on a call. Booked audits stay separate (a callback is not a booking).
+  let otherCallbacks = 0;
+  for (const [k, r] of by) if (!ids.has(k)) otherCallbacks += r.callbacks || 0;
   return json({
     days, from, agents,
-    other: { booked: otherBooked, upcoming: otherUpcoming },
+    other: { booked: otherBooked, upcoming: otherUpcoming, callbacks: otherCallbacks },
     handedOff: handed?.n || 0,
-    team: { dials: sum('dials'), talks, booked, rate: rate(booked, talks) },
+    team: { dials: sum('dials'), talks, booked, callbacks: sum('callbacks'), rate: rate(booked, talks) },
     me: user.id,
   });
 });

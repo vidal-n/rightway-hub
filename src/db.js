@@ -234,6 +234,8 @@ const SCHEMA = [
   `CREATE TRIGGER IF NOT EXISTS reach_sync_ins AFTER INSERT ON lead_reach BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
   `CREATE TRIGGER IF NOT EXISTS reach_sync_upd AFTER UPDATE ON lead_reach BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
   `CREATE TABLE IF NOT EXISTS lead_hours (lead_id TEXT PRIMARY KEY, hours TEXT, src TEXT, status TEXT, at INTEGER)`,
+  // Callback reminders (Nov 2026, V): one row per lead and callback time, so each callback reminds its setter once.
+  `CREATE TABLE IF NOT EXISTS callback_reminders (lead_id TEXT NOT NULL, due_at INTEGER NOT NULL, sent_at INTEGER, PRIMARY KEY (lead_id, due_at))`,
   `CREATE TRIGGER IF NOT EXISTS hours_sync_ins AFTER INSERT ON lead_hours BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
   `CREATE TRIGGER IF NOT EXISTS hours_sync_upd AFTER UPDATE ON lead_hours BEGIN INSERT INTO lead_sync (lead_id, at) VALUES (NEW.lead_id, CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)) ON CONFLICT(lead_id) DO UPDATE SET at = excluded.at; END`,
 ];

@@ -20,16 +20,18 @@ test('dialer and dashboard count a booked callback and a booked audit', async ()
   const b = (await call('POST', '/api/leads', { business: 'Audit Co', phone: '3055550402', city: 'Miami', state: 'FL' })).data.lead.id;
   assert.equal((await call('GET', '/api/dialer/queue')).data.stats.booked, 0);
 
-  // A callback booked on a call.
+  // A callback set on a call is a callback, not a booked audit (Nov 2026, V).
   const cbAt = Date.now() + 86400e3;
   assert.equal((await call('POST', `/api/leads/${a}/outcome`, { dispo: 'callback', callbackAt: cbAt })).status, 200);
-  assert.equal((await call('GET', '/api/dialer/queue')).data.stats.booked, 1);
+  assert.equal((await call('GET', '/api/dialer/queue')).data.stats.booked, 0);
+  assert.equal((await call('GET', '/api/leaderboard?days=1')).data.team.callbacks, 1);
 
   // An audit booked from the lead (the meeting route), which logs a meeting activity rather than a call outcome.
   const when = new Date(Date.now() + 2 * 86400e3); when.setHours(15, 0, 0, 0);
   const m = await call('POST', `/api/leads/${b}/meeting`, { start: when.toISOString(), minutes: 30 });
   assert.ok(m.status < 300, JSON.stringify(m.data));
-  assert.equal((await call('GET', '/api/dialer/queue')).data.stats.booked, 2);
-  assert.equal((await call('GET', '/api/dashboard')).data.me.booked, 2);
-  assert.equal((await call('GET', '/api/dashboard')).data.week.booked, 2);
+  assert.equal((await call('GET', '/api/dialer/queue')).data.stats.booked, 1);
+  assert.equal((await call('GET', '/api/dashboard')).data.me.booked, 1);
+  assert.equal((await call('GET', '/api/dashboard')).data.week.booked, 1);
+  assert.equal((await call('GET', '/api/leaderboard?days=1')).data.team.booked, 1);
 });

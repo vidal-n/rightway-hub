@@ -39,7 +39,7 @@ test('leaderboard splits the team, keeps online bookings apart, and Coming up is
   const v = lb.agents.find((x) => x.id === me), k = lb.agents.find((x) => x.id === 'u_k');
   assert.deepEqual([v.dials, v.talks, v.booked, v.rate, v.upcoming], [4, 2, 1, 50, 1]);
   assert.deepEqual([k.dials, k.talks, k.booked, k.rate, k.upcoming], [4, 3, 1, 33.3, 1]);
-  assert.deepEqual(lb.other, { booked: 1, upcoming: 1 });
+  assert.deepEqual(lb.other, { booked: 1, upcoming: 1, callbacks: 0 });
   assert.equal(lb.team.booked, 2, 'online bookings are not credited to the team');
   assert.equal(lb.team.rate, 40);
   assert.equal(lb.agents[0].id, me, 'same booked, higher booked per talk first');

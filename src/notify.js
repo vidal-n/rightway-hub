@@ -12,7 +12,7 @@ import { chatNote } from './chat.js';
 export const KINDS = {
   call: 'Incoming calls', voicemail: 'Voicemails and missed calls', text: 'Texts', task: 'Tasks assigned to me and due today',
   client: 'Client updates (approvals, uploads, intake, report views)', lead: 'New leads and bookings', money: 'Payments and new clients', meeting: 'Meeting reminders',
-  slack: 'Slack direct messages and mentions',
+  slack: 'Slack direct messages and mentions', callback: 'Callbacks you set, when they are due',
 };
 export const CLIENT_KINDS = { update: 'Reports, things to approve, and meetings' };
 
@@ -166,6 +166,27 @@ export async function meetingReminders(env, t = now()) {
     await notify(env, { to: who, kind: 'meeting', title: `${m.client_name} meeting in ${mins} min`, body: m.meet_link ? 'Tap to open the meeting page. The Meet link is there.' : m.title, url: `/#/client/${m.client_id}/meetings`, tag: `meet-${m.id}`, urgent: true, slack: false });
   }
   return rows.length;
+}
+
+// Callbacks (Nov 2026, V: remind the person who set a callback so it gets called back). Runs each minute from the cron.
+// Fires from 5 minutes before the callback time, and for up to 24 hours after it if nobody has called yet.
+// The setter is the teammate who logged the callback result (src/callrules.js gives callbacks to them); owners are the fallback.
+export async function callbackReminders(env, t = now()) {
+  const rows = await all(env, `SELECT l.id, l.business, l.owner_id, l.next_action_at AS due FROM leads l
+    WHERE l.stage = 'callback' AND l.next_action_at IS NOT NULL AND l.next_action_at <= ? AND l.next_action_at > ?
+    AND NOT EXISTS (SELECT 1 FROM callback_reminders r WHERE r.lead_id = l.id AND r.due_at = l.next_action_at)
+    ORDER BY l.next_action_at LIMIT 50`, t + 5 * 60e3, t - 24 * 3600e3).catch(() => []);
+  let sent = 0;
+  for (const l of rows) {
+    const setter = await first(env, "SELECT by FROM activities WHERE lead_id = ? AND outcome = 'callback' AND by IS NOT NULL ORDER BY at DESC LIMIT 1", l.id).catch(() => null);
+    const who = setter?.by || l.owner_id || null;
+    await run(env, 'INSERT OR IGNORE INTO callback_reminders (lead_id, due_at, sent_at) VALUES (?, ?, ?)', l.id, l.due, t);
+    const when = new Date(l.due).toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+    const to = who ? [who] : 'admins';
+    await notify(env, { to, kind: 'callback', title: `Callback due: ${String(l.business || 'lead').slice(0, 100)}`, body: `You set this callback for ${when} Eastern. Tap to open the lead and call back.`, url: `/#/pipeline/${l.id}`, tag: `cb-${l.id}-${l.due}`, urgent: true, slack: false });
+    sent += 1;
+  }
+  return sent;
 }
 
 // ---------- routes ----------

@@ -23,9 +23,12 @@ import { packHours, parseAny } from '../public/js/hours.js';
 import { resolveZone, canCallNow, callBlock as hoursBlock, stateRuleText, stateFromName, ZONE_SHORT } from '../public/js/timezone.js';
 import { suppress, suppressMany, suppressedMap, noteHits, noteOutcome, entryFor, blockedKeys, leadBlocked, blockedFor, blockedPhone, blockText } from './suppress.js';
 
-// A booking, however it was made: a call that ended in booked or a callback, or an audit booked from the lead, the booking page or the calendar.
+// A booked audit, however it was made: a call that ended in booked, or an audit booked from the lead, the booking page or the calendar.
+// A callback is NOT a booking (Nov 2026, V): it is counted on its own with CALLBACK_SQL and reminded when due.
 // Moved audits do not count again. Used by the dialer strip, the dashboard and the analytics.
-export const BOOKED_SQL = "CASE WHEN outcome IN ('booked','callback') OR (type = 'meeting' AND (body LIKE 'Audit booked for%' OR body LIKE 'Booked online%')) THEN 1 ELSE 0 END";
+export const BOOKED_SQL = "CASE WHEN outcome = 'booked' OR (type = 'meeting' AND (body LIKE 'Audit booked for%' OR body LIKE 'Booked online%')) THEN 1 ELSE 0 END";
+// A callback the rep set on a call (Nov 2026, V: callbacks count as callbacks, booked audits as booked audits).
+export const CALLBACK_SQL = "CASE WHEN outcome = 'callback' THEN 1 ELSE 0 END";
 export const STAGES = ['new', 'attempting', 'callback', 'audit_requested', 'audit_booked', 'no_show', 'follow_up', 'won', 'not_now', 'lost', 'dnc'];
 const CALLABLE = ['new', 'attempting', 'callback', 'audit_requested', 'no_show', 'follow_up', 'not_now'];
 const DAY = 864e5;
