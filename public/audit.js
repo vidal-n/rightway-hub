@@ -469,7 +469,7 @@ function notesView() {
   const secs = [...sectionsOf(A), ['proposal', 'Proposal']];
   const script = buildScript(D.lead, D.intel, { rep: D.rep, voice: D.voice, plan: 'growth', ticket: S.ticket || 500, quote: quoteFor(D.lead, D.intel, D.lead.quote) }, D.custom);
   const ref = quoteFor(D.lead, D.intel, D.lead.quote).ref;
-  const say = (k) => (STEPS[k] || []).map((sid) => (script.steps.find((x) => x.id === sid)?.lines || []).map(unbold).join('\n\n')).filter(Boolean).join('\n\n— — —\n\n');
+  const say = (k) => (STEPS[k] || []).map((sid) => (script.steps.find((x) => x.id === sid)?.lines || []).map(unbold).join('\n\n')).filter(Boolean).join('\n\n* * *\n\n');
   const draw = () => {
     root.innerHTML = `<div class="nt"><h1>${esc(D.lead.business)}: your notes</h1><p class="muted small">Never on the shared screen. Tap a section to scroll the report to it.</p>
       <div class="go">${secs.map(([k, l]) => `<button type="button" data-go="${k}" class="${S.sec === k ? 'on' : ''}">${esc(l)}</button>`).join('')}</div>
