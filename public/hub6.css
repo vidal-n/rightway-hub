@@ -54,7 +54,7 @@ html .rail nav [data-wsg] .ws-tile:not(.is-active) svg, html .rail nav a.ws-tile
 .cmd-search:hover, .cmd-ico:hover { border-color: var(--line-2); }
 .ws-tabs a { font: 500 14px var(--body); padding: 12px 12px 11px; }
 .ws-tabs a.is-active { color: var(--ink); font-weight: 600; }
-.ws-tabs a::after { height: 2px; border-radius: 0; transition: none; }
+.ws-tabs a::after { height: 2px; border-radius: 0; }
 .ws-tabs a .nbadge { background: #D64545; }
 .hub .main .tabs a, .hub .main .tabs button { font-weight: 500; }
 .hub .main .tabs a.is-active, .hub .main .tabs button.is-active { font-weight: 600; }
@@ -72,7 +72,6 @@ html .rail nav [data-wsg] .ws-tile:not(.is-active) svg, html .rail nav a.ws-tile
 
 /* Controls */
 .btn { border-radius: 8px; font: 600 14px var(--body); min-height: 38px; padding: 8px 16px; transition: background .12s, border-color .12s; }
-.btn:active { transform: none; }
 .btn-sm { min-height: 32px; padding: 5px 12px; font-size: 13px; border-radius: 7px; }
 .btn-xl { min-height: 52px; border-radius: 10px; font-size: 16px; }
 .btn-ghost { background: var(--surface); border-color: var(--line-2); color: var(--ink); }
@@ -89,9 +88,6 @@ input:focus, select:focus, textarea:focus, :focus-visible { outline: 2px solid v
 .toast { border-radius: 8px; }
 .col, .board .col { border-radius: 10px; }
 
-/* Calm motion */
-:root { --spring: cubic-bezier(.32, .72, 0, 1); }
-@media (prefers-reduced-motion: no-preference) { .btn, .card, a, button { transition-duration: .12s; } }
 
 /* Dark: sticky bits that hub.css paints with the old accent */
 @media (prefers-color-scheme: dark) {
@@ -100,3 +96,58 @@ input:focus, select:focus, textarea:focus, :focus-visible { outline: 2px solid v
 .pbub, .hello-av { background: var(--acc-soft); color: var(--acc); border: 1px solid var(--line); font-weight: 600; }
 .pbub.big { background: var(--acc-soft); }
 @media (prefers-color-scheme: dark) { .pbub, .hello-av { background: var(--acc-soft); color: var(--acc); } }
+
+
+/* ===== Easy on the eyes (Nov 2026, V: keep every animation and sound, make it modern, calm, not overwhelming or cluttered) =====
+   Less color, fewer borders, quieter helpers, more air. Nothing is removed: info dots, quick links, the Ask Claude button and the list strip all still work,
+   they just stay quiet until you need them. Modeled on the restraint in Linear, Stripe Dashboard and Notion. */
+:root { --gap: 18px; --pad: 20px; }
+.bento { gap: var(--gap); }
+.hub .main .card, .card { padding: var(--pad); border-color: var(--line); }
+.hub .main .stat { padding: 18px 20px; }
+.hub .main { --section-gap: 22px; }
+
+/* One colour only: no rainbow dots, tops or tints */
+.card[class*="wc-"] { border-top: 1px solid var(--line); }
+.card[class*="wc-"] .card-head h2::before { display: none; }
+.stat[class*="tint-"] { background: var(--surface); border-color: var(--line); }
+.stat[class*="tint-"] .stat-num { color: var(--ink); }
+.stat::after { display: none; }
+.tile-spark { opacity: .55; }
+.col { border-top: 2px solid color-mix(in srgb, var(--sc, var(--line-2)) 55%, var(--line)); }
+
+/* Helpers stay quiet until hovered */
+.xi { opacity: 0; transition: opacity .15s; border-color: transparent; background: transparent; }
+.stat:hover .xi, .card:hover .xi, .xi:focus-visible, .xi[aria-expanded="true"], label:hover .xi, th:hover .xi { opacity: .75; }
+@media (hover: none) { .xi { opacity: .45; } }
+.qb-chip { border-color: transparent; background: transparent; color: var(--muted); font-weight: 500; padding: 5px 9px; }
+.qb-chip:hover { background: var(--mint-soft); color: var(--ink); }
+.cmd-ico, .cmd-search, .stpill { border-color: transparent; background: transparent; }
+.cmd-search { background: var(--surface-2); }
+.cmd-ico:hover, .stpill:hover { background: var(--surface-2); border-color: var(--line); }
+.hub .cmd { gap: 6px; }
+
+/* Ask Claude: a small round button instead of a big black block */
+.aib { width: 42px; height: 42px; border-radius: 50%; background: var(--surface); color: var(--acc); border: 1px solid var(--line-2); box-shadow: 0 4px 16px rgba(10, 30, 22, .12); }
+.aib svg { width: 20px; height: 20px; }
+@media (prefers-color-scheme: dark) { .aib { background: var(--surface-2); color: var(--acc); } }
+@media (max-width: 900px) { .aib { width: 42px; height: 42px; } }
+
+/* The "load a list" strip: one slim line */
+.hub .resume-strip { background: transparent; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 8px 4px; margin: 0 0 6px; }
+.hub .resume-strip .rs-text { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.hub .resume-strip .rs-text b { font: 600 13.5px var(--body); }
+.hub .resume-strip .rs-text span { color: var(--muted); font-size: 13px; }
+.hub .resume-strip .btn-primary { background: transparent; color: var(--acc); border: 1px solid var(--line-2); box-shadow: none; }
+.hub .resume-strip .btn-primary:hover { background: var(--acc-soft); }
+
+/* Type and lines: lighter, more space */
+.hub .main .tabs { gap: 4px; }
+.hub .main h2 { font-weight: 600; }
+.hub .main .stat-label, .hub .main .muted, .hub .main .small { color: var(--muted); }
+th { font: 600 11.5px var(--body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+tbody tr, .table tr { border-color: var(--line); }
+.hub .main .btn-ghost { border-color: var(--line); }
+.hub .main .btn-mint { background: var(--acc-soft); }
+.rail { background: var(--rail); }
+.rail nav a.ws-tile.is-active, html[data-ws] .rail nav a.ws-tile.is-active { background: rgba(255, 255, 255, .08); }
