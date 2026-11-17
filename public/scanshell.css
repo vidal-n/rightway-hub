@@ -87,3 +87,7 @@ body { background-color: var(--bg); background-image: none; }
    (notes window, present.html?presenter=1) is a separate page and is not touched. */
 html.is-embed .sx { grid-template-columns: minmax(0, 1fr); }
 html.is-embed .sx-rail, html.is-embed .sx-cmd, html.is-embed .sx-wsbar, html.is-embed .foot { display: none !important; }
+
+/* Embedded in the audit report: no viewport based heights, the frame is sized from the content (public/embedsize.js). */
+html.is-embed, html.is-embed body { height: auto; overflow-y: hidden; }
+html.is-embed .sx { min-height: 0; }

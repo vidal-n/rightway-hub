@@ -170,6 +170,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
   box-shadow: 0 18px 50px rgba(6, 14, 11, .22); animation: cmpIn .22s var(--sheet) both; }
 .cmp-on.cmp-open > * { width: 100%; justify-content: space-between; text-align: left; border-radius: 8px !important; margin: 0 !important; }
 .cmp-on.cmp-open > span.small, .cmp-on.cmp-open > .small { padding: 6px 8px 4px; }
+/* Menu rows are plain list rows, not a stack of bordered buttons (Nov 2026, V: the call lists dropdown looked messy). */
+.cmp-on.cmp-open > button, .cmp-on.cmp-open > a, .cmp-on.cmp-open > label { border-color: transparent !important; background: transparent !important; box-shadow: none !important; min-height: 38px; padding: 0 10px !important; justify-content: flex-start !important; font-weight: 550; }
+.cmp-on.cmp-open > button:hover, .cmp-on.cmp-open > a:hover { background: var(--surface-2) !important; }
+.cmp-on.cmp-open > .on, .cmp-on.cmp-open > .is-on, .cmp-on.cmp-open > [aria-pressed=true] { background: color-mix(in srgb, var(--wsc) 14%, transparent) !important; color: var(--wst) !important; }
 @keyframes cmpIn { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
 
 /* ---------- Metric explainers (public/hub/explain.js) ---------- */
@@ -335,7 +339,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
 .wfb-name:hover, .wfb-name:focus { border-color: var(--line-2); background: var(--surface); }
 .wfb-on { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; }
 .wfb-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
-.wfb-pal, .wfb-side { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; position: sticky; top: 0; max-height: calc(100dvh - 210px); overflow-y: auto; }
+.wfb-pal, .wfb-side { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; align-self: start; }
 .wfb-cap { font-size: 12.5px; color: var(--muted); margin: 0 0 8px; }
 .wfb-grp { display: grid; gap: 4px; margin-bottom: 10px; } .wfb-grp > span { font: 650 12px var(--body); color: var(--wst); margin: 4px 2px; }
 .wfb-act { display: flex; align-items: center; gap: 8px; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--ink); font: 600 13.5px var(--body); cursor: grab; }
@@ -368,7 +372,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--wsc); }
 .wfb-end { margin-top: 4px; font: 650 12.5px var(--body); color: var(--muted); padding: 6px 14px; border: 1px dashed var(--line-2); border-radius: 99px; background: var(--surface); }
 .wfb-form { display: grid; gap: 10px; } .wfb-form h3 { margin: 0; }
 .wfb-vars { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; } .wfb-vars .chip { cursor: pointer; font-size: 12px; }
-.wfb-checks { display: grid; gap: 4px; max-height: 220px; overflow-y: auto; } .wfb-checks label { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.wfb-checks { display: grid; gap: 4px; } .wfb-checks label { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 .wfb-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 8px; }
 .wfb-pick .wfb-act { cursor: pointer; align-items: flex-start; } .wfb-pick .wfb-act span { display: grid; gap: 2px; } .wfb-pick small { color: var(--muted); font-weight: 500; }
 .wfr summary { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 4px; cursor: pointer; } .wfr summary .btn { margin-left: auto; }
@@ -410,7 +414,7 @@ html.rw-short:has(.hub) { background: var(--rail); }
 .sc-line { position: absolute; left: 0; right: 0; height: 3px; }
 .sc-line b { position: absolute; right: 8px; top: -18px; padding: 1px 7px; border-radius: 6px; font: 700 11px var(--body); color: #fff; }
 .sc-line[style*="bottom:0"] b { top: auto; bottom: 4px; }
-.sc-wrap { max-height: 52vh; overflow: auto; border: 1px solid var(--line); border-radius: 12px; }
+.sc-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
 .sc-t { width: 100%; border-collapse: collapse; font: 500 12.5px var(--mono); }
 .sc-t th { text-align: left; padding: 5px 10px; color: var(--muted); font-weight: 500; white-space: nowrap; vertical-align: top; }
 .sc-t td { padding: 5px 10px; color: var(--ink); overflow-wrap: anywhere; }

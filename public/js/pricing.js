@@ -9,6 +9,7 @@ export const PRICES = {
   scan_point: { label: 'Ranking scan (Local Finder)', usd: 0.004, per: 'grid spot', note: 'Reads 20 results at $0.002 per 10. A 7 x 7 grid is 49 spots.' },
   scan_point_maps: { label: 'Ranking scan (Maps)', usd: 0.002, per: 'grid spot', note: '' },
   listing_check: { label: 'Listing check', usd: 0.03, per: 'business', note: '15 directories, one Google search each.' },
+  directory_check: { label: 'Full directory check', usd: 0.13, per: 'business', note: 'About 40 directories, one Google search each, plus the same check on the top competitor (about 22 more).' },
   directory_check: { label: 'Directory check', usd: 0.05, per: 'client', note: 'Up to 25 Google searches.' },
   link_prospects: { label: 'Find link prospects', usd: 0.012, per: 'run', note: '6 Google searches.' },
   reviews_pull: { label: 'Google reviews pull', usd: 0.01, per: 'pull', note: 'Newest 100 reviews. An estimate.' },

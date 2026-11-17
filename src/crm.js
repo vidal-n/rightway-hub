@@ -228,7 +228,7 @@ export async function insertLead(env, data, by = null) {
   Object.assign(l, rescore(l));
   const cols = Object.keys(l);
   await run(env, `INSERT INTO leads (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...cols.map((k) => l[k]));
-  await wf(env, 'lead_created', { leadId: l.id, source: l.source || '' }); // workflows (src/workflows.js)
+  if (l.source !== 'sample') await wf(env, 'lead_created', { leadId: l.id, source: l.source || '' }); // workflows (src/workflows.js); the sample prospect never triggers one
   return l.id;
 }
 

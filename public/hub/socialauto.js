@@ -152,7 +152,7 @@ export async function autopilotCard(host, c, { onChange, open } = {}) {
       const mix = Object.entries(r.summary.byPillar).map(([k, n]) => `${esc(k)} ${n}`).join(', ');
       const m = modal(`<div class="card-head"><h2>Preview</h2><button class="btn btn-ghost btn-sm" data-close>Close</button></div>
         <p class="small muted">${r.items.length} posts. Nothing is saved yet. Mix: ${mix || 'none'}.${r.learned ? ' Mix adjusted from your lead counts.' : ''}</p>
-        <ul class="list" style="max-height:55vh;overflow:auto">${r.items.map((i) => `<li class="item"><div><div class="item-title">${esc(i.title)}</div><div class="item-sub">${esc(when(i.at))} ${chans(i.channels)}</div>
+        <ul class="list">${r.items.map((i) => `<li class="item"><div><div class="item-title">${esc(i.title)}</div><div class="item-sub">${esc(when(i.at))} ${chans(i.channels)}</div>
           <div class="small">Covers: <b>${esc(i.keyword)}</b>${i.reason ? ` (${esc(i.reason)})` : ''}</div><div class="small muted" style="white-space:pre-wrap">${esc(i.captions.facebook.split('\n')[0])}</div></div></li>`).join('')}</ul>
         <div class="row end" style="gap:8px;margin-top:10px"><button class="btn btn-ghost" data-close>Close</button><button class="btn btn-primary" id="aupgo">Stack these</button></div>`);
       $('#aupgo', m.el).addEventListener('click', async (e) => { busy(e.currentTarget, true); m.close(); await run({ currentTarget: $('#aurun', host) || e.currentTarget }); });

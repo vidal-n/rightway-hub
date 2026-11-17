@@ -474,6 +474,24 @@ function whereText(scan, p) {
   return `${d.toFixed(1)} mi ${COMPASS[Math.round(((ang + 360) % 360) / 45) % 8]} of ${scan.target.title}`;
 }
 
+// Small pop ups over the map: what is being searched and what Google finds or does not find at each spot, for the prospect to watch (V, Nov 2026).
+// Real results only. Modeled on the live progress cards in BrightLocal's Local Search Grid while a scan runs.
+function spop(scan, i, text) {
+  const col = $('.r-mapcol'); if (!col) return;
+  let box = $('#spops'); if (!box) { box = document.createElement('div'); box.id = 'spops'; box.className = 'spops no-print'; box.setAttribute('aria-live', 'polite'); col.appendChild(box); }
+  const el = document.createElement('div');
+  if (text) { el.className = 'spop info'; el.innerHTML = `<i></i><div><b>Searching Google</b><span>${esc(text)}</span></div>`; }
+  else {
+    const p = scan.points[i], r = p.rank, you = scan.target.title;
+    const kind = r && r <= 3 ? 'good' : r && r <= 10 ? 'warn' : 'bad';
+    el.className = `spop ${kind}`;
+    el.innerHTML = `<i>${r ? '#' + r : '✗'}</i><div><b>${r ? `Found at #${r}` : 'Not found in the top 20'}</b><span>${esc(whereText(scan, p))}${r ? '' : `. ${esc(you)} does not show up here.`}</span></div>`;
+  }
+  box.appendChild(el);
+  while (box.children.length > 3) box.firstChild.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 3200);
+}
+
 function feedIntro(scan) {
   return `<div class="sfeed"><p class="eyebrow">Live scan</p><h3>Searching Google like a customer would</h3>
     <p class="muted">We stand at each dot on the map, search "${esc(scan.keyword)}" on Google, and record who shows up first. ${scan.points.length} searches in total.</p></div>`;
@@ -514,6 +532,7 @@ const feed = (() => {
       shown++;
       state.map?.scanning(i);
       box.innerHTML = feedCard(scan, i, scan.points.filter((p) => p.status === 'done').length, scan.points.length);
+      spop(scan, i);
       await wait(MIN_MS);
     }
     busy = null;
@@ -610,7 +629,8 @@ function updateLive(scan) {
   const bar = $('#r-progress > span');
   if (bar) bar.style.width = `${Math.round((100 * (s.done + s.errors)) / s.total)}%`;
   const label = $('#r-progress-label');
-  if (label && s.done + s.errors < s.total) label.textContent = `Checked ${s.done + s.errors} of ${s.total} points...`;
+  if (label && s.done + s.errors < s.total) label.innerHTML = `<span class="sradar"><i></i></span> Checked ${s.done + s.errors} of ${s.total} points, searching "${esc(scan.keyword)}"...`;
+  if (s.done + s.errors === 1 && !scan.__introPop) { scan.__introPop = true; spop(scan, 0, `"${scan.keyword}" from ${s.total} spots around ${scan.target.title}`); }
   const cost = $('#r-cost');
   if (cost) cost.innerHTML = scan.demo ? 'Demo data, no charge.' : `<span class="money">DataForSEO cost: ${cents(scan.cost)}</span>`;
   renderStats(scan, s, false);

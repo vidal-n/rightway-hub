@@ -193,7 +193,7 @@ async function masterSheet(app, user) {
   view.querySelector('.skeleton').outerHTML = `<div class="row" style="margin-bottom:12px"><input id="mq" placeholder="Filter anything: name, city, source, result" style="max-width:340px">
       <select id="mg" style="width:auto"><option value="">All grades</option>${['A', 'B', 'C', 'D', 'none'].map((g) => `<option value="${g}">${g === 'none' ? 'Not graded' : `Grade ${g}`}</option>`).join('')}</select>
       <select id="ms" style="width:auto"><option value="">All stages</option>${stages.map((x) => `<option value="${esc(x)}">${esc(String(x).replace(/_/g, ' '))}</option>`).join('')}</select><span class="small" id="msum"></span></div>
-    <div class="card" style="padding:0"><div class="tbl-wrap" id="mtbl" style="max-height:70vh"></div></div>`;
+    <div class="card" style="padding:0"><div class="tbl-wrap" id="mtbl"></div></div>`;
   $('#mq', view).addEventListener('input', (e) => { q = e.target.value.toLowerCase(); draw(); });
   $('#mg', view).addEventListener('change', (e) => { grade = e.target.value; draw(); });
   $('#ms', view).addEventListener('change', (e) => { stage = e.target.value; draw(); });

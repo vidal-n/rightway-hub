@@ -9,6 +9,7 @@ import { gridPoints } from '../public/js/grid.js';
 import { saveReport } from './reports.js';
 import { demoReviews } from './reputation.js';
 import { quarterOf } from './quarterly.js';
+import { compactScan, insertLead, logActivity } from './crm.js';
 
 const CENTER = { lat: 26.0112, lng: -80.1495 }; // Hollywood, FL
 const COMPETITORS = [
@@ -198,5 +199,33 @@ route('DELETE', '/api/sample-client', async ({ env, user }) => {
     await batch(env, ['tasks', 'log', 'review_requests', 'posts', 'scans', 'kit_scans', 'assets', 'reports', 'citation_audits', 'link_log', 'site_audits', 'site_fixes', 'review_pulls', 'tracking_numbers', 'tracked_calls', 'social_items', 'quarterly_plans'].map((tb) => [`DELETE FROM ${tb} WHERE client_id = ?`, id])
       .concat([['DELETE FROM settings WHERE k = ? OR k = ?', `onb:${id}`, `latest:${id}`], ['DELETE FROM clients WHERE id = ?', id]]));
   }
+  return json({ removed: rows.length });
+});
+
+// A sample PROSPECT for testing the audit report and the Present mode without spending anything (V, Nov 2026).
+// Modeled on the demo accounts BrightLocal and HubSpot give new users. It carries a saved map scan, research and a quote shape, source "sample",
+// stage lost (so no dialer, list or revenue number counts it), and its directory check uses the free demo search (see `search` in src/citations.js).
+export const SAMPLE_LEAD_SOURCE = 'sample';
+route('POST', '/api/sample-lead', async ({ env, user }) => {
+  requireStaff(user);
+  const existing = await first(env, "SELECT id FROM leads WHERE source = ? LIMIT 1", SAMPLE_LEAD_SOURCE);
+  if (existing) return json({ id: existing.id, existed: true });
+  const intel = sampleIntel(); intel.at = now(); intel.sample = true;
+  const id = await insertLead(env, {
+    business: 'Sunrise Roofing (Sample Prospect)', contact_name: 'Maria Lopez', phone: '(954) 555-0142', email: 'maria@sunriseroofing.example', website: SAMPLE.website,
+    address: SAMPLE.address, city: 'Hollywood', state: 'FL', zip: '33020', industry: 'roofing contractor', category: 'Roofing contractor', source: SAMPLE_LEAD_SOURCE,
+    stage: 'lost', tags: 'sample', notes: 'Sample prospect for testing the audit report. Safe to delete. Its scan and directory check are demo data and cost nothing.',
+    lat: CENTER.lat, lng: CENTER.lng, cid: SAMPLE.cid, rating: 4.8, reviews: 41,
+  }, user.id);
+  const scans = [sampleScan('roof repair', { size: 7, radius: 3, seed: 7 }), sampleScan('roofer', { size: 7, radius: 3, seed: 11, boost: 1 }), sampleScan('roof replacement', { size: 7, radius: 3, seed: 19, boost: -1 })].map(compactScan);
+  const t = now();
+  await run(env, 'UPDATE leads SET intel = ?, deep_scan = ?, updated_at = ? WHERE id = ?', JSON.stringify(intel), JSON.stringify({ at: t, by: user.id, scans }), t, id);
+  await logActivity(env, { lead_id: id, type: 'note', body: 'Sample prospect created for testing. Demo data only.', by: user.id });
+  return json({ id, existed: false });
+});
+route('DELETE', '/api/sample-lead', async ({ env, user }) => {
+  requireStaff(user);
+  const rows = await all(env, 'SELECT id FROM leads WHERE source = ?', SAMPLE_LEAD_SOURCE);
+  for (const { id } of rows) await batch(env, [['DELETE FROM activities WHERE lead_id = ?', id], ['DELETE FROM leads WHERE id = ?', id]]);
   return json({ removed: rows.length });
 });

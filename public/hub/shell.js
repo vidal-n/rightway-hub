@@ -170,6 +170,7 @@ export function staffShell(app, user, active, inner) {
   import('./wsnav.js').then((m) => m.wireWsNav()).catch(() => {});
   import('./compact.js').then((m) => m.wireCompact()).catch(() => {});
   import('./segments.js').then((m) => m.wireSegments()).catch(() => {});
+  import('./onescroll.js').then((m) => m.wireOneScroll()).catch(() => {});
   import('./explain.js').then((m) => m.wireExplain()).catch(() => {});
   import('./sound.js').then((m) => m.wireSoundBtn()).catch(() => {});
   mountTheme();

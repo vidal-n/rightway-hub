@@ -6,6 +6,7 @@ import { industryInfo, keywordFor, findProblems, top10Of, rankText, quoteFor } f
 import { buildPack, whyThey } from './pack.js';
 import { reviewTarget, gbpChecklist, ninetyDayPlan } from './fulfill.js';
 import { sortedListings, LISTING_LABEL, parseListings } from './listings.js';
+import { directoriesFor, citationScore, scoreBand, gapsVsRival } from './directories.js';
 import { WEBSITE_SERVICE_IDS, WEBSITE_NEED_IDS, WEBSITE_PROBLEM_KEYS } from './plancopy.js';
 import { INCLUDED_ALL, refFor } from './planref.js';
 import { EXIT_TERMS } from './pitchflow.js';
@@ -117,10 +118,20 @@ export function buildAudit(lead = {}, { intel = null, listings = null, deepScan 
   const fixes = probs.map((p) => solutionFor(p, ctx));
   if (wrong) fixes.push({ key: 'citations', severity: wrong >= 5 ? 'high' : 'medium', title: `${wrong} of ${ls.results.length} directories are wrong or missing`, detail: 'Google checks your name, address and phone across directories before it trusts you.', steps: ['Correct every directory listed in the citations table, starting with the red rows.', 'Use one exact name, address and phone everywhere, matching the Google profile.', 'Claim the listings so nobody else can change them, then recheck every month.'], site: false });
 
-  const citations = ls ? {
-    checked: ls.results.length, counts: ls.counts || {},
-    rows: sortedListings(ls).map((r) => ({ name: r.name, status: r.status, label: LISTING_LABEL[r.status]?.[1] || '', tone: LISTING_LABEL[r.status]?.[0] || 'gray', note: r.notes?.length ? r.notes.join('. ') : r.status === 'missing' ? 'No listing found' : r.status === 'match' ? 'Name and details match' : r.status === 'found' ? 'Listed, check details' : r.error || '', url: r.url || '' })),
-  } : null;
+  const rivalMap = new Map((ls?.rival?.results || []).map((r) => [r.name, r]));
+  const citations = ls ? (() => {
+    const rows = sortedListings(ls).map((r) => {
+      const rv = rivalMap.get(r.name);
+      return { name: r.name, tier: r.tier || 3, cat: r.cat || 'dir', status: r.status, label: LISTING_LABEL[r.status]?.[1] || '', tone: LISTING_LABEL[r.status]?.[0] || 'gray',
+        note: r.notes?.length ? r.notes.join('. ') : r.status === 'missing' ? 'Google did not find a listing' : r.status === 'match' ? 'Name and details match' : r.status === 'found' ? 'Listed, details not shown in the preview' : r.error || '', url: r.url || '',
+        phone: r.phoneBad ? 'bad' : r.phoneOk ? 'ok' : '', zip: r.zipBad ? 'bad' : r.zipOk ? 'ok' : '', rival: rv ? (rv.status === 'missing' ? 'no' : rv.status === 'error' ? '' : 'yes') : '' };
+    });
+    const score = ls.score ?? citationScore(ls.results);
+    const rr = ls.rival?.results?.filter((r) => r.status !== 'error') || [];
+    const hand = directoriesFor(`${lead.industry || ''} ${intel?.listing?.category || lead.category || ''}`, { kind: 'hand' }).map((d) => ({ name: d.name, tier: d.tier, cat: d.cat, why: d.why, domain: d.domain }));
+    return { checked: ls.results.length, counts: ls.counts || {}, score, band: scoreBand(score), rows, hand, demo: Boolean(ls.demo),
+      rival: ls.rival ? { name: ls.rival.name, checked: rr.length, listed: rr.filter((r) => r.status !== 'missing').length, mine: rows.filter((r) => r.status !== 'missing').length, gaps: gapsVsRival(ls.results, ls.rival.results) } : null };
+  })() : null;
 
   const Q = quoteFor(lead, intel, quote);
   const services = Q.services.map((s) => ({ id: s.id, name: s.name, what: s.what, why: s.why, qty: s.qty, unit: s.unit || '', site: WEBSITE_SERVICE_IDS.includes(s.id), need: WEBSITE_NEED_IDS.includes(s.id) }));
@@ -159,7 +170,7 @@ export function buildAudit(lead = {}, { intel = null, listings = null, deepScan 
 export function sectionsOf(a) {
   if (!a?.ready) return [];
   // Order of the page: the scan first, directories right under it, then who is ahead, how to pass them, the profile, fixes, plan, 90 days.
-  const s = [['summary', 'Overview'], ['scan', 'Map scan'], ['citations', 'Citations'], ['ahead', 'Who is ahead'], ['passing', 'How to pass them'], ['profile', 'Google profile'], ['fixes', 'Exact fixes'], ['plan', 'Game plan'], ['roadmap', '90 days']];
+  const s = [['summary', 'Overview'], ['scan', 'Map scan'], ['citations', 'Citations'], ['ahead', 'Who is ahead'], ['passing', 'How to pass them'], ['profile', 'Google profile'], ['fixes', 'Exact fixes'], ['plan', 'Game plan'], ['roadmap', '90 days'], ['method', 'How we checked']];
   return s.filter(([k]) => (k === 'ahead' || k === 'passing' ? a.competitors.length : true));
 }
 

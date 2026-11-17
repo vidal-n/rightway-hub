@@ -15,7 +15,8 @@ export const presentButton = () => `<button type="button" class="cmd-pres" id="p
 export function presentPicker() {
   const m = modal(`<h2>Present to a business</h2><p class="muted small">Search the lead or client. The screen switches to a clean view for them. Nothing internal is shown.</p>
     <input id="pmq" class="input" placeholder="Business name, city or phone" autocomplete="off" style="width:100%;margin:8px 0">
-    <div id="pml" class="pm-pick"></div>`);
+    <div id="pml" class="pm-pick"></div>
+    <p class="small muted" style="margin:12px 0 0">Want to test without a real business? <button type="button" class="btn btn-ghost btn-sm" id="pmsample">Open the sample prospect</button> <span class="muted">Demo data, costs nothing.</span></p>`);
   const input = $('#pmq'), list = $('#pml');
   let seq = 0, t;
   const go = (kind, id) => {
@@ -42,6 +43,10 @@ export function presentPicker() {
     ]);
   };
   input.addEventListener('input', () => { clearTimeout(t); t = setTimeout(search, 160); });
+  $('#pmsample')?.addEventListener('click', async (e) => {
+    e.currentTarget.disabled = true;
+    try { const r = await api('/api/sample-lead', { method: 'POST' }); go('lead', r.id); } catch (err) { e.currentTarget.disabled = false; list.innerHTML = `<p class="small err-text">${esc(err.message)}</p>`; }
+  });
   input.focus();
   search();
 }

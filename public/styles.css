@@ -353,3 +353,21 @@ body.costs-hidden .money { filter: blur(7px); user-select: none; -webkit-user-se
 /* Shaded light mode (Nov 2026): panels sit on the tinted canvas with an edge and a soft shadow. */
 .sx .card, .card { box-shadow: 0 1px 2px rgba(13, 25, 20, .10), 0 8px 20px -12px rgba(13, 25, 20, .24); }
 @media (prefers-color-scheme: dark) { .sx .card, .card { box-shadow: none; } }
+
+/* Live scan pop ups and radar (Nov 2026, V: show what the scan searches and finds live) */
+.r-mapcol { position: relative; }
+.spops { position: absolute; left: 12px; bottom: 56px; z-index: 6; display: flex; flex-direction: column; gap: 8px; width: min(300px, calc(100% - 24px)); pointer-events: none; }
+.spop { display: flex; gap: 10px; align-items: center; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 12px; padding: 9px 12px; box-shadow: 0 12px 26px -12px rgba(0,0,0,.5); font-size: 13px; animation: spin-in .3s cubic-bezier(.32,.72,0,1) both; }
+.spop i { font-style: normal; font-weight: 800; min-width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--card-2); font-size: 13px; }
+.spop b { display: block; font-size: 13.5px; } .spop span { color: var(--muted); }
+.spop.good { border-left-color: #1B9E5F; } .spop.good i { background: #1B9E5F; color: #fff; }
+.spop.warn { border-left-color: #C98A12; } .spop.warn i { background: #E3A62B; color: #1B1405; }
+.spop.bad { border-left-color: #C0392B; } .spop.bad i { background: #C0392B; color: #fff; }
+.spop.info i { background: none; border: 2px solid #23B07E; border-top-color: transparent; border-radius: 50%; min-width: 22px; width: 22px; height: 22px; animation: sp-rot .8s linear infinite; }
+.spop.out { opacity: 0; transform: translateX(-14px); transition: all .4s ease; }
+.sradar { display: inline-block; vertical-align: middle; width: 16px; height: 16px; border-radius: 50%; border: 2px solid #23B07E; position: relative; overflow: hidden; margin-right: 4px; }
+.sradar i { position: absolute; inset: 0; background: conic-gradient(from 0deg, rgba(35,176,126,.7), transparent 30%); animation: sp-rot 1.3s linear infinite; }
+@keyframes sp-rot { to { transform: rotate(360deg); } }
+@keyframes spin-in { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .spop, .sradar i, .spop.info i { animation: none; } }
+@media print { .spops { display: none !important; } }

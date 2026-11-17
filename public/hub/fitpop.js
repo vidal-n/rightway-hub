@@ -25,16 +25,24 @@ export function fitPop(el) {
 }
 
 // A popover that is position: fixed under a button (the folded chip lists). `row` must already be showing.
+// The room a floating menu may use: under the fixed command bar and tab strip, above the phone bottom bar (Nov 2026, V's iPad screenshot:
+// a menu flipped above its button slid under the tab strip and was cut off).
+export function safeBox() {
+  let top = MARGIN, bottom = innerHeight - MARGIN;
+  for (const el of document.querySelectorAll('.cmd, #wsbar, .wsbar, .qbar')) { const b = el.getBoundingClientRect(); if (b.height && b.top <= 4 && b.bottom < innerHeight / 2) top = Math.max(top, b.bottom + 6); }
+  const bar = document.querySelector('.bbar'); if (bar) { const b = bar.getBoundingClientRect(); if (b.height && b.top > innerHeight / 2) bottom = Math.min(bottom, b.top - 6); }
+  return { top, bottom };
+}
 export function fitFixed(row, btn) {
   const r = btn.getBoundingClientRect();
-  const vw = innerWidth, vh = innerHeight;
+  const vw = innerWidth, box = safeBox();
   row.style.maxWidth = `${Math.min(360, vw - MARGIN * 2)}px`; row.style.maxHeight = ''; row.style.overflowY = 'auto';
   const w = Math.min(row.offsetWidth || 360, vw - MARGIN * 2);
   row.style.left = `${Math.max(MARGIN, Math.min(r.left, vw - w - MARGIN))}px`;
-  const below = vh - r.bottom - MARGIN - 6, above = r.top - MARGIN - 6;
+  const below = box.bottom - r.bottom - 6, above = r.top - box.top - 6;
   const need = row.scrollHeight;
   if (need <= below || below >= above) { row.style.bottom = ''; row.style.top = `${Math.round(r.bottom + 6)}px`; row.style.maxHeight = `${Math.max(120, Math.floor(below))}px`; }
-  else { row.style.top = ''; row.style.bottom = `${Math.round(vh - r.top + 6)}px`; row.style.maxHeight = `${Math.max(120, Math.floor(above))}px`; }
+  else { row.style.top = ''; row.style.bottom = `${Math.round(innerHeight - r.top + 6)}px`; row.style.maxHeight = `${Math.max(120, Math.floor(above))}px`; }
 }
 
 // Watch for these menus being opened (their `hidden` flips off) and fit them. Only the hidden attribute is observed, so writing styles

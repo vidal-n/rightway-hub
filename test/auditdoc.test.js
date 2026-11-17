@@ -20,7 +20,7 @@ test('audit has every section with exact numbers from the research', () => {
   assert.ok(a.fixes.every((f) => f.steps.length > 0));
   assert.ok(a.fixes.some((f) => f.key === 'citations'));
   assert.equal(a.ninety.length, 3);
-  assert.deepEqual(sectionsOf(a).map((s) => s[0]), ['summary', 'scan', 'citations', 'ahead', 'passing', 'profile', 'fixes', 'plan', 'roadmap']);
+  assert.deepEqual(sectionsOf(a).map((s) => s[0]), ['summary', 'scan', 'citations', 'ahead', 'passing', 'profile', 'fixes', 'plan', 'roadmap', 'method']);
 });
 test('the report has no notes, no prices, no dashes, no promised spots', () => {
   const a = buildAudit(lead, { intel, listings, quote: { setup: 1500, monthly: 777 } });

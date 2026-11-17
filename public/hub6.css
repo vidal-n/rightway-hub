@@ -171,3 +171,17 @@ tbody tr, .table tr { border-color: var(--line); }
 .hub .chip.on, .hub .chips button.on { background: var(--sel); color: var(--on-sel); border-color: var(--sel); }
 .hub .main .col { background: color-mix(in srgb, var(--surface-2) 75%, var(--bg)); }
 .badge, .hub .badge { border: 1px solid color-mix(in srgb, currentColor 25%, transparent); }
+
+/* ---------- Pipeline filters, compact (Nov 2026, V: large spacing and a messy look) ----------
+   One control height, short labels above, four to a row on a wide screen, two on a phone. The dropdowns stay real dropdowns here
+   (class keep-select), so the segmented buttons no longer give every field a different height. */
+#fpanel.card { padding: 14px 16px; }
+#fpanel .form-grid.filt { grid-template-columns: repeat(auto-fill, minmax(min(168px, 100%), 1fr)); gap: 10px 12px; align-items: end; }
+#fpanel .field { display: grid; gap: 4px; margin: 0; align-content: end; }
+#fpanel .field > span { font-size: 12px; font-weight: 600; color: var(--muted); line-height: 1.2; }
+#fpanel .field input, #fpanel .field select { height: 38px; min-height: 38px; padding: 0 10px; font-size: 14px; border-radius: 9px; width: 100%; box-sizing: border-box; }
+#fpanel input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+#fpanel input[type=number]::-webkit-inner-spin-button, #fpanel input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+#fpanel > .row { margin-top: 12px !important; padding-top: 10px; border-top: 1px solid var(--line); gap: 8px 18px; flex-wrap: wrap; align-items: center; }
+#fpanel > .row label.row { min-height: 32px; }
+@media (max-width: 560px) { #fpanel .form-grid.filt { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

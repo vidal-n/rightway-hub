@@ -11,6 +11,7 @@ import { webSearch } from './dataforseo.js';
 import { mockWeb } from './mock.js';
 import { citations as directoryList } from '../public/js/fulfill.js';
 import { industryInfo } from '../public/js/leadintel.js';
+import { directoriesFor, byName, queryFor, citationScore, DIRECTORY_PRICE } from '../public/js/directories.js';
 
 const isDemo = (env) => !env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD;
 const parse = (s) => { try { return s ? JSON.parse(s) : null; } catch { return null; } };
@@ -56,11 +57,11 @@ export function judgeListing(results, client) {
   const streetOk = Boolean(street) && new RegExp(`\\b${street}\\b`).test(text);
   const notes = [phoneBad ? `Shows a different phone (${phones[0].replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')})` : '', zipBad ? `Shows a different ZIP (${zips[0]})` : ''].filter(Boolean);
   const status = phoneBad || zipBad ? 'mismatch' : phoneOk || zipOk || streetOk ? 'match' : 'found';
-  return { status, url: hit.url, title: hit.title, snippet: hit.snippet.slice(0, 240), notes };
+  return { status, url: hit.url, title: hit.title, snippet: hit.snippet.slice(0, 240), notes, phoneBad, zipBad, phoneOk, zipOk };
 }
 
-async function search(env, q) {
-  return isDemo(env) ? mockWeb(q) : webSearch(env, q, { depth: 10 });
+async function search(env, q, free) {
+  return isDemo(env) || free ? mockWeb(q) : webSearch(env, q, { depth: 10 });
 }
 
 async function clientOr404(env, id) {
@@ -285,4 +286,67 @@ route('POST', '/api/leads/:id/listings', async ({ env, user, params }) => {
   const out = { at: now(), counts, results, phone: c.phone, address: c.address, google: { phone: intel?.listing?.phone || null, address: intel?.listing?.address || null }, cost: Math.round(cost * 10000) / 10000, demo: isDemo(env) };
   await run(env, 'UPDATE leads SET listings = ?, updated_at = ? WHERE id = ?', JSON.stringify(out), now(), lead.id);
   return json(out);
+});
+
+// ---------- the long directory check, in small steps (Nov 2026) ----------
+// 40 or more directories do not fit in one request (a Worker may make about 50 outside requests), so the report asks for the plan and then for
+// the directories in groups of 12. Each group is merged into leads.listings, so a refresh or a closed tab loses nothing. The competitor is checked
+// with the same searches (name only, so it is listed or not listed, never "wrong info"). Modeled on BrightLocal's Citation Tracker.
+const STEP_MAX = 12;
+export function rivalOf(intel) {
+  const c = (intel?.competitors || []).find((x) => (x?.title || x?.name));
+  return c ? { name: c.title || c.name, city: c.city || '' } : null;
+}
+route('GET', '/api/leads/:id/listings/plan', async ({ env, user, params }) => {
+  requireStaff(user);
+  const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', params.id);
+  if (!lead) throw new HttpError('Lead not found.', 404);
+  const intel = parse(lead.intel);
+  const c = leadAsClient(lead, intel);
+  const text = `${c.category} ${lead.industry || ''}`;
+  const sites = directoriesFor(text, { kind: 'site' }).map((d) => ({ id: d.id, name: d.name, domain: d.domain, tier: d.tier, cat: d.cat }));
+  const hand = directoriesFor(text, { kind: 'hand' }).map((d) => ({ id: d.id, name: d.name, domain: d.domain, tier: d.tier, cat: d.cat, why: d.why }));
+  const rival = rivalOf(intel);
+  const rivalSites = rival ? sites.filter((d) => d.tier <= 2).map((d) => d.id) : [];
+  return json({ sites, hand, rival: rival ? { ...rival, ids: rivalSites } : null, step: STEP_MAX, price: DIRECTORY_PRICE, total: sites.length + rivalSites.length, demo: isDemo(env) });
+});
+
+route('POST', '/api/leads/:id/listings/step', async ({ env, user, params, body: readBody }) => {
+  requireStaff(user);
+  const body = await readBody();
+  const lead = await first(env, 'SELECT * FROM leads WHERE id = ?', params.id);
+  if (!lead) throw new HttpError('Lead not found.', 404);
+  const intel = parse(lead.intel);
+  const c = leadAsClient(lead, intel);
+  if (!c.name) throw new HttpError('The lead needs a business name.');
+  const ids = [...new Set(Array.isArray(body?.ids) ? body.ids.map(String) : [])].slice(0, STEP_MAX);
+  if (!ids.length) throw new HttpError('Nothing to check.');
+  const forRival = Boolean(body?.rival);
+  const rival = forRival ? rivalOf(intel) : null;
+  if (forRival && !rival) throw new HttpError('No competitor to compare against yet.', 400);
+  const who = rival ? { name: rival.name, phone: '', address: '', city: rival.city || c.city } : c;
+  let cost = 0;
+  const done = await Promise.all(ids.map(async (id) => {
+    const d = byName(id);
+    if (!d || d.check !== 'site') return null;
+    try {
+      const r = await search(env, queryFor(d, who.name, who.city), lead.source === 'sample');
+      cost += r.cost || 0;
+      const j = judgeListing(r.results, who);
+      return { id: d.id, name: d.name, site: d.domain, tier: d.tier, cat: d.cat, ...j, status: rival && j.status === 'mismatch' ? 'found' : j.status };
+    } catch (e) { return { id: d.id, name: d.name, site: d.domain, tier: d.tier, cat: d.cat, status: 'error', error: e.message }; }
+  }));
+  const results = done.filter(Boolean);
+  if (results.length && results.every((r) => r.status === 'error')) throw new HttpError(results[0].error, 502);
+  const prev = parse(lead.listings) || {};
+  const base = body?.reset && !forRival ? {} : prev;
+  const merge = (old = [], add = []) => { const m = new Map(old.map((x) => [x.id || x.name, x])); for (const x of add) m.set(x.id || x.name, x); return [...m.values()]; };
+  const out = { ...base, at: now(), phone: c.phone, address: c.address, google: { phone: intel?.listing?.phone || null, address: intel?.listing?.address || null }, demo: isDemo(env), v: 2 };
+  if (rival) out.rival = { name: rival.name, results: merge(base.rival?.results, results) };
+  else out.results = merge(base.results, results);
+  out.counts = (out.results || []).reduce((o, r) => ({ ...o, [r.status]: (o[r.status] || 0) + 1 }), {});
+  out.score = citationScore(out.results || []);
+  out.cost = Math.round(((base.cost || 0) + cost) * 10000) / 10000;
+  await run(env, 'UPDATE leads SET listings = ?, updated_at = ? WHERE id = ?', JSON.stringify(out), now(), lead.id);
+  return json({ ok: true, results, cost: Math.round(cost * 10000) / 10000, counts: out.counts, score: out.score });
 });

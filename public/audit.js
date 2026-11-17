@@ -12,6 +12,7 @@ import { refLines } from '/js/planref.js';
 import { can } from '/js/jobs.js';
 import { mountDealDesk } from '/js/dealdesk.js';
 import { QUESTIONS, CONTRACT } from '/js/pitchflow.js';
+import { directoriesFor, DIRECTORY_PRICE, TIERS, CATS } from '/js/directories.js';
 
 const root = document.getElementById('root');
 const id = decodeURIComponent(location.hash.slice(1).split('/')[0]);
@@ -33,7 +34,7 @@ async function api(path, method = 'GET', body) {
 const store = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(`rw-au-${k}`); sessionStorage.setItem(`rw-au-${k}`, v); } catch { return null; } return null; };
 const parseJ = (v) => { if (!v) return null; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch { return null; } };
 
-const S = { tab: 'report', kw: 0, site: store('site') === '1', ticket: null, jobs: 4, monthly: '', sec: 'summary', appSrc: null, frame: null, scanOpen: false, skipScan: store('skip') === '1', busy: false, stage: null, fresh: false, appLoaded: false };
+const S = { tab: 'report', kw: 0, site: store('site') === '1', ticket: null, jobs: 4, monthly: '', sec: 'summary', appSrc: null, frame: null, scanOpen: false, skipScan: store('skip') === '1', begun: store('begun') === '1', cites: 'all', busy: false, stage: null, fresh: false, appLoaded: false };
 let D = null; // { lead, intel, me, settings }
 let A = null; // the audit document
 
@@ -45,7 +46,7 @@ function build() {
 const hasDeep = () => (parseJ(D.lead.deep_scan)?.scans || []).some((s) => s?.cells?.length);
 // The scan comes first: until a live scan is saved (or the rep chooses the quick research grid) only the scan shows.
 const gated = () => !hasDeep() && !(S.skipScan && A?.ready);
-const showRest = () => A?.ready && !gated() && !S.stage;
+const showRest = () => A?.ready && !gated() && (!S.stage || S.stage.only);
 const pad = (n) => String(n).padStart(2, '0');
 const numOf = (k) => { const o = sectionsOf(A).map((x) => x[0]).filter((x) => x !== 'summary'); const i = o.indexOf(k); return pad((i < 0 ? 0 : i) + 1); };
 
@@ -68,8 +69,25 @@ function coverInner(ready) {
 function kpiCard(t, big, label, sub, fill) {
   return `<div class="kpi ${t}"><span class="kpi-l">${esc(label)}</span><b>${esc(big)}</b>${fill != null ? `<div class="meter"><i style="width:${Math.max(4, Math.min(100, fill))}%"></i></div>` : ''}${sub ? `<i class="kpi-s">${esc(sub)}</i>` : ''}</div>`;
 }
+// What we are going over, before the scan (V: an overview before the map scan screen). Honest: counts come from the directory list, nothing is promised.
+function overviewHtml() {
+  const nDir = directoriesFor(`${D.lead.industry || ''} ${D.lead.category || ''}`, { kind: 'site' }).length;
+  const items = [
+    ['Map scan', 'We search Google from every square around your business, live, and watch who shows up for the searches your customers use.'],
+    ['Citations and listings', `We check ${nDir} directories Google trusts for your name, address and phone, and see which ones are wrong or missing.`],
+    ['Who is ahead and why', 'The businesses on top of the map, side by side with you: reviews, rating, categories and profile.'],
+    ['Your Google profile', 'What is filled in, what is missing, and what the businesses ahead have that you do not.'],
+    ['Exact fixes', 'A short list of what to change first, with the steps.'],
+    ['The plan', 'What the first 90 days would look like, and what it is worth to you.'],
+  ];
+  return `<section class="au-sec ov" id="sec-summary"><div class="au-cover slim">${coverInner(false)}
+    <p class="cv-head">Here is what we are going over. About 30 minutes, and you keep this audit either way.</p></div>
+    <ol class="ov-list">${items.map(([t, d], i) => `<li style="--i:${i + 1}"><span class="ov-n">${pad(i + 1)}</span><div><b>${esc(t)}</b><p>${esc(d)}</p></div></li>`).join('')}</ol>
+    <div class="ov-go no-print"><button class="btn btn-lg" id="begin" type="button">Start the scan</button><span class="muted small">Takes a couple of minutes. Nothing on your listings is changed.</span></div></section>`;
+}
 function topHtml() {
   if (!A.ready || !showRest()) {
+    if (gated() && !S.begun && !S.busy) return overviewHtml();
     return `<section class="au-sec" id="sec-summary"><div class="au-cover slim">${coverInner(false)}
       <p class="cv-head">${gated() ? 'Step one is the map scan. It runs right here, then the rest of the audit builds itself underneath.' : 'Building the audit.'}</p></div></section>`;
   }
@@ -116,6 +134,8 @@ function paintScan() {
   const deep = hasDeep();
   const sc = A?.ready ? A.scans : [];
   const s = sc[Math.min(S.kw, Math.max(0, sc.length - 1))];
+  const hideScan = gated() && !S.begun && !S.busy;
+  $('#sec-scan').hidden = hideScan;
   $('#scan-head').innerHTML = `<h2><span class="n">${n}</span>Map scan</h2><p class="au-lead">${gated() ? 'Google is searched from every square around the business, the way a customer standing there would. This comes first because everything else is built from it.' : s ? `${s.deep ? `A ${s.size} by ${s.size} scan, ${s.radiusMiles} miles wide.` : 'The quick research grid.'} Google is searched from every square, the way a customer standing there would.` : ''}</p>`;
   let res = '';
   if (showRest() && s) {
@@ -132,6 +152,7 @@ function paintScan() {
   $('#scanclose').hidden = gated() && !deep;
   $$('[data-kw]', $('#scanres')).forEach((b) => b.addEventListener('click', () => { S.kw = Number(b.dataset.kw); paintScan(); }));
   $$('[data-openscan]').forEach((b) => b.addEventListener('click', () => openScan(true)));
+  $('#begin')?.addEventListener('click', () => { S.begun = true; store('begun', '1'); paintAll(); openScan(false); $('#sec-scan')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   $$('[data-skipscan]').forEach((b) => b.addEventListener('click', () => { S.skipScan = true; store('skip', '1'); closeScan(false); paintAll(); }));
 }
 function openScan(user) {
@@ -140,6 +161,7 @@ function openScan(user) {
     S.frame = document.createElement('iframe');
     S.frame.title = 'Live scan'; S.frame.setAttribute('allow', 'fullscreen');
     S.frame.src = `/scan.html?lead=${encodeURIComponent(id)}&embed=1`;
+    S.frame.setAttribute('scrolling', 'no');
     $('.scanframe', wrap).appendChild(S.frame);
   }
   wrap.hidden = false; S.scanOpen = true; $('#scan-act').innerHTML = '';
@@ -154,17 +176,18 @@ function closeScan(drop) {
 }
 
 // ---------- building the report after the scan ----------
-const STEP_DEF = [['scan', 'Scan saved'], ['research', 'Reading your Google profile and the businesses ahead of you'], ['listings', 'Checking the 15 directories Google trusts'], ['write', 'Writing the findings and fixes']];
+const STEP_DEF = [['scan', 'Scan saved'], ['research', 'Reading your Google profile and the businesses ahead of you'], ['listings', 'Checking the directories Google trusts, and the business ahead of you'], ['write', 'Writing the findings and fixes']];
 function paintBuild() {
   const h = $('#r-build'); if (!h) return;
   const st = S.stage;
   if (st) {
-    h.innerHTML = `<section class="au-sec buildcard" id="sec-build" aria-live="polite"><div class="card build"><div class="build-h"><span class="spin"></span><div><h3>Building the audit</h3><p class="muted small" style="margin:0">Your scan is the first thing done. Now everything else is worked out from it.</p></div></div>
-      <ol class="bsteps">${st.steps.map((x) => `<li class="${x.s}"><span class="bi">${x.s === 'done' ? '✓' : x.s === 'err' ? '!' : x.s === 'run' ? '<i class="spin sm"></i>' : ''}</span><span>${esc(x.t)}</span></li>`).join('')}</ol>
-      ${st.err ? `<p class="build-err">${esc(st.err)}</p><p><button class="btn btn-sm" id="retry">Try again</button></p>` : ''}</div></section>`;
-    $('#retry')?.addEventListener('click', () => generate());
+    h.innerHTML = `<section class="au-sec buildcard" id="sec-build" aria-live="polite"><div class="card build"><div class="build-h"><span class="radar"><i></i></span><div><h3>${st.only ? 'Checking the directories' : 'Building the audit'}</h3><p class="muted small" style="margin:0">${st.only ? 'Every directory is searched on Google, one by one.' : 'Your scan is the first thing done. Now everything else is worked out from it.'}</p></div></div>
+      <ol class="bsteps">${st.steps.map((x) => `<li class="${x.s}"><span class="bi">${x.s === 'done' ? '✓' : x.s === 'err' ? '!' : x.s === 'run' ? '<i class="spin sm"></i>' : ''}</span><span>${esc(x.t)}${x.k === 'listings' && st.prog && x.s === 'run' ? `<span class="prog"><i id="progbar" style="width:${pct(st.prog.done, st.prog.total)}%"></i></span><small id="proglabel" class="muted">${st.prog.done} of ${st.prog.total}: ${esc(st.prog.label)}</small>` : ''}</span></li>`).join('')}</ol>
+      ${st.note ? `<p class="muted small">${esc(st.note)}</p>` : ''}${st.err ? `<p class="build-err">${esc(st.err)}</p><p><button class="btn btn-sm" id="retry">Try again</button></p>` : ''}</div></section>`;
+    $('#retry')?.addEventListener('click', () => generate(st.only ? { only: st.only } : {}));
     return;
   }
+  if (gated() && !S.begun) { h.innerHTML = ''; return; }
   if (gated()) {
     const names = ['Citations and listings', 'Who is ahead', 'How to pass each one', 'Your Google profile', 'Exact fixes', 'The game plan', 'First 90 days'];
     h.innerHTML = `<section class="au-sec pending" aria-label="What builds after the scan"><h2><span class="n">...</span>Builds after the scan</h2><div class="pend-grid">${names.map((x, i) => `<div class="pend"><span>${pad(i + 2)}</span>${esc(x)}</div>`).join('')}</div></section>`;
@@ -173,46 +196,160 @@ function paintBuild() {
     $('#genbtn')?.addEventListener('click', () => generate());
   } else h.innerHTML = '';
 }
+function paintProg() {
+  const p = S.stage?.prog; if (!p) return;
+  const bar = $('#progbar'), lab = $('#proglabel');
+  if (bar) bar.style.width = `${pct(p.done, p.total)}%`;
+  if (lab) lab.textContent = `${p.done} of ${p.total}: ${p.label}`;
+}
+
+// Live pop ups: what is being searched, and what Google finds or does not find, so the prospect watches it happen (V, Nov 2026).
+// Only real results are shown here. Nothing is made up to look busy.
+const FD_ICON = { good: '✓', bad: '✗', warn: '!', info: '' };
+function feed(kind, title, text) {
+  const box = $('#feed'); if (!box) return;
+  const el = document.createElement('div'); el.className = `fd ${kind}`;
+  el.innerHTML = `<span class="fd-i">${FD_ICON[kind] || ''}</span><div><b>${esc(title)}</b><span>${esc(text)}</span></div>`;
+  box.appendChild(el);
+  while (box.children.length > 4) box.firstChild.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 420); }, 3800);
+}
+function feedFor(x, rival) {
+  const who = rival ? `${rival} on ${x.name}` : x.name;
+  if (x.status === 'match') feed('good', who, rival ? 'Listed' : 'Found. Name, phone and ZIP match.');
+  else if (x.status === 'found') feed('good', who, rival ? 'Listed' : 'Found. Details not shown in the preview.');
+  else if (x.status === 'mismatch') feed('bad', who, `Found with wrong info. ${(x.notes || []).join('. ')}`);
+  else if (x.status === 'missing') feed(rival ? 'info' : 'warn', who, rival ? 'Not listed' : 'Not found by Google');
+  else feed('info', who, 'Could not check this one');
+}
+// The whole directory list in groups of six (one request is limited to about 50 outside searches), then the same for the competitor.
+async function checkDirectories(st) {
+  const base = `/api/leads/${encodeURIComponent(id)}/listings`;
+  const plan = await api(`${base}/plan`);
+  const prog = st.prog = { done: 0, total: plan.total, label: 'Starting' };
+  let first = true;
+  const pass = async (ids, rival) => {
+    for (let i = 0; i < ids.length; i += 6) {
+      const part = ids.slice(i, i + 6);
+      const names = part.map((k) => plan.sites.find((y) => y.id === k)?.name).filter(Boolean);
+      prog.label = names.join(', '); paintProg();
+      feed('info', rival ? `Checking ${plan.rival.name}` : `Searching Google for ${D.lead.business}`, names.join(', '));
+      const r = await api(`${base}/step`, 'POST', { ids: part, rival, reset: first && !rival });
+      if (!rival) first = false;
+      for (const x of r.results) { prog.done++; feedFor(x, rival ? plan.rival.name : ''); paintProg(); await sleep(190); }
+    }
+  };
+  await pass(plan.sites.map((x) => x.id), false);
+  if (plan.rival) await pass(plan.rival.ids, true);
+  await reloadLead();
+}
 async function reloadLead() {
   const d = await api(`/api/leads/${encodeURIComponent(id)}`);
   D.lead = { ...D.lead, ...d.lead }; D.intel = d.intel || D.intel;
 }
 function setStep(st, k, s) { const x = st.steps.find((y) => y.k === k); if (x) x.s = s; paintBuild(); }
-async function generate() {
+async function generate(opts = {}) {
   if (S.busy) return;
   S.busy = true;
-  const st = { steps: STEP_DEF.map(([k, t]) => ({ k, t, s: k === 'scan' ? 'done' : 'wait' })), err: null };
+  const only = opts.only || null;
+  const defs = only ? STEP_DEF.filter(([k]) => k === only) : STEP_DEF;
+  const st = { only, steps: defs.map(([k, t]) => ({ k, t, s: k === 'scan' ? 'done' : 'wait' })), err: null };
   S.stage = st; paintAll();
-  let step = 'research';
+  if (only) $('#r-build')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  let step = only || 'research';
   try {
     build();
-    if (!A.ready) { setStep(st, 'research', 'run'); await api(`/api/leads/${encodeURIComponent(id)}/research`, 'POST', {}); await reloadLead(); build(); }
-    setStep(st, 'research', 'done');
+    if (!only) {
+      if (!A.ready) {
+        setStep(st, 'research', 'run');
+        feed('info', 'Reading your Google profile', 'Rating, reviews, categories, hours, photos');
+        await api(`/api/leads/${encodeURIComponent(id)}/research`, 'POST', {}); await reloadLead(); build();
+      }
+      setStep(st, 'research', 'done');
+      if (A.ready) {
+        const you = A.profile || {};
+        if (you.reviews != null) feed('good', 'Found your Google profile', `${you.reviews} reviews${you.rating != null ? `, ${you.rating.toFixed(1)} stars` : ''}`);
+        else feed('warn', 'Google profile', 'No reviews found');
+        if (A.competitors?.length) feed('info', `${A.competitors.length} businesses are ahead of you`, A.competitors.slice(0, 3).map((c) => c.name).join(', '));
+        await sleep(700);
+      }
+    }
     step = 'listings';
-    if (!D.lead.listings) {
+    const L = parseJ(D.lead.listings);
+    if (only || !L || L.v !== 2) {
       setStep(st, 'listings', 'run');
-      try { await api(`/api/leads/${encodeURIComponent(id)}/listings`, 'POST', {}); await reloadLead(); } catch (e) { setStep(st, 'listings', 'err'); st.note = `Directories could not be checked (${e.message}). You can run it again from the citations section.`; await sleep(900); }
+      try { await checkDirectories(st); } catch (e) { setStep(st, 'listings', 'err'); st.note = `Directories could not be fully checked (${e.message}). You can run it again from the citations section.`; await reloadLead().catch(() => {}); await sleep(900); }
     }
     if (st.steps.find((x) => x.k === 'listings').s !== 'err') setStep(st, 'listings', 'done');
-    step = 'write';
-    setStep(st, 'write', 'run'); build(); await sleep(450); setStep(st, 'write', 'done'); await sleep(250);
-    if (!A.ready) throw new Error(A.reason || 'The research did not return anything to build from.');
-    S.stage = null; S.fresh = true; S.kw = 0; S.busy = false;
+    if (!only) {
+      step = 'write';
+      setStep(st, 'write', 'run'); build(); await sleep(450); setStep(st, 'write', 'done'); await sleep(250);
+      if (!A.ready) throw new Error(A.reason || 'The research did not return anything to build from.');
+    }
+    build();
+    S.stage = null; S.fresh = !only; S.kw = 0; S.busy = false;
     paintAll();
-    document.getElementById('sec-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById(only ? 'sec-citations' : 'sec-summary')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     setStep(st, step, 'err'); st.err = e.message; S.busy = false; paintBuild();
   }
 }
 
 // ---------- the report sections ----------
+function ring(n, tone) { return `<div class="ring ${tone}" style="--p:${n ?? 0}"><b>${n == null ? 'n/a' : n}</b><span>${n == null ? '' : 'of 100'}</span></div>`; }
+const PH = { ok: '<i class="ok">✓</i>', bad: '<i class="no">✗</i>', '': '<i class="na">·</i>' };
+// Good / OK / Poor ratings on each section, like BrightLocal's section scores. The 70 and 40 cutoffs are ours, not BrightLocal's.
+const rateOf = (n) => (n == null ? '' : n >= 70 ? 'good' : n >= 40 ? 'warn' : 'bad');
+const rateTag = (n, what) => (n == null ? '' : `<span class="rate ${rateOf(n)}" title="${esc(what)}">${n >= 70 ? 'Good' : n >= 40 ? 'OK' : 'Poor'} ${Math.round(n)}</span>`);
+function ratings() {
+  const g = A.scans.find((x) => x.deep) || A.scans[0], c = A.citations, top = A.competitors[0];
+  const rv = A.profile.reviews, tr = top?.reviews;
+  return {
+    scan: g ? [pct(g.top10, g.points), 'Share of searched spots on page one (top 10)'] : [null],
+    citations: c ? [c.score, 'Citation score, weighted by how much each directory matters'] : [null],
+    ahead: tr && rv != null ? [Math.min(100, Math.round((rv / tr) * 100)), `Your reviews as a share of ${top.name}'s`] : [null],
+  };
+}
+function secMethod() {
+  const g = A.scans.find((x) => x.deep) || A.scans[0];
+  return `<section class="au-sec" id="sec-method"><h2><span class="n">${numOf('method')}</span>How we checked, and the limits</h2>
+    <div class="card method"><ul>
+      <li><b>Map scan.</b> ${g ? `${g.points} spots on a ${g.size} by ${g.size} grid across ${g.radiusMiles} miles, searched on Google the way a customer standing there would.` : 'Spots searched on Google from around the business.'} Average rank counts only the top 20, so a spot where the business is not found is left out of the average and counted as not found. It is not comparable to other tools' averages.</li>
+      <li><b>Directories.</b> One Google search per directory for the business name. A match needs the same phone, ZIP or street number. A listing Google has not indexed can read "not found", so we confirm by hand before we change anything.</li>
+      <li><b>Competitors.</b> The businesses that hold the most spots in the scan. Their review and rating numbers come from their public Google profiles.</li>
+      <li><b>Ratings.</b> Good is 70 and up, OK is 40 to 69, Poor is under 40. These are our own cutoffs for reading the numbers quickly.</li>
+      <li><b>Limits.</b> Where you appear also depends on distance, relevance and prominence, and results change by device and by day. No one can promise a spot on Google.</li></ul></div></section>`;
+}
 function secCitations() {
   const c = A.citations, n0 = numOf('citations');
-  if (!c) return `<section class="au-sec" id="sec-citations"><h2><span class="n">${n0}</span>Citations and listings</h2><div class="card"><p>Google double checks your name, address and phone across directories before it trusts you. We have not checked yours yet.</p>${D.canClose ? '<button class="btn" data-lst>Run the listing check (15 directories)</button>' : ''}</div></section>`;
-  const n = c.counts, tot = c.checked || 1;
-  const bar = `<div class="mixbar wide">${[['a', n.match || 0, 'Match'], ['c', n.mismatch || 0, 'Wrong'], ['d', n.missing || 0, 'Missing']].map(([cls, v, l]) => (v ? `<i class="${cls}" style="width:${(v / tot) * 100}%"><span>${v} ${l}</span></i>` : '')).join('')}</div>`;
-  return `<section class="au-sec" id="sec-citations"><h2><span class="n">${n0}</span>Citations and listings</h2><p class="au-lead">We checked ${c.checked} directories. ${n.mismatch || 0} show wrong information, ${n.missing || 0} do not list you, ${n.match || 0} match. Wrong and missing rows are fixed first.</p>
-    ${bar}<div class="tbl-wrap"><table class="t"><thead><tr><th>Directory</th><th>Status</th><th>What Google finds</th></tr></thead><tbody>${c.rows.map((r) => `<tr class="row-${esc(r.tone)}"><td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</td><td><span class="tag ${esc(r.tone)}">${esc(r.label)}</span></td><td>${esc(r.note)}</td></tr>`).join('')}</tbody></table></div></section>`;
+  const nDir = directoriesFor(`${D.lead.industry || ''} ${D.lead.category || ''}`, { kind: 'site' }).length;
+  if (!c) return `<section class="au-sec" id="sec-citations"><h2><span class="n">${n0}</span>Citations and listings</h2><div class="card"><p>Google double checks your name, address and phone across directories before it trusts you. We have not checked yours yet.</p>${D.canClose ? `<button class="btn" data-lst>Check ${nDir} directories<span class="cost-hint">about $${(nDir * DIRECTORY_PRICE).toFixed(2)}</span></button>` : ''}</div></section>`;
+  const n = c.counts, tot = c.checked || 1, listed = (n.match || 0) + (n.found || 0) + (n.mismatch || 0);
+  const wrongNames = c.rows.filter((r) => r.status === 'mismatch');
+  const phoneBad = c.rows.filter((r) => r.phone === 'bad').length, zipBad = c.rows.filter((r) => r.zip === 'bad').length;
+  const bar = (label, ok, bad, of) => `<div class="nap"><span>${label}</span><div class="mixbar"><i class="a" style="width:${(ok / of) * 100}%"></i><i class="c" style="width:${(bad / of) * 100}%"></i></div><b>${ok}<small>/${of}</small></b></div>`;
+  const rv = c.rival;
+  const filters = [['all', `All ${c.rows.length}`], ['bad', `Wrong info ${n.mismatch || 0}`], ['miss', `Not found ${n.missing || 0}`], ['ok', `Matches ${(n.match || 0) + (n.found || 0)}`]];
+  const f = S.cites;
+  const rows = c.rows.filter((r) => f === 'all' || (f === 'bad' && r.status === 'mismatch') || (f === 'miss' && r.status === 'missing') || (f === 'ok' && (r.status === 'match' || r.status === 'found')));
+  const shown = S.citesAll ? rows : rows.slice(0, 14);
+  const top = `<div class="cit-top">
+    <div class="card cit-score">${ring(c.score, c.band[0])}<div><h3>Citation score</h3><p class="muted small">${esc(c.band[1])}. ${c.checked} directories checked, weighted by how much each one matters. Wrong and missing listings pull it down.</p></div></div>
+    <div class="card"><h3>Listed on</h3><div class="big-n"><b>${listed}</b><span>of ${c.checked} directories</span></div><div class="mixbar"><i class="a" style="width:${(listed / tot) * 100}%"></i></div>
+      <p class="muted small" style="margin:8px 0 0">${n.missing || 0} not found by Google${n.mismatch ? `, ${n.mismatch} with wrong details` : ''}.</p></div>
+    <div class="card"><h3>Name, address and phone</h3>${bar('Listed', listed, 0, tot)}${bar('Phone right', c.rows.filter((r) => r.phone === 'ok').length, phoneBad, Math.max(1, listed))}${bar('ZIP right', c.rows.filter((r) => r.zip === 'ok').length, zipBad, Math.max(1, listed))}</div>
+    ${rv ? `<div class="card"><h3>Against ${esc(rv.name)}</h3><div class="big-n"><b>${rv.listed}</b><span>of ${rv.checked} listed</span></div><p class="muted small" style="margin:6px 0 0">You are listed on ${c.rows.filter((r) => r.rival && r.status !== 'missing').length} of the same ${rv.checked}.${rv.gaps.length ? ` They are on ${rv.gaps.length} you are not.` : ''}</p></div>` : ''}</div>`;
+  const gaps = rv?.gaps?.length ? `<div class="card gapbox"><h3>Directories ${esc(rv.name)} is on and you are not</h3><div class="chips">${rv.gaps.map((g) => `<span class="chip bad">${esc(g)}</span>`).join('')}</div></div>` : '';
+  const trows = shown.map((r) => `<tr class="row-${esc(r.tone)}"><td><span class="dn">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</span><span class="tier t${r.tier}" title="${esc(TIERS[r.tier] || '')}">${esc(TIERS[r.tier] || '')}</span></td>
+    <td class="c">${r.status === 'missing' ? PH.bad : PH.ok}</td><td class="c">${r.status === 'missing' ? PH[''] : PH[r.phone]}</td><td class="c">${r.status === 'missing' ? PH[''] : PH[r.zip]}</td>
+    <td><span class="tag ${esc(r.tone)}">${esc(r.label)}</span></td>${rv ? `<td class="c">${r.rival === 'yes' ? '<i class="ok">Listed</i>' : r.rival === 'no' ? '<i class="na">No</i>' : '<i class="na">·</i>'}</td>` : ''}<td class="nt">${esc(r.note)}</td></tr>`).join('');
+  const more = rows.length > shown.length ? `<p class="no-print" style="margin:10px 0 0"><button class="btn btn-ghost btn-sm" data-citesall>Show all ${rows.length}</button></p>` : '';
+  const hand = c.hand?.length ? `<details class="card hand"><summary><b>${c.hand.length} more to check by hand</b><span class="muted small"> They have no public page Google can read, but they feed the directories above.</span></summary><ul>${c.hand.map((h) => `<li><b>${esc(h.name)}</b><span class="tier t${h.tier}">${esc(TIERS[h.tier])}</span><p>${esc(h.why)}</p></li>`).join('')}</ul></details>` : '';
+  return `<section class="au-sec" id="sec-citations"><h2><span class="n">${n0}</span>Citations and listings ${rateTag(...ratings().citations)}</h2><p class="au-lead">We checked ${c.checked} directories for ${esc(A.business)}. ${n.mismatch || 0} show wrong information, ${n.missing || 0} do not list you, ${listed} do.${rv ? ` We ran the same check on ${esc(rv.name)}.` : ''} Wrong and missing rows are fixed first.</p>
+    ${top}${gaps}
+    <div class="cit-filters no-print">${filters.map(([k, l]) => `<button type="button" class="${f === k ? 'on' : ''}" data-cf="${k}">${esc(l)}</button>`).join('')}${D.canClose ? `<button type="button" class="again" data-lst title="Runs every directory again">Check again<span class="cost-hint">about $${(nDir * DIRECTORY_PRICE).toFixed(2)}</span></button>` : ''}</div>
+    <div class="tbl-wrap"><table class="t cit"><thead><tr><th>Directory</th><th class="c">Listed</th><th class="c">Phone</th><th class="c">ZIP</th><th>Status</th>${rv ? `<th class="c">${esc(rv.name.length > 18 ? rv.name.slice(0, 16) + '...' : rv.name)}</th>` : ''}<th>What Google finds</th></tr></thead><tbody>${trows || `<tr><td colspan="7" class="muted">Nothing in this view.</td></tr>`}</tbody></table></div>${more}${hand}
+    <p class="note">This reads what Google shows for each directory. A listing Google has not indexed can read "not found" even if it exists, so we confirm by hand before we claim one is missing.</p></section>`;
 }
 function secAhead() {
   const you = { you: true, name: A.business, reviews: A.profile.reviews, rating: A.profile.rating, category: A.profile.category, wins: A.scans[0]?.top3 ?? null, best: null };
@@ -225,7 +362,7 @@ function secAhead() {
   const rm = A.reviewMath;
   const math = rm ? `<div class="card callout ${rm.gap ? 'bad' : 'good'}" style="margin-top:16px"><h3>The review math</h3><p style="margin:0">${rm.gap ? `<b>${rm.gap} reviews</b> to pass ${esc(rm.leader)} (${rm.leaderReviews}). At <b>${rm.perMonth} a month</b> that is about <b>${rm.months} months</b>, with every review answered.` : `You already have more reviews than ${esc(rm.leader)}. Keep asking so the lead stays.`}</p></div>` : '';
   const urg = A.urgency?.length ? `<div class="card callout warn" style="margin-top:16px"><h3>What waiting costs</h3><ul class="sumlist">${A.urgency.map((u) => `<li>${esc(u.line)}</li>`).join('')}</ul><p class="note">Based on the numbers above. An estimate, not a promise.</p></div>` : '';
-  return `<section class="au-sec" id="sec-ahead"><h2><span class="n">${numOf('ahead')}</span>Who is ahead</h2><p class="au-lead">The businesses showing up around you, side by side, using only numbers visible on Google.</p>${bars}${tbl}${cmp}${math}${urg}</section>`;
+  return `<section class="au-sec" id="sec-ahead"><h2><span class="n">${numOf('ahead')}</span>Who is ahead ${rateTag(...ratings().ahead)}</h2><p class="au-lead">The businesses showing up around you, side by side, using only numbers visible on Google.</p>${bars}${tbl}${cmp}${math}${urg}</section>`;
 }
 function secPassing() {
   if (!A.competitors.length) return '';
@@ -273,7 +410,7 @@ function secRoadmap() {
 }
 function restHtml() {
   if (!showRest()) return '';
-  return secCitations() + secAhead() + secPassing() + secProfile() + secFixes() + secPlan() + secRoadmap();
+  return secCitations() + secAhead() + secPassing() + secProfile() + secFixes() + secPlan() + secRoadmap() + secMethod();
 }
 
 // ---------- painting the report page ----------
@@ -303,10 +440,9 @@ function paintAll() {
   if (S.tab === 'proposal') paintProposal();
 }
 function wireReport() {
-  $$('[data-lst]').forEach((b) => b.addEventListener('click', async () => {
-    b.disabled = true; b.textContent = 'Checking 15 directories...';
-    try { await api(`/api/leads/${encodeURIComponent(id)}/listings`, 'POST', {}); await reloadLead(); build(); const y = window.scrollY; paintAll(); window.scrollTo(0, y); } catch (e) { b.disabled = false; b.textContent = e.message; }
-  }));
+  $$('[data-lst]').forEach((b) => b.addEventListener('click', () => generate({ only: 'listings' })));
+  $$('[data-cf]').forEach((b) => b.addEventListener('click', () => { S.cites = b.dataset.cf; S.citesAll = false; const y = window.scrollY; paintAll(); window.scrollTo(0, y); }));
+  $$('[data-citesall]').forEach((b) => b.addEventListener('click', () => { S.citesAll = true; const y = window.scrollY; paintAll(); window.scrollTo(0, y); }));
 }
 
 // ---------- app tab ----------
@@ -384,22 +520,21 @@ const CHEV = (flip) => `<svg viewBox="0 0 24 24" width="20" height="20" fill="no
 function shell() {
   root.innerHTML = `<header class="au-bar"><div class="au-bar-in"><img class="au-logo lg-l" src="/brand/rightway-logo-light.svg" alt="Rightway Growth"><img class="au-logo lg-d" src="/brand/rightway-logo-dark.svg" alt="">
       <span class="au-biz">${esc(D.lead.business)}</span>
-      <div class="au-tabs" role="tablist">${[['report', 'Report'], ['app', 'App']].map(([k, l]) => `<button type="button" data-tab="${k}" role="tab">${l}</button>`).join('')}<span class="au-crumb" id="crumb" hidden>Proposal</span></div>
       <span class="au-sp"></span><div class="au-tools no-print">
         <label class="au-switch" id="siteswitch" title="Show website findings and what we sell after results"><input type="checkbox" id="sitetoggle" ${S.site ? 'checked' : ''}> Website findings</label>
         <button type="button" class="btn btn-ghost btn-sm" id="pdf" title="Print or save as PDF">Print</button></div></div>
       <nav class="au-nav" id="au-nav" aria-label="Sections"></nav></header>
     <main class="au-main" id="au-main"><div id="p-report" class="panel">${reportSkeleton()}</div><div id="p-app" class="panel" hidden>${appHtml()}</div><div id="p-proposal" class="panel" hidden></div></main>
+    <div class="feed no-print" id="feed" aria-live="polite"></div>
     <button type="button" class="arrow arrow-prev no-print" id="aprev" aria-label="Previous page">${CHEV(true)}</button>
     <button type="button" class="arrow arrow-next no-print" id="anext" aria-label="Next page">${CHEV(false)}</button>`;
-  $$('[data-tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
   $('#anext').addEventListener('click', () => showTab(S.tab === 'report' ? 'app' : 'proposal'));
   $('#aprev').addEventListener('click', () => showTab(S.tab === 'proposal' ? 'app' : 'report'));
   $('#sitetoggle').addEventListener('change', (e) => { S.site = e.target.checked; store('site', S.site ? '1' : '0'); const y = window.scrollY; paintAll(); window.scrollTo(0, y); });
   $('#pdf').addEventListener('click', () => window.print());
   $('#scanclose').addEventListener('click', () => closeScan(false));
   paintAll();
-  if (gated()) openScan(false);
+  if (gated() && S.begun) openScan(false);
   showTab(S.tab, true);
 }
 function chrome() {
@@ -410,8 +545,6 @@ function chrome() {
 function showTab(t, keep) {
   S.tab = t;
   ['report', 'app', 'proposal'].forEach((k) => { const el = $(`#p-${k}`); if (el) el.hidden = k !== t; });
-  $$('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === t));
-  $('#crumb').hidden = t !== 'proposal';
   chrome();
   const nx = $('#anext'), pv = $('#aprev');
   pv.hidden = t === 'report';
@@ -518,6 +651,7 @@ async function boot() {
     followNotes();
     window.addEventListener('focus', refreshLead);
     try { const bc = 'BroadcastChannel' in window ? new BroadcastChannel(`rw-present-${id}`) : null; bc?.addEventListener('message', (e) => { if (e.data?.type === 'deep') onScanSaved(); }); } catch { /* fine */ }
+    window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data?.type === 'rw-embed-height' && S.frame && e.source === S.frame.contentWindow) S.frame.style.height = Math.max(420, Math.min(6000, Number(e.data.h) || 0)) + 'px'; });
     window.addEventListener('message', (e) => { if (e.origin === location.origin && e.data?.type === 'rw-scan-saved' && e.data.lead === id) onScanSaved(); });
   } catch (e) {
     root.innerHTML = e.status === 401 || e.status === 403 ? '<div class="au-err">Log in to the Hub first.<br><a href="/">Open Rightway Hub</a></div>' : `<div class="au-err">${esc(e.message)}</div>`;
