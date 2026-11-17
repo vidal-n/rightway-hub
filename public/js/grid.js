@@ -1,5 +1,7 @@
 // Grid math and rank statistics. Pure functions, shared by the app and the tests.
 
+// Biggest scan radius in miles (Nov 2026, V: a wider radius to see how far a prospect reaches; was 30).
+export const MAX_RADIUS = 50;
 export const UNRANKED = 21; // "not in the top 20" counts as 21 for averages
 // DataForSEO live pricing, USD per grid point: Local Finder bills per 10 results (we read 20); Maps bills per 100.
 export const COST_PER_POINT = { local: 0.004, maps: 0.002 };
@@ -9,7 +11,7 @@ const MILES_PER_DEG_LNG_EQUATOR = 69.172;
 
 export function gridPoints(lat, lng, size, radiusMiles) {
   if (![3, 5, 7, 9, 11, 13].includes(size)) throw new Error('Grid size must be 3, 5, 7, 9, 11, or 13.');
-  if (!(radiusMiles > 0 && radiusMiles <= 30)) throw new Error('Radius must be between 0 and 30 miles.');
+  if (!(radiusMiles > 0 && radiusMiles <= MAX_RADIUS)) throw new Error(`Radius must be between 0 and ${MAX_RADIUS} miles.`);
   const half = (size - 1) / 2;
   const step = radiusMiles / half;
   const latStep = step / MILES_PER_DEG_LAT;

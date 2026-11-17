@@ -18,7 +18,7 @@ const isDemo = (env) => !env.DATAFORSEO_LOGIN || !env.DATAFORSEO_PASSWORD;
 
 export function cleanConfig(b = {}, base = DEFAULTS) {
   const size = [3, 5, 7, 9, 11, 13].includes(Number(b.size)) ? Number(b.size) : base.size;
-  const radius = Math.min(30, Math.max(0.5, Number(b.radius) || base.radius));
+  const radius = Math.min(50, Math.max(0.5, Number(b.radius) || base.radius));
   return {
     enabled: 'enabled' in b ? Boolean(b.enabled) : base.enabled,
     size, radius,

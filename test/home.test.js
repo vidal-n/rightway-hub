@@ -96,7 +96,8 @@ test('citations: real sign up links, cost, and trade lists by industry', () => {
 test('bigger grids and radius; sample scans have real structure', () => {
   assert.equal(gridPoints(26, -80, 13, 30).length, 169);
   assert.throws(() => gridPoints(26, -80, 15, 5));
-  assert.throws(() => gridPoints(26, -80, 7, 31));
+  assert.throws(() => gridPoints(26, -80, 7, 51));
+  assert.equal(gridPoints(26, -80, 13, 50).length, 169, "50 mile scans are allowed");
   const s = sampleScan('roof repair', { boost: 6 });
   const st = gridStats(s.points);
   assert.equal(st.done, 49);

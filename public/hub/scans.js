@@ -43,7 +43,7 @@ export async function autoScanCard(box, user) {
       <p class="muted">${c.enabled ? 'On.' : 'Off.'} The Hub re-runs a map scan for every active client on a schedule, using the target keywords on each client's profile. Results land on the client's Rankings tab and in their app, and feed the monthly report.</p>
       <form id="asf" class="form-grid" style="margin-top:12px">
         <label class="field"><span>Grid size</span><select name="size"${dis}>${[3, 5, 7, 9, 11, 13].map((n) => `<option value="${n}"${n === c.size ? ' selected' : ''}>${n} x ${n} (${n * n} spots)</option>`).join('')}</select></label>
-        <label class="field"><span>Radius (miles)</span><input name="radius" type="number" min="0.5" max="30" step="0.5" value="${esc(c.radius)}"${dis}></label>
+        <label class="field"><span>Radius (miles)</span><input name="radius" type="number" min="0.5" max="50" step="0.5" value="${esc(c.radius)}"${dis}></label>
         <label class="field"><span>Keywords per client</span><select name="keywords"${dis}>${[1, 2, 3, 4, 5].map((n) => `<option${n === c.keywords ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
         <label class="field"><span>Scan every (days)</span><input name="everyDays" type="number" min="7" max="60" value="${esc(c.everyDays)}"${dis}></label>
         <label class="span-all row small" style="gap:8px"><input type="checkbox" name="autoSend"${c.autoSend ? ' checked' : ''}${dis}> Email each client's monthly report as soon as it is ready (otherwise it waits as a draft for you to check)</label>
