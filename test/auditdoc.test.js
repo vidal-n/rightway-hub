@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAudit, sectionsOf, jobCalc, solutionFor, passPlan } from '../public/js/auditdoc.js';
+import { buildAudit, sectionsOf, jobCalc, solutionFor, passPlan, reportCard, gradeOf } from '../public/js/auditdoc.js';
 
 const lead = { business: 'Joe Plumbing', city: 'Miami', state: 'FL', industry: 'plumbing', contact_name: 'Joe', notes: 'SECRET NOTE' };
 const intel = { found: true, keyword: 'plumber', rank: 7, listing: { rating: 4.1, reviews: 12, category: 'Plumber', url: '', photos: 5 },
@@ -55,4 +55,24 @@ test('solutions fall back to the research fix text and use the numbers', () => {
 test('passPlan says when you already lead on reviews', () => {
   const p = passPlan({ name: 'X', reviews: 5, rating: 4, category: 'Plumber', wins: 0, domain: '' }, { reviews: 20, rating: 4.5, category: 'Plumber' }, null, null);
   assert.match(p[0], /already have more/);
+});
+
+test('report card: letters from our scale, an overall, honest about what was not run', () => {
+  assert.deepEqual([95, 85, 84, 70, 69, 55, 54, 40, 39, 0].map(gradeOf), ['A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'F', 'F']);
+  assert.equal(gradeOf(null), '');
+  const a = buildAudit(lead, { intel, listings });
+  const rc = reportCard(a);
+  assert.deepEqual(rc.rows.map((r) => r.key), ['visibility', 'reviews', 'citations', 'consistency', 'profile']);
+  assert.ok(rc.rows.every((r) => r.score == null || (r.score >= 0 && r.score <= 100)));
+  const vis = rc.rows.find((r) => r.key === 'visibility');
+  assert.equal(vis.score, 50, 'three top 3 spots (100 each) and six at 11 to 20 (25 each) over nine');
+  assert.match(vis.why, /of 9 searched spots on page one/);
+  assert.equal(rc.rows.find((r) => r.key === 'reviews').grade, 'F', '12 reviews against 210 at 4.1 stars');
+  assert.ok(rc.overall != null && rc.grade);
+  assert.equal(reportCard(buildAudit(lead, { intel, listings: null })).rows.find((r) => r.key === 'citations').score, null);
+  assert.equal(reportCard({ ready: false }), null);
+});
+test('report card has no dashes and no promises', () => {
+  const rc = reportCard(buildAudit(lead, { intel, listings }));
+  assert.doesNotMatch(JSON.stringify(rc), /[–—]/);
 });

@@ -107,7 +107,7 @@ export function buildAudit(lead = {}, { intel = null, listings = null, deepScan 
   // Scans: one per saved keyword (the deep scan), else the research grid.
   const deep = (deepScan?.scans || []).filter((s) => s?.cells?.length);
   const scans = deep.length
-    ? deep.map((s) => ({ keyword: s.keyword, size: s.size, radiusMiles: s.radiusMiles, points: s.points, top10: s.top10 ?? top10Of(s), top3: s.top3 ?? 0, avg: s.avg ?? null, cells: s.cells.map((c) => (c.error ? -1 : c.rank ?? 0)), deep: true }))
+    ? deep.map((s) => ({ keyword: s.keyword, size: s.size, radiusMiles: s.radiusMiles, points: s.points, top10: s.top10 ?? top10Of(s), top3: s.top3 ?? 0, avg: s.avg ?? null, cells: s.cells.map((c) => (c.error ? -1 : c.rank ?? 0)), tops: s.cells.map((c) => (c.top || []).slice(0, 3)), deep: true }))
     : grid ? [{ keyword: grid.keyword || keyword, size: grid.size, radiusMiles: grid.radiusMiles, points: grid.points, top10: grid.top10, top3: grid.top3, avg: grid.avg, cells: grid.cells, deep: false }] : [];
 
   const ls = listings?.results?.length ? listings : null;
@@ -124,6 +124,7 @@ export function buildAudit(lead = {}, { intel = null, listings = null, deepScan 
       const rv = rivalMap.get(r.name);
       return { name: r.name, tier: r.tier || 3, cat: r.cat || 'dir', status: r.status, label: LISTING_LABEL[r.status]?.[1] || '', tone: LISTING_LABEL[r.status]?.[0] || 'gray',
         note: r.notes?.length ? r.notes.join('. ') : r.status === 'missing' ? 'Google did not find a listing' : r.status === 'match' ? 'Name and details match' : r.status === 'found' ? 'Listed, details not shown in the preview' : r.error || '', url: r.url || '',
+        listed: r.listed || null, nm: r.nameState && r.nameState !== 'unknown' ? r.nameState : '', ad: r.addrBad ? 'bad' : r.addrOk ? 'ok' : '',
         phone: r.phoneBad ? 'bad' : r.phoneOk ? 'ok' : '', zip: r.zipBad ? 'bad' : r.zipOk ? 'ok' : '', rival: rv ? (rv.status === 'missing' ? 'no' : rv.status === 'error' ? '' : 'yes') : '' };
     });
     const score = ls.score ?? citationScore(ls.results);
@@ -133,6 +134,8 @@ export function buildAudit(lead = {}, { intel = null, listings = null, deepScan 
       rival: ls.rival ? { name: ls.rival.name, checked: rr.length, listed: rr.filter((r) => r.status !== 'missing').length, mine: rows.filter((r) => r.status !== 'missing').length, gaps: gapsVsRival(ls.results, ls.rival.results) } : null };
   })() : null;
 
+  const pick = (a, b) => [a, b].map(Number).find((n) => Number.isFinite(n) && n !== 0);
+  const clat = pick(lead.lat, L.lat), clng = pick(lead.lng, L.lng);
   const Q = quoteFor(lead, intel, quote);
   const services = Q.services.map((s) => ({ id: s.id, name: s.name, what: s.what, why: s.why, qty: s.qty, unit: s.unit || '', site: WEBSITE_SERVICE_IDS.includes(s.id), need: WEBSITE_NEED_IDS.includes(s.id) }));
   const qtyOf = (id) => Q.services.find((x) => x.id === id)?.qty;
@@ -152,6 +155,8 @@ export function buildAudit(lead = {}, { intel = null, listings = null, deepScan 
     v: AUDIT_VERSION, ready: true, at, rep,
     business: lead.business || '', contact: lead.contact_name || '', city: lead.city || '', state: lead.state || '', industry: info.label, ticket: info.ticket || 0,
     keyword, keywords: kws, headline: pack.headline, summary,
+    center: Number.isFinite(clat) && Number.isFinite(clng) ? { lat: clat, lng: clng } : null,
+    nap: { name: L.title || lead.business || '', address: L.address || lead.address || '', phone: L.phone || lead.phone || '' },
     profile: { name: L.title || lead.business, category: L.category || lead.category || info.label, phone: L.phone || lead.phone || '', address: L.address || '', website: L.url || lead.website || '', rating: you.rating, reviews: you.reviews, photos: you.photos, claimed: you.claimed },
     scans, weakest: weakest ? weakest.keyword : null,
     competitors, compare: pack.compare, reviewMath: pack.reviewMath, lost: pack.lost, urgency: pack.urgency,
@@ -172,6 +177,54 @@ export function sectionsOf(a) {
   // Order of the page: the scan first, directories right under it, then who is ahead, how to pass them, the profile, fixes, plan, 90 days.
   const s = [['summary', 'Overview'], ['scan', 'Map scan'], ['citations', 'Citations'], ['ahead', 'Who is ahead'], ['passing', 'How to pass them'], ['profile', 'Google profile'], ['fixes', 'Exact fixes'], ['plan', 'Game plan'], ['roadmap', '90 days'], ['method', 'How we checked']];
   return s.filter(([k]) => (k === 'ahead' || k === 'passing' ? a.competitors.length : true));
+}
+
+// ---------- the report card ----------
+// A letter grade per area and an overall grade, worked out only from what the audit found. The scale is ours (like the Good and OK
+// tags): it is a quick way to read the numbers, not a Google score and not BrightLocal's. Modeled on the grade at the top of
+// BrightLocal's Local Search Audit.
+export const GRADE_CUTS = [[85, 'A'], [70, 'B'], [55, 'C'], [40, 'D'], [0, 'F']];
+export const gradeOf = (score) => (score == null || !Number.isFinite(score) ? '' : GRADE_CUTS.find(([c]) => score >= c)[1]);
+export const gradeTone = (g) => (g === 'A' || g === 'B' ? 'good' : g === 'C' ? 'warn' : g ? 'bad' : 'gray');
+export function reportCard(a) {
+  if (!a?.ready) return null;
+  const rows = [];
+  const add = (key, label, weight, score, why) => rows.push({ key, label, weight, score: score == null ? null : Math.max(0, Math.min(100, Math.round(score))), grade: gradeOf(score == null ? null : Math.round(score)), why });
+
+  // Map visibility: every searched spot is worth more the higher you show (top 3 full, page one most, 11 to 20 a little).
+  const cells = a.scans.flatMap((s) => s.cells).filter((c) => c !== -1);
+  if (cells.length) {
+    const pts = (c) => (c > 0 && c <= 3 ? 100 : c > 3 && c <= 10 ? 70 : c > 10 && c <= 20 ? 25 : 0);
+    const t10 = cells.filter((c) => c > 0 && c <= 10).length, t3 = cells.filter((c) => c > 0 && c <= 3).length;
+    add('visibility', 'Map visibility', 35, cells.reduce((n, c) => n + pts(c), 0) / cells.length, `${t10} of ${cells.length} searched spots on page one, ${t3} in the top 3.`);
+  } else add('visibility', 'Map visibility', 35, null, 'Run the map scan.');
+
+  // Reviews: how many against the business ahead, and the star rating (3.0 stars is 0, 4.8 and up is full).
+  const rv = a.profile.reviews, rating = a.profile.rating, lead = a.competitors[0];
+  if (rv != null || rating != null) {
+    const vol = rv == null ? null : Math.min(100, (rv / Math.max(1, lead?.reviews || 100)) * 100);
+    const star = rating == null ? null : Math.max(0, Math.min(100, ((rating - 3) / 1.8) * 100));
+    const parts = [[vol, 0.6], [star, 0.4]].filter(([v]) => v != null);
+    const w = parts.reduce((n, [, k]) => n + k, 0);
+    add('reviews', 'Reviews and rating', 20, parts.reduce((n, [v, k]) => n + v * k, 0) / w, `${rv ?? 'No'} reviews${rating != null ? `, ${rating.toFixed(1)} stars` : ''}${lead?.reviews != null ? `. ${lead.name} has ${lead.reviews}.` : '.'}`);
+  } else add('reviews', 'Reviews and rating', 20, null, 'No Google reviews found.');
+
+  // Directories: the weighted citation score, then how many of the listings that exist show the right name, address and phone.
+  const c = a.citations;
+  add('citations', 'Directory listings', 15, c ? c.score : null, c ? `${(c.counts.missing || 0)} of ${c.checked} directories do not list you.` : 'Run the directory check.');
+  const listed = c ? c.rows.filter((r) => r.status !== 'missing' && r.status !== 'error') : [];
+  add('consistency', 'Name, address and phone', 15, listed.length ? (1 - listed.filter((r) => r.status === 'mismatch').length / listed.length) * 100 : null,
+    listed.length ? `${listed.filter((r) => r.status === 'mismatch').length} of ${listed.length} listings show something different from your profile.` : 'Needs the directory check.');
+
+  // Google profile: only the checklist items we could actually read (the rest are confirmed with the owner).
+  const known = a.checklist.filter((x) => x.state === true || x.state === false);
+  add('profile', 'Google profile', 15, known.length >= 3 ? (known.filter((x) => x.state).length / known.length) * 100 : null, known.length >= 3 ? `${known.filter((x) => x.state).length} of ${known.length} checkable items done.` : 'Too little to read yet.');
+
+  const scored = rows.filter((r) => r.score != null);
+  const wsum = scored.reduce((n, r) => n + r.weight, 0);
+  const overall = scored.length >= 2 ? Math.round(scored.reduce((n, r) => n + r.score * r.weight, 0) / wsum) : null;
+  const weakest = [...scored].sort((x, y) => x.score - y.score)[0] || null;
+  return { overall, grade: gradeOf(overall), tone: gradeTone(gradeOf(overall)), rows, weakest: weakest && weakest.grade !== 'A' ? weakest.key : null, scored: scored.length };
 }
 
 export { whyThey };

@@ -102,3 +102,17 @@ test('citations: directory check, log with the monthly quota, prospects, and the
   assert.ok(r.data.directories.every((d) => d.audit === undefined && 'listed' in d));
   assert.equal((await t.call('POST', `/api/clients/${c.id}/citations/audit`)).status, 403);
 });
+
+test('judgeListing shows what the directory lists and flags the differences', () => {
+  const r = (title, snippet) => [{ url: 'https://www.yelp.com/biz/sunrise-roofing', title, snippet }];
+  const ok = judgeListing(r('Sunrise Roofing - Hollywood, FL - Yelp', 'Sunrise Roofing. 2600 Hollywood Blvd, Hollywood, FL 33020. Call (954) 555-0142.'), CLIENT);
+  assert.deepEqual(ok.listed, { name: 'Sunrise Roofing', address: '2600 Hollywood Blvd, Hollywood, FL 33020', phone: '(954) 555-0142' });
+  assert.equal(ok.status, 'match'); assert.equal(ok.addrOk, true); assert.equal(ok.nameState, 'ok');
+  const bad = judgeListing(r('Sunrise Roofing - Hollywood, FL', 'Sunrise Roofing. 1180 N State Rd 7, Hollywood, FL 33021. Call (954) 555-0177.'), CLIENT);
+  assert.equal(bad.status, 'mismatch'); assert.equal(bad.addrBad, true); assert.equal(bad.phoneBad, true);
+  assert.equal(bad.listed.address, '1180 N State Rd 7, Hollywood, FL 33021'); assert.equal(bad.listed.phone, '(954) 555-0177');
+  const name = judgeListing(r('Sunrise Roof and Gutter | Facebook', 'Sunrise Roof and Gutter in Hollywood, FL. See photos and reviews.'), CLIENT);
+  assert.equal(name.nameState, 'diff'); assert.equal(name.status, 'mismatch'); assert.equal(name.listed.phone, '', 'nothing is invented when the preview shows no phone');
+  const bare = judgeListing(r('Sunrise Roofing reviews', 'See photos and reviews.'), CLIENT);
+  assert.equal(bare.status, 'found'); assert.equal(bare.listed.address, '');
+});

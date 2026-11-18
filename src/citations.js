@@ -35,6 +35,31 @@ const BIG = /(^|\.)(yelp|facebook|google|youtube|instagram|linkedin|nextdoor|ang
 const STOP = new Set(['the', 'and', 'llc', 'inc', 'co', 'corp', 'company', 'of', 'services', 'service', 'group', 'pllc', 'pa', 'ltd']);
 const tokens = (s) => String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').split(' ').filter((w) => w.length > 1 && !STOP.has(w));
 
+// Pull the name, street address and phone a directory shows out of Google's preview text. Pure, never invents: a part Google's
+// preview does not show comes back as ''. Used to show "what is listed" next to what the business really is.
+const SUFFIX = 'St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pkwy|Parkway|Hwy|Highway|Pl|Place|Ter|Terrace|Cir|Circle|Trl|Trail|Sq|Square|Expy|Loop';
+const STREET_RE = new RegExp(`\\b\\d{1,6}\\s+(?:[NSEW]\\.?\\s+|(?:North|South|East|West)\\s+)?(?:[A-Za-z0-9.'-]+\\s+){0,4}?(?:${SUFFIX})\\b\\.?(?:\\s+\\d{1,3}\\b)?(?:\\s*(?:#|Ste\\.?|Suite|Unit|Apt\\.?)\\s*[A-Za-z0-9-]+)?`, 'i');
+const TAIL_RE = /^[,\s]+([A-Za-z][A-Za-z .'-]{1,24}?)[,\s]+([A-Z]{2})\b(?:\s+(\d{5}(?:-\d{4})?))?/;
+function addressIn(text) {
+  const m = STREET_RE.exec(text);
+  if (!m) return '';
+  const tail = TAIL_RE.exec(text.slice(m.index + m[0].length, m.index + m[0].length + 48));
+  return (m[0] + (tail ? `, ${tail[1].trim()}, ${tail[2]}${tail[3] ? ` ${tail[3]}` : ''}` : '')).replace(/[\s,.]+$/, '').trim();
+}
+const fmtPhone = (d) => (d.length === 10 ? d.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3') : '');
+export function listedNap(hit) {
+  const title = String(hit.title || '').replace(/\s+/g, ' ').trim();
+  const snippet = String(hit.snippet || '').replace(/\s+/g, ' ').trim();
+  const name = title.split(/\s+[-|–—:·]\s+/)[0].trim();
+  const phones = [...`${snippet} ${title}`.matchAll(/\(?\b\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g)].map((m) => digits(m[0])).filter((d) => d.length === 10);
+  const address = addressIn(snippet) || addressIn(title);
+  return { name, address, phone: fmtPhone(phones[0] || '') };
+}
+const streetOf = (a) => {
+  const m = String(a || '').toLowerCase().match(/\b(\d{1,6})\s+((?:[nsew]\.?\s+|north\s+|south\s+|east\s+|west\s+)?[a-z0-9.'-]+)/);
+  return m ? { num: m[1], word: m[2].replace(/[.']/g, '').replace(/^(n|s|e|w|north|south|east|west)\s+/, '') } : null;
+};
+
 // Decide from Google's preview whether a directory lists the business and whether the details match. Pure.
 export function judgeListing(results, client) {
   const want = tokens(client.name);
@@ -55,9 +80,24 @@ export function judgeListing(results, client) {
   const zipOk = Boolean(zip) && zips.includes(zip);
   const zipBad = Boolean(zip) && zips.length > 0 && !zipOk;
   const streetOk = Boolean(street) && new RegExp(`\\b${street}\\b`).test(text);
-  const notes = [phoneBad ? `Shows a different phone (${phones[0].replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3')})` : '', zipBad ? `Shows a different ZIP (${zips[0]})` : ''].filter(Boolean);
-  const status = phoneBad || zipBad ? 'mismatch' : phoneOk || zipOk || streetOk ? 'match' : 'found';
-  return { status, url: hit.url, title: hit.title, snippet: hit.snippet.slice(0, 240), notes, phoneBad, zipBad, phoneOk, zipOk };
+  // What the directory shows, side by side with ours.
+  const listed = listedNap(hit);
+  const mine = streetOf(client.address), theirs = streetOf(listed.address);
+  const addrOk = Boolean(mine && theirs) && mine.num === theirs.num && mine.word === theirs.word;
+  const addrBad = Boolean(mine && theirs) && !addrOk;
+  const lw = new Set(tokens(listed.name));
+  const missingWords = want.filter((w) => !lw.has(w));
+  const nameOk = Boolean(listed.name) && !missingWords.length && lw.size <= want.length;
+  const nameBad = Boolean(listed.name) && missingWords.length > 0 && lw.size > 0;
+  const nameState = !listed.name ? 'unknown' : nameOk ? 'ok' : nameBad ? 'diff' : 'extra';
+  const fmt = (d) => fmtPhone(d);
+  const notes = [
+    phoneBad ? `Shows a different phone: ${fmt(phones[0])}` : '',
+    addrBad ? `Shows a different address: ${listed.address}` : zipBad ? `Shows a different ZIP (${zips[0]})` : '',
+    nameBad ? `Shows the name as "${listed.name}"` : '',
+  ].filter(Boolean);
+  const status = phoneBad || zipBad || addrBad || nameBad ? 'mismatch' : phoneOk || zipOk || streetOk || addrOk ? 'match' : 'found';
+  return { status, url: hit.url, title: hit.title, snippet: hit.snippet.slice(0, 240), notes, phoneBad, zipBad, phoneOk, zipOk, listed, addrOk, addrBad, nameState };
 }
 
 async function search(env, q, free) {

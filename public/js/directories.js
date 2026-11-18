@@ -126,7 +126,8 @@ export const queryFor = (d, name, city) => `site:${d.domain} "${name}"${city ? `
 export function listingScore(r) {
   if (!r || r.status === 'missing' || r.status === 'error') return 0;
   const f = (ok, bad) => (bad ? 0 : ok ? 1 : 0.5); // a detail that Google's preview does not show counts half
-  return 0.4 + 0.2 + 0.2 * f(r.zipOk, r.zipBad) + 0.2 * f(r.phoneOk, r.phoneBad);
+  const nameF = r.nameState === 'diff' ? 0.5 : 1;
+  return 0.4 + 0.2 * nameF + 0.2 * f(r.zipOk || r.addrOk, r.zipBad || r.addrBad) + 0.2 * f(r.phoneOk, r.phoneBad);
 }
 export function citationScore(results = []) {
   let got = 0, max = 0;

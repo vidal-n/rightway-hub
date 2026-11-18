@@ -5,8 +5,11 @@
 // The map scan is the first thing on the page and runs INSIDE it (the scan tool in a frame, no redirect). When it saves, the page reads the Google
 // profile and competitors, checks the directories, and builds the rest of the report below it, one section after another.
 // Modeled on BrightLocal's Local Search Grid and Citation Tracker reports. Closers and owners only.
-import { buildAudit, sectionsOf, jobCalc, money } from '/js/auditdoc.js';
+import { LOGO } from '/js/logo.js';
+import { buildAudit, sectionsOf, jobCalc, money, reportCard, GRADE_CUTS, gradeTone } from '/js/auditdoc.js';
 import { gridSvg } from '/js/packview.js';
+import { createMap } from '/js/map.js';
+import { gridCoords } from '/js/grid.js';
 import { buildScript, unbold, quoteFor } from '/js/leadintel.js';
 import { refLines } from '/js/planref.js';
 import { can } from '/js/jobs.js';
@@ -34,7 +37,7 @@ async function api(path, method = 'GET', body) {
 const store = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(`rw-au-${k}`); sessionStorage.setItem(`rw-au-${k}`, v); } catch { return null; } return null; };
 const parseJ = (v) => { if (!v) return null; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch { return null; } };
 
-const S = { tab: 'report', kw: 0, site: store('site') === '1', ticket: null, jobs: 4, monthly: '', sec: 'summary', appSrc: null, frame: null, scanOpen: false, skipScan: store('skip') === '1', begun: store('begun') === '1', cites: 'all', busy: false, stage: null, fresh: false, appLoaded: false };
+const S = { tab: 'report', kw: 0, site: store('site') === '1', ticket: null, jobs: 4, monthly: '', sec: 'summary', appSrc: null, frame: null, scanOpen: false, skipScan: store('skip') === '1', begun: store('begun') === '1', cites: 'all', mv: store('mv') === 'map' ? 'map' : 'grid', busy: false, stage: null, fresh: false, appLoaded: false };
 let D = null; // { lead, intel, me, settings }
 let A = null; // the audit document
 
@@ -108,21 +111,57 @@ function topHtml() {
       <div class="au-meta"><div><b>Prepared</b>${esc(new Date(A.at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }))}</div>
         ${A.contact ? `<div><b>For</b>${esc(A.contact)}</div>` : ''}${A.rep ? `<div><b>By</b>${esc(A.rep)}, Rightway Growth</div>` : ''}
         <div><b>Searches checked</b><span class="chips">${A.keywords.map((k) => `<span class="chip">${esc(k)}</span>`).join('')}</span></div></div></div>
-    <div class="grid4 kpis">${k1}${k2}${k3}${k4}</div>${attn}
+    <div class="grid4 kpis">${k1}${k2}${k3}${k4}</div>${cardHtml()}${attn}
     <p class="note">Where you appear also depends on distance and relevance, so no one can promise a spot. You keep this audit either way.</p></section>`;
+}
+
+// ---------- the report card: a letter per area, one overall ----------
+function cardHtml() {
+  const rc = reportCard(A);
+  if (!rc || rc.scored < 2) return '';
+  const link = { visibility: '#sec-scan', reviews: '#sec-ahead', citations: '#sec-citations', consistency: '#sec-citations', profile: '#sec-profile' };
+  const row = (r) => `<a class="rc-row ${gradeTone(r.grade)}${rc.weakest === r.key ? ' weak' : ''}" href="${link[r.key] || '#'}"><span class="rc-g">${r.grade || '·'}</span><span class="rc-t"><b>${esc(r.label)}</b><span>${esc(r.why)}</span></span><span class="rc-bar" aria-hidden="true"><i style="width:${r.score ?? 0}%"></i></span><span class="rc-s">${r.score == null ? 'Not run' : r.score}</span></a>`;
+  const weakest = rc.rows.find((r) => r.key === rc.weakest);
+  return `<div class="card reportcard" id="reportcard"><div class="rc-main ${rc.tone}"><span class="rc-eyebrow">Report card</span><b class="rc-grade">${rc.grade}</b><span class="rc-sub">Overall, ${rc.overall} out of 100</span>${weakest ? `<span class="rc-weak">Weakest: ${esc(weakest.label)}</span>` : ''}</div>
+    <div class="rc-rows">${rc.rows.map(row).join('')}</div>
+    <p class="note rc-note">Our own scale: ${GRADE_CUTS.map(([c, g], i) => `${g} ${i === 0 ? `${c}+` : i === GRADE_CUTS.length - 1 ? `under ${GRADE_CUTS[i - 1][0]}` : `${c} to ${GRADE_CUTS[i - 1][0] - 1}`}`).join(', ')}. A quick way to read the numbers, not a Google score.</p></div>`;
 }
 
 // ---------- the scan (section 01, always first) ----------
 function scanPanel(s) {
   const m = mix(s.cells), tot = s.cells.length || 1;
   const seg = (k, n, cls, lab) => (n ? `<i class="${cls}" style="width:${(n / tot) * 100}%" title="${lab}: ${n}"><span>${n}</span></i>` : '');
-  return `<div class="scanbox"><div>${gridSvg(s.cells, s.size, `Map scan for ${s.keyword}`)}
+  const canMap = Boolean(A.center && s.size && s.radiusMiles);
+  const mv = canMap && S.mv === 'map';
+  const toggle = canMap ? `<div class="mvtoggle no-print" role="tablist" aria-label="How to show the scan"><button type="button" data-mv="grid" class="${mv ? '' : 'on'}">Grid</button><button type="button" data-mv="map" class="${mv ? 'on' : ''}">Map</button></div>` : '';
+  const view = mv ? `<div class="gmap rmap" id="rmap" aria-label="Zoomable map of the scan"></div><div class="rmap-pt" id="rmap-pt"><span class="muted small">Zoom with the + and - buttons, a pinch, or Ctrl and scroll. Drag to move. Tap a circle to see who shows up from that spot.</span></div>` : gridSvg(s.cells, s.size, `Map scan for ${s.keyword}`);
+  return `<div class="scanbox"><div>${toggle}${view}
       <div class="legend"><span><i style="background:var(--g3)"></i>Top 3</span><span><i style="background:var(--g10)"></i>4 to 10</span><span><i style="background:var(--g20)"></i>11 to 20</span><span><i style="background:var(--gnone)"></i>Not found</span></div></div>
     <div class="statlist"><div class="big-stat ${tone(s.top10 / (s.points || 1) >= 0.7, s.top10 / (s.points || 1) >= 0.35)}"><b>${s.top10}<small> of ${s.points}</small></b><span>spots on the first page (top 10) within ${s.radiusMiles} miles</span></div>
       <div class="mixbar" aria-label="How the spots split">${seg('t3', m.t3, 'a', 'Top 3')}${seg('t10', m.t10, 'b', '4 to 10')}${seg('t20', m.t20, 'c', '11 to 20')}${seg('none', m.none + m.err, 'd', 'Not found')}</div>
       <div class="mixkey"><span><i class="a"></i>${m.t3} top 3</span><span><i class="b"></i>${m.t10} at 4 to 10</span><span><i class="c"></i>${m.t20} at 11 to 20</span><span><i class="d"></i>${m.none + m.err} not found</span></div>
       <div class="grid2" style="gap:10px"><div class="kpi neutral"><b>${s.avg ?? '20+'}</b><span class="kpi-l">Average rank</span></div><div class="kpi neutral"><b>${s.top3}</b><span class="kpi-l">Top 3 spots</span></div></div>
       <p class="note" style="margin:0">Each square is a spot around the business. The number is where you show up when someone there searches "${esc(s.keyword)}". The middle square is the business address.</p></div></div>`;
+}
+// The scan on a real map (BrightLocal's Local Search Grid map view): the same squares as pins at their true spots, zoom, drag, pinch.
+// Google Maps when the Hub has a key, our own OpenStreetMap tiles when it does not (createMap decides).
+function mountScanMap(s) {
+  const pts = gridCoords(A.center.lat, A.center.lng, s.size, s.radiusMiles).map((p, i) => {
+    const r = s.cells[i];
+    return { ...p, status: r === -1 ? 'error' : 'done', rank: r > 0 ? r : null, top: (s.tops?.[i] || []).map((t, k) => ({ ...t, rank: t.rank || k + 1 })) };
+  });
+  const el = $('#rmap');
+  const box = $('#rmap-pt');
+  const mid = Math.floor(pts.length / 2);
+  S.map = createMap(el, pts, {
+    onSelect: (i) => {
+      const p = pts[i]; S.map.select(i);
+      const you = p.status === 'error' ? 'This check did not finish.' : p.rank ? `${esc(A.business)} shows at <b>#${p.rank}</b> from here.` : `${esc(A.business)} is <b>not in the top 20</b> from here.`;
+      const list = (p.top || []).filter((t) => t.title).map((t) => `<li><b>#${t.rank}</b> ${esc(t.title)}${t.rating != null ? `<span class="muted small"> · ${t.rating} stars${t.reviews != null ? `, ${t.reviews} reviews` : ''}</span>` : ''}</li>`).join('');
+      box.innerHTML = `<h4>Spot ${p.row + 1}, ${p.col + 1}${i === mid ? ' (the business address)' : ''} for "${esc(s.keyword)}"</h4><p style="margin:2px 0 6px">${you}</p>${list ? `<ol class="rmap-top">${list}</ol>` : ''}`;
+    },
+  });
+  S.map.select(mid);
 }
 function scanSkeleton() {
   return `<div id="scan-head"></div><div id="scanres"></div>
@@ -147,6 +186,8 @@ function paintScan() {
     res = raw.length ? `<div class="card saved"><span class="ok-dot">✓</span><div><b>Scan saved</b><p class="muted small" style="margin:2px 0 0">${raw.map((x) => `${esc(x.keyword)}: ${x.top10 ?? x.cells.filter((c) => c.rank > 0 && c.rank <= 10).length} of ${x.points ?? x.cells.length} spots on page one`).join(' · ')}</p></div></div>` : '';
   }
   $('#scanres').innerHTML = res;
+  $$('[data-mv]', $('#scanres')).forEach((b) => b.addEventListener('click', () => { S.mv = b.dataset.mv; store('mv', S.mv); paintScan(); }));
+  if ($('#rmap') && s) mountScanMap(s);
   const quick = !deep && A?.ready;
   $('#scan-act').innerHTML = S.scanOpen ? '' : `<p style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btn ${deep ? 'btn-ghost' : ''} btn-sm" data-openscan>${deep ? 'Scan another search' : 'Open the live scan'}</button>${quick && gated() ? '<button class="btn btn-ghost btn-sm" data-skipscan>Use the quick research grid instead</button>' : ''}</p>`;
   $('#scanclose').hidden = gated() && !deep;
@@ -214,11 +255,21 @@ function feed(kind, title, text) {
   while (box.children.length > 4) box.firstChild.remove();
   setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 420); }, 3800);
 }
+// Said out loud on the pop up: what the directory shows against what the business really is.
+function napDiff(x) {
+  const m = A?.nap || { name: D.lead.business, phone: D.lead.phone, address: D.lead.address }, l = x.listed || {};
+  const out = [];
+  if (x.phoneBad && l.phone) out.push(`Phone ${l.phone}, yours ${m.phone}`);
+  if (x.addrBad && l.address) out.push(`Address ${l.address}, yours ${m.address}`);
+  else if (x.zipBad) out.push('Different ZIP code');
+  if (x.nameState === 'diff' && l.name) out.push(`Name "${l.name}", yours "${m.name}"`);
+  return out.join('. ') || (x.notes || []).join('. ');
+}
 function feedFor(x, rival) {
   const who = rival ? `${rival} on ${x.name}` : x.name;
-  if (x.status === 'match') feed('good', who, rival ? 'Listed' : 'Found. Name, phone and ZIP match.');
+  if (x.status === 'match') feed('good', who, rival ? 'Listed' : `Found. ${x.listed?.phone ? `Phone ${x.listed.phone}. ` : ''}Name, address and phone match.`);
   else if (x.status === 'found') feed('good', who, rival ? 'Listed' : 'Found. Details not shown in the preview.');
-  else if (x.status === 'mismatch') feed('bad', who, `Found with wrong info. ${(x.notes || []).join('. ')}`);
+  else if (x.status === 'mismatch') feed('bad', who, rival ? 'Listed' : `Wrong info. ${napDiff(x)}`);
   else if (x.status === 'missing') feed(rival ? 'info' : 'warn', who, rival ? 'Not listed' : 'Not found by Google');
   else feed('info', who, 'Could not check this one');
 }
@@ -326,7 +377,16 @@ function secCitations() {
   if (!c) return `<section class="au-sec" id="sec-citations"><h2><span class="n">${n0}</span>Citations and listings</h2><div class="card"><p>Google double checks your name, address and phone across directories before it trusts you. We have not checked yours yet.</p>${D.canClose ? `<button class="btn" data-lst>Check ${nDir} directories<span class="cost-hint">about $${(nDir * DIRECTORY_PRICE).toFixed(2)}</span></button>` : ''}</div></section>`;
   const n = c.counts, tot = c.checked || 1, listed = (n.match || 0) + (n.found || 0) + (n.mismatch || 0);
   const wrongNames = c.rows.filter((r) => r.status === 'mismatch');
-  const phoneBad = c.rows.filter((r) => r.phone === 'bad').length, zipBad = c.rows.filter((r) => r.zip === 'bad').length;
+  const phoneBad = c.rows.filter((r) => r.phone === 'bad').length, addrBad = c.rows.filter((r) => r.ad === 'bad' || (!r.listed?.address && r.zip === 'bad')).length, nameBad = c.rows.filter((r) => r.nm === 'diff').length;
+  const mine = A.nap || {};
+  const napCell = (r, key) => {
+    if (r.status === 'missing') return '<td class="nap-c na">Not listed</td>';
+    const v = r.listed?.[key] || '';
+    const st = key === 'name' ? (r.nm === 'ok' ? 'ok' : r.nm === 'diff' ? 'bad' : r.nm === 'extra' ? 'warn' : '') : key === 'address' ? r.ad : r.phone;
+    if (!v) return r.zip === 'bad' && key === 'address' ? `<td class="nap-c bad"><span class="nv">Different ZIP code</span>${mine.address ? `<small>You: ${esc(mine.address)}</small>` : ''}</td>` : '<td class="nap-c na">Not shown</td>';
+    const you = st === 'bad' && mine[key] ? `<small>You: ${esc(mine[key])}</small>` : st === 'warn' ? '<small>Extra words in the name</small>' : '';
+    return `<td class="nap-c ${st}"><span class="nv">${st === 'ok' ? '<i class="ok">✓</i> ' : st === 'bad' ? '<i class="no">✗</i> ' : ''}${esc(v)}</span>${you}</td>`;
+  };
   const bar = (label, ok, bad, of) => `<div class="nap"><span>${label}</span><div class="mixbar"><i class="a" style="width:${(ok / of) * 100}%"></i><i class="c" style="width:${(bad / of) * 100}%"></i></div><b>${ok}<small>/${of}</small></b></div>`;
   const rv = c.rival;
   const filters = [['all', `All ${c.rows.length}`], ['bad', `Wrong info ${n.mismatch || 0}`], ['miss', `Not found ${n.missing || 0}`], ['ok', `Matches ${(n.match || 0) + (n.found || 0)}`]];
@@ -337,18 +397,18 @@ function secCitations() {
     <div class="card cit-score">${ring(c.score, c.band[0])}<div><h3>Citation score</h3><p class="muted small">${esc(c.band[1])}. ${c.checked} directories checked, weighted by how much each one matters. Wrong and missing listings pull it down.</p></div></div>
     <div class="card"><h3>Listed on</h3><div class="big-n"><b>${listed}</b><span>of ${c.checked} directories</span></div><div class="mixbar"><i class="a" style="width:${(listed / tot) * 100}%"></i></div>
       <p class="muted small" style="margin:8px 0 0">${n.missing || 0} not found by Google${n.mismatch ? `, ${n.mismatch} with wrong details` : ''}.</p></div>
-    <div class="card"><h3>Name, address and phone</h3>${bar('Listed', listed, 0, tot)}${bar('Phone right', c.rows.filter((r) => r.phone === 'ok').length, phoneBad, Math.max(1, listed))}${bar('ZIP right', c.rows.filter((r) => r.zip === 'ok').length, zipBad, Math.max(1, listed))}</div>
+    <div class="card"><h3>Name, address and phone</h3>${bar('Listed', listed, 0, tot)}${bar('Name right', c.rows.filter((r) => r.nm === 'ok').length, nameBad, Math.max(1, listed))}${bar('Address right', c.rows.filter((r) => r.ad === 'ok').length, addrBad, Math.max(1, listed))}${bar('Phone right', c.rows.filter((r) => r.phone === 'ok').length, phoneBad, Math.max(1, listed))}</div>
     ${rv ? `<div class="card"><h3>Against ${esc(rv.name)}</h3><div class="big-n"><b>${rv.listed}</b><span>of ${rv.checked} listed</span></div><p class="muted small" style="margin:6px 0 0">You are listed on ${c.rows.filter((r) => r.rival && r.status !== 'missing').length} of the same ${rv.checked}.${rv.gaps.length ? ` They are on ${rv.gaps.length} you are not.` : ''}</p></div>` : ''}</div>`;
   const gaps = rv?.gaps?.length ? `<div class="card gapbox"><h3>Directories ${esc(rv.name)} is on and you are not</h3><div class="chips">${rv.gaps.map((g) => `<span class="chip bad">${esc(g)}</span>`).join('')}</div></div>` : '';
   const trows = shown.map((r) => `<tr class="row-${esc(r.tone)}"><td><span class="dn">${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a>` : esc(r.name)}</span><span class="tier t${r.tier}" title="${esc(TIERS[r.tier] || '')}">${esc(TIERS[r.tier] || '')}</span></td>
-    <td class="c">${r.status === 'missing' ? PH.bad : PH.ok}</td><td class="c">${r.status === 'missing' ? PH[''] : PH[r.phone]}</td><td class="c">${r.status === 'missing' ? PH[''] : PH[r.zip]}</td>
+    ${napCell(r, 'name')}${napCell(r, 'address')}${napCell(r, 'phone')}
     <td><span class="tag ${esc(r.tone)}">${esc(r.label)}</span></td>${rv ? `<td class="c">${r.rival === 'yes' ? '<i class="ok">Listed</i>' : r.rival === 'no' ? '<i class="na">No</i>' : '<i class="na">·</i>'}</td>` : ''}<td class="nt">${esc(r.note)}</td></tr>`).join('');
   const more = rows.length > shown.length ? `<p class="no-print" style="margin:10px 0 0"><button class="btn btn-ghost btn-sm" data-citesall>Show all ${rows.length}</button></p>` : '';
   const hand = c.hand?.length ? `<details class="card hand"><summary><b>${c.hand.length} more to check by hand</b><span class="muted small"> They have no public page Google can read, but they feed the directories above.</span></summary><ul>${c.hand.map((h) => `<li><b>${esc(h.name)}</b><span class="tier t${h.tier}">${esc(TIERS[h.tier])}</span><p>${esc(h.why)}</p></li>`).join('')}</ul></details>` : '';
   return `<section class="au-sec" id="sec-citations"><h2><span class="n">${n0}</span>Citations and listings ${rateTag(...ratings().citations)}</h2><p class="au-lead">We checked ${c.checked} directories for ${esc(A.business)}. ${n.mismatch || 0} show wrong information, ${n.missing || 0} do not list you, ${listed} do.${rv ? ` We ran the same check on ${esc(rv.name)}.` : ''} Wrong and missing rows are fixed first.</p>
     ${top}${gaps}
     <div class="cit-filters no-print">${filters.map(([k, l]) => `<button type="button" class="${f === k ? 'on' : ''}" data-cf="${k}">${esc(l)}</button>`).join('')}${D.canClose ? `<button type="button" class="again" data-lst title="Runs every directory again">Check again<span class="cost-hint">about $${(nDir * DIRECTORY_PRICE).toFixed(2)}</span></button>` : ''}</div>
-    <div class="tbl-wrap"><table class="t cit"><thead><tr><th>Directory</th><th class="c">Listed</th><th class="c">Phone</th><th class="c">ZIP</th><th>Status</th>${rv ? `<th class="c">${esc(rv.name.length > 18 ? rv.name.slice(0, 16) + '...' : rv.name)}</th>` : ''}<th>What Google finds</th></tr></thead><tbody>${trows || `<tr><td colspan="7" class="muted">Nothing in this view.</td></tr>`}</tbody></table></div>${more}${hand}
+    <div class="tbl-wrap"><table class="t cit"><thead><tr><th>Directory</th><th>Name listed</th><th>Address listed</th><th>Phone listed</th><th>Status</th>${rv ? `<th class="c">${esc(rv.name.length > 18 ? rv.name.slice(0, 16) + '...' : rv.name)}</th>` : ''}<th>What Google finds</th></tr></thead><tbody><tr class="mine"><td><span class="dn">Your business</span><span class="tier">Google profile</span></td><td class="nap-c"><span class="nv">${esc(mine.name || '')}</span></td><td class="nap-c"><span class="nv">${esc(mine.address || 'Not on the Google profile')}</span></td><td class="nap-c"><span class="nv">${esc(mine.phone || 'Not on the Google profile')}</span></td><td></td>${rv ? '<td></td>' : ''}<td class="nt">What every directory should show, letter for letter.</td></tr>${trows || `<tr><td colspan="7" class="muted">Nothing in this view.</td></tr>`}</tbody></table></div>${more}${hand}
     <p class="note">This reads what Google shows for each directory. A listing Google has not indexed can read "not found" even if it exists, so we confirm by hand before we claim one is missing.</p></section>`;
 }
 function secAhead() {
@@ -518,7 +578,7 @@ function paintProposal() {
 // ---------- shell, tabs and the quiet arrows ----------
 const CHEV = (flip) => `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${flip ? ' style="transform:scaleX(-1)"' : ''}><path d="M9 5l7 7-7 7"/></svg>`;
 function shell() {
-  root.innerHTML = `<header class="au-bar"><div class="au-bar-in"><img class="au-logo lg-l" src="/brand/rightway-logo-light.svg" alt="Rightway Growth"><img class="au-logo lg-d" src="/brand/rightway-logo-dark.svg" alt="">
+  root.innerHTML = `<header class="au-bar"><div class="au-bar-in">${LOGO}
       <span class="au-biz">${esc(D.lead.business)}</span>
       <span class="au-sp"></span><div class="au-tools no-print">
         <label class="au-switch" id="siteswitch" title="Show website findings and what we sell after results"><input type="checkbox" id="sitetoggle" ${S.site ? 'checked' : ''}> Website findings</label>

@@ -118,8 +118,14 @@ export function mockWeb(keyword) {
   if (site) {
     const roll = h % 10;
     if (roll < 3) return { results: [], cost: 0 };
-    const phone = roll < 8 ? '(954) 555-0142' : '(954) 555-0999';
-    return { results: [{ url: `https://www.${site.split('/')[0]}/biz/${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, title: `${name} - Hollywood, FL`, snippet: roll < 6 ? `${name}. 2600 Hollywood Blvd, Hollywood, FL 33020. Call ${phone}.` : `${name} in Hollywood, FL. See photos and reviews.`, domain: site }], cost: 0 };
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const url = `https://www.${site.split('/')[0]}/biz/${slug}`;
+    // 3 to 4: listed, but the preview shows no details. 5 to 7: all correct. 8: wrong phone. 9: old address, other ZIP and a long name.
+    const bare = roll < 5;
+    const shownName = roll === 9 ? `${name.split(' ')[0]} Roof and Gutter` : name;
+    const addr = roll === 9 ? '1180 N State Rd 7, Hollywood, FL 33021' : '2600 Hollywood Blvd, Hollywood, FL 33020';
+    const phone = roll === 8 ? '(954) 555-0999' : roll === 9 ? '(954) 555-0177' : '(954) 555-0142';
+    return { results: [{ url, title: `${shownName} - Hollywood, FL`, snippet: bare ? `${shownName} in Hollywood, FL. See photos and reviews.` : `${shownName}. ${addr}. Call ${phone}.`, domain: site }], cost: 0 };
   }
   const base = keyword.toLowerCase().replace(/[^a-z0-9]+/g, '');
   return { results: [0, 1, 2].map((i) => ({ url: `https://www.${base.slice(0, 14)}${i}.example/`, title: `${keyword} (example ${i + 1})`, snippet: 'Demo result. Connect DataForSEO for real results.', domain: `${base.slice(0, 14)}${i}.example` })), cost: 0 };

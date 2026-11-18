@@ -33,6 +33,17 @@ export function gridPoints(lat, lng, size, radiusMiles) {
   return points;
 }
 
+// Coordinates for any odd grid size (saved deep scans can be 15 wide). Same spacing as gridPoints, no size check. Pure.
+export function gridCoords(lat, lng, size, radiusMiles) {
+  const half = (size - 1) / 2;
+  const step = radiusMiles / Math.max(half, 1);
+  const latStep = step / MILES_PER_DEG_LAT;
+  const lngStep = step / (MILES_PER_DEG_LNG_EQUATOR * Math.cos((lat * Math.PI) / 180));
+  const out = [];
+  for (let row = 0; row < size; row++) for (let col = 0; col < size; col++) out.push({ row, col, lat: round7(lat + (half - row) * latStep), lng: round7(lng + (col - half) * lngStep) });
+  return out;
+}
+
 function round7(n) {
   return Math.round(n * 1e7) / 1e7;
 }

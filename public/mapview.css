@@ -1,0 +1,38 @@
+/* Map view of the scan inside the audit report. Same markup the scan tool's map draws (public/js/map.js); rules copied from styles.css
+   with the report's colour tokens so light and dark both read well. The map pans and zooms by itself, it never makes the page scroll. */
+.gmap { --top3: #1FA574; --top10: #F2B544; --top20: #E8833A; --none: #D64545; --error: #9AA5A1; --ease: cubic-bezier(.2, .7, .2, 1);
+  position: relative; width: 100%; aspect-ratio: 1 / 1; max-width: 760px; overflow: hidden; border-radius: 14px; border: 1px solid var(--line);
+  background: #EEF2EF linear-gradient(0deg, transparent 49.5%, #E3E9E5 50%, transparent 50.5%) 0 0 / 40px 40px; touch-action: pan-y; cursor: grab; }
+.gmap.is-zoomed { touch-action: none; } .gmap.is-dragging { cursor: grabbing; }
+.gmap-stage { position: absolute; inset: 0; }
+.gmap-tiles img { position: absolute; max-width: none; user-select: none; }
+.gmap-heat { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity .5s var(--ease); pointer-events: none; filter: blur(6px); }
+.gmap-heat.is-on { opacity: 1; }
+.gmap-markers { position: absolute; inset: 0; }
+.gmap-pt { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; display: grid; place-items: center; padding: 0; font: 700 13px Inter, system-ui, sans-serif; color: #fff;
+  border: 2px solid #fff; box-shadow: 0 1px 5px rgba(15, 27, 23, .4); cursor: pointer; transition: transform .2s var(--ease), box-shadow .2s;
+  width: var(--pt, 34px) !important; height: var(--pt, 34px) !important; font-size: calc(var(--pt, 34px) * .38) !important; }
+.gmap-pt:hover { transform: translate(-50%, -50%) scale(1.15); z-index: 2; }
+.gmap-pt.is-selected { box-shadow: 0 0 0 3px #0F1B17, 0 0 0 6px #9DEBCB; z-index: 3; }
+.gmap-pt.is-new { animation: mvpop .45s var(--ease) both; }
+.gmap-pt.band-top3 { background: var(--top3); } .gmap-pt.band-top10 { background: var(--top10); color: #0F1B17; } .gmap-pt.band-top20 { background: var(--top20); }
+.gmap-pt.band-none { background: var(--none); font-size: 11px !important; } .gmap-pt.band-error { background: var(--error); }
+.gmap-pt.band-pending { background: rgba(255, 255, 255, .85); border-color: #DCE6E1; cursor: default; }
+.gmap-pt.is-scanning { z-index: 4; }
+.gmap-attr { position: absolute; right: 0; bottom: 0; background: rgba(255, 255, 255, .85); color: #33433D; font-size: 10px; padding: 2px 6px; border-top-left-radius: 6px; }
+.gmap-attr a { color: #0A6B4C; }
+.gmap-ctl { position: absolute; top: 10px; right: 10px; z-index: 5; display: grid; gap: 6px; }
+.gmap-ctl button { width: 40px; height: 40px; border-radius: 10px; border: 1px solid #C3CFC8; background: rgba(255, 255, 255, .96); color: #0F1B17; font: 700 20px/1 system-ui, sans-serif; cursor: pointer; box-shadow: 0 2px 8px rgba(15, 27, 23, .18); }
+.gmap-ctl button[data-z="fit"] { font-size: 12px; } .gmap-ctl button:hover { background: #EAF8F1; }
+.gmap-g { position: absolute; inset: 0; } .gmap.is-google { touch-action: auto; cursor: auto; } .gmap.is-google .gmap-ctl { z-index: 6; }
+@keyframes mvpop { 0% { transform: translate(-50%, -50%) scale(.2); opacity: 0; } 70% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); } }
+
+/* Grid or Map switch and the spot panel under the map */
+.mvtoggle { display: inline-flex; gap: 2px; padding: 3px; margin: 0 0 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; }
+.mvtoggle button { border: 0; background: transparent; color: var(--muted); font-weight: 600; font-size: 13px; padding: 6px 16px; border-radius: 8px; cursor: pointer; }
+.mvtoggle button.on { background: var(--acc); color: var(--on-acc); }
+.rmap { aspect-ratio: 4 / 3; max-width: none; }
+.rmap-pt { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 14px; }
+.rmap-pt h4 { font-size: 14px; margin: 0; }
+.rmap-top { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+@media (max-width: 760px) { .rmap { aspect-ratio: 1 / 1; } }
