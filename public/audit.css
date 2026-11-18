@@ -1,13 +1,13 @@
 /* Audit report page (Nov 2026). Reads like a BrightLocal report: one calm column, numbered sections, tables over cards.
    Light and dark come from the media block below; /js/theme.js can force either one. */
 :root {
-  --bg: #E3EAE6; --surface: #FFFFFF; --surface-2: #EDF2EF; --text: #0D1914; --muted: #3E4D46; --line: #BCCAC3;
-  --acc: #0A6B4C; --acc-soft: #D3EADF; --on-acc: #FFFFFF; --good: #11704A; --warn: #85530A; --bad: #B02E1D;
-  --good-bg: #D3EADF; --warn-bg: #F7E5B8; --bad-bg: #F8D6D0;
-  --shadow: 0 1px 2px rgba(13,25,20,.10), 0 8px 22px -12px rgba(13,25,20,.22);
+  --bg: #D5E0DA; --surface: #FFFFFF; --surface-2: #E1EBE6; --text: #0A1410; --muted: #2F3E37; --line: #8FA69B;
+  --acc: #0A6B4C; --acc-soft: #BFE5D2; --on-acc: #FFFFFF; --good: #11704A; --warn: #85530A; --bad: #B02E1D;
+  --good-bg: #BFE5D2; --warn-bg: #F3DC9C; --bad-bg: #F5C6BE;
+  --shadow: 0 1px 2px rgba(10,20,16,.18), 0 10px 24px -12px rgba(10,20,16,.34);
   --cv1: #0C1713; --cv2: #14402F; --cv-text: #FFFFFF; --cv-mute: #B7D5C8; --cv-chip: rgba(255,255,255,.14);
   --lg-tile: #0F1B17; --lg-pin: #9DEBCB; --lg-word: #0F1B17; --lg-bar: #2DBE8A; --lg-sub: #4A5B54;
-  --g3: #1FA574; --g10: #E8A92B; --g20: #E07430; --gnone: #CF3B3B; --gerr: #B3C0BA;
+  --g3: #14925F; --g10: #F0B323; --g20: #E2641A; --gnone: #C62828; --gerr: #8A9C94;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -350,3 +350,17 @@ table.cit .nap-c i.ok, table.cit .nap-c i.no { font-style: normal; font-weight: 
 .rc-note { grid-column: 1 / -1; margin: 0; padding: 10px 18px; border-top: 1px solid var(--line); }
 @media (max-width: 760px) { .reportcard { grid-template-columns: minmax(0, 1fr); } .rc-main { border-right: 0; border-bottom: 1px solid var(--line); padding: 18px 12px; } .rc-grade { font-size: 64px; } .rc-rows { padding: 6px 10px; } .rc-row { grid-template-columns: 40px minmax(0, 1fr) 44px; } .rc-bar { display: none; } }
 @media print { .reportcard { break-inside: avoid; } }
+
+/* Light mode contrast pass (Nov 2026, V: more contrast in the grey scale, match the brand). Ink and mint strong edges instead of pale grey. */
+:root { --edge: #0F1B17; }
+@media (prefers-color-scheme: dark) { :root { --edge: #2B3A33; } }
+.au-bar { border-bottom: 2px solid var(--edge); }
+.card { border-color: var(--line); border-top: 3px solid var(--edge); }
+.kpi { border-color: var(--line); }
+.big-stat { background: var(--acc-soft); border-color: var(--line); }
+.kwtabs button { border: 1.5px solid var(--line); }
+.kwtabs button.on { background: var(--edge); color: #9DEBCB; border-color: var(--edge); }
+.legend { color: var(--text); font-weight: 600; }
+.legend i { border-radius: 50%; width: 14px; height: 14px; border: 2px solid var(--edge); }
+.statlist .kpi.neutral { border-top-color: #23B07E; }
+.rmap-pt { background: var(--acc-soft); border-color: var(--line); color: var(--text); }

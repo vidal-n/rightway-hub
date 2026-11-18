@@ -37,7 +37,7 @@ async function api(path, method = 'GET', body) {
 const store = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(`rw-au-${k}`); sessionStorage.setItem(`rw-au-${k}`, v); } catch { return null; } return null; };
 const parseJ = (v) => { if (!v) return null; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch { return null; } };
 
-const S = { tab: 'report', kw: 0, site: store('site') === '1', ticket: null, jobs: 4, monthly: '', sec: 'summary', appSrc: null, frame: null, scanOpen: false, skipScan: store('skip') === '1', begun: store('begun') === '1', cites: 'all', mv: store('mv') === 'map' ? 'map' : 'grid', busy: false, stage: null, fresh: false, appLoaded: false };
+const S = { tab: 'report', kw: 0, site: store('site') === '1', ticket: null, jobs: 4, monthly: '', sec: 'summary', appSrc: null, frame: null, scanOpen: false, skipScan: store('skip') === '1', begun: store('begun') === '1', cites: 'all', busy: false, stage: null, fresh: false, appLoaded: false };
 let D = null; // { lead, intel, me, settings }
 let A = null; // the audit document
 
@@ -132,16 +132,15 @@ function scanPanel(s) {
   const m = mix(s.cells), tot = s.cells.length || 1;
   const seg = (k, n, cls, lab) => (n ? `<i class="${cls}" style="width:${(n / tot) * 100}%" title="${lab}: ${n}"><span>${n}</span></i>` : '');
   const canMap = Boolean(A.center && s.size && s.radiusMiles);
-  const mv = canMap && S.mv === 'map';
-  const toggle = canMap ? `<div class="mvtoggle no-print" role="tablist" aria-label="How to show the scan"><button type="button" data-mv="grid" class="${mv ? '' : 'on'}">Grid</button><button type="button" data-mv="map" class="${mv ? 'on' : ''}">Map</button></div>` : '';
+  const mv = canMap;
   const view = mv ? `<div class="gmap rmap" id="rmap" aria-label="Zoomable map of the scan"></div><div class="rmap-pt" id="rmap-pt"><span class="muted small">Zoom with the + and - buttons, a pinch, or Ctrl and scroll. Drag to move. Tap a circle to see who shows up from that spot.</span></div>` : gridSvg(s.cells, s.size, `Map scan for ${s.keyword}`);
-  return `<div class="scanbox"><div>${toggle}${view}
+  return `<div class="scanbox"><div>${view}
       <div class="legend"><span><i style="background:var(--g3)"></i>Top 3</span><span><i style="background:var(--g10)"></i>4 to 10</span><span><i style="background:var(--g20)"></i>11 to 20</span><span><i style="background:var(--gnone)"></i>Not found</span></div></div>
     <div class="statlist"><div class="big-stat ${tone(s.top10 / (s.points || 1) >= 0.7, s.top10 / (s.points || 1) >= 0.35)}"><b>${s.top10}<small> of ${s.points}</small></b><span>spots on the first page (top 10) within ${s.radiusMiles} miles</span></div>
       <div class="mixbar" aria-label="How the spots split">${seg('t3', m.t3, 'a', 'Top 3')}${seg('t10', m.t10, 'b', '4 to 10')}${seg('t20', m.t20, 'c', '11 to 20')}${seg('none', m.none + m.err, 'd', 'Not found')}</div>
       <div class="mixkey"><span><i class="a"></i>${m.t3} top 3</span><span><i class="b"></i>${m.t10} at 4 to 10</span><span><i class="c"></i>${m.t20} at 11 to 20</span><span><i class="d"></i>${m.none + m.err} not found</span></div>
       <div class="grid2" style="gap:10px"><div class="kpi neutral"><b>${s.avg ?? '20+'}</b><span class="kpi-l">Average rank</span></div><div class="kpi neutral"><b>${s.top3}</b><span class="kpi-l">Top 3 spots</span></div></div>
-      <p class="note" style="margin:0">Each square is a spot around the business. The number is where you show up when someone there searches "${esc(s.keyword)}". The middle square is the business address.</p></div></div>`;
+      <p class="note" style="margin:0">Each ${mv ? 'circle' : 'square'} is a spot around the business. The number is where you show up when someone there searches "${esc(s.keyword)}". The middle ${mv ? 'circle' : 'square'} is the business address.</p></div></div>`;
 }
 // The scan on a real map (BrightLocal's Local Search Grid map view): the same squares as pins at their true spots, zoom, drag, pinch.
 // Google Maps when the Hub has a key, our own OpenStreetMap tiles when it does not (createMap decides).
@@ -186,7 +185,6 @@ function paintScan() {
     res = raw.length ? `<div class="card saved"><span class="ok-dot">✓</span><div><b>Scan saved</b><p class="muted small" style="margin:2px 0 0">${raw.map((x) => `${esc(x.keyword)}: ${x.top10 ?? x.cells.filter((c) => c.rank > 0 && c.rank <= 10).length} of ${x.points ?? x.cells.length} spots on page one`).join(' · ')}</p></div></div>` : '';
   }
   $('#scanres').innerHTML = res;
-  $$('[data-mv]', $('#scanres')).forEach((b) => b.addEventListener('click', () => { S.mv = b.dataset.mv; store('mv', S.mv); paintScan(); }));
   if ($('#rmap') && s) mountScanMap(s);
   const quick = !deep && A?.ready;
   $('#scan-act').innerHTML = S.scanOpen ? '' : `<p style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btn ${deep ? 'btn-ghost' : ''} btn-sm" data-openscan>${deep ? 'Scan another search' : 'Open the live scan'}</button>${quick && gated() ? '<button class="btn btn-ghost btn-sm" data-skipscan>Use the quick research grid instead</button>' : ''}</p>`;

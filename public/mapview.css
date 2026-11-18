@@ -1,16 +1,16 @@
 /* Map view of the scan inside the audit report. Same markup the scan tool's map draws (public/js/map.js); rules copied from styles.css
    with the report's colour tokens so light and dark both read well. The map pans and zooms by itself, it never makes the page scroll. */
-.gmap { --top3: #1FA574; --top10: #F2B544; --top20: #E8833A; --none: #D64545; --error: #9AA5A1; --ease: cubic-bezier(.2, .7, .2, 1);
+.gmap { --top3: #14925F; --top10: #F0B323; --top20: #E2641A; --none: #C62828; --error: #8A9C94; --ease: cubic-bezier(.2, .7, .2, 1);
   position: relative; width: 100%; aspect-ratio: 1 / 1; max-width: 760px; overflow: hidden; border-radius: 14px; border: 1px solid var(--line);
   background: #EEF2EF linear-gradient(0deg, transparent 49.5%, #E3E9E5 50%, transparent 50.5%) 0 0 / 40px 40px; touch-action: pan-y; cursor: grab; }
 .gmap.is-zoomed { touch-action: none; } .gmap.is-dragging { cursor: grabbing; }
 .gmap-stage { position: absolute; inset: 0; }
-.gmap-tiles img { position: absolute; max-width: none; user-select: none; }
+.gmap-tiles img { position: absolute; max-width: none; user-select: none; filter: saturate(1.25) contrast(1.12); }
 .gmap-heat { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity .5s var(--ease); pointer-events: none; filter: blur(6px); }
 .gmap-heat.is-on { opacity: 1; }
 .gmap-markers { position: absolute; inset: 0; }
 .gmap-pt { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; display: grid; place-items: center; padding: 0; font: 700 13px Inter, system-ui, sans-serif; color: #fff;
-  border: 2px solid #fff; box-shadow: 0 1px 5px rgba(15, 27, 23, .4); cursor: pointer; transition: transform .2s var(--ease), box-shadow .2s;
+  border: 2px solid #0F1B17; box-shadow: 0 0 0 2px rgba(255, 255, 255, .9), 0 2px 6px rgba(15, 27, 23, .5); cursor: pointer; transition: transform .2s var(--ease), box-shadow .2s;
   width: var(--pt, 34px) !important; height: var(--pt, 34px) !important; font-size: calc(var(--pt, 34px) * .38) !important; }
 .gmap-pt:hover { transform: translate(-50%, -50%) scale(1.15); z-index: 2; }
 .gmap-pt.is-selected { box-shadow: 0 0 0 3px #0F1B17, 0 0 0 6px #9DEBCB; z-index: 3; }
@@ -27,10 +27,7 @@
 .gmap-g { position: absolute; inset: 0; } .gmap.is-google { touch-action: auto; cursor: auto; } .gmap.is-google .gmap-ctl { z-index: 6; }
 @keyframes mvpop { 0% { transform: translate(-50%, -50%) scale(.2); opacity: 0; } 70% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); } }
 
-/* Grid or Map switch and the spot panel under the map */
-.mvtoggle { display: inline-flex; gap: 2px; padding: 3px; margin: 0 0 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; }
-.mvtoggle button { border: 0; background: transparent; color: var(--muted); font-weight: 600; font-size: 13px; padding: 6px 16px; border-radius: 8px; cursor: pointer; }
-.mvtoggle button.on { background: var(--acc); color: var(--on-acc); }
+/* Spot panel under the map */
 .rmap { aspect-ratio: 4 / 3; max-width: none; }
 .rmap-pt { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 14px; }
 .rmap-pt h4 { font-size: 14px; margin: 0; }
