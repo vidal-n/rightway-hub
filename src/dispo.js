@@ -8,12 +8,12 @@ import { route } from './router.js';
 export const ACTS = {
   no_answer: 'No answer (try again later)', voicemail: 'Voicemail (try again later)', gatekeeper: 'Gatekeeper (try again later)',
   hung_up: 'Hung up (counts as a contact, try again later)',
-  conversation: 'Talked (follow up in 2 days)', booked: 'Booked audit', callback: 'Callback at a set time', not_interested: 'Not interested (recycle in 90 days)',
+  conversation: 'Talked (follow up in 2 days)', booked: 'Booked audit', no_show: 'No show (missed audit: follow up protocol, 3rd miss recycles)', callback: 'Callback at a set time', not_interested: 'Not interested (recycle in 90 days)',
   glitch: 'Bad connection (redial, no attempt counted)', dead: 'Dead lead (lost, never call again)', bad_number: 'Bad number (lost)', phone_menu: 'Phone menu, nobody to reach (lost, tagged)', dnc: 'Do not call', none: 'Just log it (no change to the lead)',
 };
 export const BASE_DISPOS = [
   ['no_answer', 'No answer'], ['voicemail', 'Voicemail'], ['gatekeeper', 'Gatekeeper'], ['conversation', 'Talked, follow up'], ['booked', 'Booked audit'],
-  ['callback', 'Callback'], ['hung_up', 'Hung up'], ['not_interested', 'Not interested'], ['bad_number', 'Bad number'], ['phone_menu', 'Phone menu (press a number)'],
+  ['callback', 'Callback'], ['hung_up', 'Hung up'], ['not_interested', 'Not interested'], ['bad_number', 'Bad number'], ['phone_menu', 'Phone menu (press a number)'], ['no_show', 'No show (audit booked)'],
   ['not_owner', 'Not the decision maker', 'gatekeeper'], ['send_info', 'Wants info first', 'conversation'], ['has_agency', 'Has an agency', 'not_interested'],
   ['not_fit', 'Not a fit', 'not_interested'], ['dead', 'Dead lead (never call again)'], ['wrong_number', 'Wrong number', 'bad_number'], ['dnc', 'Do not call'], ['glitch', 'Bad connection (redial)'],
 ].map(([id, label, acts]) => ({ id, label, acts: acts || id }));
@@ -34,11 +34,12 @@ export async function getDispos(env) {
             return add;
           }
         }
-        // Same once-only add for "Dead lead", which goes on the Do Not Call list.
-        if (st.dispo_dead !== '1') {
-          await setSetting(env, 'dispo_dead', '1');
-          if (!l.some((d) => d.acts === 'dead') && l.length < 20) {
-            const add = [...l, { id: 'dead', label: 'Dead lead (never call again)', acts: 'dead' }];
+        // Same once-only add for "Dead lead" (goes on the Do Not Call list) and "No show" (missed audit, follow up protocol).
+        for (const [stamp, acts, id, label] of [['dispo_dead', 'dead', 'dead', 'Dead lead (never call again)'], ['dispo_noshow', 'no_show', 'no_show', 'No show (audit booked)']]) {
+          if (st[stamp] === '1') continue;
+          await setSetting(env, stamp, '1');
+          if (!l.some((d) => d.acts === acts) && l.length < 20) {
+            const add = [...l, { id, label, acts }];
             await setSetting(env, 'dispositions', JSON.stringify(add));
             return add;
           }

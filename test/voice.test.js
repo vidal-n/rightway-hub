@@ -264,7 +264,7 @@ test('custom dispositions: owner edits the list, results drive the lead, dial ou
   const t = setup();
   await t.call('POST', '/api/auth/setup', { accessKey: 'owner-key-123', email: 'v@rightwaygrowth.com', name: 'V', password: 'correct horse battery' });
   let r = await t.call('GET', '/api/dispositions');
-  assert.equal(r.data.dispositions.length, 18);
+  assert.equal(r.data.dispositions.length, 19);
   assert.equal(r.data.dispositions.find((d) => d.id === "not_owner").acts, "gatekeeper");
   assert.equal(r.data.custom, false);
   // Bad lists are refused
@@ -317,7 +317,7 @@ test('custom dispositions: owner edits the list, results drive the lead, dial ou
 
   // Reset to default
   r = await t.call('PUT', '/api/dispositions', { reset: true });
-  assert.equal(r.data.dispositions.length, 18);
+  assert.equal(r.data.dispositions.length, 19);
 });
 
 test('agents: status, presence, login time, live call, analytics with handle time and lead quality', async () => {

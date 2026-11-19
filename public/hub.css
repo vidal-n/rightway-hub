@@ -3289,3 +3289,6 @@ label > .seg.seg-auto { margin-top: 4px; }
 .pm-flow .pm-sp { flex: 1 1 auto; }
 .pm-qr { display: grid; justify-items: center; gap: 6px; text-align: center; margin-top: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; }
 .pm-qr svg { width: 200px; height: 200px; background: #fff; border-radius: 8px; }
+
+/* No show protocol hint in the result window (Nov 2026) */
+.dp-hint { margin-top: 8px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); font-size: 12.5px; line-height: 1.4; }

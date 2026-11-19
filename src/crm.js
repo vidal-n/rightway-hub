@@ -121,8 +121,9 @@ export async function callBlock(env, lead, user) {
 
 // Playbook cadence for no answer: day 1, 2, 4, 7, 14, then recycle in 60 days.
 const NEXT_AFTER_ATTEMPT = { 1: 1, 2: 2, 3: 3, 4: 7 };
+export const NO_SHOW_MAX = 3;
 
-export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, note = '', by = null } = {}) {
+export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, note = '', by = null, noShows = 0 } = {}) {
   const set = { last_call_at: at, updated_at: at };
   switch (outcome) {
     case 'no_answer':
@@ -152,9 +153,15 @@ export function applyOutcome(lead, outcome, { at = now(), callbackAt = null, not
       Object.assign(set, { stage: 'audit_booked', next_action_at: callbackAt || at + DAY, next_action: 'Audit call (Call 2)' });
       if (callbackAt) Object.assign(set, { meet_at: callbackAt, ...(by ? { meet_by: by } : {}) });
       break;
-    case 'no_show':
-      Object.assign(set, { stage: 'no_show', next_action_at: at + DAY, next_action: 'Rebook the audit' });
+    case 'no_show': {
+      // No show protocol (V, Nov 2026): a missed audit is a warm lead, so chase it fast. Miss 1: call back in 2 hours and rebook. Miss 2: call the next day.
+      // Miss 3: recycle in 60 days. The no answer ladder starts over (attempts 0) so the follow up calls get their own five tries.
+      const n = (Number(noShows) || 0) + 1;
+      set.attempts = 0;
+      if (n >= NO_SHOW_MAX) Object.assign(set, { stage: 'not_now', next_action_at: at + 60 * DAY, next_action: `Missed ${n} audits: recycle in 60 days` });
+      else Object.assign(set, { stage: 'no_show', next_action_at: at + (n === 1 ? 2 * 3600e3 : DAY), next_action: n === 1 ? 'No show 1: call now and rebook the audit' : `No show ${n}: call and rebook, confirm they will be there` });
       break;
+    }
     case 'not_interested':
       Object.assign(set, { stage: 'not_now', next_action_at: at + 90 * DAY, next_action: 'Recycle in 90 days' });
       break;
@@ -617,7 +624,8 @@ export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activ
     set = { last_call_at: now(), updated_at: now() };
     if (note) set.notes = [l.notes, note].filter(Boolean).join('\n');
   } else {
-    set = applyOutcome(l, d.acts, { callbackAt, note: note || '', by });
+    const noShows = d.acts === 'no_show' ? Number((await first(env, "SELECT COUNT(*) AS n FROM activities WHERE lead_id = ? AND outcome = 'no_show'", l.id))?.n) || 0 : 0;
+    set = applyOutcome(l, d.acts, { callbackAt, note: note || '', by, noShows });
     Object.assign(set, rescore({ ...l, ...set }));
   }
   await updateLead(env, l.id, set);
@@ -629,7 +637,8 @@ export async function recordOutcome(env, l, { dispo, note, callbackAt, by, activ
   if (target) await run(env, "UPDATE activities SET outcome = ?, dispo = ?, note = ?, dispo_at = ?, lead_id = COALESCE(lead_id, ?), body = CASE WHEN type = 'manual_call' THEN body ELSE COALESCE(?, body) END WHERE id = ?", d.acts, d.label, note || null, now(), l.id, note || null, target.id);
   let actId = target?.id || null;
   if (!target) {
-    actId = await logActivity(env, { lead_id: l.id, type: 'call', outcome: d.acts, body: note || null, by });
+    // A no show with no call behind it is a missed meeting, not a dial: it goes on the timeline as a meeting so dial counts and pickup rates stay true.
+    actId = await logActivity(env, { lead_id: l.id, type: d.acts === 'no_show' ? 'meeting' : 'call', outcome: d.acts, body: note || (d.acts === 'no_show' ? 'No show: missed the audit' : null), by });
     await run(env, 'UPDATE activities SET dispo = ?, note = ?, dispo_at = at WHERE id = ?', d.label, note || null, actId);
   }
   // Script tests: a call logged with a script (calls from the rep's own phone have no prepared call) is counted under it.

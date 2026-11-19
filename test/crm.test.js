@@ -68,6 +68,42 @@ test('playbook cadence: no answer schedules day 1, 2, 4, 7, then recycles', () =
   assert.equal(applyOutcome(lead, 'booked', { at: t0, callbackAt: t0 + 5e6 }).stage, 'audit_booked');
 });
 
+test('no show protocol: call now, next day, then recycle on the third miss', () => {
+  const t0 = Date.UTC(2026, 10, 2);
+  const base = { stage: 'audit_booked', attempts: 3 };
+  const one = applyOutcome(base, 'no_show', { at: t0, noShows: 0 });
+  assert.equal(one.stage, 'no_show');
+  assert.equal(one.attempts, 0);
+  assert.equal(one.next_action_at, t0 + 2 * 3600e3);
+  const two = applyOutcome({ ...base, ...one }, 'no_show', { at: t0, noShows: 1 });
+  assert.equal(two.stage, 'no_show');
+  assert.equal(two.next_action_at, t0 + 864e5);
+  const three = applyOutcome({ ...base, ...two }, 'no_show', { at: t0, noShows: 2 });
+  assert.equal(three.stage, 'not_now');
+  assert.equal(Math.round((three.next_action_at - t0) / 864e5), 60);
+  assert.ok(/Missed 3 audits/.test(three.next_action));
+});
+
+test('no show result through the API: ladder by count, saved list gets it once, no dial counted', async () => {
+  const t = setup();
+  await owner(t);
+  let r = await t.call('GET', '/api/dispositions');
+  assert.ok(r.data.dispositions.some((d) => d.acts === 'no_show'));
+  const lead = (await t.call('POST', '/api/leads', { business: 'Coral Plumbing', phone: '9545550177', state: 'FL' })).data.lead;
+  await t.call('POST', `/api/leads/${lead.id}/outcome`, { outcome: 'booked', callbackAt: '2030-01-08T10:00' });
+  const stage = async () => (await t.call('GET', `/api/leads/${lead.id}`)).data;
+  assert.equal((await stage()).lead.stage, 'audit_booked');
+  r = await t.call('POST', `/api/leads/${lead.id}/outcome`, { outcome: 'no_show' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.lead.stage, 'no_show');
+  r = await t.call('POST', `/api/leads/${lead.id}/outcome`, { outcome: 'no_show' });
+  assert.equal(r.data.lead.stage, 'no_show');
+  r = await t.call('POST', `/api/leads/${lead.id}/outcome`, { outcome: 'no_show' });
+  assert.equal(r.data.lead.stage, 'not_now');
+  const d = await stage();
+  assert.ok(d.activities.filter((a) => a.outcome === 'no_show').length === 3);
+});
+
 test('leads: create, dedupe, import, outcome, queue, convert', async () => {
   const t = setup();
   await owner(t);

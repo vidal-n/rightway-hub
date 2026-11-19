@@ -14,6 +14,7 @@ export const keyed = (list) => list.map((d, i) => ({ ...d, key: i < 9 ? String(i
 export const needsTime = (d) => d && (d.acts === 'callback' || d.acts === 'booked');
 // A datetime-local value is the rep's own clock; send an exact moment so the Worker (UTC) never shifts it.
 export const isoWhen = (v) => { const t = v ? new Date(v) : null; return t && !Number.isNaN(+t) ? t.toISOString() : null; };
+export const NO_SHOW_HINT = 'No show protocol: miss 1 is a call back in 2 hours to rebook, miss 2 is a call the next day, miss 3 recycles the lead in 60 days. Texts and emails go out only through the No show recovery workflow, if it is on.';
 const isInfo = (d) => Boolean(d) && (d.id === 'send_info' || /\binfo\b/i.test(d.label || ''));
 
 // The result picker. It draws into any box: the popup (dispositionModal) or the call window itself (wrapUp in phone.js).
@@ -25,12 +26,14 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
   // A callback time tapped during the call picks the callback result for them.
   const suggest = callbackAt ? (list.find((d) => d.acts === 'callback') || {}).id : answered ? '' : (list.find((d) => d.acts === 'no_answer') || {}).id;
   let pick = suggest || '';
+  // A lead with an audit booked (or already missed once) gets No show first in the grid. The number keys do not move.
+  const audit = Boolean(lead) && ['audit_booked', 'no_show'].includes(lead.stage);
   let saved = false, gone = false;
   const initials = String(person || business || '#').replace(/[^A-Za-z0-9 ]/g, ' ').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '#';
   host.innerHTML = `
     <div class="card-head"><div class="dp-who">${person || business ? `<span class="pd-av">${esc(initials)}</span>` : ''}<div style="min-width:0"><h2 style="margin:0">${esc(person || title)}</h2>${person || business ? `<div class="pd-biz">${esc(person ? business || title : '')}</div>` : ''}${sub ? `<p class="small muted" style="margin:4px 0 0">${esc(sub)}</p>` : ''}</div></div><button class="btn btn-ghost btn-sm"${bare ? ' data-skip' : ' data-close'}>${esc(skipLabel)}</button></div>
     ${facts.filter((f) => f && f.v).length ? `<div class="dp-facts">${facts.filter((f) => f && f.v).map((f) => `<span><i>${esc(f.k)}</i>${esc(f.v)}</span>`).join('')}</div>` : ''}
-    <div class="dispo-grid">${list.map((d) => `<button type="button" class="dispo-btn${d.id === pick ? ' on' : ''}" data-d="${esc(d.id)}">${d.key ? `<span class="kbd">${d.key}</span>` : ''}${esc(d.label)}</button>`).join('')}</div>
+    <div class="dispo-grid">${(audit ? [...list.filter((d) => d.acts === 'no_show'), ...list.filter((d) => d.acts !== 'no_show')] : list).map((d) => `<button type="button" class="dispo-btn${d.id === pick ? ' on' : ''}" data-d="${esc(d.id)}">${d.key ? `<span class="kbd">${d.key}</span>` : ''}${esc(d.label)}</button>`).join('')}</div>
     <div class="dp-more">
       <div class="dp-q" data-q="pickup" hidden><span>Who picked up</span>${PICKUP_CHOICES.map((k) => `<button type="button" class="chip" data-pick="${k}">${esc(ANSWERED_BY.find((a) => a[0] === k)[1])}</button>`).join('')}</div>
       <div class="dp-q" data-q="stage" hidden><span>Where it ended</span>${HANGUP_STAGES.map(([k, n]) => `<button type="button" class="chip" data-stage="${k}">${esc(n)}</button>`).join('')}</div>
@@ -39,6 +42,7 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
     </div>
     <label class="field dispo-when" style="margin-top:12px${needsTime(list.find((d) => d.id === pick)) ? '' : ';display:none'}"><span id="dpwlabel">Callback or audit time</span><input type="datetime-local" id="dpwhen" value="${esc(callbackAt)}"></label>
     <div class="dp-info" style="display:none"></div>
+    <div class="dp-hint" style="display:none"></div>
     <label class="field" style="margin-top:12px"><span>Note</span><textarea id="dpnote" rows="2" placeholder="What they said, job value, who handles marketing">${esc(note)}</textarea></label>
     ${askLead ? `<details class="dispo-lead" style="margin-top:12px"><summary>Add ${esc(number || 'this number')} as a new lead</summary>
       <div class="form-grid" style="margin-top:10px"><label class="field"><span>Business name</span><input id="dpbiz" placeholder="Shore Plumbing"></label>
@@ -83,6 +87,8 @@ export async function dispoPanel(host, { title = 'How did the call go?', sub = '
     $('.dispo-when', el).style.display = needsTime(dd) || info ? '' : 'none';
     $('#dpwlabel', el).textContent = info ? 'Callback time (optional, goes in the email)' : 'Callback or audit time';
     showInfo(info);
+    const hint = $('.dp-hint', el);
+    if (hint) { hint.textContent = dd?.acts === 'no_show' ? NO_SHOW_HINT : ''; hint.style.display = dd?.acts === 'no_show' ? '' : 'none'; }
     $('#dpsave', el).disabled = false;
   };
   $$('.dispo-btn', el).forEach((b) => b.addEventListener('click', () => choose(b.dataset.d)));
