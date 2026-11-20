@@ -67,7 +67,7 @@ async function handover(host) {
     box.innerHTML = '<div class="skeleton"></div>';
     const h = await api(`/api/handover/holds/${f}`);
     box.innerHTML = `<p class="small"><b>${esc(h.person.name)}</b> (${esc(h.person.email)}) manages <b>${h.clients.length}</b> client${h.clients.length === 1 ? '' : 's'}, has <b>${h.openTasks}</b> open tasks and <b>${h.appointments}</b> upcoming calls.</p>
-      ${h.clients.length ? `<ul class="list">${h.clients.map((c) => `<li class="item"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-c="${esc(c.id)}" checked> ${esc(c.name)}</label></li>`).join('')}</ul>` : ''}
+      ${h.clients.length ? `<ul class="list">${h.clients.map((c) => `<li class="item"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-c="${esc(c.id)}"> ${esc(c.name)}</label></li>`).join('')}</ul>` : ''}
       <label class="small" style="display:block;margin:8px 0"><input type="checkbox" id="happt"> Also move their upcoming booked calls</label>
       <button class="btn btn-primary btn-sm" id="hdo"${h.clients.length || h.appointments ? '' : ' disabled'}>Hand over</button>
       ${h.doneBy.length ? `<h4 style="margin:16px 0 6px">Work this person has done (stays on the record)</h4><ul class="list">${h.doneBy.map((r) => `<li class="item"><div class="item-title">${esc(r.name)}</div><span class="small muted">${r.n} tasks done, ${r.minutes} minutes</span></li>`).join('')}</ul>` : ''}
@@ -76,6 +76,8 @@ async function handover(host) {
       const to = $('#hto', host).value;
       if (!to) return toast('Pick who takes over.', true);
       const clients = $$('[data-c]:checked', box).map((i) => i.dataset.c);
+      if (!clients.length && !$('#happt', box).checked) return toast('Tick the clients to hand over. Nothing is ticked by default.', true);
+      if (!confirm(`Hand ${clients.length} client${clients.length === 1 ? '' : 's'} from ${h.person.name} to the person picked? Open tasks move too. Finished work and its history stay as they are.`)) return;
       await busy(e.currentTarget, async () => { try { const r = await api('/api/handover', { method: 'POST', body: { from: f, to, clients, appointments: $('#happt', box).checked } }); toast(`Moved ${r.clients} clients and ${r.tasks} open tasks`); handover(host); } catch (err) { toast(err.message, true); } });
     });
   };
