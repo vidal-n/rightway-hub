@@ -185,3 +185,66 @@ tbody tr, .table tr { border-color: var(--line); }
 #fpanel > .row { margin-top: 12px !important; padding-top: 10px; border-top: 1px solid var(--line); gap: 8px 18px; flex-wrap: wrap; align-items: center; }
 #fpanel > .row label.row { min-height: 32px; }
 @media (max-width: 560px) { #fpanel .form-grid.filt { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* ===== Hub contrast (Nov 2026, V: "everything in every tab is white washed", iPad screenshots of Call insights, Clients, Dashboard, Pipeline filters) =====
+   Modeled on the depth steps in Linear and Stripe Dashboard: chrome, canvas and cards are three clearly different shades, every card has a firm edge,
+   and chart ink (lines, bars, heat squares, sparklines) is full strength instead of pale. Light mode only; the dark block at the end keeps dark as it was.
+   The tokens themselves (--bg, --line, --muted) move in :root so every page that reads them follows. */
+:root {
+  --bg: #D3DED8; --line: #AFC0B7; --line-2: #8CA298; --muted: #364740; --ink-2: #1B2A24;
+  --surface-2: #E4ECE8; --mint-soft: #D2E4DA;
+  --shadow: 0 1px 2px rgba(13, 25, 20, .16), 0 10px 22px -12px rgba(13, 25, 20, .34);
+}
+.hub .main .card, .card { border: 1px solid var(--line-2); }
+.hub .main .stat, .hub .main .tile { border: 1px solid var(--line-2); border-top: 3px solid var(--acc); }
+.hub .tbl-wrap, .hub .table-wrap, .hub .main .col { border: 1px solid var(--line-2); }
+.hub .main .card-head, .hub .main .card > h2:first-child { border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.hub .cmd { background: var(--surface); box-shadow: 0 1px 0 var(--line-2), 0 6px 14px -10px rgba(13, 25, 20, .35); }
+.hub #wsbar { background: color-mix(in srgb, var(--surface) 45%, var(--bg)); border-bottom: 1px solid var(--line-2); }
+.hub .main th, .hub .main thead th { background: color-mix(in srgb, var(--surface-2) 70%, var(--line)); color: var(--ink-2); border-bottom: 1px solid var(--line-2); }
+.hub .main tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 80%, var(--surface)); }
+.hub .main tbody td { border-color: var(--line); }
+.hub .main .stat-label, .hub .main .muted, .hub .main .small, .hub .main .legend, .heat-key, .heat > span { color: var(--muted); }
+.hub .main .stat-label { font-weight: 600; }
+.hub .main .btn-ghost, .hub .main .btn-ghost:not(:hover) { border-color: var(--line-2); color: var(--ink-2); }
+.hub .seg { background: color-mix(in srgb, var(--surface-2) 70%, var(--line)); border-color: var(--line-2); }
+.hub .seg button { color: var(--ink-2); }
+.hub .seg button.on, .hub .seg button.is-on { background: var(--sel); color: var(--on-sel); box-shadow: none; }
+.hub .main .empty { background: var(--surface-2); border: 1px dashed var(--line-2); border-radius: 12px; color: var(--ink-2); }
+.hub .ws-tabs a { color: var(--ink-2); }
+
+/* Chart ink at full strength */
+.hub .linkbtn, .hub .resume-strip a, .hub .resume-strip .linkbtn { color: var(--acc); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.hub .tile-spark svg polyline { stroke-width: 2.6; }
+.hub .tile.hero .tile-spark svg { --mint: var(--acc); }
+.hub .tile.hero .tile-spark svg polyline, .hub .tile.hero .tile-spark svg circle { stroke: var(--acc); }
+.hub .tile.hero .tile-spark svg circle { fill: var(--acc); }
+.tile-spark { opacity: 1; }
+.chart .grid { stroke: var(--line-2); stroke-opacity: .55; }
+.chart text { fill: var(--ink-2); }
+.hub .main .spark polygon { opacity: .22; }
+.donut-bg { stroke: var(--line-2); opacity: 1; }
+.hbar .track, .rep-star .track, .progress { background: color-mix(in srgb, var(--surface-2) 55%, var(--line-2)); }
+.heat > i { background: color-mix(in srgb, var(--ws-insights) calc(8% + var(--v, 0) * 92%), var(--surface-2)); border-color: var(--line-2); }
+.heat > i.none { background: repeating-linear-gradient(45deg, var(--line), var(--line) 3px, var(--surface-2) 3px, var(--surface-2) 6px); }
+.heat-key b { background: linear-gradient(90deg, color-mix(in srgb, var(--ws-insights) 8%, var(--surface-2)), var(--ws-insights)); border: 1px solid var(--line-2); }
+.progress > span { background: var(--acc); }
+.funnel-bar { border: 1px solid color-mix(in srgb, var(--acc) 55%, transparent); }
+
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0C1210; --line: #243029; --line-2: #33413A; --muted: #8F9E97; --ink-2: #C3CFC9; --surface-2: #161F1B; --mint-soft: rgba(92, 214, 168, .08); --shadow: none; }
+  .hub .main .card, .card, .hub .main .stat, .hub .main .tile { border-color: var(--line-2); }
+  .hub .main th, .hub .main thead th { background: var(--surface-2); color: var(--muted); }
+  .hub .main tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 55%, var(--surface)); }
+  .hub .seg { background: var(--surface-2); }
+  .hub .main .empty { background: var(--surface-2); }
+  .tile-spark { opacity: .8; }
+  .hub .tile.hero .tile-spark svg polyline, .hub .tile.hero .tile-spark svg circle { stroke: var(--mint); }
+  .hub .tile.hero .tile-spark svg circle { fill: var(--mint); }
+  .chart .grid { stroke: var(--line); stroke-opacity: 1; }
+  .chart text { fill: var(--muted); }
+  .hbar .track, .rep-star .track, .progress { background: var(--surface-2); }
+  .progress > span { background: linear-gradient(90deg, var(--mint-strong), var(--mint)); }
+  .heat > i { border-color: var(--line); }
+  .heat > i.none { background: repeating-linear-gradient(45deg, var(--surface-2), var(--surface-2) 3px, transparent 3px, transparent 6px); }
+}
