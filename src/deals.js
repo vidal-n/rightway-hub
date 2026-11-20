@@ -8,6 +8,7 @@ import { requireStaff } from './auth.js';
 import { insertLead, logActivity } from './crm.js';
 import { canEmail, sendEmail } from './email.js';
 import { sendGmail } from './gmail.js';
+import { fromLine } from '../public/js/agency.js';
 import { route } from './router.js';
 
 const parse = (s) => { try { return JSON.parse(s || '{}') || {}; } catch { return {}; } };
@@ -79,7 +80,7 @@ route('POST', '/api/work-orders/:id/send', async ({ env, user, params, url, body
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#0F1B17;line-height:1.5"><p>Hi ${esc(first_)},</p>${note ? `<p>${esc(note).replace(/\n/g, '<br>')}</p>` : ''}<p>Here is your work order. Read it, sign it, and the payment step follows.</p><p><a href="${esc(link)}" style="display:inline-block;background:#0A6B4C;color:#fff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:bold">Review and sign</a></p><p style="color:#52605a">Summary: ${esc(due)}.</p><p>Questions? Reply to this email.</p><p>${esc(user.name || 'Rightway Growth')}<br>Rightway Growth</p></div>`;
   let how = null;
   if (canEmail(env)) {
-    await sendEmail(env, { to, subject, text, html, replyTo: user.email || undefined, from: user.name ? `${user.name} (Rightway Growth) <${(env.EMAIL_FROM || '').match(/<(.+)>/)?.[1] || 'hello@rightwaygrowth.com'}>` : undefined });
+    await sendEmail(env, { to, subject, text, html, replyTo: user.email || undefined, from: fromLine(user.name) });
     how = 'email';
   } else {
     const u = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);

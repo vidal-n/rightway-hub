@@ -406,9 +406,11 @@ route('PUT', '/api/clients/:id/access/:item', async ({ env, user, params, body }
   const b = await body();
   if (b.status && !ACCESS_STATUS[b.status]) throw new HttpError('Unknown status.');
   const cur = await first(env, 'SELECT * FROM client_access WHERE client_id = ? AND item = ?', c.id, params.item);
-  await run(env, `INSERT INTO client_access (client_id, item, status, note, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(client_id, item) DO UPDATE SET status = excluded.status, note = excluded.note, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
-  c.id, params.item, b.status || cur?.status || 'missing', 'note' in b ? text(b.note, 500) : cur?.note || null, now(), user.id);
+  const login = 'login_email' in b ? (text(b.login_email, 200).toLowerCase() || null) : cur?.login_email || null;
+  if (login && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(login)) throw new HttpError('That does not look like an email address.');
+  await run(env, `INSERT INTO client_access (client_id, item, status, note, login_email, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(client_id, item) DO UPDATE SET status = excluded.status, note = excluded.note, login_email = excluded.login_email, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
+  c.id, params.item, b.status || cur?.status || 'missing', 'note' in b ? text(b.note, 500) : cur?.note || null, login, now(), user.id);
   if (b.status === 'granted' && cur?.status !== 'granted') {
     const label = ACCESS_ITEMS.find((i) => i.key === params.item).label;
     await run(env, 'INSERT INTO log (id, client_id, text, at, by) VALUES (?, ?, ?, ?, ?)', newId('l_'), c.id, `Access received: ${label}`, now(), user.id);

@@ -1083,7 +1083,7 @@ export async function leadModal(id, onChange) {
   mountHours($('#lhours', m.el), l, () => { changed = true; });
   $$('#lmailbtn, #lmailx', m.el).forEach((b) => b.addEventListener('click', async (e) => {
     e.preventDefault();
-    const gmail = await import('./gstate.js').then((g) => g.hasGoogle('mail'));
+    const gmail = await import('./gstate.js').then((g) => g.composeViaGmail());
     if (gmail) import('./mail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth` }));
     else import('./hubmail.js').then((x) => x.compose({ to: l.email, subject: `${l.business} and Rightway Growth`, lead_id: l.id }));
   }));
@@ -1944,7 +1944,7 @@ export async function settingsPage(app, user) {
         ${[['DataForSEO (scans and lead research)', c.dataforseo, 'DATAFORSEO_LOGIN, DATAFORSEO_PASSWORD'], ['Google Calendar and Meet', c.google, 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET'], ['Stripe (billing status)', c.stripe, 'STRIPE_SECRET_KEY (restricted key)'],
           ['Stripe webhook (auto-win on payment)', c.stripeWebhook, `Stripe setup above, or STRIPE_WEBHOOK_SECRET. Endpoint: ${location.origin}/api/stripe/webhook`],
           ['Twilio (call through the Hub)', c.twilio, 'TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM'], ['Claude (Ask Claude, captions, page drafts)', c.ai, 'ANTHROPIC_API_KEY'],
-          ['Email sending', c.email, 'RESEND_API_KEY, EMAIL_FROM'], ['Photo storage', c.media, 'R2 bucket rightway-media']]
+          ['Email sending', c.email, 'RESEND_API_KEY (all email goes out as info@rightwaygrowth.com)'], ['Photo storage', c.media, 'R2 bucket rightway-media']]
           .map(([n, on, keys]) => `<li class="item">${pill(on)}<div><div class="item-title">${esc(n)}</div><div class="item-sub mono">${esc(keys)}</div></div><span></span></li>`).join('')}
       </ul><p class="small" style="margin-top:12px">Add keys in Cloudflare under Build variables and secrets, then ask Claude to rebuild.</p></div>
     <div class="card"><div class="card-head"><h2>Google Calendar and Meet</h2>${pill(g?.connected)}</div>

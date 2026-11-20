@@ -119,7 +119,7 @@ export async function historyPage(app, user, sub = 'all') {
     on('[data-text]', () => { const l = lead || { id: c.lead.id, business: c.lead.business, phone: c.number }; textModal(l, { rep: (user.name || '').split(' ')[0] }); });
     on('[data-mail]', async (e) => {
       e.preventDefault();
-      const gmail = await import('./gstate.js').then((g) => g.hasGoogle('mail'));
+      const gmail = await import('./gstate.js').then((g) => g.composeViaGmail());
       const arg = { to: email, subject: `${c.lead?.business || 'Your business'} and Rightway Growth` };
       if (gmail) import('./mail.js').then((x) => x.compose(arg)); else import('./hubmail.js').then((x) => x.compose({ ...arg, lead_id: c.lead?.id }));
     });
@@ -207,7 +207,7 @@ export async function textsPage(app, user, openId = '') {
     $('#tlead', host).addEventListener('click', async () => { const { leadModal } = await import('./crm.js'); leadModal(lead.id); });
     $('#tmail', host)?.addEventListener('click', async (e) => {
       e.preventDefault();
-      const gmail = await import('./gstate.js').then((g) => g.hasGoogle('mail'));
+      const gmail = await import('./gstate.js').then((g) => g.composeViaGmail());
       const arg = { to: lead.email, subject: `${lead.business} and Rightway Growth` };
       if (gmail) import('./mail.js').then((x) => x.compose(arg)); else import('./hubmail.js').then((x) => x.compose({ ...arg, lead_id: lead.id }));
     });

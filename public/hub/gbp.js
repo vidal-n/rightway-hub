@@ -101,7 +101,7 @@ async function photosBox(box, c) {
 async function linkView(el, c, d) {
   el.innerHTML = `<div class="card"><div class="card-head"><h2>Connect the Google profile</h2></div>
     <p>Once linked, posts, photos and review replies go straight to Google from the Hub, and the monthly report gets calls, direction requests and website clicks from the profile.</p>
-    <ol class="small steps"><li>The client adds hello@rightwaygrowth.com as a Manager on their profile (Access tab has the steps).</li>
+    <ol class="small steps"><li>The client adds info@rightwaygrowth.com as a Manager on their profile (Access tab has the steps).</li>
       <li>On the Google page, turn on Google Business Profile with the Google account that manages it.</li>
       <li>Google must approve Business Profile API access for the Hub's Google Cloud project (request it from the Prerequisites page of Google's Business Profile API docs), and the Business Profile APIs must be turned on in Google Cloud.</li></ol>
     ${d.ready ? '<button class="btn btn-primary" id="gfind">Find their profile</button>' : '<p class="badge warn">Google sign in is not set up yet (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Cloudflare).</p>'}

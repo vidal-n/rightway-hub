@@ -55,7 +55,7 @@ export async function geocode(env, query, fetchImpl = fetch) {
   let res;
   try {
     res = await fetchImpl(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&countrycodes=us&q=${encodeURIComponent(q)}`,
-      { headers: { 'user-agent': 'RightwayHub/1.0 (hello@rightwaygrowth.com)', accept: 'application/json' } });
+      { headers: { 'user-agent': 'RightwayHub/1.0 (info@rightwaygrowth.com)', accept: 'application/json' } });
   } catch (e) { throw new HttpError(`Could not look up "${q}": ${e.message}`, 502); }
   if (!res.ok) throw new HttpError(`The place lookup failed (HTTP ${res.status}). Try again in a minute, or type the place as lat,lng.`, 502);
   const hit = (await res.json().catch(() => []))[0];

@@ -66,7 +66,7 @@ const PLAYBOOKS = [
 const SETUP = [
   ['dfs', 'Fund DataForSEO', 'app.dataforseo.com, Payments, Add funds. Start with $50 to $100. Research is about $0.04 a lead, a listing check about $0.03, a 13 x 13 scan about $0.70 per keyword.'],
   ['google', 'Check the Google connection', 'Google page, Setup tab, Check connection. Fix what it lists. If Google blocks you, add your email as a Test user on the OAuth consent screen in Google Cloud.'],
-  ['resend', 'Add Resend for email', 'resend.com: add and verify rightwaygrowth.com, create a Sending access key. Cloudflare, Workers, rightway-hub, Settings, Build, Variables and secrets: RESEND_API_KEY and EMAIL_FROM. Then rebuild.'],
+  ['resend', 'Add Resend for email', 'resend.com: add and verify rightwaygrowth.com, create a Sending access key. Cloudflare, Workers, rightway-hub, Settings, Build, Variables and secrets: RESEND_API_KEY. Every email goes out as info@rightwaygrowth.com, so verify that domain in Resend. Then rebuild.'],
   ['anthropic', 'Add the Anthropic key', 'console.anthropic.com: add credits, create a key. Cloudflare: ANTHROPIC_API_KEY. Then rebuild. Turns on Ask Claude, AI captions, page drafts and review replies.'],
   ['stripe', 'Run Stripe setup', 'Settings, Stripe setup, tick Replace existing links, press Set up Stripe. The key needs Write on Products, Prices, Payment Links, Webhook Endpoints and Customer portal.'],
   ['site', 'Send the website files', 'Netlify, the site, Deploys, latest deploy, Download. Attach the zip in the chat so pricing comes off and every button points at the booking page.'],

@@ -71,7 +71,7 @@ export const PLANS = {
 };
 
 const SETUP_COMMON = [
-  ['setup', 'Accept access invites with hello@rightwaygrowth.com (Google profile, website, Analytics, Search Console)'],
+  ['setup', 'Accept access invites with info@rightwaygrowth.com (Google profile, website, Analytics, Search Console)'],
   ['setup', 'Kickoff call done and Client Profile filled in'],
   ['setup', 'Baseline map scan saved for the main keyword'],
   ['setup', 'Keyword list set for the plan'],

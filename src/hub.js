@@ -286,6 +286,8 @@ route('DELETE', '/api/users/:id', async ({ env, user, params }) => {
   const target = await first(env, 'SELECT * FROM users WHERE id = ?', params.id);
   if (!target) throw new HttpError('User not found.', 404);
   if (target.role !== 'client') requireAdmin(user);
+  // Keep the name of anyone who did work, so the work record still says who did what after they are removed.
+  await import('./handover.js').then((m) => m.rememberStaff(env, target)).catch(() => {});
   await batch(env, [['DELETE FROM sessions WHERE user_id = ?', target.id], ['DELETE FROM users WHERE id = ?', target.id]]);
   return json({ ok: true });
 });
@@ -675,6 +677,8 @@ import './freedata.js';
 import './costs.js';
 import './avatar.js';
 import './crash.js';
+import './handover.js';
+import './a2p.js';
 import './autoresearch.js';
 import './spend.js';
 import './vault.js';

@@ -7,17 +7,12 @@ import { requireStaff } from './auth.js';
 import { route } from './router.js';
 import { canEmail, sendEmail } from './email.js';
 import { logActivity } from './crm.js';
+import { fromLine } from '../public/js/agency.js';
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-export function fromFor(env, user) {
-  const raw = env.EMAIL_FROM || 'Rightway Growth <hello@rightwaygrowth.com>';
-  const m = raw.match(/<([^>]+)>/);
-  const addr = m ? m[1] : raw.trim();
-  const name = String(user.name || '').replace(/[<>",]/g, '').trim();
-  return `${name ? `${name} (Rightway Growth)` : 'Rightway Growth'} <${addr}>`;
-}
+export function fromFor(env, user) { return fromLine(user?.name); }
 // Plain text in, simple styled HTML out: paragraphs on blank lines, links made clickable.
 export function bodyHtml(text) {
   const link = (s) => esc(s).replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)])/g, '<a href="$1">$1</a>');

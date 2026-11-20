@@ -22,7 +22,8 @@ async function context(env, user, lead) {
   const bt = await bookToken(env, lead);
   const me = await first(env, 'SELECT * FROM users WHERE id = ?', user.id);
   const gmail = Boolean(me?.google_token && hasScope(me.google_scopes, APP_SCOPES.mail));
-  const via = gmail ? 'gmail' : canEmail(env) ? 'resend' : null;
+  // Resend first so the mail comes from info@; the rep's own Gmail only when Resend is not set up.
+  const via = canEmail(env) ? 'resend' : gmail ? 'gmail' : null;
   let intel = null;
   try { intel = lead.intel ? JSON.parse(lead.intel) : null; } catch { intel = null; }
   const w = whoIs(lead);
@@ -60,7 +61,7 @@ route('POST', '/api/leads/:id/info-email', async ({ env, user, params, body }) =
   if (!to) throw new HttpError('Add their email address first.');
   if (!EMAIL_RE.test(to)) throw new HttpError(`"${to}" does not look like an email address.`);
   const c = await context(env, user, lead);
-  if (!c.via) throw new HttpError('Sending needs email set up: connect your Gmail on the Google page, or add RESEND_API_KEY in Cloudflare.', 503);
+  if (!c.via) throw new HttpError('Sending needs email set up: add RESEND_API_KEY in Cloudflare (or connect your Gmail on the Google page as a backup).', 503);
   const cbMs = b.callbackAt ? Number(new Date(b.callbackAt)) || 0 : 0;
   const mail = infoEmail({
     first: c.first, business: lead.business, industry: lead.industry, rep: user.name, repFirst: c.repFirst,

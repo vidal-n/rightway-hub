@@ -10,7 +10,7 @@ export const WORKSPACES = [
   ['insights', 'Insights', 'chart', [['Call insights', '#/pipeline/insights'], ['Script tests', '#/pipeline/scripts'], ['Call analytics', '#/agents/analytics'], ['Master sheet', '#/agents/sheet']]],
   ['money', 'Money', 'money', [['Deal desk', '#/deals', 'close'], ['Payments', '#/payments', 'admin'], ['Budget', '#/settings/budget', 'admin']]],
   ['automate', 'Automate', 'spark', [['Workflows', '#/automations/workflows', 'admin'], ['Booking reminders', '#/automations', 'admin'], ['Google', '#/google'], ['Vault', '#/vault', 'admin']]],
-  ['settings', 'Settings', 'cog', [['Settings', '#/settings'], ['Agents and roles', '#/settings/team', 'admin'], ['Files', '#/settings/files', 'admin'], ['Bug reports', '#/settings/bugs', 'admin']]],
+  ['settings', 'Settings', 'cog', [['Settings', '#/settings'], ['Agents and roles', '#/settings/team', 'admin'], ['Files', '#/settings/files', 'admin'], ['A2P texting', '#/settings/a2p', 'admin'], ['Accounts and handover', '#/settings/accounts', 'admin'], ['Bug reports', '#/settings/bugs', 'admin']]],
 ];
 // Routes whose workspace is not obvious from the tab list (longest prefix wins, then these).
 const WS_EXTRA = [['#/client/', 'clients'], ['#/clientview', 'clients'], ['#/dialer', 'sell'], ['#/inbox', 'inbox'], ['#/phone/out', 'inbox'], ['#/phone/calls', 'inbox'],

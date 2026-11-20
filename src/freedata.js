@@ -9,7 +9,7 @@ import { stateCode, registryFor, openDataUrl, normalizeRows, newFilingsUrl, NEW_
 import { nameStem } from '../public/js/freedata.js';
 import { overpassQuery, osmRecord, sunbizSearchUrl, parseSunbizResults, pickEntity, parseSunbizDetail, pickOwner, yearsSince, entityName } from '../public/js/freedata.js';
 
-const UA = 'RightwayHub/1.0 (hello@rightwaygrowth.com)';
+const UA = 'RightwayHub/1.0 (info@rightwaygrowth.com)';
 const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 export const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
 

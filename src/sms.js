@@ -13,6 +13,7 @@ import { trackedAnswer } from './calltrack.js';
 import { voicemailTwiml } from './voicemail.js';
 import { blockedFor, blockText } from './suppress.js';
 import { notify, notifyLater } from './notify.js';
+import { isHelp, HELP_REPLY } from '../public/js/a2p.js';
 
 const STOP_WORDS = new Set(['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']);
 const START_WORDS = new Set(['start', 'unstop', 'yes']);
@@ -164,6 +165,11 @@ route('POST', '/api/twilio/sms', async ({ env, request, defer }) => {
     await logActivity(env, { lead_id: leadId, type: 'note', body: 'Replied STOP. No more texts.' });
   } else if (isStart(body)) {
     await run(env, 'UPDATE leads SET sms_stop = 0, sms_consent = 1, updated_at = ? WHERE id = ?', now(), leadId);
+  } else if (isHelp(body)) {
+    // Carriers require a HELP answer with the company name and a way to reach us (A2P 10DLC). It is not a sales message, so no consent needed.
+    await run(env, 'UPDATE leads SET updated_at = ? WHERE id = ?', now(), leadId);
+    await logActivity(env, { lead_id: leadId, type: 'sms', status: 'in', body });
+    return twiml(`<Message>${xml(HELP_REPLY)}</Message>`);
   } else {
     await run(env, 'UPDATE leads SET updated_at = ? WHERE id = ?', now(), leadId);
     await logActivity(env, { lead_id: leadId, type: 'sms', status: 'in', body });

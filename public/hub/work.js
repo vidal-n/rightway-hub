@@ -3,6 +3,7 @@
 import { $, $$, esc, api, toast, copy, fmt, icon, busy, modal, resizeImage, KIND_LABEL } from './core.js';
 import { staffShell } from './staff.js';
 import { can } from '/js/jobs.js';
+import { loginState } from '/js/accounts.js';
 
 const PROOF_TXT = { link: 'Live link', screenshot: 'Screenshot', either: 'Live link or screenshot', note: 'Written note', none: 'No proof needed' };
 export const mins = (m) => { m = Math.round(m || 0); if (m < 60) return `${m} min`; const h = Math.floor(m / 60), r = m % 60; return `${h} h${r ? ` ${r} min` : ''}`; };
@@ -217,7 +218,7 @@ function toolsHtml(tools, t) {
         <div class="row" style="margin-top:6px"><button class="btn btn-ghost btn-sm" data-act="copycap" data-text="${esc(p.google_text || '')}">Copy caption</button>${p.media_key ? `<a class="btn btn-ghost btn-sm" href="/api/media/${esc(p.id)}?download=1">Download photo</a>` : ''}
         ${tools.gbp ? `<button class="btn btn-primary btn-sm" data-act="gbppost" data-post="${esc(p.id)}">Publish to Google</button>` : `<button class="btn btn-primary btn-sm" data-act="posted" data-post="${esc(p.id)}">Mark posted</button>`}</div></div></li>`).join('')}</ul>`
         : `<p class="muted small">No approved posts. Make one in the Posts tab from the client's photos.</p>`}
-      ${tools.gbp ? '' : '<p class="small muted">Open business.google.com as hello@rightwaygrowth.com, Add update, paste, publish. Then put the post link or a screenshot below.</p>'}</div>`;
+      ${tools.gbp ? '' : '<p class="small muted">Open business.google.com as info@rightwaygrowth.com, Add update, paste, publish. Then put the post link or a screenshot below.</p>'}</div>`;
   }
   if (k === 'photos') return tools.gbp ? `<div class="card tool-card"><p class="small">The profile is connected: upload photos from the <a href="#/client/${cid}/gbp" data-close>Google profile tab</a>.</p></div>` : '';
   if (k === 'link' || (k === 'setup' && /citation|listing/i.test(t.title))) {
@@ -344,17 +345,19 @@ async function guidesView(view, user, focus) {
 }
 
 // ---------- client Access checklist tab ----------
+const loginBadge = (e) => { const s = loginState(e); return s === 'ok' ? '<span class="badge">Under info@</span>' : s === 'other' ? '<span class="badge warn">Move to info@</span>' : '<span class="badge gray">Not checked</span>'; };
 export async function accessListTab(el, c) {
   el.innerHTML = '<div class="skeleton"></div>';
   let d;
   try { d = await api(`/api/clients/${c.id}/access`); } catch (e) { el.innerHTML = `<p class="err-text">${esc(e.message)}</p>`; return; }
   const ask = d.items.filter((i) => i.required && i.status === 'missing');
-  const msg = `Hi${c.contact_name ? ` ${c.contact_name.split(' ')[0]}` : ''}, to start the work we need a few accesses:\n\n${ask.map((i, n) => `${n + 1}. ${i.label}: ${i.how}`).join('\n')}\n\nUse hello@rightwaygrowth.com for each. Thank you!`;
+  const msg = `Hi${c.contact_name ? ` ${c.contact_name.split(' ')[0]}` : ''}, to start the work we need a few accesses:\n\n${ask.map((i, n) => `${n + 1}. ${i.label}: ${i.how}`).join('\n')}\n\nUse info@rightwaygrowth.com for each. Thank you!`;
   el.innerHTML = `<div class="card"><div class="card-head"><h2>Access checklist</h2>${d.gaps ? `<span class="badge warn">${d.gaps} missing</span>` : '<span class="badge">All set</span>'}</div>
     <p class="muted small">What the team needs from ${esc(c.name)} to do the work. Items the Hub can see on its own (WordPress saved, Search Console linked, Google profile connected, tracking number) check themselves.</p>
     <ul class="list">${d.items.map((i) => `<li class="item access-row" data-item="${esc(i.key)}"><span class="badge ${i.status === 'granted' ? '' : i.status === 'na' ? 'gray' : i.required ? 'warn' : 'gray'}">${esc(d.statuses[i.status])}</span>
       <div><div class="item-title">${esc(i.label)}${i.required ? '' : ' <span class="small muted">(optional for this plan)</span>'}${i.detected ? ' <span class="small muted">· seen by the Hub</span>' : ''}</div><div class="item-sub">${esc(i.how)}</div>
-        <input class="small" data-note placeholder="Note (who sent it, login location)" value="${esc(i.note)}" style="margin-top:6px;width:100%"></div>
+        <input class="small" data-note placeholder="Note (who sent it, login location)" value="${esc(i.note)}" style="margin-top:6px;width:100%">
+        <label class="small muted" style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">Logged in as <input class="small" data-login type="email" placeholder="info@rightwaygrowth.com" value="${esc(i.login_email)}" style="flex:1;min-width:200px"> ${loginBadge(i.login_email)}</label></div>
       <select data-status aria-label="Status">${Object.entries(d.statuses).map(([k, l]) => `<option value="${k}"${i.status === k ? ' selected' : ''}>${l}</option>`).join('')}</select></li>`).join('')}</ul>
     ${ask.length ? `<div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" id="acopy">Copy a message asking for what is missing</button>${c.contact_email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(c.contact_email)}?subject=${encodeURIComponent('Access we need to start')}&body=${encodeURIComponent(msg)}">${icon.mail}Email it</a>` : ''}</div>` : ''}</div>`;
   $('#acopy', el)?.addEventListener('click', () => copy(msg, 'Message copied'));
@@ -362,5 +365,6 @@ export async function accessListTab(el, c) {
     const put = async (body) => { try { await api(`/api/clients/${c.id}/access/${row.dataset.item}`, { method: 'PUT', body }); toast('Saved'); } catch (err) { toast(err.message, true); } };
     $('[data-status]', row).addEventListener('change', async (e) => { await put({ status: e.target.value }); accessListTab(el, c); });
     $('[data-note]', row).addEventListener('change', (e) => put({ note: e.target.value }));
+    $('[data-login]', row).addEventListener('change', async (e) => { await put({ login_email: e.target.value }); accessListTab(el, c); });
   });
 }

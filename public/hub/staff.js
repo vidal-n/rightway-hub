@@ -15,7 +15,7 @@ export { staffShell, initials };
 // Settings holds the team too.
 // Pipeline tabs: the board, the Lead database (Apollo style search over every business) and Call insights (every call, by who picked up).
 export const pipeTabs = (active) => `<nav class="tabs pipe-tabs" style="margin-bottom:14px"><a href="#/pipeline" class="${active === 'board' ? 'is-active' : ''}">Pipeline</a><a href="#/pipeline/database" class="${active === 'database' ? 'is-active' : ''}">Lead database</a><a href="#/pipeline/insights" class="${active === 'insights' ? 'is-active' : ''}">Call insights</a><a href="#/pipeline/scripts" class="${active === 'scripts' ? 'is-active' : ''}">Script tests</a><a href="#/pipeline/suppression" class="${active === 'suppress' ? 'is-active' : ''}">Do not call list</a></nav>`;
-export const settingsTabs = (active, user) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a>${user?.role === 'admin' ? `<a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Agents</a><a href="#/settings/files" class="${active === 'files' ? 'is-active' : ''}">Files</a>` : ''}${user?.role === 'admin' ? `<a href="#/settings/budget" class="${active === 'budget' ? 'is-active' : ''}">Budget and costs</a><a href="#/settings/bugs" class="${active === 'bugs' ? 'is-active' : ''}">Bug reports</a>` : ''}</nav>`;
+export const settingsTabs = (active, user) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/settings" class="${active === 'general' ? 'is-active' : ''}">General</a>${user?.role === 'admin' ? `<a href="#/settings/team" class="${active === 'team' ? 'is-active' : ''}">Agents</a><a href="#/settings/files" class="${active === 'files' ? 'is-active' : ''}">Files</a>` : ''}${user?.role === 'admin' ? `<a href="#/settings/budget" class="${active === 'budget' ? 'is-active' : ''}">Budget and costs</a><a href="#/settings/a2p" class="${active === 'a2p' ? 'is-active' : ''}">A2P texting</a><a href="#/settings/accounts" class="${active === 'accounts' ? 'is-active' : ''}">Accounts and handover</a><a href="#/settings/bugs" class="${active === 'bugs' ? 'is-active' : ''}">Bug reports</a>` : ''}</nav>`;
 
 export const clientsTabs = (active) => `<nav class="tabs" style="margin-bottom:16px"><a href="#/clients" class="${active === 'all' ? 'is-active' : ''}">All clients</a><a href="#/clients/view" class="${active === 'view' ? 'is-active' : ''}">Client view</a></nav>`;
 
@@ -148,7 +148,7 @@ export async function clientPage(app, user, id, tab = 'overview', state = {}) {
   $('#cslack', view).addEventListener('click', () => import('./slackapp.js').then((m) => m.sendToSlack('client', c.id)));
   // Google: write to them, or put a meeting with them on your own calendar.
   $('#cclaude', view).addEventListener('click', () => import('./assistant.js').then((m) => m.openAssistant({ clientId: c.id, name: c.name })));
-  $('#cmail', view)?.addEventListener('click', async () => ((await import('./gstate.js').then((g) => g.hasGoogle('mail')))
+  $('#cmail', view)?.addEventListener('click', async () => ((await import('./gstate.js').then((g) => g.composeViaGmail()))
     ? import('./mail.js').then((m) => m.compose({ to: c.contact_email, subject: `${c.name} and Rightway Growth` }))
     : import('./hubmail.js').then((m) => m.compose({ to: c.contact_email, subject: `${c.name} and Rightway Growth`, client_id: c.id }))));
   $('#ccal', view).addEventListener('click', async () => ((await import('./gstate.js').then((g) => g.hasGoogle('calendar')))

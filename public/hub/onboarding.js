@@ -3,7 +3,7 @@ import { $, $$, esc, api, toast, busy, fmt } from './core.js';
 import { miniGrid } from './prep.js';
 import { rankText } from '/js/leadintel.js';
 
-const AGENCY_EMAIL = 'hello@rightwaygrowth.com';
+const AGENCY_EMAIL = 'info@rightwaygrowth.com';
 const ACCESS = [
   ['gbp_access', 'Google Business Profile', `On your phone or computer, search your business name on Google (or open business.google.com). Open Business Profile settings, then People and access, then Add. Enter ${AGENCY_EMAIL}, choose Manager, and tap Invite.`],
   ['website_access', 'Website', `Add ${AGENCY_EMAIL} as an admin or editor. WordPress: Users, Add New. Wix: Settings, Roles and Permissions, Invite. Squarespace: Settings, Permissions, Invite. GoDaddy: Settings, Delegate access. Not sure? Tell us who built it.`],

@@ -1,3 +1,4 @@
+import { AGENCY_FROM } from '../public/js/agency.js';
 // Optional email through Resend. Without RESEND_API_KEY the app hands back links to send yourself.
 export function canEmail(env) {
   return Boolean(env.RESEND_API_KEY);
@@ -9,7 +10,7 @@ export async function sendEmail(env, { to, subject, text, html, replyTo, from, a
     method: 'POST',
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      from: from || env.EMAIL_FROM || 'Rightway Growth <hello@rightwaygrowth.com>',
+      from: from || AGENCY_FROM, // always the company address; EMAIL_FROM is no longer read
       to: Array.isArray(to) ? to : [to], subject, text, html: html || undefined, reply_to: replyTo || undefined,
       attachments: attachments || undefined, // [{ filename, content (base64), content_type }]
     }),

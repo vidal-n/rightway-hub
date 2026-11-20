@@ -9,3 +9,12 @@ export async function googleApps() {
   return cache;
 }
 export const hasGoogle = async (app) => (await googleApps()).has(app);
+
+// Writing a new email: the Hub composer sends through Resend from info@rightwaygrowth.com whenever email is set up, so every
+// outgoing email carries the company address. The person's own Gmail composer is only the backup when Resend is not set up.
+// (Reading mail, the Gmail page and the recent mail lists still use Google.)
+export async function composeViaGmail() {
+  let on = false;
+  try { on = Boolean((await api('/api/auth/state')).email); } catch { on = false; }
+  return !on && (await hasGoogle('mail'));
+}

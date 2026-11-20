@@ -1,6 +1,7 @@
 // Public booking page: open times in the visitor's own time zone, their details (filled in from a personal link when we have them),
 // a clear prompt for anything missing, then the confirmation with Add to calendar buttons. Google sends its own invite when connected.
 import { icsCalendar, googleAddUrl } from '/js/ics.js';
+import { CONSENT_TEXT } from '/js/a2p.js';
 
 const box = document.getElementById('bk');
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -82,7 +83,7 @@ async function load() {
         <label class="field"><span>Website (if you have one)</span><input name="website" inputmode="url" value="${val('website')}"></label>
         <div class="row" style="gap:10px;align-items:flex-start"><label class="field" style="flex:2 1 140px"><span>City *</span><input name="city" autocomplete="address-level2" value="${val('city')}"></label><label class="field" style="flex:1 1 70px"><span>State *</span><input name="state" maxlength="20" autocomplete="address-level1" value="${val('state')}"></label></div>
         <label class="field"><span>What do you do?</span><input name="industry" placeholder="Roofing, dental, plumbing..." value="${val('industry')}"></label>
-        <label class="row small" style="gap:10px;align-items:flex-start;flex-wrap:nowrap"><input type="checkbox" name="sms_consent" value="1" style="margin-top:3px;flex:none"> <span>Text me a confirmation and reminders about this appointment from Rightway Growth. Message and data rates may apply. Reply STOP to opt out.</span></label>
+        <label class="row small" style="gap:10px;align-items:flex-start;flex-wrap:nowrap"><input type="checkbox" name="sms_consent" value="1" style="margin-top:3px;flex:none"> <span>${esc(CONSENT_TEXT)} <a href="/terms.html" target="_blank" rel="noopener">Terms</a> and <a href="/privacy.html" target="_blank" rel="noopener">Privacy</a>.</span></label>
         <label class="hp" aria-hidden="true">Company URL<input name="company-url" tabindex="-1" autocomplete="off"></label>
         <p class="small" id="sel">Pick a time on the left.</p>
         <button class="btn btn-primary btn-xl" type="submit" id="go">Book my consultation</button>

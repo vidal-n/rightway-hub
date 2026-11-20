@@ -127,6 +127,11 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS idx_client_photos_client ON client_photos (client_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS schedule_blocks (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, dow INTEGER NOT NULL, start_min INTEGER NOT NULL, end_min INTEGER NOT NULL, title TEXT NOT NULL, kind TEXT, goal INTEGER, note TEXT, created_at INTEGER)`,
   `CREATE INDEX IF NOT EXISTS idx_schedule_user ON schedule_blocks (user_id, dow, start_min)`,
+  `CREATE TABLE IF NOT EXISTS company_accounts (
+    id TEXT PRIMARY KEY, vendor TEXT NOT NULL, purpose TEXT, url TEXT, login_email TEXT, status TEXT NOT NULL DEFAULT 'unchecked', note TEXT, updated_at INTEGER, updated_by TEXT)`,
+  `CREATE TABLE IF NOT EXISTS handovers (
+    id TEXT PRIMARY KEY, from_user TEXT, from_name TEXT, to_user TEXT, to_name TEXT, counts TEXT, note TEXT, at INTEGER NOT NULL, by TEXT)`,
+  `CREATE TABLE IF NOT EXISTS former_staff (id TEXT PRIMARY KEY, name TEXT, email TEXT, role TEXT, removed_at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS client_access (
     client_id TEXT NOT NULL, item TEXT NOT NULL, status TEXT NOT NULL, note TEXT, updated_at INTEGER, updated_by TEXT, PRIMARY KEY (client_id, item))`,
   `CREATE TABLE IF NOT EXISTS meetings (
@@ -259,7 +264,7 @@ const ADD_COLUMNS = [
   ['activities', 'answered_at INTEGER'], ['activities', 'rec_sid TEXT'], ['activities', 'rec_secs INTEGER'], ['activities', 'mon_sid TEXT'],
   ['activities', 'mon_by TEXT'], ['activities', 'mon_mode TEXT'], ['activities', 'agent_sid TEXT'], ['activities', 'in_conf INTEGER'], ['activities', 'taker TEXT'], ['activities', 'dispo TEXT'], ['activities', 'note TEXT'],
   ['users', 'google_scopes TEXT'], ['clients', 'gsc_site TEXT'], ['clients', 'ga4_property TEXT'], ['clients', 'ads_customer TEXT'],
-  ['tasks', 'owner TEXT'], ['tasks', 'due TEXT'], ['tasks', 'proof_key TEXT'], ['tasks', 'proof_type TEXT'], ['tasks', 'checks TEXT'],
+  ['client_access', 'login_email TEXT'], ['tasks', 'owner TEXT'], ['tasks', 'due TEXT'], ['tasks', 'proof_key TEXT'], ['tasks', 'proof_type TEXT'], ['tasks', 'checks TEXT'],
   ['clients', 'owner_id TEXT'], ['clients', 'gbp_account TEXT'], ['clients', 'gbp_location TEXT'], ['clients', 'gbp_title TEXT'],
   ['posts', 'live_url TEXT'], ['posts', 'gbp_name TEXT'],
   ['activities', 'vm_sid TEXT'], ['activities', 'vm_secs INTEGER'], ['activities', 'seen_at INTEGER'], ['users', 'notify_prefs TEXT'],

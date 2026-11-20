@@ -81,7 +81,7 @@ test('reports: made when monthly scans finish, compare with the scan before, sen
 });
 
 test('reports: email goes out through Resend with the private link, and automatic sending works when the owner turns it on', async () => {
-  const t = setup({ RESEND_API_KEY: 're_test', EMAIL_FROM: 'Rightway Growth <hello@rightwaygrowth.com>' });
+  const t = setup({ RESEND_API_KEY: 're_test' });
   const c = await start(t);
   const sent = [];
   const real = globalThis.fetch;

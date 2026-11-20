@@ -123,7 +123,7 @@ test('files: upload, folders, move, share link, delete', async () => {
 });
 
 test('mail: sends under your name with reply-to, logs it, needs email set up', async () => {
-  assert.match(fromFor({ EMAIL_FROM: 'Rightway Growth <hello@rightwaygrowth.com>' }, { name: 'Vidal, "V" Newton' }), /^Vidal V Newton \(Rightway Growth\) <hello@rightwaygrowth\.com>$/);
+  assert.match(fromFor({ EMAIL_FROM: 'Other <someone@else.com>' }, { name: 'Vidal, "V" Newton' }), /^Vidal V Newton \(Rightway Growth\) <info@rightwaygrowth\.com>$/);
   assert.match(bodyHtml('Hi <b>\n\nSee https://example.com/x.'), /&lt;b&gt;[\s\S]*<a href="https:\/\/example\.com\/x">/);
 
   const none = setup();

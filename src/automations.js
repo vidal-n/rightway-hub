@@ -10,6 +10,7 @@ import { brandedHtml } from '../public/js/mailbrand.js';
 import { logClaude } from './costs.js';
 import { token } from './db.js';
 import { icsCalendar, googleAddUrl } from '../public/js/ics.js';
+import { notify } from './notify.js';
 import { zoned, wallDate } from '../public/js/slots.js';
 import { clockIn, validZone } from '../public/js/apptime.js';
 
@@ -23,6 +24,21 @@ export const VARS = ['first', 'business', 'date', 'time', 'when', 'meet_line', '
 // {meet_line} is the Meet link on its own line (a Join button in the email) or "I'll call you"; {meet_or_call} is the same for a text.
 const NO_SHOW = { id: 'no_show', name: 'Missed appointment follow up (text)', on: false, channel: 'sms', trigger: 'after', offset: 30,
   body: 'Hey {first}, we missed you today. Want to pick a new time? {book}' };
+// No show recovery (Nov 2026, V: get the people who missed the appointment back in the door). Starts once the rep marks the result "No show
+// (audit booked)" (stage no_show), so nobody who actually showed gets a "we missed you". Three emails per missed appointment, then it stops
+// (the third miss moves the lead to Not now in applyOutcome). A rebook moves the lead out of no_show, so the sequence stops by itself.
+// Modeled on the no show sequences in Calendly workflows and Close.com's Smart View follow ups. Tone is calm, no guilt, no fake urgency.
+export const RECOVERY = [
+  { id: 'ns_email_1', name: 'No show: sorry we missed you, pick a new time (email)', on: true, channel: 'email', trigger: 'after', offset: 30,
+    subject: 'Missed you today, {first}',
+    body: "Hey {first},\n\nIt's {rep_first} from RightWay Growth. We were set to talk at {time} and I think we missed each other. No stress at all, things come up.\n\nYour Google clarity audit for {business} is still on hold for you. Pick a new time here and I'll walk you through it:\n{book}\n\nOr just reply with a time that works and I'll make it happen.\n\n{rep}" },
+  { id: 'ns_email_2', name: 'No show: day after, still want the audit (email)', on: true, channel: 'email', trigger: 'after', offset: 1440,
+    subject: 'Still want that audit for {business}?',
+    body: "Hey {first},\n\n{rep_first} again from RightWay Growth. Just checking in on the audit for {business}. It takes about 30 minutes and you keep everything we show you, either way.\n\nHere's my calendar when you're ready:\n{book}\n\n{rep}" },
+  { id: 'ns_email_3', name: 'No show: three days, last note (email)', on: true, channel: 'email', trigger: 'after', offset: 4320,
+    subject: 'Should I close your file, {first}?',
+    body: "Hey {first},\n\nLast note from me so I'm not cluttering your inbox. If now isn't the right time for {business}, no problem. Just reply \"later\" and I'll check back in a couple of months.\n\nIf you do want the audit, grab a time here:\n{book}\n\n{rep}" },
+];
 const E = {
   confirm: { id: 'confirm_email', name: 'Booked: confirmation with the Meet link (email)', on: true, channel: 'email', trigger: 'booked', offset: 0,
     subject: "You're booked, {first}: {when}",
@@ -54,9 +70,9 @@ const T = {
     body: "Hey {first}, here's the Google Meet, super excited to chat with you. {meet_or_call}" },
 };
 export const AUTOMATION_SETS = {
-  email: { name: 'Email only', note: 'Use now, while texts wait on A2P approval.', list: [E.confirm, E.morning, E.three, E.ten, NO_SHOW] },
-  sms: { name: 'Text only', note: 'After A2P is approved. Google still emails its own invite.', list: [T.confirm, T.morning, T.three, T.ten, NO_SHOW] },
-  both: { name: 'Email and text', note: 'After A2P is approved. The link goes by email, texts give the heads up; a text that cannot go is sent as an email.', list: [E.confirm, T.confirmBoth, T.morning, E.three, T.threeBoth, T.ten, NO_SHOW] },
+  email: { name: 'Email only', note: 'Use now, while texts wait on A2P approval.', list: [E.confirm, E.morning, E.three, E.ten, ...RECOVERY] },
+  sms: { name: 'Text only', note: 'After A2P is approved. Google still emails its own invite.', list: [T.confirm, T.morning, T.three, T.ten, NO_SHOW, RECOVERY[1]] },
+  both: { name: 'Email and text', note: 'After A2P is approved. The link goes by email, texts give the heads up; a text that cannot go is sent as an email.', list: [E.confirm, T.confirmBoth, T.morning, E.three, T.threeBoth, T.ten, { ...NO_SHOW, on: true, fallback: true, subject: 'Missed you today, {first}' }, RECOVERY[0], RECOVERY[1], RECOVERY[2]] },
 };
 export const DEFAULT_AUTOMATIONS = AUTOMATION_SETS.email.list;
 
@@ -118,7 +134,7 @@ export function dueFor(autos, lead, t, sent = new Set()) {
     }
     // Reminders go out inside a 45 minute window after their moment, so a late booking never gets a reminder that is already stale.
     if (a.trigger === 'before' && until <= a.offset * 60e3 && until > a.offset * 60e3 - 45 * 60e3 && until > 0) out.push(a);
-    if (a.trigger === 'after' && lead.stage === 'no_show' && -until >= a.offset * 60e3 && -until < a.offset * 60e3 + 6 * 3600e3) out.push(a);
+    if (a.trigger === 'after' && lead.stage === 'no_show' && -until >= a.offset * 60e3 && -until < a.offset * 60e3 + (a.offset >= 1440 ? 12 : 6) * 3600e3) out.push(a);
   }
   return out;
 }
@@ -184,10 +200,44 @@ async function context(env, lead) {
 }
 
 // Every minute: send what is due. At most 20 sends a run.
+// Lists saved before the recovery steps existed (Settings, Automations edited by hand or a set picked earlier) get the three no show
+// emails added once, switched on. Anything V already changed or removed on purpose is not touched again (stamp settings.auto_ns_v).
+export async function ensureRecovery(env) {
+  const s = await getSettings(env);
+  if (s.auto_ns_v === '1' || !s.automations) return false;
+  let list = [];
+  try { list = JSON.parse(s.automations); } catch { return false; }
+  if (!Array.isArray(list)) return false;
+  const have = new Set(list.map((a) => a.id));
+  const add = RECOVERY.filter((a) => !have.has(a.id)).map(cleanAutomation);
+  if (add.length) await setSetting(env, 'automations', JSON.stringify([...list, ...add]));
+  await setSetting(env, 'auto_ns_v', '1');
+  return add.length > 0;
+}
+
+// The recovery only starts when someone marks the result, so a closer who forgets would leave a no show unmarked. Twenty minutes after a
+// booked appointment's time with the stage still "audit booked", the closer (else the booker, else the owners) gets one alert to mark it
+// held or no show. Logged once per appointment in automation_log.
+export async function showNudgeTick(env, t = now()) {
+  const rows = await all(env, "SELECT id, business, meet_at, meet_by, closer_id FROM leads WHERE stage = 'audit_booked' AND meet_at IS NOT NULL AND meet_at < ? AND meet_at > ? AND dnc = 0 LIMIT 40", t - 20 * 60e3, t - 3 * 3600e3);
+  let n = 0;
+  for (const l of rows) {
+    if (await first(env, "SELECT id FROM automation_log WHERE auto_id = 'nudge_mark' AND lead_id = ? AND meet_at = ?", l.id, l.meet_at)) continue;
+    await run(env, 'INSERT OR IGNORE INTO automation_log (id, auto_id, lead_id, meet_at, channel, status, error, to_addr, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', newId('al_'), 'nudge_mark', l.id, l.meet_at, 'alert', 'sent', null, null, t);
+    const who = l.closer_id || l.meet_by;
+    await notify(env, { to: who ? [who] : 'admins', kind: 'meeting', title: `Did ${l.business} show?`, body: 'Mark the call held or No show. A no show sends the follow up emails that get them back on the calendar.', url: `/#/pipeline/${l.id}`, tag: `shown-${l.id}-${l.meet_at}` }).catch(() => {});
+    n++;
+  }
+  return n;
+}
+
 export async function automationTick(env, t = now()) {
+  await ensureRecovery(env);
+  await showNudgeTick(env, t).catch(() => {});
   const autos = (await getAutomations(env)).filter((a) => a.on);
   if (!autos.length) return 0;
-  const leads = await all(env, `SELECT * FROM leads WHERE meet_at IS NOT NULL AND meet_at > ? AND meet_at < ? AND dnc = 0 LIMIT 300`, t - 2 * 864e5, t + 15 * 864e5);
+  // Upcoming appointments, plus anyone marked no show in the last 8 days (the recovery steps run up to 3 days later, in 12 hour windows).
+  const leads = await all(env, `SELECT * FROM leads WHERE meet_at IS NOT NULL AND dnc = 0 AND ((meet_at > ? AND meet_at < ?) OR (stage = 'no_show' AND meet_at > ? AND meet_at <= ?)) ORDER BY meet_at LIMIT 300`, t - 2 * 864e5, t + 15 * 864e5, t - 8 * 864e5, t);
   if (!leads.length) return 0;
   const logs = await all(env, `SELECT auto_id, lead_id, meet_at FROM automation_log WHERE lead_id IN (${leads.map(() => '?').join(',')})`, ...leads.map((l) => l.id));
   let n = 0;
@@ -209,14 +259,24 @@ export async function automationTick(env, t = now()) {
   return n;
 }
 
-route('GET', '/api/automations', async ({ env, user }) => {
+// Emails need the Hub's address for the logo and the booking button. Opening the Automations page saves it (never from localhost).
+async function rememberOrigin(env, url) {
+  if (!url?.origin || /localhost|127\./.test(url.origin)) return;
+  const s = await getSettings(env);
+  if (s.hub_origin !== url.origin) await setSetting(env, 'hub_origin', url.origin);
+}
+
+route('GET', '/api/automations', async ({ env, user, url }) => {
   requireAdmin(user);
+  await rememberOrigin(env, url);
+  await ensureRecovery(env);
   const s = await getSettings(env);
   return json({ automations: await getAutomations(env), triggers: TRIGGERS, vars: VARS, custom: Boolean(s.automations), sets: Object.fromEntries(Object.entries(AUTOMATION_SETS).map(([k, v]) => [k, { name: v.name, note: v.note }])), set: s.automation_set || (s.automations ? 'custom' : 'email'), email: canEmail(env), sms: Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN), ai: Boolean(env.ANTHROPIC_API_KEY), canEdit: user.role === 'admin' });
 });
 
-route('PUT', '/api/automations', async ({ env, user, body }) => {
+route('PUT', '/api/automations', async ({ env, user, body, url }) => {
   requireAdmin(user);
+  await rememberOrigin(env, url);
   const b = await body();
   if (b.reset) { await setSetting(env, 'automations', ''); await setSetting(env, 'automation_set', 'email'); return json({ automations: DEFAULT_AUTOMATIONS, set: 'email' }); }
   if (b.set) {

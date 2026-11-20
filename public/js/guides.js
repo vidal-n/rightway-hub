@@ -12,7 +12,7 @@ export const DEFAULT_GUIDES = {
       'Open the client\'s Posts tab and pick the oldest approved post. If there is none, make one from their photos (Onboarding uploads) or ask them to send a job photo.',
       'If the Google profile is connected (Google profile tab), click Publish to Google on the post and skip to the last step.',
       'Otherwise: download the photo and copy the Google caption.',
-      'Log in as hello@rightwaygrowth.com, open business.google.com, pick the client, and click Add update.',
+      'Log in as info@rightwaygrowth.com, open business.google.com, pick the client, and click Add update.',
       'Add the photo, paste the caption, and set the button to Call now (or Learn more with their service page).',
       'Publish. Open the post on Google, click Share, copy the link (or take a screenshot).',
       'Click Mark posted on the post, then attach the link or screenshot here and close the task.',
@@ -81,7 +81,7 @@ export const DEFAULT_GUIDES = {
   },
   link: {
     title: 'Local link or citation', minutes: 30, proof: 'link', due: 'spread', access: [],
-    need: ['The business details block (name, address, phone, website, hours, description)', 'An email inbox for sign ups (hello@rightwaygrowth.com)'],
+    need: ['The business details block (name, address, phone, website, hours, description)', 'An email inbox for sign ups (info@rightwaygrowth.com)'],
     steps: [
       'Open the Citations tab. Start with directories marked Not listed or Mismatch, highest value first.',
       'Sign up or claim the listing. Copy the business details exactly as the Hub shows them (same name, address and phone everywhere).',
@@ -301,19 +301,19 @@ export function dueDate(kind, month, i = 1, n = 1, startDate = null) {
 // ---------- client access checklist ----------
 export const ACCESS_ITEMS = [
   { key: 'gbp', label: 'Google profile manager access', plans: ['starter', 'growth', 'authority', 'leader'],
-    how: 'The client adds hello@rightwaygrowth.com as a Manager: on their Google profile, open the three dot menu, Business profile settings, People and access (or Managers), Add.' },
+    how: 'The client adds info@rightwaygrowth.com as a Manager: on their Google profile, open the three dot menu, Business profile settings, People and access (or Managers), Add.' },
   { key: 'website', label: 'Website login', plans: ['starter', 'growth', 'authority', 'leader'],
-    how: 'WordPress: an Editor or Administrator user for hello@rightwaygrowth.com, then an application password saved in the Content tab. Other site builders: a team login.' },
+    how: 'WordPress: an Editor or Administrator user for info@rightwaygrowth.com, then an application password saved in the Content tab. Other site builders: a team login.' },
   { key: 'domain', label: 'Domain and DNS', plans: ['authority', 'leader'],
     how: 'Delegate access at the registrar (GoDaddy, Namecheap, Cloudflare, Google Domains) so we can verify Search Console and fix redirects.' },
   { key: 'gsc', label: 'Google Search Console', plans: ['growth', 'authority', 'leader'],
-    how: 'The client adds hello@rightwaygrowth.com as a Full user (Settings, Users and permissions), or we verify the site with DNS.' },
+    how: 'The client adds info@rightwaygrowth.com as a Full user (Settings, Users and permissions), or we verify the site with DNS.' },
   { key: 'ga4', label: 'Google Analytics', plans: ['growth', 'authority', 'leader'],
-    how: 'The client adds hello@rightwaygrowth.com as a Viewer (Admin, Property access management).' },
+    how: 'The client adds info@rightwaygrowth.com as a Viewer (Admin, Property access management).' },
   { key: 'tracking', label: 'Call tracking number', plans: ['authority', 'leader'],
     how: 'Buy one in the Calls tab. Put it on the Google profile as the main number with their own line as an additional number.' },
   { key: 'yelp', label: 'Yelp business page', plans: [],
-    how: 'Only if we manage their Yelp: the client claims the page at biz.yelp.com and adds hello@rightwaygrowth.com as a manager, or shares the login.' },
+    how: 'Only if we manage their Yelp: the client claims the page at biz.yelp.com and adds info@rightwaygrowth.com as a manager, or shares the login.' },
   { key: 'social', label: 'Facebook and Instagram', plans: [],
     how: 'Only if we share posts there: the client adds us under Page settings, Page access.' },
 ];
@@ -328,7 +328,7 @@ export function accessState(client, rows = [], auto = {}) {
     let status = r?.status || 'missing';
     const detected = Boolean(auto[it.key]);
     if (detected && status !== 'na') status = 'granted';
-    return { key: it.key, label: it.label, how: it.how, required, status, detected, note: r?.note || '', updated_at: r?.updated_at || null };
+    return { key: it.key, label: it.label, how: it.how, required, status, detected, note: r?.note || '', login_email: r?.login_email || '', updated_at: r?.updated_at || null };
   });
 }
 

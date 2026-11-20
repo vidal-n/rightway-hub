@@ -31,7 +31,7 @@ export const SCOPE = {
 
 // Setup every client gets, whatever the scope.
 export const SETUP_BASE = [
-  'Accept access invites with hello@rightwaygrowth.com (Google profile, website, Analytics, Search Console)',
+  'Accept access invites with info@rightwaygrowth.com (Google profile, website, Analytics, Search Console)',
   'Kickoff call done and Client Profile filled in',
   'Baseline map scan saved for the main keyword',
   'Keyword list set',

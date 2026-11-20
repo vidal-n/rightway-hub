@@ -12,7 +12,7 @@ export const COMPANY = {
   name: 'Rightway Growth LLC',
   address: '2001 Van Buren St, Hollywood, Florida 33020',
   site: 'rightwaygrowth.com',
-  email: 'hello@rightwaygrowth.com',
+  email: 'info@rightwaygrowth.com',
 };
 
 export const SERVICES = [
