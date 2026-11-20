@@ -114,8 +114,11 @@ async function doStep(env, st, ctx, { dry, depth }) {
       if (dry) return { line: `Would email ${lead.email}: ${subject}` };
       const { sendEmail, canEmail } = await import('./email.js');
       if (!canEmail(env)) throw new Error('Email is not set up (RESEND_API_KEY).');
-      const { bodyHtml, fromFor } = await import('./hubmail.js');
-      await sendEmail(env, { to: lead.email, subject, text: body, html: bodyHtml(body), replyTo: rep?.email, from: fromFor(env, rep || {}) });
+      const { fromFor } = await import('./hubmail.js');
+      const { brandedHtml } = await import('../public/js/mailbrand.js');
+      const st0 = await getSettings(env);
+      const origin = String(st0.hub_origin || st0.autoscan_origin || '').replace(/\/$/, '');
+      await sendEmail(env, { to: lead.email, subject, text: body, html: brandedHtml(body, { logoUrl: origin ? `${origin}/brand/rightway-logo-email.png` : '', preheader: subject }), replyTo: rep?.email, from: fromFor(env, rep || {}) });
       await run(env, 'INSERT INTO mail_log (id, user_id, to_email, subject, body, lead_id, status, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', newId('m_'), rep?.id || null, lead.email, subject, body, lead.id, 'sent', now());
       const { logActivity } = await import('./crm.js');
       await logActivity(env, { lead_id: lead.id, type: 'email', body: `Email sent (workflow): ${subject}` });

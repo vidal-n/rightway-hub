@@ -18,5 +18,6 @@ export async function sendEmail(env, { to, subject, text, html, replyTo, from, a
     const data = await res.json().catch(() => ({}));
     throw new Error(data.message || `Email failed (HTTP ${res.status})`);
   }
-  return true;
+  const ok = await res.json().catch(() => ({}));
+  return ok.id || true; // Resend's message id when it sends one
 }

@@ -54,3 +54,18 @@ test('scrub, tiers, deep scan compaction and charts', () => {
   assert.match(lineChart(['a', 'b'], [{ name: 'Dials', color: '#000', values: [1, 4] }]), /<polyline/);
   assert.match(barChart(['a'], [{ name: 'X', color: '#000', values: [3] }]), /<rect/);
 });
+
+test('automation emails use the branded layout with buttons, logo and footer', async () => {
+  const { brandedHtml } = await import('../public/js/mailbrand.js');
+  const html = brandedHtml('Hi Sam\n\nSee you soon.\n- one\n- two\nhttps://meet.google.com/abc-defg-hij\nhttps://hub.test/book.html?l=x\nhttps://calendar.google.com/calendar/render?x=1', { logoUrl: 'https://hub.test/brand/rightway-logo-email.png', preheader: 'Your audit' });
+  assert.match(html, /<img src="https:\/\/hub\.test\/brand\/rightway-logo-email\.png"/);
+  assert.match(html, /Join the Google Meet<\/a>/);
+  assert.match(html, /Pick a time that works<\/a>/);
+  assert.match(html, /Add to Google Calendar<\/a>/);
+  assert.match(html, /<ul[\s\S]*<li[^>]*>one<\/li>/);
+  assert.match(html, /2001 Van Buren St/);
+  assert.match(html, /Reply &quot;stop&quot;|Reply "stop"/);
+  assert.doesNotMatch(html, /[–—]/);
+  assert.match(brandedHtml('Hi <b>x</b>'), /&lt;b&gt;x&lt;\/b&gt;/);
+  assert.match(brandedHtml('Hi', { logoUrl: 'javascript:1' }), /RIGHTWAY/);
+});

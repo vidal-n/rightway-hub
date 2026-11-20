@@ -6,6 +6,7 @@ import { all, first, run, newId, now, getSettings, setSetting } from './db.js';
 import { requireStaff, requireAdmin } from './auth.js';
 import { route } from './router.js';
 import { sendEmail, canEmail } from './email.js';
+import { brandedHtml } from '../public/js/mailbrand.js';
 import { logClaude } from './costs.js';
 import { token } from './db.js';
 import { icsCalendar, googleAddUrl } from '../public/js/ics.js';
@@ -127,12 +128,16 @@ async function sendOne(env, a, lead, ctx) {
   if (a.channel === 'email') {
     if (!canEmail(env)) throw new Error('Email is not set up (RESEND_API_KEY).');
     if (!lead.email) throw new Error('No email on the lead.');
+    if (await import('./suppress.js').then((m) => m.emailBlocked(env, lead))) throw new Error('Skipped: on the do not contact list.');
     // Confirmations and reminders carry the appointment: a calendar file for Apple Calendar and Outlook, and a link for Google Calendar.
     // Not when Google already sent its own invite, or they would get the appointment twice.
     const withCal = (a.trigger === 'booked' || a.trigger === 'before') && lead.meet_at && !lead.gcal_event_id;
     const add = withCal ? googleAddUrl({ title: 'Rightway Growth: your free Google clarity audit', start: lead.meet_at, minutes: 30, location: lead.meet_link || '' }) : '';
-    const text = withCal && a.trigger === 'booked' && !/calendar\.google\.com/.test(body) ? `${body}\n\nAdd it to your calendar: ${add}\nThe attached file opens in Apple Calendar and Outlook.` : body;
-    await sendEmail(env, { to: lead.email, subject: fillTemplate(a.subject, ctx), text, html: emailHtml(text),
+    const text = withCal && a.trigger === 'booked' && !/calendar\.google\.com/.test(body) ? `${body}\n\nAdd it to your calendar:\n${add}\nThe attached file opens in Apple Calendar and Outlook.` : body;
+    const { fromFor } = await import('./hubmail.js');
+    const subject = fillTemplate(a.subject, ctx);
+    await sendEmail(env, { to: lead.email, subject, text, html: emailHtml(text, { logoUrl: ctx.logoUrl, preheader: subject }),
+      replyTo: ctx.repEmail || undefined, from: fromFor(env, { name: ctx.repName }),
       attachments: withCal ? [{ filename: 'appointment.ics', content: b64(appointmentIcs(lead)), content_type: 'text/calendar; charset=UTF-8' }] : undefined });
     return lead.email;
   }
@@ -140,28 +145,15 @@ async function sendOne(env, a, lead, ctx) {
   try { await sendText(env, lead, body, { id: lead.closer_id || lead.meet_by || null }, ctx.origin); return lead.phone; }
   catch (e) {
     if (!a.fallback || !lead.email || !canEmail(env)) throw e;
-    await sendEmail(env, { to: lead.email, subject: fillTemplate(a.subject || 'A quick note from RightWay Growth', ctx), text: body, html: emailHtml(body) });
+    await sendEmail(env, { to: lead.email, subject: fillTemplate(a.subject || 'A quick note from RightWay Growth', ctx), text: body, html: emailHtml(body, { logoUrl: ctx.logoUrl}),
+      replyTo: ctx.repEmail || undefined });
     return `${lead.email} (email, text could not go: ${String(e.message || e).slice(0, 60)})`;
   }
 }
 
-// Plain text in, simple branded email out. A line that is only a meeting link becomes a big Join button, so the link is one tap away.
-export function emailHtml(text) {
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  const buttons = [];
-  const lines = String(text || '').split('\n').map((raw) => {
-    const u = raw.trim();
-    if (/^https:\/\/\S+$/.test(u) && /meet\.google\.com|zoom\.us|teams\.microsoft\.com/.test(u)) { buttons.push(u); return `@@BTN${buttons.length - 1}@@`; }
-    return esc(raw);
-  });
-  const label = (u) => (/meet\.google\.com/.test(u) ? 'Join the Google Meet' : /zoom\.us/.test(u) ? 'Join the Zoom' : 'Join the meeting');
-  const body = lines.map((l) => (/^@@BTN\d+@@$/.test(l) ? l : l.startsWith('- ') ? `<li style="margin:0 0 4px">${l.slice(2)}</li>` : l ? `<p style="margin:0 0 12px">${l}</p>` : ''))
-    .join('').replace(/(<li[\s\S]*?<\/li>)+/g, (m) => `<ul style="margin:0 0 12px;padding-left:18px">${m}</ul>`)
-    .replace(/(https:\/\/[^\s<]+)/g, '<a href="$1" style="color:#0A6B4C">$1</a>')
-    .replace(/@@BTN(\d+)@@/g, (_, i) => { const u = buttons[Number(i)]; return `<p style="margin:4px 0 16px"><a href="${esc(u)}" style="display:inline-block;background:#23B07E;color:#ffffff;padding:13px 22px;border-radius:10px;font-weight:700;text-decoration:none">${label(u)}</a><br><span style="font-size:12px;color:#61716B">${esc(u)}</span></p>`; });
-  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#0F1B17;max-width:560px">
-    <div style="font-weight:700;letter-spacing:.08em;font-size:12px;color:#0A6B4C;text-transform:uppercase;margin-bottom:14px">RightWay Growth</div>${body}</div>`;
-}
+// Plain text in, branded email out (layout in public/js/mailbrand.js). A line that is only a meeting link becomes a Join button,
+// a line that is only a booking link becomes a "Pick a time" button, so the link is one tap away. `opts.logoUrl` shows the logo.
+export function emailHtml(text, opts = {}) { return brandedHtml(text, opts); }
 
 // A private booking link for one lead: opens the booking page with what we know filled in and asks only for what is missing.
 export async function bookToken(env, lead) {
@@ -184,9 +176,11 @@ async function context(env, lead) {
   const s = await getSettings(env);
   const origin = s.hub_origin || s.autoscan_origin || '';
   const repId = lead.closer_id || lead.meet_by;
-  const rep = (repId ? (await first(env, 'SELECT name FROM users WHERE id = ?', repId))?.name : '') || (await first(env, "SELECT name FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1").catch(() => null))?.name || '';
+  const repRow = (repId ? await first(env, 'SELECT name, email FROM users WHERE id = ?', repId).catch(() => null) : null) || await first(env, "SELECT name, email FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1").catch(() => null);
+  const rep = repRow?.name || '';
   const bt = await bookToken(env, lead);
-  return { lead, start: lead.meet_at, rep: rep.split(' ')[0] ? `${rep.split(' ')[0]}, RightWay Growth` : '', repFirst: rep.split(' ')[0] || '', tz: s.book_tz || TZ_DEFAULT, bookUrl: origin ? `${origin}/book.html${bt ? `?l=${bt}` : ''}` : '', origin };
+  return { lead, start: lead.meet_at, rep: rep.split(' ')[0] ? `${rep.split(' ')[0]}, RightWay Growth` : '', repFirst: rep.split(' ')[0] || '', tz: s.book_tz || TZ_DEFAULT, bookUrl: origin ? `${origin}/book.html${bt ? `?l=${bt}` : ''}` : '', origin,
+    logoUrl: origin ? `${origin.replace(/\/$/, '')}/brand/rightway-logo-email.png` : '', repName: rep, repEmail: repRow?.email || '' };
 }
 
 // Every minute: send what is due. At most 20 sends a run.
@@ -204,9 +198,11 @@ export async function automationTick(env, t = now()) {
       if (n >= 20) return n;
       n++;
       let status = 'sent', error = null, to = null;
-      try { to = await sendOne(env, a, lead, await context(env, lead)); } catch (e) { status = 'failed'; error = String(e.message || e).slice(0, 300); }
+      const ctx = await context(env, lead).catch(() => null);
+      try { if (!ctx) throw new Error('Could not read the appointment.'); to = await sendOne(env, a, lead, ctx); } catch (e) { status = 'failed'; error = String(e.message || e).slice(0, 300); }
       await run(env, 'INSERT OR IGNORE INTO automation_log (id, auto_id, lead_id, meet_at, channel, status, error, to_addr, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
         newId('al_'), a.id, lead.id, lead.meet_at, a.channel, status, error, to, t);
+      if (status === 'sent' && a.channel === 'email') await run(env, "INSERT INTO mail_log (id, user_id, to_email, subject, body, lead_id, client_id, status, error, at) VALUES (?, NULL, ?, ?, ?, ?, NULL, 'sent', NULL, ?)", newId('ml_'), String(to || '').split(' ')[0], fillTemplate(a.subject, ctx).slice(0, 200), `Automation: ${a.name}`, lead.id, t).catch(() => {});
       if (status === 'sent') await run(env, 'INSERT INTO activities (id, lead_id, type, body, at) VALUES (?, ?, ?, ?, ?)', newId('a_'), lead.id, a.channel === 'email' ? 'email' : 'sms', `Automation: ${a.name}`, t);
     }
   }
@@ -262,7 +258,7 @@ route('POST', '/api/automations/test', async ({ env, user, body }) => {
   const ctx = { ...(await context(env, { ...lead, meet_at: start })), rep: `${(me?.name || '').split(' ')[0] || 'Vidal'}, RightWay Growth` };
   if (a.channel === 'email') {
     if (!canEmail(env)) throw new HttpError('Email is not set up yet (RESEND_API_KEY).', 503);
-    await sendEmail(env, { to: me.email, subject: `[Test] ${fillTemplate(a.subject, ctx)}`, text: fillTemplate(a.body, ctx), html: emailHtml(fillTemplate(a.body, ctx)) });
+    await sendEmail(env, { to: me.email, subject: `[Test] ${fillTemplate(a.subject, ctx)}`, text: fillTemplate(a.body, ctx), html: emailHtml(fillTemplate(a.body, ctx), { logoUrl: ctx.logoUrl, preheader: fillTemplate(a.subject, ctx)}) });
     return json({ ok: true, to: me.email });
   }
   if (!me?.phone) throw new HttpError('Save your mobile number in Settings first, then test the text.');
